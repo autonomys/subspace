@@ -67,7 +67,7 @@ pub struct PiecesByRangeResponse {
     pub pieces: PiecesToPlot,
     /// Defines starting point (cursor) of the next request.
     /// None means no further data avalaible.
-    pub next_piece_hash_index: Option<PieceIndexHash>,
+    pub next_piece_index_hash: Option<PieceIndexHash>,
 }
 
 /// Type alias for the actual external request handler.

@@ -3,7 +3,7 @@ use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, Stream};
+use futures::SinkExt;
 use libp2p::core::multihash::{Code, Multihash};
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
@@ -11,7 +11,6 @@ use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::ops::{Deref, DerefMut, Div};
-use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, U256};
 use thiserror::Error;
@@ -247,7 +246,7 @@ impl Node {
         &self,
         from: PieceIndexHash,
         to: PieceIndexHash,
-    ) -> Result<Pin<Box<dyn Stream<Item = PiecesToPlot>>>, GetPiecesByRangeError> {
+    ) -> Result<mpsc::Receiver<PiecesToPlot>, GetPiecesByRangeError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         // calculate the middle of the range (big endian)
@@ -321,8 +320,8 @@ impl Node {
                         }
 
                         // prepare the next starting point for data
-                        if let Some(next_piece_hash_index) = response.next_piece_hash_index {
-                            starting_index_hash = next_piece_hash_index;
+                        if let Some(next_piece_index_hash) = response.next_piece_index_hash {
+                            starting_index_hash = next_piece_index_hash;
                         } else {
                             // exit loop if the last response showed no remaining data
                             break;
@@ -336,6 +335,6 @@ impl Node {
             }
         });
 
-        Ok(Box::pin(rx))
+        Ok(rx)
     }
 }
