@@ -12,8 +12,12 @@ struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
 #[async_trait::async_trait]
 impl DSNSync for TestDSN {
     type Stream = futures::stream::Once<futures::future::Ready<PiecesToPlot>>;
+    type Error = std::convert::Infallible;
 
-    async fn get_pieces(&mut self, Range { start, end }: Range<PieceIndexHash>) -> Self::Stream {
+    async fn get_pieces(
+        &mut self,
+        Range { start, end }: Range<PieceIndexHash>,
+    ) -> Result<Self::Stream, Self::Error> {
         let (pieces, piece_indexes) = self
             .0
             .iter()
@@ -27,10 +31,12 @@ impl DSNSync for TestDSN {
                     (flat_pieces, piece_indexes)
                 },
             );
-        futures::stream::once(futures::future::ready(PiecesToPlot {
-            pieces: pieces.try_into().unwrap(),
-            piece_indexes,
-        }))
+        Ok(futures::stream::once(futures::future::ready(
+            PiecesToPlot {
+                pieces: pieces.try_into().unwrap(),
+                piece_indexes,
+            },
+        )))
     }
 }
 

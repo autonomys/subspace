@@ -27,7 +27,7 @@ async fn main() {
 
         PiecesByRangeResponse {
             pieces,
-            next_piece_hash_index: None,
+            next_piece_index_hash: None,
         }
     };
 
