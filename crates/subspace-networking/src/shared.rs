@@ -5,7 +5,6 @@ use crate::multimess;
 use crate::pieces_by_range_handler::PiecesByRangeRequest;
 use crate::request_responses::RequestFailure;
 use bytes::Bytes;
-use core::panic;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
 use generic_array::GenericArray;
@@ -20,6 +19,7 @@ use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use subspace_core_primitives::PUBLIC_KEY_LENGTH;
 use typenum::U32;
 
 #[derive(Debug)]
@@ -96,27 +96,23 @@ pub struct IdendityHash(GenericArray<u8, U32>);
 
 impl PreimageIntoKeyBytes<Multihash> for IdendityHash {
     fn preimage_into_key_bytes(multihash: &Multihash) -> KeyBytes<Self> {
-        const SHA256_HASH_SIZE: usize = 32;
-
         // Identity hasher for 32-bytes digest
         if multihash.code() == u64::from(Code::Identity)
-            && multihash.digest().len() == SHA256_HASH_SIZE
+            && multihash.digest().len() == PUBLIC_KEY_LENGTH
         {
             let array = GenericArray::from_slice(multihash.digest());
             return KeyBytes::from_unchecked(*array);
         }
 
-        // PieceIndex and Piece multihashes are hashed with SHA256
+        // PieceIndex and Piece multihashes are hashed with the default SHA256
         if multihash.code() == u64::from(multimess::MultihashCode::Piece)
             || multihash.code() == u64::from(multimess::MultihashCode::PieceIndex)
         {
-            return KeyBytes::from_unchecked(Sha256::digest(multihash.to_bytes()));
+            return default_key_bytes_conversion(&multihash.to_bytes());
         }
 
-        panic!(
-            "Unsupported multihash type. Expected Identity:{:?}",
-            multihash
-        )
+        // Unsupported multihash type.
+        default_key_bytes_conversion(&multihash.to_bytes())
     }
 }
 
@@ -128,11 +124,12 @@ impl PreimageIntoKeyBytes<PeerId> for IdendityHash {
             if let identity::PublicKey::Sr25519(pk) = public_key {
                 Code::Identity.digest(&pk.encode())
             } else {
-                panic!("Unsupported public key type. Expected Sr25519")
+                // Unsupported public key type. Expected Sr25519
+                return default_key_bytes_conversion(&peer_id.to_bytes());
             }
         } else {
             // No protobuf encoding: it's PeerId::random()
-            *peer_id.as_ref()
+            (*peer_id).into()
         };
 
         PreimageIntoKeyBytes::<Multihash>::preimage_into_key_bytes(&multihash)
@@ -141,17 +138,31 @@ impl PreimageIntoKeyBytes<PeerId> for IdendityHash {
 
 impl PreimageIntoKeyBytes<record::Key> for IdendityHash {
     fn preimage_into_key_bytes(record_key: &record::Key) -> KeyBytes<Self> {
-        let multihash = Multihash::from_bytes(&record_key.to_vec())
-            .expect("Not multihash record keys not supported.");
+        let bytes = &record_key.to_vec();
 
-        PreimageIntoKeyBytes::<Multihash>::preimage_into_key_bytes(&multihash)
+        if let Ok(multihash) = Multihash::from_bytes(bytes) {
+            PreimageIntoKeyBytes::<Multihash>::preimage_into_key_bytes(&multihash)
+        } else {
+            // Not multihash record key.
+            default_key_bytes_conversion(bytes)
+        }
     }
 }
 
 impl PreimageIntoKeyBytes<Vec<u8>> for IdendityHash {
     fn preimage_into_key_bytes(bytes: &Vec<u8>) -> KeyBytes<Self> {
-        let multihash = Multihash::from_bytes(bytes).expect("Not multihash arrays not supported");
-
-        PreimageIntoKeyBytes::<Multihash>::preimage_into_key_bytes(&multihash)
+        if let Ok(multihash) = Multihash::from_bytes(bytes) {
+            PreimageIntoKeyBytes::<Multihash>::preimage_into_key_bytes(&multihash)
+        } else {
+            // Not multihash vector.
+            default_key_bytes_conversion(bytes)
+        }
     }
+}
+
+// Default KeyBytes converter. It hashes bytes with Sha256 - the same as the
+// default Kademlia's `PreimageIntoKeyBytes` implementation.
+#[inline]
+fn default_key_bytes_conversion<T>(bytes: &Vec<u8>) -> KeyBytes<T> {
+    KeyBytes::from_unchecked(Sha256::digest(bytes))
 }
