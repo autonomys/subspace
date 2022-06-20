@@ -82,10 +82,8 @@ where
                     PieceIndexHashNumber::one()
                 },
             )?;
-            let (mut offset_end, overflow) = (i + 1).overflowing_mul(range_size);
-            if overflow || offset_end > sync_sector_size {
-                offset_end = sync_sector_size
-            }
+
+            let offset_end = (i + 1).saturating_mul(range_size).min(sync_sector_size);
 
             i += PieceIndexHashNumber::one();
 
