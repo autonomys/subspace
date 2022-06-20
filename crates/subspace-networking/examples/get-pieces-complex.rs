@@ -1,8 +1,7 @@
 use futures::channel::mpsc;
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::Multihash;
-use libp2p::PeerId;
+use libp2p::{identity, PeerId};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
@@ -99,9 +98,16 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let multihash: Multihash = expected_node_id.into();
-    let peer_id_public_key: [u8; 32] = multihash.digest()[0..32].try_into().unwrap();
+    let encoding = expected_node_id.as_ref().digest();
+    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
+        .expect("Invalid public key from PeerId.");
+    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
+        pk.encode()
+    } else {
+        panic!("Expected PublicKey::Sr25519")
+    };
 
+    // create a range from expected peer's public key
     let from = {
         let mut buf = peer_id_public_key;
         buf[16] = 0;
@@ -116,11 +122,13 @@ async fn main() {
     let stream_future = node.get_pieces_by_range(from, to);
     let mut stream = stream_future.await.unwrap();
     if let Some(value) = stream.next().await {
-        assert_eq!(value, expected_response.pieces);
+        if value != expected_response.pieces {
+            panic!("UNEXPECTED RESPONSE")
+        }
 
         println!("Received expected response.");
     }
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
     println!("Exiting..");
 }
