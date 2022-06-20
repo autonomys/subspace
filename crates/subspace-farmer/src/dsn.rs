@@ -85,7 +85,7 @@ where
             let offset_end = ((i + 1) * range_size).min(sync_sector_size);
             i += PieceIndexHashNumber::one();
 
-            if offset_start < sync_sector_size {
+            if offset_start <= sync_sector_size {
                 Some((offset_start, offset_end))
             } else {
                 None
