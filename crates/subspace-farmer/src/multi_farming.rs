@@ -212,51 +212,46 @@ impl MultiFarming {
         let total_pieces = farmer_metadata.total_pieces;
 
         // Start syncing
-        // TODO: Unlock once infinite loop (https://github.com/subspace/subspace/issues/598) is fixed
-        if false {
-            tokio::spawn({
-                let plots = plots.clone();
-                let commitments = commitments.clone();
-                let codecs = codecs.clone();
-                async move {
-                    let dsn = NoSync;
+        tokio::spawn({
+            let plots = plots.clone();
+            let commitments = commitments.clone();
+            let codecs = codecs.clone();
+            async move {
+                let dsn = NoSync;
 
-                    let mut futures = plots
-                        .into_iter()
-                        .zip(commitments)
-                        .zip(codecs)
-                        .map(|((plot, commitments), codec)| {
-                            let options = SyncOptions {
-                                range_size: PieceIndexHashNumber::MAX / 1024,
-                                public_key: plot.public_key(),
-                                max_plot_size,
-                                total_pieces,
-                            };
-                            let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
+                let mut futures = plots
+                    .into_iter()
+                    .zip(commitments)
+                    .zip(codecs)
+                    .map(|((plot, commitments), codec)| {
+                        let options = SyncOptions {
+                            range_size: PieceIndexHashNumber::MAX / 1024,
+                            public_key: plot.public_key(),
+                            max_plot_size,
+                            total_pieces,
+                        };
+                        let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
 
-                            dsn::sync(dsn, options, move |pieces, piece_indexes| {
-                                if !plot_pieces(PiecesToPlot {
-                                    pieces,
-                                    piece_indexes,
-                                }) {
-                                    return Err(anyhow::anyhow!(
-                                        "Failed to plot pieces in archiving"
-                                    ));
-                                }
-                                Ok(())
-                            })
+                        dsn::sync(dsn, options, move |pieces, piece_indexes| {
+                            if !plot_pieces(PiecesToPlot {
+                                pieces,
+                                piece_indexes,
+                            }) {
+                                return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
+                            }
+                            Ok(())
                         })
-                        .collect::<FuturesUnordered<_>>();
-                    while let Some(result) = futures.next().await {
-                        result?;
-                    }
-
-                    tracing::info!("Sync done");
-
-                    Ok::<_, anyhow::Error>(())
+                    })
+                    .collect::<FuturesUnordered<_>>();
+                while let Some(result) = futures.next().await {
+                    result?;
                 }
-            });
-        }
+
+                tracing::info!("Sync done");
+
+                Ok::<_, anyhow::Error>(())
+            }
+        });
 
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {
