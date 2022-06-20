@@ -7524,7 +7524,6 @@ dependencies = [
  "sp-consensus-slots",
  "sp-core",
  "sp-runtime",
- "sp-runtime-interface",
  "sp-state-machine",
  "sp-std",
  "sp-trie",
