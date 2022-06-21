@@ -440,6 +440,7 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
 }
 
 impl pallet_transaction_payment::Config for Runtime {
+    type Event = Event;
     type OnChargeTransaction = OnChargeTransaction;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;

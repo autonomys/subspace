@@ -24,7 +24,7 @@ pub mod genesismap;
 pub mod system;
 
 use cfg_if::cfg_if;
-use codec::{Decode, Encode, Error, Input};
+use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
 use frame_support::{
     parameter_types,
     traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem},
@@ -437,7 +437,7 @@ impl GetRuntimeBlockType for Runtime {
     type RuntimeBlock = Block;
 }
 
-#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
 pub struct Origin;
 
 impl From<frame_system::Origin<Runtime>> for Origin {

@@ -33,7 +33,7 @@ typenum = "1.15.0"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
 [dependencies.libp2p]
-version = "0.44.0"
+version = "0.45.1"
 default-features = false
 features = [
     "dns-tokio",
