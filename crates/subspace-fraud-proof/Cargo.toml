@@ -14,12 +14,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
 hash-db = "0.15.2"
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
-sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-executor = { version = "0.1.0", path = "../sp-executor" }
-sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
-sp-state-machine = { version = "0.12.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
-sp-trie = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "5f0aa1feb7250ac7b8c1b9928f87b2420b530e22" }
+sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-state-machine = { version = "0.12.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-trie = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 tracing = "0.1.34"

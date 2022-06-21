@@ -349,6 +349,7 @@ impl pallet_transaction_fees::Config for Runtime {
 }
 
 impl pallet_transaction_payment::Config for Runtime {
+    type Event = Event;
     type OnChargeTransaction = OnChargeTransaction;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
