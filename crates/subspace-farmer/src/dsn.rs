@@ -26,9 +26,13 @@ pub struct SyncOptions {
 #[async_trait::async_trait]
 pub trait DSNSync {
     type Stream: Stream<Item = PiecesToPlot>;
+    type Error: std::error::Error + Send + Sync + 'static;
 
     /// Get pieces from the network which fall within the range
-    async fn get_pieces(&mut self, range: Range<PieceIndexHash>) -> Self::Stream;
+    async fn get_pieces(
+        &mut self,
+        range: Range<PieceIndexHash>,
+    ) -> Result<Self::Stream, Self::Error>;
 }
 
 /// Marker which disables sync
@@ -38,9 +42,26 @@ pub struct NoSync;
 #[async_trait::async_trait]
 impl DSNSync for NoSync {
     type Stream = futures::stream::Empty<PiecesToPlot>;
+    type Error = std::convert::Infallible;
 
-    async fn get_pieces(&mut self, _range: Range<PieceIndexHash>) -> Self::Stream {
-        futures::stream::empty()
+    async fn get_pieces(
+        &mut self,
+        _range: Range<PieceIndexHash>,
+    ) -> Result<Self::Stream, Self::Error> {
+        Ok(futures::stream::empty())
+    }
+}
+
+#[async_trait::async_trait]
+impl DSNSync for subspace_networking::Node {
+    type Stream = futures::channel::mpsc::Receiver<PiecesToPlot>;
+    type Error = subspace_networking::GetPiecesByRangeError;
+
+    async fn get_pieces(
+        &mut self,
+        Range { start, end }: Range<PieceIndexHash>,
+    ) -> Result<Self::Stream, Self::Error> {
+        self.get_pieces_by_range(start, end).await
     }
 }
 
@@ -114,7 +135,7 @@ where
     });
 
     for range in sync_ranges {
-        let mut stream = dsn.get_pieces(range).await;
+        let mut stream = dsn.get_pieces(range).await?;
 
         while let Some(PiecesToPlot {
             piece_indexes,

@@ -22,7 +22,7 @@ async fn pieces_by_range_protocol_smoke() {
 
     let response = PiecesByRangeResponse {
         pieces,
-        next_piece_hash_index: None,
+        next_piece_index_hash: None,
     };
 
     let expected_request = request.clone();
@@ -118,7 +118,7 @@ async fn get_pieces_by_range_smoke() {
             if request_index == 0 {
                 Some(PiecesByRangeResponse {
                     pieces: response_data[request_index].clone(),
-                    next_piece_hash_index: Some(piece_index_continue),
+                    next_piece_index_hash: Some(piece_index_continue),
                 })
             } else {
                 // New request starts from from the previous response.
@@ -126,7 +126,7 @@ async fn get_pieces_by_range_smoke() {
 
                 Some(PiecesByRangeResponse {
                     pieces: response_data[request_index].clone(),
-                    next_piece_hash_index: None,
+                    next_piece_index_hash: None,
                 })
             }
         }),

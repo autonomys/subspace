@@ -1,4 +1,4 @@
-use crate::dsn::{self, NoSync, PieceIndexHashNumber, SyncOptions};
+use crate::dsn::{self, PieceIndexHashNumber, SyncOptions};
 use crate::{
     plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
 };
@@ -7,14 +7,16 @@ use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_core_primitives::{PieceIndexHash, PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
-use subspace_networking::{Config, PiecesToPlot};
+use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use subspace_solving::SubspaceCodec;
 use tracing::info;
+
+const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
 // will have the same length.
@@ -59,6 +61,7 @@ pub struct Options<C> {
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
     pub listen_on: Vec<Multiaddr>,
+    pub dsn_sync: bool,
 }
 
 impl MultiFarming {
@@ -72,6 +75,7 @@ impl MultiFarming {
             reward_address,
             mut bootstrap_nodes,
             listen_on,
+            dsn_sync,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -85,6 +89,7 @@ impl MultiFarming {
         let mut farmings = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
         let mut codecs = Vec::with_capacity(plot_sizes.len());
+        let mut nodes = Vec::with_capacity(plot_sizes.len());
 
         let mut results = plot_sizes
             .into_iter()
@@ -143,6 +148,7 @@ impl MultiFarming {
             let subspace_codec = SubspaceCodec::new(&plot.public_key());
             let (node, node_runner) = subspace_networking::create(Config {
                 bootstrap_nodes: bootstrap_nodes.clone(),
+                // TODO: Do we still need it?
                 value_getter: Arc::new({
                     let plot = plot.clone();
                     let subspace_codec = subspace_codec.clone();
@@ -167,6 +173,44 @@ impl MultiFarming {
                                     .map(move |()| piece)
                             })
                             .map(|piece| piece.to_vec())
+                    }
+                }),
+                pieces_by_range_request_handler: Arc::new({
+                    let plot = plot.clone();
+                    let subspace_codec = subspace_codec.clone();
+
+                    // TODO: also ask for how many pieces to read
+                    move |&PiecesByRangeRequest { from, to }| {
+                        let mut pieces_and_indexes =
+                            plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
+                        let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
+                            .iter()
+                            .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) >= to)
+                        {
+                            pieces_and_indexes.truncate(idx);
+                            None
+                        } else {
+                            pieces_and_indexes
+                                .pop()
+                                .map(|(index, _)| Some(PieceIndexHash::from(index)))
+                                .unwrap_or_default()
+                        };
+
+                        let (piece_indexes, pieces) = pieces_and_indexes
+                            .into_iter()
+                            .flat_map(|(index, mut piece)| {
+                                subspace_codec.decode(&mut piece, index).ok()?;
+                                Some((index, piece))
+                            })
+                            .unzip();
+
+                        Some(PiecesByRangeResponse {
+                            pieces: PiecesToPlot {
+                                piece_indexes,
+                                pieces,
+                            },
+                            next_piece_index_hash,
+                        })
                     }
                 }),
                 allow_non_globals_in_dht: true,
@@ -195,6 +239,7 @@ impl MultiFarming {
                     .into_iter()
                     .map(|listen_on| listen_on.with(Protocol::P2p(node.id().into()))),
             );
+            nodes.push(node);
             networking_node_runners.push(node_runner);
             plots.push(plot);
             commitments.push(plot_commitments);
@@ -212,46 +257,49 @@ impl MultiFarming {
         let total_pieces = farmer_metadata.total_pieces;
 
         // Start syncing
-        tokio::spawn({
-            let plots = plots.clone();
-            let commitments = commitments.clone();
-            let codecs = codecs.clone();
-            async move {
-                let dsn = NoSync;
+        if dsn_sync {
+            tokio::spawn({
+                let plots = plots.clone();
+                let commitments = commitments.clone();
+                let codecs = codecs.clone();
+                async move {
+                    let mut futures = plots
+                        .into_iter()
+                        .zip(commitments)
+                        .zip(codecs)
+                        .zip(nodes)
+                        .map(|(((plot, commitments), codec), node)| {
+                            let options = SyncOptions {
+                                range_size: PieceIndexHashNumber::MAX / 1024,
+                                public_key: plot.public_key(),
+                                max_plot_size,
+                                total_pieces,
+                            };
+                            let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
 
-                let mut futures = plots
-                    .into_iter()
-                    .zip(commitments)
-                    .zip(codecs)
-                    .map(|((plot, commitments), codec)| {
-                        let options = SyncOptions {
-                            range_size: PieceIndexHashNumber::MAX / 1024,
-                            public_key: plot.public_key(),
-                            max_plot_size,
-                            total_pieces,
-                        };
-                        let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
-
-                        dsn::sync(dsn, options, move |pieces, piece_indexes| {
-                            if !plot_pieces(PiecesToPlot {
-                                pieces,
-                                piece_indexes,
-                            }) {
-                                return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
-                            }
-                            Ok(())
+                            dsn::sync(node, options, move |pieces, piece_indexes| {
+                                if !plot_pieces(PiecesToPlot {
+                                    pieces,
+                                    piece_indexes,
+                                }) {
+                                    return Err(anyhow::anyhow!(
+                                        "Failed to plot pieces in archiving"
+                                    ));
+                                }
+                                Ok(())
+                            })
                         })
-                    })
-                    .collect::<FuturesUnordered<_>>();
-                while let Some(result) = futures.next().await {
-                    result?;
+                        .collect::<FuturesUnordered<_>>();
+                    while let Some(result) = futures.next().await {
+                        result?;
+                    }
+
+                    tracing::info!("Sync done");
+
+                    Ok::<_, anyhow::Error>(())
                 }
-
-                tracing::info!("Sync done");
-
-                Ok::<_, anyhow::Error>(())
-            }
-        });
+            });
+        }
 
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {

@@ -30,7 +30,7 @@ async fn main() {
 
             Some(PiecesByRangeResponse {
                 pieces,
-                next_piece_hash_index: None,
+                next_piece_index_hash: None,
             })
         }),
         ..Config::with_generated_keypair()
