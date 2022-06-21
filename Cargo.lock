@@ -3999,7 +3999,8 @@ checksum = "71d96e3f3c0b6325d8ccd83c33b28acb183edcb6c67938ba104ec546854b0882"
 [[package]]
 name = "merkle_light"
 version = "0.4.0"
-source = "git+https://github.com/sitano/merkle_light?rev=fe31d4ef27a1fbe54e82ab589b610ae4bfd2008e#fe31d4ef27a1fbe54e82ab589b610ae4bfd2008e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b879f617ec392ad9c11a50356ca373009c52363c0953b34c2e1b2234037a26a9"
 
 [[package]]
 name = "merkletree"
