@@ -115,7 +115,13 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        Arc::clone(&multi_farming.plots),
+        Arc::new(
+            multi_farming
+                .single_plot_farms
+                .iter()
+                .map(|single_plot_farm| single_plot_farm.plot.clone())
+                .collect(),
+        ),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;

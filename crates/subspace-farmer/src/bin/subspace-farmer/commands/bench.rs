@@ -235,9 +235,9 @@ pub(crate) async fn bench(
 
     let space_allocated = get_size(base_directory)?;
     let actual_space_pledged = multi_farming
-        .plots
+        .single_plot_farms
         .iter()
-        .map(Plot::piece_count)
+        .map(|single_plot_farm| single_plot_farm.plot.piece_count())
         .sum::<u64>()
         * PIECE_SIZE as u64;
     let overhead = space_allocated - actual_space_pledged;
@@ -267,11 +267,15 @@ pub(crate) async fn bench(
         let start = Instant::now();
 
         let mut tasks = multi_farming
-            .commitments
+            .single_plot_farms
             .iter()
-            .cloned()
-            .zip(multi_farming.plots.iter().cloned())
-            .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
+            .map(|single_plot_farm| {
+                (
+                    single_plot_farm.commitments.clone(),
+                    single_plot_farm.plot.clone(),
+                )
+            })
+            .map(|(commitments, plot)| move || commitments.create(rand::random(), plot))
             .map(tokio::task::spawn_blocking)
             .collect::<FuturesUnordered<_>>();
         while let Some(result) = tasks.next().await {
