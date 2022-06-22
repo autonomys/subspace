@@ -60,9 +60,9 @@ pub(crate) async fn farm(
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
-        let base_directory = base_directory.clone();
+        let path = base_directory.join("object-mappings");
 
-        move || ObjectMappings::open_or_create(&base_directory)
+        move || ObjectMappings::open_or_create(path)
     })
     .await??;
 

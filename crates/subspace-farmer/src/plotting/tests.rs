@@ -35,7 +35,8 @@ async fn plotting_happy_path() {
     let address = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
+    let object_mappings =
+        ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
 
     let client = MockRpcClient::new();
 
@@ -108,7 +109,8 @@ async fn plotting_piece_eviction() {
     let salt = Salt::default();
     let plot = Plot::open_or_create(&base_directory, address, 5).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings = ObjectMappings::open_or_create(&base_directory).unwrap();
+    let object_mappings =
+        ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces

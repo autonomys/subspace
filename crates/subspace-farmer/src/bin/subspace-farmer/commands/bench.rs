@@ -147,8 +147,9 @@ pub(crate) async fn bench(
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
-        let base_directory = base_directory.as_ref().to_owned();
-        move || ObjectMappings::open_or_create(&base_directory)
+        let path = base_directory.as_ref().join("object-mappings");
+
+        move || ObjectMappings::open_or_create(path)
     })
     .await??;
 
