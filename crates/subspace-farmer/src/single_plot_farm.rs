@@ -5,7 +5,7 @@ use crate::farming::Farming;
 use crate::plot::Plot;
 use crate::plotting::plot_pieces;
 use std::future::Future;
-use subspace_networking::{Node, PiecesToPlot};
+use subspace_networking::{Node, NodeRunner, PiecesToPlot};
 use subspace_solving::SubspaceCodec;
 
 // TODO: Make fields private
@@ -15,6 +15,8 @@ pub struct SinglePlotFarm {
     pub commitments: Commitments,
     pub(crate) farming: Option<Farming>,
     pub(crate) node: Node,
+    /// Might be `None` if was already taken out before
+    pub(crate) node_runner: Option<NodeRunner>,
 }
 
 impl SinglePlotFarm {

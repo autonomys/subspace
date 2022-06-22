@@ -86,16 +86,13 @@ impl MultiFarming {
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
-        let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
-        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
-
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
-        let mut results = plot_sizes
-            .into_iter()
+        let mut single_plot_farm_instantiations = plot_sizes
+            .iter()
             .enumerate()
-            .map(|(plot_index, max_plot_pieces)| {
-                let base_directory = base_directory.to_owned();
+            .map(|(plot_index, &max_plot_pieces)| {
+                let base_directory = base_directory.join(format!("plot{plot_index}"));
                 let farming_client = farming_client.clone();
                 let new_plot = new_plot.clone();
                 let mut listen_on = listen_on.clone();
@@ -103,7 +100,6 @@ impl MultiFarming {
                 let first_listen_on = Arc::clone(&first_listen_on);
 
                 tokio::task::spawn_blocking(move || {
-                    let base_directory = base_directory.join(format!("plot{plot_index}"));
                     std::fs::create_dir_all(&base_directory)?;
 
                     let identity = Identity::open_or_create(&base_directory)?;
@@ -115,13 +111,13 @@ impl MultiFarming {
                     let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
 
                     info!("Opening commitments");
-                    let plot_commitments = Commitments::new(base_directory.join("commitments"))?;
+                    let commitments = Commitments::new(base_directory.join("commitments"))?;
 
                     // Start the farming task
                     let farming = start_farmings.then(|| {
                         Farming::start(
                             plot.clone(),
-                            plot_commitments.clone(),
+                            commitments.clone(),
                             farming_client.clone(),
                             identity.clone(),
                             reward_address,
@@ -160,13 +156,13 @@ impl MultiFarming {
                         }
                     }
 
-                    let subspace_codec = SubspaceCodec::new(&plot.public_key());
+                    let codec = SubspaceCodec::new(&plot.public_key());
                     let create_networking_fut = subspace_networking::create(Config {
                         bootstrap_nodes,
                         // TODO: Do we still need it?
                         value_getter: Arc::new({
                             let plot = plot.clone();
-                            let subspace_codec = subspace_codec.clone();
+                            let codec = codec.clone();
                             move |key| {
                                 let code = key.code();
 
@@ -182,7 +178,7 @@ impl MultiFarming {
                                 plot.read(piece_index)
                                     .ok()
                                     .and_then(|mut piece| {
-                                        subspace_codec
+                                        codec
                                             .decode(&mut piece, piece_index)
                                             .ok()
                                             .map(move |()| piece)
@@ -192,7 +188,7 @@ impl MultiFarming {
                         }),
                         pieces_by_range_request_handler: Arc::new({
                             let plot = plot.clone();
-                            let subspace_codec = subspace_codec.clone();
+                            let codec = codec.clone();
 
                             // TODO: also ask for how many pieces to read
                             move |&PiecesByRangeRequest { from, to }| {
@@ -214,7 +210,7 @@ impl MultiFarming {
                                 let (piece_indexes, pieces) = pieces_and_indexes
                                     .into_iter()
                                     .flat_map(|(index, mut piece)| {
-                                        subspace_codec.decode(&mut piece, index).ok()?;
+                                        codec.decode(&mut piece, index).ok()?;
                                         Some((index, piece))
                                     })
                                     .unzip();
@@ -250,25 +246,34 @@ impl MultiFarming {
                     }))
                     .detach();
 
-                    Ok::<_, anyhow::Error>((
-                        SinglePlotFarm {
-                            codec: subspace_codec,
-                            plot,
-                            commitments: plot_commitments,
-                            farming,
-                            node,
-                        },
-                        node_runner,
-                    ))
+                    Ok::<_, anyhow::Error>(SinglePlotFarm {
+                        codec,
+                        plot,
+                        commitments,
+                        farming,
+                        node,
+                        node_runner: Some(node_runner),
+                    })
                 })
             })
-            .collect::<FuturesOrdered<_>>();
+            .collect::<FuturesOrdered<_>>()
+            .map(|single_plot_farm| {
+                single_plot_farm.expect("Blocking task above never supposed to panic")
+            });
 
-        while let Some(result) = results.next().await {
-            let (single_plot_farm, node_runner) = result.expect("Plot and farming never fails")?;
+        let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
+        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
 
+        while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
+            let mut single_plot_farm = single_plot_farm?;
+
+            networking_node_runners.push(
+                single_plot_farm
+                    .node_runner
+                    .take()
+                    .expect("Node runner was never taken out before this; qed"),
+            );
             single_plot_farms.push(single_plot_farm);
-            networking_node_runners.push(node_runner);
         }
 
         let farmer_metadata = farming_client
