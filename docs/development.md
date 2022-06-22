@@ -1,8 +1,8 @@
 ## Pre-requisites
 
-In addition to Rust toolchain, LLVM and Clang are needed for build to succeed, can be installed on Ubuntu like this:
+You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual developer tooling (Ubuntu example):
 ```bash
-sudo apt-get install llvm clang
+sudo apt-get install llvm clang cmake
 ```
 
 ## To Farm By Yourself (Offline)

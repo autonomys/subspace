@@ -92,7 +92,26 @@ If you're connected directly without any router, then again nothing needs to be 
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
-## 🐧 Linux Instructions
+## 🐧 Ubuntu Instructions
+
+### Required dependencies
+There are two packages that are typically already installed, but might be missing on your machine.
+
+If you see this error:
+> error while loading shared libraries: libOpenCL.so.1: cannot open shared object file: No such file or directory
+
+Make sure to install `ocl-icd-libopencl1` library with `sudo apt-get install ocl-icd-libopencl1`.
+
+If you see this error:
+> error while loading shared libraries: libgomp.so.1: cannot open shared object file: No such file or directory
+
+Make sure to install `libgomp1` library with `sudo apt-get install libgomp1`.
+
+### OpenCL support
+Please read following documentation to make sure OpenCL support is enabled and working properly: <https://docs.rs/sloth256-189/latest/sloth256_189/opencl/index.html>
+
+OpenCL support is used for GPU acceleration (AMD, Intel, Nvidia) of initial plotting.
+GPU is not required generally for farmer to work and is not used at all after initial plotting.
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
@@ -370,3 +389,5 @@ cargo build \
 ```
 
 You'll find two binaries under `target/production` directory once it succeeds, after which refer to instructions above on how to use them.
+
+If you want to enable OpenCL support (by adding `--features=subspace-farmer/opencl` to above `cargo build` command) you'll need to install extra dependencies: https://docs.rs/sloth256-189/latest/sloth256_189/opencl/index.html
