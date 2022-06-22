@@ -17,6 +17,7 @@ use subspace_networking::{
     libp2p, Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_solving::SubspaceCodec;
+use tokio::runtime::Handle;
 use tracing::info;
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
@@ -159,110 +160,111 @@ impl MultiFarming {
                         }
                     }
 
+                    let subspace_codec = SubspaceCodec::new(&plot.public_key());
+                    let create_networking_fut = subspace_networking::create(Config {
+                        bootstrap_nodes,
+                        // TODO: Do we still need it?
+                        value_getter: Arc::new({
+                            let plot = plot.clone();
+                            let subspace_codec = subspace_codec.clone();
+                            move |key| {
+                                let code = key.code();
+
+                                if code != u64::from(MultihashCode::Piece)
+                                    && code != u64::from(MultihashCode::PieceIndex)
+                                {
+                                    return None;
+                                }
+
+                                let piece_index = u64::from_le_bytes(
+                                    key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
+                                );
+                                plot.read(piece_index)
+                                    .ok()
+                                    .and_then(|mut piece| {
+                                        subspace_codec
+                                            .decode(&mut piece, piece_index)
+                                            .ok()
+                                            .map(move |()| piece)
+                                    })
+                                    .map(|piece| piece.to_vec())
+                            }
+                        }),
+                        pieces_by_range_request_handler: Arc::new({
+                            let plot = plot.clone();
+                            let subspace_codec = subspace_codec.clone();
+
+                            // TODO: also ask for how many pieces to read
+                            move |&PiecesByRangeRequest { from, to }| {
+                                let mut pieces_and_indexes =
+                                    plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
+                                let next_piece_index_hash = if let Some(idx) =
+                                    pieces_and_indexes.iter().position(|(piece_index, _)| {
+                                        PieceIndexHash::from(*piece_index) >= to
+                                    }) {
+                                    pieces_and_indexes.truncate(idx);
+                                    None
+                                } else {
+                                    pieces_and_indexes
+                                        .pop()
+                                        .map(|(index, _)| Some(PieceIndexHash::from(index)))
+                                        .unwrap_or_default()
+                                };
+
+                                let (piece_indexes, pieces) = pieces_and_indexes
+                                    .into_iter()
+                                    .flat_map(|(index, mut piece)| {
+                                        subspace_codec.decode(&mut piece, index).ok()?;
+                                        Some((index, piece))
+                                    })
+                                    .unzip();
+
+                                Some(PiecesByRangeResponse {
+                                    pieces: PiecesToPlot {
+                                        piece_indexes,
+                                        pieces,
+                                    },
+                                    next_piece_index_hash,
+                                })
+                            }
+                        }),
+                        allow_non_globals_in_dht: true,
+                        listen_on,
+                        ..Config::with_keypair(sr25519::Keypair::from(
+                            sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
+                                .expect("Always valid"),
+                        ))
+                    });
+
+                    let (node, node_runner) = Handle::current().block_on(create_networking_fut)?;
+
+                    node.on_new_listener(Arc::new({
+                        let node_id = node.id();
+
+                        move |multiaddr| {
+                            info!(
+                                "Listening on {}",
+                                multiaddr.clone().with(Protocol::P2p(node_id.into()))
+                            );
+                        }
+                    }))
+                    .detach();
+
                     Ok::<_, anyhow::Error>((
-                        identity,
                         plot,
                         plot_commitments,
                         farming,
-                        listen_on,
-                        bootstrap_nodes,
+                        subspace_codec,
+                        node,
+                        node_runner,
                     ))
                 })
             })
             .collect::<FuturesOrdered<_>>();
 
         while let Some(result) = results.next().await {
-            let (identity, plot, plot_commitments, farming, listen_on, bootstrap_nodes) =
+            let (plot, plot_commitments, farming, subspace_codec, node, node_runner) =
                 result.expect("Plot and farming never fails")?;
-
-            let subspace_codec = SubspaceCodec::new(&plot.public_key());
-            let (node, node_runner) = subspace_networking::create(Config {
-                bootstrap_nodes,
-                // TODO: Do we still need it?
-                value_getter: Arc::new({
-                    let plot = plot.clone();
-                    let subspace_codec = subspace_codec.clone();
-                    move |key| {
-                        let code = key.code();
-
-                        if code != u64::from(MultihashCode::Piece)
-                            && code != u64::from(MultihashCode::PieceIndex)
-                        {
-                            return None;
-                        }
-
-                        let piece_index = u64::from_le_bytes(
-                            key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
-                        );
-                        plot.read(piece_index)
-                            .ok()
-                            .and_then(|mut piece| {
-                                subspace_codec
-                                    .decode(&mut piece, piece_index)
-                                    .ok()
-                                    .map(move |()| piece)
-                            })
-                            .map(|piece| piece.to_vec())
-                    }
-                }),
-                pieces_by_range_request_handler: Arc::new({
-                    let plot = plot.clone();
-                    let subspace_codec = subspace_codec.clone();
-
-                    // TODO: also ask for how many pieces to read
-                    move |&PiecesByRangeRequest { from, to }| {
-                        let mut pieces_and_indexes =
-                            plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
-                        let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
-                            .iter()
-                            .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) >= to)
-                        {
-                            pieces_and_indexes.truncate(idx);
-                            None
-                        } else {
-                            pieces_and_indexes
-                                .pop()
-                                .map(|(index, _)| Some(PieceIndexHash::from(index)))
-                                .unwrap_or_default()
-                        };
-
-                        let (piece_indexes, pieces) = pieces_and_indexes
-                            .into_iter()
-                            .flat_map(|(index, mut piece)| {
-                                subspace_codec.decode(&mut piece, index).ok()?;
-                                Some((index, piece))
-                            })
-                            .unzip();
-
-                        Some(PiecesByRangeResponse {
-                            pieces: PiecesToPlot {
-                                piece_indexes,
-                                pieces,
-                            },
-                            next_piece_index_hash,
-                        })
-                    }
-                }),
-                allow_non_globals_in_dht: true,
-                listen_on,
-                ..Config::with_keypair(sr25519::Keypair::from(
-                    sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
-                        .expect("Always valid"),
-                ))
-            })
-            .await?;
-
-            node.on_new_listener(Arc::new({
-                let node_id = node.id();
-
-                move |multiaddr| {
-                    info!(
-                        "Listening on {}",
-                        multiaddr.clone().with(Protocol::P2p(node_id.into()))
-                    );
-                }
-            }))
-            .detach();
 
             single_plot_farms.push(SinglePlotFarm {
                 codec: subspace_codec,
