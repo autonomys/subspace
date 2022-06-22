@@ -19,7 +19,7 @@
 //! and depositing logs.
 
 use crate::{
-	AccountId, AuthorityId, Block, BlockNumber, Digest, Extrinsic, Header, Transfer, H256 as Hash,
+	AccountId, Block, BlockNumber, Digest, Extrinsic, Header, Transfer, H256 as Hash,
 };
 use codec::{Decode, Encode, KeyedVec};
 use frame_support::{decl_module, decl_storage, storage};
@@ -49,9 +49,7 @@ decl_storage! {
 		// The current block number being processed. Set by `execute_block`.
 		Number get(fn number): Option<BlockNumber>;
 		ParentHash get(fn parent_hash): Hash;
-		NewAuthorities get(fn new_authorities): Option<Vec<AuthorityId>>;
 		StorageDigest get(fn storage_digest): Option<Digest>;
-		Authorities get(fn authorities) config(): Vec<AuthorityId>;
 	}
 }
 
@@ -79,10 +77,6 @@ pub fn initialize_block(header: &Header) {
 	if let Some(generic::DigestItem::Other(v)) = header.digest().logs().iter().next() {
 		let _: Option<u32> = storage::unhashed::get(v);
 	}
-}
-
-pub fn authorities() -> Vec<AuthorityId> {
-	Authorities::get()
 }
 
 pub fn get_block_number() -> Option<BlockNumber> {
@@ -200,19 +194,12 @@ pub fn finalize_block() -> Header {
 	let extrinsics_root = trie::blake2_256_ordered_root(txs, StateVersion::V0);
 	let number = <Number>::take().expect("Number is set by `initialize_block`");
 	let parent_hash = <ParentHash>::take();
-	let mut digest = <StorageDigest>::take().expect("StorageDigest is set by `initialize_block`");
-
-	let o_new_authorities = <NewAuthorities>::take();
+	let digest = <StorageDigest>::take().expect("StorageDigest is set by `initialize_block`");
 
 	// This MUST come after all changes to storage are done. Otherwise we will fail the
 	// “Storage root does not match that calculated” assertion.
 	let storage_root = Hash::decode(&mut &storage_root(StateVersion::V1)[..])
 		.expect("`storage_root` is a valid hash");
-
-	if let Some(new_authorities) = o_new_authorities {
-		digest.push(generic::DigestItem::Consensus(*b"aura", new_authorities.encode()));
-		digest.push(generic::DigestItem::Consensus(*b"babe", new_authorities.encode()));
-	}
 
 	Header { number, extrinsics_root, state_root: storage_root, parent_hash, digest }
 }
@@ -230,7 +217,6 @@ fn execute_transaction_backend(utx: &Extrinsic, extrinsic_index: u32) -> ApplyEx
 			if extrinsic_index != 0 =>
 			Err(InvalidTransaction::ExhaustsResources.into()),
 		Extrinsic::Transfer { ref transfer, .. } => execute_transfer_backend(transfer),
-		Extrinsic::AuthoritiesChange(ref new_auth) => execute_new_authorities_backend(new_auth),
 		Extrinsic::IncludeData(_) => Ok(Ok(())),
 		Extrinsic::StorageChange(key, value) =>
 			execute_storage_change(key, value.as_ref().map(|v| &**v)),
@@ -279,11 +265,6 @@ fn execute_store(data: Vec<u8>) -> ApplyExtrinsicResult {
 	Ok(Ok(()))
 }
 
-fn execute_new_authorities_backend(new_authorities: &[AuthorityId]) -> ApplyExtrinsicResult {
-	NewAuthorities::put(new_authorities.to_vec());
-	Ok(Ok(()))
-}
-
 fn execute_storage_change(key: &[u8], value: Option<&[u8]>) -> ApplyExtrinsicResult {
 	match value {
 		Some(value) => storage::unhashed::put_raw(key, value),
@@ -325,7 +306,7 @@ mod tests {
 		NeverNativeValue,
 	};
 	use sp_io::{hashing::twox_128, TestExternalities};
-	use substrate_test_runtime_client::{AccountKeyring, Sr25519Keyring};
+	use substrate_test_runtime_client::AccountKeyring;
 
 	// Declare an instance of the native executor dispatch for the test runtime.
 	pub struct NativeDispatch;
@@ -347,18 +328,11 @@ mod tests {
 	}
 
 	fn new_test_ext() -> TestExternalities {
-		let authorities = vec![
-			Sr25519Keyring::Alice.to_raw_public(),
-			Sr25519Keyring::Bob.to_raw_public(),
-			Sr25519Keyring::Charlie.to_raw_public(),
-		];
-
 		TestExternalities::new_with_code(
 			wasm_binary_unwrap(),
 			sp_core::storage::Storage {
 				top: map![
 					twox_128(b"latest").to_vec() => vec![69u8; 32],
-					twox_128(b"sys:auth").to_vec() => authorities.encode(),
 					blake2_256(&AccountKeyring::Alice.to_raw_public().to_keyed_vec(b"balance:")).to_vec() => {
 						vec![111u8, 0, 0, 0, 0, 0, 0, 0]
 					},

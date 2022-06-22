@@ -30,10 +30,7 @@ pub use substrate_test_runtime as runtime;
 
 pub use self::block_builder_ext::BlockBuilderExt;
 
-use sp_core::{
-	sr25519,
-	storage::{ChildInfo, Storage, StorageChild},
-};
+use sp_core::storage::{ChildInfo, Storage, StorageChild};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use substrate_test_runtime::genesismap::{additional_storage_with_genesis, GenesisConfig};
 
@@ -90,11 +87,6 @@ pub struct GenesisParameters {
 impl GenesisParameters {
 	fn genesis_config(&self) -> GenesisConfig {
 		GenesisConfig::new(
-			vec![
-				sr25519::Public::from(Sr25519Keyring::Alice).into(),
-				sr25519::Public::from(Sr25519Keyring::Bob).into(),
-				sr25519::Public::from(Sr25519Keyring::Charlie).into(),
-			],
 			vec![
 				AccountKeyring::Alice.into(),
 				AccountKeyring::Bob.into(),

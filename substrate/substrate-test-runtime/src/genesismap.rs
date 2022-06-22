@@ -17,7 +17,7 @@
 
 //! Tool for creating the genesis block.
 
-use super::{system, wasm_binary_unwrap, AccountId, AuthorityId};
+use super::{wasm_binary_unwrap, AccountId};
 use codec::{Encode, Joiner, KeyedVec};
 use sc_service::client::genesis;
 use sp_core::{
@@ -30,7 +30,6 @@ use std::collections::BTreeMap;
 
 /// Configuration of a general Substrate test genesis block.
 pub struct GenesisConfig {
-	authorities: Vec<AuthorityId>,
 	balances: Vec<(AccountId, u64)>,
 	heap_pages_override: Option<u64>,
 	/// Additional storage key pairs that will be added to the genesis map.
@@ -39,14 +38,12 @@ pub struct GenesisConfig {
 
 impl GenesisConfig {
 	pub fn new(
-		authorities: Vec<AuthorityId>,
 		endowed_accounts: Vec<AccountId>,
 		balance: u64,
 		heap_pages_override: Option<u64>,
 		extra_storage: Storage,
 	) -> Self {
 		GenesisConfig {
-			authorities,
 			balances: endowed_accounts.into_iter().map(|a| (a, balance)).collect(),
 			heap_pages_override,
 			extra_storage,
@@ -73,22 +70,10 @@ impl GenesisConfig {
 				.into_iter(),
 			)
 			.collect();
-		map.insert(twox_128(&b"sys:auth"[..])[..].to_vec(), self.authorities.encode());
 		// Add the extra storage entries.
 		map.extend(self.extra_storage.top.clone().into_iter());
 
-		// Assimilate the system genesis config.
-		let mut storage =
-			Storage { top: map, children_default: self.extra_storage.children_default.clone() };
-		let mut config = system::GenesisConfig {
-			authorities: self.authorities.clone()
-		};
-		config.authorities = self.authorities.clone();
-		config
-			.assimilate_storage(&mut storage)
-			.expect("Adding `system::GensisConfig` to the genesis");
-
-		storage
+		Storage { top: map, children_default: self.extra_storage.children_default.clone() }
 	}
 }
 
