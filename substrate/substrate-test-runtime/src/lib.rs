@@ -27,7 +27,7 @@ use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64, CrateVersion, Get, KeyOwnerProofSystem},
+    traits::{ConstU32, ConstU64, CrateVersion, Get},
     weights::RuntimeDbWeight,
 };
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -35,7 +35,7 @@ use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
-use sp_core::{offchain::KeyTypeId, OpaqueMetadata};
+use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{
@@ -60,11 +60,6 @@ use trie_db::{Trie, TrieMut};
 // bench on latest state.
 use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
 use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
-
-// Ensure Babe and Aura use the same crypto to simplify things a bit.
-pub use sp_consensus_babe::{AllowedSlots, AuthorityId, Slot};
-
-pub type AuraId = sp_consensus_aura::sr25519::AuthorityId;
 
 // Include the WASM binary
 #[cfg(feature = "std")]
@@ -161,7 +156,6 @@ impl Transfer {
 /// Extrinsic for test-runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum Extrinsic {
-    AuthoritiesChange(Vec<AuthorityId>),
     Transfer {
         transfer: Transfer,
         signature: AccountSignature,
@@ -191,7 +185,6 @@ impl BlindCheckable for Extrinsic {
 
     fn check(self) -> Result<Self, TransactionValidityError> {
         match self {
-            Extrinsic::AuthoritiesChange(new_auth) => Ok(Extrinsic::AuthoritiesChange(new_auth)),
             Extrinsic::Transfer {
                 transfer,
                 signature,
@@ -521,9 +514,6 @@ impl frame_support::traits::PalletInfo for Runtime {
         if type_id == sp_std::any::TypeId::of::<pallet_timestamp::Pallet<Runtime>>() {
             return Some(1);
         }
-        if type_id == sp_std::any::TypeId::of::<pallet_babe::Pallet<Runtime>>() {
-            return Some(2);
-        }
 
         None
     }
@@ -534,9 +524,6 @@ impl frame_support::traits::PalletInfo for Runtime {
         }
         if type_id == sp_std::any::TypeId::of::<pallet_timestamp::Pallet<Runtime>>() {
             return Some("Timestamp");
-        }
-        if type_id == sp_std::any::TypeId::of::<pallet_babe::Pallet<Runtime>>() {
-            return Some("Babe");
         }
         if type_id == sp_std::any::TypeId::of::<pallet_subspace::Pallet<Runtime>>() {
             return Some("Subspace");
@@ -552,9 +539,6 @@ impl frame_support::traits::PalletInfo for Runtime {
         if type_id == sp_std::any::TypeId::of::<pallet_timestamp::Pallet<Runtime>>() {
             return Some("pallet_timestamp");
         }
-        if type_id == sp_std::any::TypeId::of::<pallet_babe::Pallet<Runtime>>() {
-            return Some("pallet_babe");
-        }
 
         None
     }
@@ -566,9 +550,6 @@ impl frame_support::traits::PalletInfo for Runtime {
         }
         if type_id == sp_std::any::TypeId::of::<pallet_timestamp::Pallet<Runtime>>() {
             return Some(pallet_timestamp::Pallet::<Runtime>::crate_version());
-        }
-        if type_id == sp_std::any::TypeId::of::<pallet_babe::Pallet<Runtime>>() {
-            return Some(pallet_babe::Pallet::<Runtime>::crate_version());
         }
 
         None
@@ -620,35 +601,6 @@ impl pallet_timestamp::Config for Runtime {
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<5>;
     type WeightInfo = ();
-}
-
-parameter_types! {
-    pub const EpochDuration: u64 = 6;
-}
-
-impl pallet_babe::Config for Runtime {
-    type EpochDuration = EpochDuration;
-    type ExpectedBlockTime = ConstU64<10_000>;
-    // there is no actual runtime in this test-runtime, so testing crates
-    // are manually adding the digests. normally in this situation you'd use
-    // pallet_babe::SameAuthoritiesForever.
-    type EpochChangeTrigger = pallet_babe::ExternalTrigger;
-    type DisabledValidators = ();
-
-    type KeyOwnerProofSystem = ();
-
-    type KeyOwnerProof =
-        <Self::KeyOwnerProofSystem as KeyOwnerProofSystem<(KeyTypeId, AuthorityId)>>::Proof;
-
-    type KeyOwnerIdentification = <Self::KeyOwnerProofSystem as KeyOwnerProofSystem<(
-        KeyTypeId,
-        AuthorityId,
-    )>>::IdentificationTuple;
-
-    type HandleEquivocation = ();
-    type WeightInfo = ();
-
-    type MaxAuthorities = ConstU32<10>;
 }
 
 parameter_types! {
@@ -874,61 +826,6 @@ cfg_if! {
                 }
             }
 
-            impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
-                fn slot_duration() -> sp_consensus_aura::SlotDuration {
-                    sp_consensus_aura::SlotDuration::from_millis(1000)
-                }
-
-                fn authorities() -> Vec<AuraId> {
-                    system::authorities().into_iter().map(|a| {
-                        let authority: sr25519::Public = a.into();
-                        AuraId::from(authority)
-                    }).collect()
-                }
-            }
-
-            impl sp_consensus_babe::BabeApi<Block> for Runtime {
-                fn configuration() -> sp_consensus_babe::BabeGenesisConfiguration {
-                    sp_consensus_babe::BabeGenesisConfiguration {
-                        slot_duration: 1000,
-                        epoch_length: EpochDuration::get(),
-                        c: (3, 10),
-                        genesis_authorities: system::authorities()
-                            .into_iter().map(|x|(x, 1)).collect(),
-                        randomness: <pallet_babe::Pallet<Runtime>>::randomness(),
-                        allowed_slots: AllowedSlots::PrimaryAndSecondaryPlainSlots,
-                    }
-                }
-
-                fn current_epoch_start() -> Slot {
-                    <pallet_babe::Pallet<Runtime>>::current_epoch_start()
-                }
-
-                fn current_epoch() -> sp_consensus_babe::Epoch {
-                    <pallet_babe::Pallet<Runtime>>::current_epoch()
-                }
-
-                fn next_epoch() -> sp_consensus_babe::Epoch {
-                    <pallet_babe::Pallet<Runtime>>::next_epoch()
-                }
-
-                fn submit_report_equivocation_unsigned_extrinsic(
-                    _equivocation_proof: sp_consensus_babe::EquivocationProof<
-                        <Block as BlockT>::Header,
-                    >,
-                    _key_owner_proof: sp_consensus_babe::OpaqueKeyOwnershipProof,
-                ) -> Option<()> {
-                    None
-                }
-
-                fn generate_key_ownership_proof(
-                    _slot: sp_consensus_babe::Slot,
-                    _authority_id: sp_consensus_babe::AuthorityId,
-                ) -> Option<sp_consensus_babe::OpaqueKeyOwnershipProof> {
-                    None
-                }
-            }
-
             impl sp_objects::ObjectsApi<Block> for Runtime {
                 fn validated_object_call_hashes() -> Vec<Hash> {
                     Vec::new()
@@ -1035,33 +932,6 @@ cfg_if! {
                     encoded: Vec<u8>,
                 ) -> Option<Vec<(Vec<u8>, sp_core::crypto::KeyTypeId)>> {
                     SessionKeys::decode_into_raw_public_keys(&encoded)
-                }
-            }
-
-            impl sp_finality_grandpa::GrandpaApi<Block> for Runtime {
-                fn grandpa_authorities() -> sp_finality_grandpa::AuthorityList {
-                    Vec::new()
-                }
-
-                fn current_set_id() -> sp_finality_grandpa::SetId {
-                    0
-                }
-
-                fn submit_report_equivocation_unsigned_extrinsic(
-                    _equivocation_proof: sp_finality_grandpa::EquivocationProof<
-                        <Block as BlockT>::Hash,
-                        NumberFor<Block>,
-                    >,
-                    _key_owner_proof: sp_finality_grandpa::OpaqueKeyOwnershipProof,
-                ) -> Option<()> {
-                    None
-                }
-
-                fn generate_key_ownership_proof(
-                    _set_id: sp_finality_grandpa::SetId,
-                    _authority_id: sp_finality_grandpa::AuthorityId,
-                ) -> Option<sp_finality_grandpa::OpaqueKeyOwnershipProof> {
-                    None
                 }
             }
 
@@ -1213,61 +1083,6 @@ cfg_if! {
 
                 fn do_trace_log() {
                     log::trace!("Hey I'm runtime: {}", log::STATIC_MAX_LEVEL);
-                }
-            }
-
-            impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
-                fn slot_duration() -> sp_consensus_aura::SlotDuration {
-                    sp_consensus_aura::SlotDuration::from_millis(1000)
-                }
-
-                fn authorities() -> Vec<AuraId> {
-                    system::authorities().into_iter().map(|a| {
-                        let authority: sr25519::Public = a.into();
-                        AuraId::from(authority)
-                    }).collect()
-                }
-            }
-
-            impl sp_consensus_babe::BabeApi<Block> for Runtime {
-                fn configuration() -> sp_consensus_babe::BabeGenesisConfiguration {
-                    sp_consensus_babe::BabeGenesisConfiguration {
-                        slot_duration: 1000,
-                        epoch_length: EpochDuration::get(),
-                        c: (3, 10),
-                        genesis_authorities: system::authorities()
-                            .into_iter().map(|x|(x, 1)).collect(),
-                        randomness: <pallet_babe::Pallet<Runtime>>::randomness(),
-                        allowed_slots: AllowedSlots::PrimaryAndSecondaryPlainSlots,
-                    }
-                }
-
-                fn current_epoch_start() -> Slot {
-                    <pallet_babe::Pallet<Runtime>>::current_epoch_start()
-                }
-
-                fn current_epoch() -> sp_consensus_babe::Epoch {
-                    <pallet_babe::Pallet<Runtime>>::current_epoch()
-                }
-
-                fn next_epoch() -> sp_consensus_babe::Epoch {
-                    <pallet_babe::Pallet<Runtime>>::next_epoch()
-                }
-
-                fn submit_report_equivocation_unsigned_extrinsic(
-                    _equivocation_proof: sp_consensus_babe::EquivocationProof<
-                        <Block as BlockT>::Header,
-                    >,
-                    _key_owner_proof: sp_consensus_babe::OpaqueKeyOwnershipProof,
-                ) -> Option<()> {
-                    None
-                }
-
-                fn generate_key_ownership_proof(
-                    _slot: sp_consensus_babe::Slot,
-                    _authority_id: sp_consensus_babe::AuthorityId,
-                ) -> Option<sp_consensus_babe::OpaqueKeyOwnershipProof> {
-                    None
                 }
             }
 

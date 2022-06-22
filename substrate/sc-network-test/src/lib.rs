@@ -79,8 +79,6 @@ pub use substrate_test_runtime_client::{
 	TestClient, TestClientBuilder, TestClientBuilderExt,
 };
 
-type AuthorityId = sp_consensus_babe::AuthorityId;
-
 /// A Verifier that accepts all blocks and passes them on with the configured
 /// finality to be imported.
 #[derive(Clone)]
@@ -117,8 +115,7 @@ impl<B: BlockT> Verifier<B> for PassThroughVerifier {
 			.header
 			.digest()
 			.log(|l| {
-				l.try_as_raw(OpaqueDigestItemId::Consensus(b"aura"))
-					.or_else(|| l.try_as_raw(OpaqueDigestItemId::Consensus(b"babe")))
+				l.try_as_raw(OpaqueDigestItemId::Consensus(b"SUB_"))
 			})
 			.map(|blob| vec![(well_known_cache_keys::AUTHORITIES, blob.to_vec())]);
 		block.finalized = self.finalized;
@@ -455,13 +452,6 @@ where
 				announce_block,
 			)
 		}
-	}
-
-	pub fn push_authorities_change_block(&mut self, new_authorities: Vec<AuthorityId>) -> H256 {
-		self.generate_blocks(1, BlockOrigin::File, |mut builder| {
-			builder.push(Extrinsic::AuthoritiesChange(new_authorities.clone())).unwrap();
-			builder.build().unwrap().block
-		})
 	}
 
 	/// Get a reference to the client.

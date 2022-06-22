@@ -4468,45 +4468,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-authorship"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
-dependencies = [
- "frame-support",
- "frame-system",
- "impl-trait-for-tuples",
- "parity-scale-codec",
- "scale-info",
- "sp-authorship",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-babe"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "pallet-authorship",
- "pallet-session",
- "pallet-timestamp",
- "parity-scale-codec",
- "scale-info",
- "sp-application-crypto",
- "sp-consensus-babe",
- "sp-consensus-vrf",
- "sp-io",
- "sp-runtime",
- "sp-session",
- "sp-staking",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-balances"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
@@ -4632,27 +4593,6 @@ dependencies = [
  "frame-system",
  "parity-scale-codec",
  "scale-info",
-]
-
-[[package]]
-name = "pallet-session"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
-dependencies = [
- "frame-support",
- "frame-system",
- "impl-trait-for-tuples",
- "log",
- "pallet-timestamp",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-session",
- "sp-staking",
- "sp-std",
- "sp-trie",
 ]
 
 [[package]]
@@ -6393,7 +6333,6 @@ dependencies = [
  "sc-service",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-babe",
  "sp-core",
  "sp-runtime",
  "sp-tracing",
@@ -7291,47 +7230,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-consensus-aura"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
-dependencies = [
- "async-trait",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-application-crypto",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-inherents",
- "sp-runtime",
- "sp-std",
- "sp-timestamp",
-]
-
-[[package]]
-name = "sp-consensus-babe"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
-dependencies = [
- "async-trait",
- "merlin",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-api",
- "sp-application-crypto",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-consensus-vrf",
- "sp-core",
- "sp-inherents",
- "sp-keystore",
- "sp-runtime",
- "sp-std",
- "sp-timestamp",
-]
-
-[[package]]
 name = "sp-consensus-slots"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
@@ -7367,19 +7265,6 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-solving",
  "thiserror",
-]
-
-[[package]]
-name = "sp-consensus-vrf"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "schnorrkel",
- "sp-core",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]
@@ -8470,8 +8355,6 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",
  "log",
- "memory-db",
- "pallet-babe",
  "pallet-subspace",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -8485,12 +8368,9 @@ dependencies = [
  "sp-application-crypto",
  "sp-block-builder",
  "sp-consensus",
- "sp-consensus-aura",
- "sp-consensus-babe",
  "sp-consensus-subspace",
  "sp-core",
  "sp-externalities",
- "sp-finality-grandpa",
  "sp-inherents",
  "sp-io",
  "sp-keyring",

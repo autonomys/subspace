@@ -14,15 +14,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 sp-application-crypto = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-consensus-aura = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-consensus-babe = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-subspace" }
 sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false, features = ["derive"] }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-keyring = { version = "6.0.0", optional = true, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-memory-db = { version = "0.29.0", default-features = false }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-std = { version = "4.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
@@ -34,12 +31,10 @@ sp-session = { version = "4.0.0-dev", default-features = false, git = "https://g
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-objects = { version = "0.1.0", default-features = false, path = "../../crates/sp-objects" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-pallet-babe = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 pallet-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-subspace" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-finality-grandpa = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-trie = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 trie-db = { version = "0.23.0", default-features = false }
@@ -70,8 +65,6 @@ default = [
 ]
 std = [
 	"sp-application-crypto/std",
-	"sp-consensus-aura/std",
-	"sp-consensus-babe/std",
 	"sp-consensus-subspace/std",
 	"sp-block-builder/std",
 	"codec/std",
@@ -79,7 +72,6 @@ std = [
 	"sp-inherents/std",
 	"sp-keyring",
 	"log/std",
-	"memory-db/std",
 	"sp-offchain/std",
 	"sp-core/std",
 	"sp-core/std",
@@ -95,13 +87,11 @@ std = [
 	"sp-runtime/std",
 	"sp-externalities/std",
 	"sp-state-machine/std",
-	"pallet-babe/std",
 	"pallet-subspace/std",
 	"frame-system-rpc-runtime-api/std",
 	"frame-system/std",
 	"pallet-timestamp/std",
 	"sc-service",
-	"sp-finality-grandpa/std",
 	"sp-trie/std",
 	"sp-transaction-pool/std",
 	"trie-db/std",
