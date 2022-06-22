@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
       packages: write
@@ -106,13 +106,13 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-${{ github.ref_name }}
-          - os: macos-11
+          - os: macos-12
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
-          - os: macos-11
+          - os: macos-12
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
           - os: windows-2022
