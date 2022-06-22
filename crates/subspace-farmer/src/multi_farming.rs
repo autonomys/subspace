@@ -251,11 +251,13 @@ impl MultiFarming {
                     .detach();
 
                     Ok::<_, anyhow::Error>((
-                        plot,
-                        plot_commitments,
-                        farming,
-                        subspace_codec,
-                        node,
+                        SinglePlotFarm {
+                            codec: subspace_codec,
+                            plot,
+                            commitments: plot_commitments,
+                            farming,
+                            node,
+                        },
                         node_runner,
                     ))
                 })
@@ -263,16 +265,9 @@ impl MultiFarming {
             .collect::<FuturesOrdered<_>>();
 
         while let Some(result) = results.next().await {
-            let (plot, plot_commitments, farming, subspace_codec, node, node_runner) =
-                result.expect("Plot and farming never fails")?;
+            let (single_plot_farm, node_runner) = result.expect("Plot and farming never fails")?;
 
-            single_plot_farms.push(SinglePlotFarm {
-                codec: subspace_codec,
-                plot,
-                commitments: plot_commitments,
-                farming,
-                node,
-            });
+            single_plot_farms.push(single_plot_farm);
             networking_node_runners.push(node_runner);
         }
 
