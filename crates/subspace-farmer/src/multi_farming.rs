@@ -4,15 +4,18 @@ use crate::{
 };
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::libp2p::{Multiaddr, PeerId};
 use subspace_networking::multimess::MultihashCode;
-use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{
+    libp2p, Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+};
 use subspace_solving::SubspaceCodec;
 use tracing::info;
 
@@ -71,7 +74,7 @@ impl MultiFarming {
             farming_client,
             object_mappings,
             reward_address,
-            mut bootstrap_nodes,
+            bootstrap_nodes,
             listen_on,
             dsn_sync,
         }: Options<C>,
@@ -85,6 +88,8 @@ impl MultiFarming {
         let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
 
+        let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
+
         let mut results = plot_sizes
             .into_iter()
             .enumerate()
@@ -92,6 +97,9 @@ impl MultiFarming {
                 let base_directory = base_directory.to_owned();
                 let farming_client = farming_client.clone();
                 let new_plot = new_plot.clone();
+                let mut listen_on = listen_on.clone();
+                let mut bootstrap_nodes = bootstrap_nodes.clone();
+                let first_listen_on = Arc::clone(&first_listen_on);
 
                 tokio::task::spawn_blocking(move || {
                     let base_directory = base_directory.join(format!("plot{plot_index}"));
@@ -119,29 +127,57 @@ impl MultiFarming {
                         )
                     });
 
-                    Ok::<_, anyhow::Error>((identity, plot, plot_commitments, farming))
+                    for multiaddr in &mut listen_on {
+                        if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
+                            multiaddr.push(Protocol::Tcp(starting_port + plot_index as u16));
+                        } else {
+                            return Err(anyhow::anyhow!("Unknown protocol {}", multiaddr));
+                        }
+                    }
+                    {
+                        let mut first_listen_on = first_listen_on.lock();
+                        // Only add the first instance to bootstrap nodes of others
+                        match first_listen_on.as_ref() {
+                            Some(first_listen_on) => {
+                                bootstrap_nodes.extend_from_slice(first_listen_on);
+                            }
+                            None => {
+                                let public_key = sr25519::PublicKey::from(*identity.public_key());
+                                let public_key = libp2p::identity::PublicKey::Sr25519(public_key);
+                                let peer_id = PeerId::from(public_key);
+
+                                first_listen_on.replace(
+                                    listen_on
+                                        .clone()
+                                        .into_iter()
+                                        .map(|listen_on| {
+                                            listen_on.with(Protocol::P2p(peer_id.into()))
+                                        })
+                                        .collect(),
+                                );
+                            }
+                        }
+                    }
+
+                    Ok::<_, anyhow::Error>((
+                        identity,
+                        plot,
+                        plot_commitments,
+                        farming,
+                        listen_on,
+                        bootstrap_nodes,
+                    ))
                 })
             })
-            .collect::<FuturesOrdered<_>>()
-            .enumerate();
+            .collect::<FuturesOrdered<_>>();
 
-        while let Some((i, result)) = results.next().await {
-            let (identity, plot, plot_commitments, farming) =
+        while let Some(result) = results.next().await {
+            let (identity, plot, plot_commitments, farming, listen_on, bootstrap_nodes) =
                 result.expect("Plot and farming never fails")?;
-
-            let mut listen_on = listen_on.clone();
-
-            for multiaddr in &mut listen_on {
-                if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
-                    multiaddr.push(Protocol::Tcp(starting_port + i as u16));
-                } else {
-                    return Err(anyhow::anyhow!("Unknown protocol {}", multiaddr));
-                }
-            }
 
             let subspace_codec = SubspaceCodec::new(&plot.public_key());
             let (node, node_runner) = subspace_networking::create(Config {
-                bootstrap_nodes: bootstrap_nodes.clone(),
+                bootstrap_nodes,
                 // TODO: Do we still need it?
                 value_getter: Arc::new({
                     let plot = plot.clone();
@@ -208,7 +244,7 @@ impl MultiFarming {
                     }
                 }),
                 allow_non_globals_in_dht: true,
-                listen_on: listen_on.clone(),
+                listen_on,
                 ..Config::with_keypair(sr25519::Keypair::from(
                     sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
                         .expect("Always valid"),
@@ -228,11 +264,6 @@ impl MultiFarming {
             }))
             .detach();
 
-            bootstrap_nodes.extend(
-                listen_on
-                    .into_iter()
-                    .map(|listen_on| listen_on.with(Protocol::P2p(node.id().into()))),
-            );
             single_plot_farms.push(SinglePlotFarm {
                 codec: subspace_codec,
                 plot,
