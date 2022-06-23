@@ -168,6 +168,13 @@ where
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
+		assert_eq!(
+			<NumberFor<Block>>::decode(&mut primary_number.encode().as_slice())
+				.expect("Primary number and secondary number must use the same type; qed"),
+			parent_number + One::one(),
+			"New secondary best number must be equal to the primary number"
+		);
+
 		let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
 		if let Some(new_runtime) = maybe_new_runtime {
