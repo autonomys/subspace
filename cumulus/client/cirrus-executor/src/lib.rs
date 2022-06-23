@@ -229,6 +229,7 @@ where
 			None,
 			worker::start_worker(
 				primary_chain_client.clone(),
+				client.clone(),
 				bundle_producer,
 				bundle_processor.clone(),
 				imported_block_notification_stream,

@@ -83,6 +83,7 @@ pub(super) async fn start_worker<
 	NSNS,
 >(
 	primary_chain_client: Arc<PClient>,
+	client: Arc<Client>,
 	bundle_producer: BundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
 	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
 	imported_block_notification_stream: IBNS,
@@ -113,8 +114,13 @@ pub(super) async fn start_worker<
 {
 	let span = tracing::Span::current();
 
+	let best_secondary_number =
+		<NumberFor<PBlock>>::decode(&mut client.info().best_number.encode().as_slice())
+			.expect("Primary number and secondary number must use the same type; qed");
+
 	let handle_block_import_notifications_fut = handle_block_import_notifications(
 		primary_chain_client.as_ref(),
+		best_secondary_number,
 		{
 			let span = span.clone();
 
@@ -201,6 +207,7 @@ async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
 
 async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, SecondaryHash>(
 	primary_chain_client: &PClient,
+	best_secondary_number: NumberFor<PBlock>,
 	processor: ProcessorFn,
 	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
 	mut block_imports: impl Stream<Item = NumberFor<PBlock>> + Unpin,
@@ -223,10 +230,16 @@ async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, Seconda
 	// Notify about active leaves on startup before starting the loop
 	for (hash, number) in std::mem::take(&mut leaves) {
 		let _ = active_leaves.insert(hash, number);
-		if let Err(error) =
-			process_primary_block(primary_chain_client, &processor, (hash, number)).await
-		{
-			tracing::error!(target: LOG_TARGET, "Collation generation processing error: {error}");
+		// Skip the blocks that have been processed by the execution chain.
+		if number > best_secondary_number {
+			if let Err(error) =
+				process_primary_block(primary_chain_client, &processor, (hash, number)).await
+			{
+				tracing::error!(
+					target: LOG_TARGET,
+					"Collation generation processing error: {error}"
+				);
+			}
 		}
 	}
 
