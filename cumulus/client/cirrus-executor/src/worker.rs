@@ -38,7 +38,7 @@ use std::{
 	pin::Pin,
 	sync::Arc,
 };
-use subspace_core_primitives::{Randomness, Sha256Hash};
+use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
@@ -114,38 +114,35 @@ pub(super) async fn start_worker<
 {
 	let span = tracing::Span::current();
 
-	let best_secondary_number =
-		<NumberFor<PBlock>>::decode(&mut client.info().best_number.encode().as_slice())
-			.expect("Primary number and secondary number must use the same type; qed");
+	let handle_block_import_notifications_fut =
+		handle_block_import_notifications::<Block, _, _, _, _, _>(
+			primary_chain_client.as_ref(),
+			client.info().best_number,
+			{
+				let span = span.clone();
 
-	let handle_block_import_notifications_fut = handle_block_import_notifications(
-		primary_chain_client.as_ref(),
-		best_secondary_number,
-		{
-			let span = span.clone();
-
-			move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
-				bundle_processor
-					.clone()
-					.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
-					.instrument(span.clone())
-					.unwrap_or_else(move |error| {
-						tracing::error!(
-							target: LOG_TARGET,
-							relay_parent = ?primary_hash,
-							error = ?error,
-							"Error at processing bundles.",
-						);
-					})
-					.boxed()
-			}
-		},
-		active_leaves
-			.into_iter()
-			.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
-			.collect(),
-		Box::pin(imported_block_notification_stream),
-	);
+				move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+					bundle_processor
+						.clone()
+						.process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+						.instrument(span.clone())
+						.unwrap_or_else(move |error| {
+							tracing::error!(
+								target: LOG_TARGET,
+								relay_parent = ?primary_hash,
+								error = ?error,
+								"Error at processing bundles.",
+							);
+						})
+						.boxed()
+				}
+			},
+			active_leaves
+				.into_iter()
+				.map(|BlockInfo { hash, parent_hash: _, number }| (hash, number))
+				.collect(),
+			Box::pin(imported_block_notification_stream),
+		);
 	let handle_slot_notifications_fut = handle_slot_notifications(
 		primary_chain_client.as_ref(),
 		move |primary_hash, slot_info| {
@@ -205,13 +202,21 @@ async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
 	}
 }
 
-async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, SecondaryHash>(
+async fn handle_block_import_notifications<
+	Block,
+	PBlock,
+	PClient,
+	ProcessorFn,
+	SecondaryHash,
+	BlockImports,
+>(
 	primary_chain_client: &PClient,
-	best_secondary_number: NumberFor<PBlock>,
+	best_secondary_number: NumberFor<Block>,
 	processor: ProcessorFn,
 	mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-	mut block_imports: impl Stream<Item = NumberFor<PBlock>> + Unpin,
+	mut block_imports: BlockImports,
 ) where
+	Block: BlockT,
 	PBlock: BlockT,
 	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
@@ -224,14 +229,19 @@ async fn handle_block_import_notifications<PBlock, PClient, ProcessorFn, Seconda
 		+ Send
 		+ Sync,
 	SecondaryHash: Encode + Decode,
+	BlockImports: Stream<Item = NumberFor<PBlock>> + Unpin,
 {
 	let mut active_leaves = HashMap::with_capacity(leaves.len());
+
+	let best_secondary_number: BlockNumber = best_secondary_number
+		.try_into()
+		.unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
 
 	// Notify about active leaves on startup before starting the loop
 	for (hash, number) in std::mem::take(&mut leaves) {
 		let _ = active_leaves.insert(hash, number);
 		// Skip the blocks that have been processed by the execution chain.
-		if number > best_secondary_number {
+		if number > best_secondary_number.into() {
 			if let Err(error) =
 				process_primary_block(primary_chain_client, &processor, (hash, number)).await
 			{
