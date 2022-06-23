@@ -8290,10 +8290,12 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "subspace-fraud-proof",
+ "subspace-networking",
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

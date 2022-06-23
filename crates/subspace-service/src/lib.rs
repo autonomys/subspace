@@ -16,12 +16,14 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+mod dsn_archiver;
 mod pool;
 pub mod rpc;
 
 pub use crate::pool::FullPool;
 use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
+use dsn_archiver::start_subspace_dsn_archiver;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
@@ -35,6 +37,7 @@ use sc_consensus_subspace::{
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+pub use sc_network::Keypair;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
@@ -55,6 +58,8 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
+pub use subspace_networking::libp2p::Multiaddr;
+pub use subspace_networking::Config as DsnNetworkingConfig;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 
@@ -113,6 +118,9 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
+
+    /// DSN node configuration (optional). 'None' disables the DSN.
+    pub dsn_node_config: Option<subspace_networking::Config>,
 }
 
 impl From<Configuration> for SubspaceConfiguration {
@@ -120,6 +128,7 @@ impl From<Configuration> for SubspaceConfiguration {
         Self {
             base,
             force_new_slot_notifications: false,
+            dsn_node_config: None,
         }
     }
 }
@@ -367,6 +376,14 @@ where
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+
+    if let Some(node_config) = config.dsn_node_config.clone() {
+        start_subspace_dsn_archiver(
+            &subspace_link,
+            node_config,
+            &task_manager.spawn_essential_handle(),
+        );
+    }
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {

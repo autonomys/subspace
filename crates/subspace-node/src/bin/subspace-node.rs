@@ -17,6 +17,7 @@
 //! Subspace node implementation.
 
 use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
+use clap::{self, Parser};
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -27,9 +28,9 @@ use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
-use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
+use subspace_node::{ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::SubspaceConfiguration;
+use subspace_service::{Multiaddr, SubspaceConfiguration};
 
 /// Secondary executor instance.
 pub struct SecondaryExecutorDispatch;
@@ -100,8 +101,17 @@ fn force_use_parity_db(database_params: &mut DatabaseParams) {
     database_params.database.replace(Database::ParityDb);
 }
 
+/// DSN configuration arguments. It expects raw clap argument string to parse (after "--").
+#[derive(Debug, Clone, Parser)]
+#[clap(no_binary_name(true), ignore_errors(true))]
+pub struct DsnConfigurationArgs {
+    /// DSN listen on multi-address
+    #[clap(long)]
+    pub dsn_listen_on: Option<Multiaddr>,
+}
+
 fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
+    let mut cli = <subspace_node::Cli as SubstrateCli>::from_args();
 
     force_use_parity_db(&mut cli.run.import_params.database_params);
 
@@ -366,10 +376,36 @@ fn main() -> Result<(), Error> {
                         .as_ref()
                         .map(|base_path| base_path.config_dir("subspace_gemini_1b"));
 
+                    let dsn_node_config = {
+                        let mut config = None;
+
+                        if let Ok(keypair) =
+                            primary_chain_config.network.node_key.clone().into_keypair()
+                        {
+                            let args: DsnConfigurationArgs =
+                                DsnConfigurationArgs::parse_from(cli.secondary_chain_args.clone());
+                            if let Some(dsn_listen_on) = args.dsn_listen_on {
+                                config = Some(subspace_service::DsnNetworkingConfig {
+                                    keypair,
+                                    listen_on: vec![dsn_listen_on],
+                                    ..subspace_service::DsnNetworkingConfig::with_generated_keypair(
+                                    )
+                                });
+                            } else {
+                                log::error!("Can't configure DSN: no address to listen specified.");
+                            };
+                        } else {
+                            log::error!("Can't configure DSN: unsupported key type.");
+                        };
+
+                        config
+                    };
+
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
+                        dsn_node_config,
                     };
 
                     let primary_chain_node = subspace_service::new_full::<

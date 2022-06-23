@@ -172,6 +172,7 @@ pub fn run_validator_node(
         let primary_chain_config = SubspaceConfiguration {
             base: primary_chain_config,
             force_new_slot_notifications: true,
+            dsn_node_config: None,
         };
 
         subspace_service::new_full::<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>(

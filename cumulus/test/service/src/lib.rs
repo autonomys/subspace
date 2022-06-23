@@ -117,6 +117,7 @@ async fn run_executor(
 			base: primary_chain_config,
 			// Always enable the slot notification.
 			force_new_slot_notifications: true,
+			dsn_node_config: None,
 		};
 
 		subspace_service::new_full::<
