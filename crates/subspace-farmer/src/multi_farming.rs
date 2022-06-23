@@ -1,4 +1,5 @@
 use crate::archiving::Archiving;
+use crate::dsn::PieceIndexHashNumber;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::plotting;
@@ -135,10 +136,14 @@ impl MultiFarming {
 
         // Start syncing
         if dsn_sync {
+            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
+
             tokio::spawn({
                 let mut futures = single_plot_farms
                     .iter()
-                    .map(|single_plot_farm| single_plot_farm.dsn_sync(max_plot_size, total_pieces))
+                    .map(|single_plot_farm| {
+                        single_plot_farm.dsn_sync(max_plot_size, total_pieces, sync_range_size)
+                    })
                     .collect::<FuturesUnordered<_>>();
 
                 async move {
