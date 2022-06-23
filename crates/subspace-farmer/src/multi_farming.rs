@@ -15,7 +15,7 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{Config, PiecesToPlot};
 use subspace_solving::SubspaceCodec;
-use tracing::info;
+use tracing::{error, info, trace};
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
 // will have the same length.
@@ -60,6 +60,8 @@ pub struct Options<C> {
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
     pub listen_on: Vec<Multiaddr>,
+    /// Enable DSN subscription for archiving segments.
+    pub enable_dsn_archiving: bool,
 }
 
 impl MultiFarming {
@@ -73,6 +75,7 @@ impl MultiFarming {
             reward_address,
             mut bootstrap_nodes,
             listen_on,
+            enable_dsn_archiving,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -178,6 +181,33 @@ impl MultiFarming {
                 ))
             })
             .await?;
+
+            // Enable DSN subscription for segments archiving.
+            if enable_dsn_archiving {
+                tokio::spawn({
+                    let node = node.clone();
+                    async move {
+                        trace!("Subscribing to pubsub archiving...");
+                        match node
+                            .subscribe(subspace_networking::PUB_SUB_ARCHIVING_TOPIC.clone())
+                            .await
+                        {
+                            Ok(mut subscription) => {
+                                info!("Subscribed to pubsub archiving.");
+
+                                //TODO: Integrate with archiving process.
+                                #[allow(clippy::redundant_pattern_matching)]
+                                while let Some(_) = subscription.next().await {
+                                    info!("Archiving segment received from pubsub subscription.");
+                                }
+                            }
+                            Err(err) => {
+                                error!("Pubsub archiving subscription failed: {:?}", err);
+                            }
+                        }
+                    }
+                });
+            }
 
             node.on_new_listener(Arc::new({
                 let node_id = node.id();
