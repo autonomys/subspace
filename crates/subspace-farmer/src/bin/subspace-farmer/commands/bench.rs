@@ -315,6 +315,7 @@ async fn test_dsn_sync() {
     use subspace_farmer::{PieceIndexHashNumber, SyncResult};
     use subspace_networking::libp2p::multiaddr::Protocol;
     use subspace_networking::libp2p::{identity, Multiaddr, PeerId};
+    use subspace_networking::NodeRunner;
 
     let seeder_max_plot_size = 20 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
     let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
@@ -343,7 +344,7 @@ async fn test_dsn_sync() {
         Plot::open_or_create(base_path, public_key, max_piece_count)
     };
 
-    let seeder_multi_farming = MultiFarming::new(
+    let mut seeder_multi_farming = MultiFarming::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
             archiving_client: seeder_client.clone(),
@@ -419,6 +420,21 @@ async fn test_dsn_sync() {
         .unwrap()
     });
 
+    let mut node_runners = seeder_multi_farming
+        .single_plot_farms
+        .iter_mut()
+        .filter_map(|farming| farming.node_runner.take())
+        .map(NodeRunner::run)
+        .collect::<FuturesUnordered<_>>();
+    let (seeder_wait_sender, seeder_wait_receiver) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        while let Some(()) = node_runners.next().await {
+            break;
+        }
+        seeder_multi_farming.wait().await.unwrap();
+        seeder_wait_sender.send(()).unwrap();
+    });
+
     for _ in 0..10 {
         let syncer_base_directory = TempDir::new().unwrap();
         let (_sender, syncer_archived_segments_receiver) = mpsc::channel(10);
@@ -441,7 +457,7 @@ async fn test_dsn_sync() {
             Plot::open_or_create(base_path, public_key, max_piece_count)
         };
 
-        let syncer_multi_farming = MultiFarming::new(
+        let mut syncer_multi_farming = MultiFarming::new(
             MultiFarmingOptions {
                 base_directory: syncer_base_directory.as_ref().to_owned(),
                 archiving_client: syncer_client.clone(),
@@ -459,6 +475,20 @@ async fn test_dsn_sync() {
         )
         .await
         .unwrap();
+
+        let mut node_runners = syncer_multi_farming
+            .single_plot_farms
+            .iter_mut()
+            .filter_map(|farming| farming.node_runner.take())
+            .map(NodeRunner::run)
+            .collect::<FuturesUnordered<_>>();
+        let (syncer_wait_sender, syncer_wait_receiver) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            while let Some(()) = node_runners.next().await {
+                break;
+            }
+            syncer_wait_sender.send(()).unwrap();
+        });
 
         let expected_total_pieces = seeder_max_plot_size;
         let range_size = PieceIndexHashNumber::MAX / expected_total_pieces * request_pieces_size;
@@ -500,8 +530,9 @@ async fn test_dsn_sync() {
 
         syncer_client.stop().await;
         syncer_multi_farming.wait().await.unwrap();
+        syncer_wait_receiver.await.unwrap();
     }
 
     seeder_client.stop().await;
-    seeder_multi_farming.wait().await.unwrap();
+    seeder_wait_receiver.await.unwrap();
 }

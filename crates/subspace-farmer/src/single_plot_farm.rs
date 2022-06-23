@@ -52,7 +52,7 @@ pub struct SinglePlotFarm {
     pub(crate) farming: Option<Farming>,
     pub(crate) node: Node,
     /// Might be `None` if was already taken out before
-    pub(crate) node_runner: Option<NodeRunner>,
+    pub node_runner: Option<NodeRunner>,
 }
 
 #[derive(Debug, Clone)]

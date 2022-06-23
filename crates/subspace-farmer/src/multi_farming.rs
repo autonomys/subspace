@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::NodeRunner;
 use tracing::info;
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
@@ -213,7 +214,7 @@ impl MultiFarming {
         let mut node_runners = self
             .networking_node_runners
             .into_iter()
-            .map(|node_runner| async move { node_runner.run().await })
+            .map(NodeRunner::run)
             .collect::<FuturesUnordered<_>>();
 
         tokio::select! {
