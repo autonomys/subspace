@@ -306,3 +306,202 @@ fn get_size(path: impl AsRef<Path>) -> std::io::Result<u64> {
     }
     Ok(size)
 }
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_dsn_sync() {
+    use std::ops::Range;
+
+    use subspace_farmer::{PieceIndexHashNumber, SyncResult};
+    use subspace_networking::libp2p::multiaddr::Protocol;
+    use subspace_networking::libp2p::{identity, Multiaddr, PeerId};
+
+    let seeder_max_plot_size = 20 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
+    let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
+    let request_pieces_size = 20;
+
+    let seeder_base_directory = TempDir::new().unwrap();
+    let mut seeder_multiaddr: Multiaddr = "/ip4/127.0.0.1/tcp/40000".parse().unwrap();
+
+    let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) =
+        mpsc::channel(10);
+    let seeder_client =
+        BenchRpcClient::new(BENCH_FARMER_METADATA, seeder_archived_segments_receiver);
+
+    let object_mappings = tokio::task::spawn_blocking({
+        let path = seeder_base_directory.as_ref().join("object-mappings");
+
+        move || ObjectMappings::open_or_create(path)
+    })
+    .await
+    .unwrap()
+    .unwrap();
+
+    let base_path = seeder_base_directory.as_ref().to_owned();
+    let plot_factory = move |plot_index, public_key, max_piece_count| {
+        let base_path = base_path.join(format!("plot{plot_index}"));
+        Plot::open_or_create(base_path, public_key, max_piece_count)
+    };
+
+    let seeder_multi_farming = MultiFarming::new(
+        MultiFarmingOptions {
+            base_directory: seeder_base_directory.as_ref().to_owned(),
+            archiving_client: seeder_client.clone(),
+            farming_client: seeder_client.clone(),
+            object_mappings: object_mappings.clone(),
+            reward_address: PublicKey::default(),
+            bootstrap_nodes: vec![],
+            listen_on: vec![seeder_multiaddr.clone()],
+            dsn_sync: false,
+        },
+        seeder_max_plot_size,
+        seeder_max_plot_size,
+        plot_factory,
+        false,
+    )
+    .await
+    .unwrap();
+
+    {
+        let mut last_archived_block = LastArchivedBlock {
+            number: 0,
+            archived_progress: ArchivedBlockProgress::Partial(0),
+        };
+
+        for segment_index in 0..seeder_max_plot_size / PIECE_SIZE as u64 / 256 {
+            last_archived_block
+                .archived_progress
+                .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
+
+            let archived_segment = {
+                let root_block = RootBlock::V0 {
+                    segment_index,
+                    records_root: Sha256Hash::default(),
+                    prev_root_block_hash: Sha256Hash::default(),
+                    last_archived_block,
+                };
+
+                let mut pieces = FlatPieces::new(256);
+                rand::thread_rng().fill(pieces.as_mut());
+
+                let objects = std::iter::repeat_with(|| PieceObject::V0 {
+                    hash: rand::random(),
+                    offset: rand::random(),
+                })
+                .take(100)
+                .collect();
+
+                ArchivedSegment {
+                    root_block,
+                    pieces,
+                    object_mapping: vec![PieceObjectMapping { objects }],
+                }
+            };
+
+            if seeder_archived_segments_sender
+                .send(archived_segment)
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    }
+    seeder_multiaddr.push({
+        schnorrkel::PublicKey::from_bytes(
+            &*seeder_multi_farming.single_plot_farms[0].plot.public_key(),
+        )
+        .map(identity::sr25519::PublicKey::from)
+        .map(identity::PublicKey::Sr25519)
+        .map(PeerId::from)
+        .map(Into::into)
+        .map(Protocol::P2p)
+        .unwrap()
+    });
+
+    for _ in 0..10 {
+        let syncer_base_directory = TempDir::new().unwrap();
+        let (_sender, syncer_archived_segments_receiver) = mpsc::channel(10);
+        let syncer_client =
+            BenchRpcClient::new(BENCH_FARMER_METADATA, syncer_archived_segments_receiver);
+
+        info!("Opening object mapping");
+        let object_mappings = tokio::task::spawn_blocking({
+            let path = syncer_base_directory.as_ref().join("object-mappings");
+
+            move || ObjectMappings::open_or_create(path)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
+        let base_path = syncer_base_directory.as_ref().to_owned();
+        let plot_factory = move |plot_index, public_key, max_piece_count| {
+            let base_path = base_path.join(format!("plot{plot_index}"));
+            Plot::open_or_create(base_path, public_key, max_piece_count)
+        };
+
+        let syncer_multi_farming = MultiFarming::new(
+            MultiFarmingOptions {
+                base_directory: syncer_base_directory.as_ref().to_owned(),
+                archiving_client: syncer_client.clone(),
+                farming_client: syncer_client.clone(),
+                object_mappings: object_mappings.clone(),
+                reward_address: PublicKey::default(),
+                bootstrap_nodes: vec![seeder_multiaddr.clone()],
+                listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+                dsn_sync: false,
+            },
+            syncer_max_plot_size,
+            syncer_max_plot_size,
+            plot_factory,
+            false,
+        )
+        .await
+        .unwrap();
+
+        let expected_total_pieces = seeder_max_plot_size;
+        let range_size = PieceIndexHashNumber::MAX / expected_total_pieces * request_pieces_size;
+        let mut futures = syncer_multi_farming
+            .single_plot_farms
+            .iter()
+            .map(|farming| {
+                farming.dsn_sync(syncer_max_plot_size, expected_total_pieces, range_size)
+            })
+            .collect::<FuturesUnordered<_>>();
+
+        while let Some(result) = futures.next().await {
+            let SyncResult {
+                expected_range:
+                    Range {
+                        start: expected_start,
+                        end: expected_end,
+                    },
+                got_range: Range { start, end },
+                total_pieces,
+            } = result.unwrap();
+
+            assert!(Range {
+                start: expected_start * 9 / 10,
+                end: expected_start * 11 / 10,
+            }
+            .contains(&start));
+            assert!(Range {
+                start: expected_end * 9 / 10,
+                end: expected_end * 11 / 10,
+            }
+            .contains(&end));
+            assert!(Range {
+                start: total_pieces * 9 / 10,
+                end: total_pieces * 11 / 10,
+            }
+            .contains(&total_pieces));
+        }
+
+        syncer_client.stop().await;
+        syncer_multi_farming.wait().await.unwrap();
+    }
+
+    seeder_client.stop().await;
+    seeder_multi_farming.wait().await.unwrap();
+}

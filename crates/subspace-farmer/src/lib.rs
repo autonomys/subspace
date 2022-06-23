@@ -39,6 +39,7 @@ pub mod ws_rpc_server;
 
 pub use archiving::{Archiving, ArchivingError};
 pub use commitments::{CommitmentError, Commitments};
+pub use dsn::PieceIndexHashNumber;
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;
 pub use jsonrpsee;
@@ -47,3 +48,4 @@ pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{retrieve_piece_from_plots, PieceOffset, Plot, PlotError, PlotFile};
 pub use plotting::plot_pieces;
 pub use rpc_client::{Error as RpcClientError, RpcClient};
+pub use single_plot_farm::SyncResult;
