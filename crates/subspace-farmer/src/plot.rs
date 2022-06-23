@@ -8,11 +8,12 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::ops::Range;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
 };
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -90,6 +91,9 @@ enum Request {
         from_index_hash: PieceIndexHash,
         count: u64,
         result_sender: mpsc::Sender<io::Result<Vec<PieceIndex>>>,
+    },
+    GetPieceRange {
+        result_sender: mpsc::Sender<io::Result<Range<PieceIndexHash>>>,
     },
     WriteEncodings {
         encodings: Arc<FlatPieces>,
@@ -253,6 +257,25 @@ impl Plot {
     /// Whether plot doesn't have anything in it
     pub fn is_empty(&self) -> bool {
         self.piece_count() == 0
+    }
+
+    /// Returns range which contains all of the pieces
+    pub fn get_piece_range(&self) -> io::Result<Range<PieceIndexHash>> {
+        let (result_sender, result_receiver) = mpsc::channel();
+
+        self.inner
+            .requests_sender
+            .send(RequestWithPriority {
+                request: Request::GetPieceRange { result_sender },
+                priority: RequestPriority::Low,
+            })
+            .map_err(|error| {
+                io::Error::other(format!("Failed sending piece range request: {error}"))
+            })?;
+
+        result_receiver.recv().map_err(|error| {
+            io::Error::other(format!("Piece range result sender was dropped: {error}"))
+        })?
     }
 
     /// Reads a piece from plot by index
@@ -596,6 +619,35 @@ impl IndexHashToOffsetDB {
         PieceDistance::from_big_endian(&index_hash.0)
             .wrapping_sub(&PieceDistance::from_big_endian(self.address.as_ref()))
             .wrapping_add(&PieceDistance::MIDDLE)
+    }
+
+    fn get_piece_index_hash(&self, distance: PieceDistance) -> PieceIndexHash {
+        let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
+        distance
+            .wrapping_sub(&PieceDistance::MIDDLE)
+            .wrapping_add(&PieceDistance::from_big_endian(self.address.as_ref()))
+            .to_big_endian(&mut piece_index_hash.0);
+        piece_index_hash
+    }
+
+    fn get_piece_range(&self) -> io::Result<Range<PieceIndexHash>> {
+        let mut iter = self.inner.raw_iterator();
+
+        iter.seek_to_first();
+        let start = iter
+            .key()
+            .map(PieceDistance::from_big_endian)
+            .ok_or_else(|| io::Error::other("Failed to fetch piece range"))?;
+        iter.seek_to_last();
+        let end = iter
+            .key()
+            .map(PieceDistance::from_big_endian)
+            .ok_or_else(|| io::Error::other("Failed to fetch piece range"))?;
+
+        Ok(Range {
+            start: self.get_piece_index_hash(start),
+            end: self.get_piece_index_hash(end),
+        })
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
@@ -994,6 +1046,10 @@ impl<T: PlotFile> PlotWorker<T> {
                         } => {
                             let _ = result_sender
                                 .send(self.read_piece_indexes(&from_index_hash, count));
+                        }
+                        Request::GetPieceRange { result_sender } => {
+                            let _ = result_sender
+                                .send(self.piece_index_hash_to_offset_db.get_piece_range());
                         }
                         Request::WriteEncodings {
                             encodings,
