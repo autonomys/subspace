@@ -23,9 +23,11 @@ pub struct ObjectMappings {
 
 impl ObjectMappings {
     /// Opens or creates a new object mappings database
-    pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Self, ObjectMappingError> {
-        let db = DB::open_default(base_directory.as_ref().join("object-mappings"))
-            .map_err(ObjectMappingError::Db)?;
+    pub fn open_or_create<P>(path: P) -> Result<Self, ObjectMappingError>
+    where
+        P: AsRef<Path>,
+    {
+        let db = DB::open_default(path).map_err(ObjectMappingError::Db)?;
 
         Ok(Self { db: Arc::new(db) })
     }

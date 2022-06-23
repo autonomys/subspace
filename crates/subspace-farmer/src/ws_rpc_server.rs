@@ -136,14 +136,15 @@ pub trait Rpc {
 /// use subspace_farmer::{Identity, ObjectMappings, Plot};
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 /// use subspace_solving::SubspaceCodec;
+/// use std::path::PathBuf;
 ///
-/// let base_directory = "/path/to/base/dir";
+/// let base_directory = PathBuf::from("/path/to/base/dir");
 /// let ws_server_listen_addr = "127.0.0.1:0";
 ///
-/// let identity = Identity::open_or_create(base_directory)?;
+/// let identity = Identity::open_or_create(&base_directory)?;
 /// let address = identity.public_key().to_bytes().into();
 /// let plot = Plot::open_or_create(&base_directory, address, u64::MAX)?;
-/// let object_mappings = ObjectMappings::open_or_create(base_directory)?;
+/// let object_mappings = ObjectMappings::open_or_create(base_directory.join("object-mappings"))?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,

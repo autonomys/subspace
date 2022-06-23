@@ -1,22 +1,18 @@
-use crate::dsn::{self, PieceIndexHashNumber, SyncOptions};
-use crate::{
-    plotting, Archiving, Commitments, Farming, Identity, ObjectMappings, Plot, PlotError, RpcClient,
-};
+use crate::archiving::Archiving;
+use crate::object_mappings::ObjectMappings;
+use crate::plot::{Plot, PlotError};
+use crate::plotting;
+use crate::rpc_client::RpcClient;
+use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
 use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, PublicKey, PIECE_SIZE};
-use subspace_networking::libp2p::identity::sr25519;
-use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::multimess::MultihashCode;
-use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
-use subspace_solving::SubspaceCodec;
 use tracing::info;
-
-const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
 // will have the same length.
@@ -25,9 +21,7 @@ const SYNC_PIECES_AT_ONCE: u64 = 5000;
 /// It is needed because of the limit of a single plot size from the consensus
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct MultiFarming {
-    pub plots: Arc<Vec<Plot>>,
-    pub commitments: Vec<Commitments>,
-    farmings: Vec<Farming>,
+    pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
     networking_node_runners: Vec<subspace_networking::NodeRunner>,
 }
@@ -73,7 +67,7 @@ impl MultiFarming {
             farming_client,
             object_mappings,
             reward_address,
-            mut bootstrap_nodes,
+            bootstrap_nodes,
             listen_on,
             dsn_sync,
         }: Options<C>,
@@ -84,169 +78,52 @@ impl MultiFarming {
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
-        let mut plots = Vec::with_capacity(plot_sizes.len());
-        let mut commitments = Vec::with_capacity(plot_sizes.len());
-        let mut farmings = Vec::with_capacity(plot_sizes.len());
-        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
-        let mut codecs = Vec::with_capacity(plot_sizes.len());
-        let mut nodes = Vec::with_capacity(plot_sizes.len());
+        let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
-        let mut results = plot_sizes
-            .into_iter()
+        let mut single_plot_farm_instantiations = plot_sizes
+            .iter()
             .enumerate()
-            .map(|(plot_index, max_plot_pieces)| {
-                let base_directory = base_directory.to_owned();
+            .map(|(plot_index, &max_plot_pieces)| {
+                let base_directory = base_directory.join(format!("plot{plot_index}"));
                 let farming_client = farming_client.clone();
                 let new_plot = new_plot.clone();
+                let listen_on = listen_on.clone();
+                let bootstrap_nodes = bootstrap_nodes.clone();
+                let first_listen_on = Arc::clone(&first_listen_on);
 
                 tokio::task::spawn_blocking(move || {
-                    let base_directory = base_directory.join(format!("plot{plot_index}"));
-                    std::fs::create_dir_all(&base_directory)?;
-
-                    let identity = Identity::open_or_create(&base_directory)?;
-                    let public_key = identity.public_key().to_bytes().into();
-
-                    // TODO: This doesn't account for the fact that node can
-                    // have a completely different history to what farmer expects
-                    info!("Opening plot");
-                    let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
-
-                    info!("Opening commitments");
-                    let plot_commitments = Commitments::new(base_directory.join("commitments"))?;
-
-                    // Start the farming task
-                    let farming = start_farmings.then(|| {
-                        Farming::start(
-                            plot.clone(),
-                            plot_commitments.clone(),
-                            farming_client.clone(),
-                            identity.clone(),
-                            reward_address,
-                        )
-                    });
-
-                    Ok::<_, anyhow::Error>((identity, plot, plot_commitments, farming))
+                    SinglePlotFarm::new(SinglePlotFarmOptions {
+                        base_directory,
+                        plot_index,
+                        max_plot_pieces,
+                        farming_client,
+                        new_plot,
+                        listen_on,
+                        bootstrap_nodes,
+                        first_listen_on,
+                        start_farmings,
+                        reward_address,
+                    })
                 })
             })
             .collect::<FuturesOrdered<_>>()
-            .enumerate();
+            .map(|single_plot_farm| {
+                single_plot_farm.expect("Blocking task above never supposed to panic")
+            });
 
-        while let Some((i, result)) = results.next().await {
-            let (identity, plot, plot_commitments, farming) =
-                result.expect("Plot and farming never fails")?;
+        let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
+        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
 
-            let mut listen_on = listen_on.clone();
+        while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
+            let mut single_plot_farm = single_plot_farm?;
 
-            for multiaddr in &mut listen_on {
-                if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
-                    multiaddr.push(Protocol::Tcp(starting_port + i as u16));
-                } else {
-                    return Err(anyhow::anyhow!("Unknown protocol {}", multiaddr));
-                }
-            }
-
-            let subspace_codec = SubspaceCodec::new(&plot.public_key());
-            let (node, node_runner) = subspace_networking::create(Config {
-                bootstrap_nodes: bootstrap_nodes.clone(),
-                // TODO: Do we still need it?
-                value_getter: Arc::new({
-                    let plot = plot.clone();
-                    let subspace_codec = subspace_codec.clone();
-                    move |key| {
-                        let code = key.code();
-
-                        if code != u64::from(MultihashCode::Piece)
-                            && code != u64::from(MultihashCode::PieceIndex)
-                        {
-                            return None;
-                        }
-
-                        let piece_index = u64::from_le_bytes(
-                            key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
-                        );
-                        plot.read(piece_index)
-                            .ok()
-                            .and_then(|mut piece| {
-                                subspace_codec
-                                    .decode(&mut piece, piece_index)
-                                    .ok()
-                                    .map(move |()| piece)
-                            })
-                            .map(|piece| piece.to_vec())
-                    }
-                }),
-                pieces_by_range_request_handler: Arc::new({
-                    let plot = plot.clone();
-                    let subspace_codec = subspace_codec.clone();
-
-                    // TODO: also ask for how many pieces to read
-                    move |&PiecesByRangeRequest { from, to }| {
-                        let mut pieces_and_indexes =
-                            plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
-                        let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
-                            .iter()
-                            .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) >= to)
-                        {
-                            pieces_and_indexes.truncate(idx);
-                            None
-                        } else {
-                            pieces_and_indexes
-                                .pop()
-                                .map(|(index, _)| Some(PieceIndexHash::from(index)))
-                                .unwrap_or_default()
-                        };
-
-                        let (piece_indexes, pieces) = pieces_and_indexes
-                            .into_iter()
-                            .flat_map(|(index, mut piece)| {
-                                subspace_codec.decode(&mut piece, index).ok()?;
-                                Some((index, piece))
-                            })
-                            .unzip();
-
-                        Some(PiecesByRangeResponse {
-                            pieces: PiecesToPlot {
-                                piece_indexes,
-                                pieces,
-                            },
-                            next_piece_index_hash,
-                        })
-                    }
-                }),
-                allow_non_globals_in_dht: true,
-                listen_on: listen_on.clone(),
-                ..Config::with_keypair(sr25519::Keypair::from(
-                    sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
-                        .expect("Always valid"),
-                ))
-            })
-            .await?;
-
-            node.on_new_listener(Arc::new({
-                let node_id = node.id();
-
-                move |multiaddr| {
-                    info!(
-                        "Listening on {}",
-                        multiaddr.clone().with(Protocol::P2p(node_id.into()))
-                    );
-                }
-            }))
-            .detach();
-
-            bootstrap_nodes.extend(
-                listen_on
-                    .into_iter()
-                    .map(|listen_on| listen_on.with(Protocol::P2p(node.id().into()))),
+            networking_node_runners.push(
+                single_plot_farm
+                    .node_runner
+                    .take()
+                    .expect("Node runner was never taken out before this; qed"),
             );
-            nodes.push(node);
-            networking_node_runners.push(node_runner);
-            plots.push(plot);
-            commitments.push(plot_commitments);
-            codecs.push(subspace_codec);
-            if let Some(farming) = farming {
-                farmings.push(farming);
-            }
+            single_plot_farms.push(single_plot_farm);
         }
 
         let farmer_metadata = farming_client
@@ -259,42 +136,17 @@ impl MultiFarming {
         // Start syncing
         if dsn_sync {
             tokio::spawn({
-                let plots = plots.clone();
-                let commitments = commitments.clone();
-                let codecs = codecs.clone();
-                async move {
-                    let mut futures = plots
-                        .into_iter()
-                        .zip(commitments)
-                        .zip(codecs)
-                        .zip(nodes)
-                        .map(|(((plot, commitments), codec), node)| {
-                            let options = SyncOptions {
-                                range_size: PieceIndexHashNumber::MAX / 1024,
-                                public_key: plot.public_key(),
-                                max_plot_size,
-                                total_pieces,
-                            };
-                            let mut plot_pieces = plotting::plot_pieces(codec, &plot, commitments);
+                let mut futures = single_plot_farms
+                    .iter()
+                    .map(|single_plot_farm| single_plot_farm.dsn_sync(max_plot_size, total_pieces))
+                    .collect::<FuturesUnordered<_>>();
 
-                            dsn::sync(node, options, move |pieces, piece_indexes| {
-                                if !plot_pieces(PiecesToPlot {
-                                    pieces,
-                                    piece_indexes,
-                                }) {
-                                    return Err(anyhow::anyhow!(
-                                        "Failed to plot pieces in archiving"
-                                    ));
-                                }
-                                Ok(())
-                            })
-                        })
-                        .collect::<FuturesUnordered<_>>();
+                async move {
                     while let Some(result) = futures.next().await {
                         result?;
                     }
 
-                    tracing::info!("Sync done");
+                    info!("Sync done");
 
                     Ok::<_, anyhow::Error>(())
                 }
@@ -303,12 +155,14 @@ impl MultiFarming {
 
         // Start archiving task
         let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {
-            let mut on_pieces_to_plots = plots
+            let mut on_pieces_to_plots = single_plot_farms
                 .iter()
-                .zip(&commitments)
-                .zip(codecs.clone())
-                .map(|((plot, commitments), codec)| {
-                    plotting::plot_pieces(codec, plot, commitments.clone())
+                .map(|single_plot_farm| {
+                    plotting::plot_pieces(
+                        single_plot_farm.codec.clone(),
+                        &single_plot_farm.plot,
+                        single_plot_farm.commitments.clone(),
+                    )
                 })
                 .collect::<Vec<_>>();
 
@@ -327,9 +181,7 @@ impl MultiFarming {
         .await?;
 
         Ok(Self {
-            plots: Arc::new(plots),
-            commitments,
-            farmings,
+            single_plot_farms,
             archiving,
             networking_node_runners,
         })
@@ -337,14 +189,21 @@ impl MultiFarming {
 
     /// Waits for farming and plotting completion (or errors)
     pub async fn wait(self) -> anyhow::Result<()> {
-        if self.farmings.is_empty() {
+        if !self
+            .single_plot_farms
+            .iter()
+            .any(|single_plot_farm| single_plot_farm.farming.is_some())
+        {
             return self.archiving.wait().await.map_err(Into::into);
         }
 
         let mut farming = self
-            .farmings
+            .single_plot_farms
             .into_iter()
-            .map(|farming| farming.wait())
+            .filter_map(|single_plot_farm| {
+                let farming = single_plot_farm.farming?;
+                Some(farming.wait())
+            })
             .collect::<FuturesUnordered<_>>();
         let mut node_runners = self
             .networking_node_runners
