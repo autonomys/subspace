@@ -30,5 +30,13 @@ mod utils;
 pub use crate::node::{Node, TopicSubscription};
 pub use crate::node_runner::NodeRunner;
 pub use create::{create, Config, CreationError};
+use lazy_static::lazy_static;
 pub use libp2p;
+use libp2p::gossipsub::Sha256Topic;
 pub use pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+
+lazy_static! {
+    /// Topic for gossipsub protocol subscription (segment archiving).
+    pub static ref PUB_SUB_ARCHIVING_TOPIC: Sha256Topic =
+        Sha256Topic::new("PUB_SUB_ARCHIVING_TOPIC");
+}

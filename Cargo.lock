@@ -8120,6 +8120,7 @@ dependencies = [
  "event-listener-primitives",
  "futures 0.3.21",
  "hex",
+ "lazy_static",
  "libp2p",
  "nohash-hasher",
  "parity-scale-codec",
