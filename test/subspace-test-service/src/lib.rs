@@ -147,7 +147,7 @@ pub fn node_config(
 ///
 /// The node will be using an in-memory socket, therefore you need to provide boot nodes if you
 /// want it to be connected to other nodes.
-pub fn run_validator_node(
+pub async fn run_validator_node(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
@@ -179,6 +179,7 @@ pub fn run_validator_node(
             primary_chain_config,
             false,
         )
+        .await
         .expect("Failed to create Subspace primary node")
     };
 
@@ -332,12 +333,12 @@ mod tests {
 
         // start alice
         let (alice, alice_network_starter) =
-            run_validator_node(tokio_handle.clone(), Alice, vec![], true);
+            run_validator_node(tokio_handle.clone(), Alice, vec![], true).await;
 
         alice_network_starter.start_network();
 
         let (bob, bob_network_starter) =
-            run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false);
+            run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false).await;
 
         bob_network_starter.start_network();
 

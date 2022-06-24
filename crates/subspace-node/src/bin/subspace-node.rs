@@ -385,6 +385,7 @@ fn main() -> Result<(), Error> {
                         RuntimeApi,
                         ExecutorDispatch,
                     >(primary_chain_config, true)
+                    .await
                     .map_err(|error| {
                         sc_service::Error::Other(format!(
                             "Failed to build a full subspace node: {error:?}"
