@@ -8,7 +8,7 @@ fn single_piece() {
     let original_piece = rand::random::<[u8; PIECE_SIZE]>();
     let piece_index = rand::random();
 
-    let subspace_codec = SubspaceCodec::new(&public_key);
+    let subspace_codec = SubspaceCodec::new_with_gpu(&public_key);
     let mut piece = original_piece;
 
     subspace_codec.encode(&mut piece, piece_index).unwrap();
@@ -21,7 +21,7 @@ fn single_piece() {
 #[test]
 fn batch() {
     let public_key = rand::random::<[u8; 32]>();
-    let mut subspace_codec = SubspaceCodec::new(&public_key);
+    let mut subspace_codec = SubspaceCodec::new_with_gpu(&public_key);
     // Use 2.5 batches worth of pieces
     let piece_count = subspace_codec.batch_size() * 2 + subspace_codec.batch_size() / 2;
 

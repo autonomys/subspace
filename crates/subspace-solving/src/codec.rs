@@ -87,8 +87,22 @@ pub struct SubspaceCodec {
 impl SubspaceCodec {
     /// New instance with 256-bit prime and 4096-byte genesis piece size
     pub fn new(farmer_public_key: &[u8]) -> Self {
+        Self {
+            farmer_public_key_hash: crypto::sha256_hash(farmer_public_key),
+            #[cfg(feature = "opencl")]
+            opencl_encoder: None,
+            #[cfg(feature = "std")]
+            cpu_cores: num_cpus::get(),
+            #[cfg(not(feature = "std"))]
+            cpu_cores: 1,
+        }
+    }
+
+    /// New instance with 256-bit prime and 4096-byte genesis piece size, try to use GPU if
+    /// available
+    pub fn new_with_gpu(farmer_public_key: &[u8]) -> Self {
         #[cfg(feature = "opencl")]
-        let opencl_encoder = opencl::OpenClEncoder::new(Some(OpenClBatch {
+        let opencl_encoder = OpenClEncoder::new(Some(OpenClBatch {
             size: GPU_PIECE_BLOCK * PIECE_SIZE,
             layers: ENCODE_ROUNDS,
         }))

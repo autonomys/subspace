@@ -125,7 +125,7 @@ impl SinglePlotFarm {
             }
         }
 
-        let codec = SubspaceCodec::new(&plot.public_key());
+        let codec = SubspaceCodec::new_with_gpu(&plot.public_key());
         let create_networking_fut = subspace_networking::create(Config {
             bootstrap_nodes,
             // TODO: Do we still need it?
