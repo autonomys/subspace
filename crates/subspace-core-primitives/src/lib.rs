@@ -263,6 +263,12 @@ impl FlatPieces {
     }
 }
 
+impl From<Piece> for FlatPieces {
+    fn from(Piece(piece): Piece) -> Self {
+        Self(piece)
+    }
+}
+
 // TODO: Remove once we no longer use `unzip` in farmer and get `(Vec<PieceIndex>, FlatPieces)`
 // after requesting sequential pieces.
 impl Extend<Piece> for FlatPieces {

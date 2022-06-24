@@ -176,6 +176,19 @@ impl SinglePlotFarm {
                 move |&PiecesByRangeRequest { from, to }| {
                     let mut pieces_and_indexes =
                         plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
+
+                    if pieces_and_indexes.len() == 1 {
+                        let (index, mut piece) = pieces_and_indexes.into_iter().next().unwrap();
+                        codec.decode(&mut piece, index).ok()?;
+                        return Some(PiecesByRangeResponse {
+                            pieces: PiecesToPlot {
+                                piece_indexes: vec![index],
+                                pieces: piece.into(),
+                            },
+                            next_piece_index_hash: None,
+                        });
+                    }
+
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
                         .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) >= to)
