@@ -35,5 +35,6 @@ use libp2p::gossipsub::Sha256Topic;
 use once_cell::sync::Lazy;
 pub use pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 
+// TODO: Move this out of the networking crate into separate crate.
 pub static PUB_SUB_ARCHIVING_TOPIC: Lazy<Sha256Topic> =
     Lazy::new(|| Sha256Topic::new("PUB_SUB_ARCHIVING_TOPIC"));

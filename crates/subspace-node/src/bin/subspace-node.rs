@@ -355,34 +355,30 @@ fn main() -> Result<(), Error> {
                         .as_ref()
                         .map(|base_path| base_path.config_dir("subspace_gemini_1b"));
 
-                    let dsn_node_config = {
-                        let mut config = None;
+                    let dsn_config = {
+                        let network_keypair = primary_chain_config
+                            .network
+                            .node_key
+                            .clone()
+                            .into_keypair()
+                            .map_err(|error| {
+                                sc_service::Error::Other(format!(
+                                    "Failed to convert network keypair: {error:?}"
+                                ))
+                            })?;
 
-                        if let Ok(keypair) =
-                            primary_chain_config.network.node_key.clone().into_keypair()
-                        {
-                            if !cli.dsn_listen_on.is_empty() {
-                                config = Some(subspace_service::DsnNetworkingConfig {
-                                    keypair,
-                                    listen_on: cli.dsn_listen_on,
-                                    ..subspace_service::DsnNetworkingConfig::with_generated_keypair(
-                                    )
-                                });
-                            } else {
-                                log::error!("Can't configure DSN: no address to listen specified.");
-                            };
-                        } else {
-                            log::error!("Can't configure DSN: unsupported key type.");
-                        };
-
-                        config
+                        (!cli.dsn_listen_on.is_empty()).then(|| subspace_networking::Config {
+                            keypair: network_keypair,
+                            listen_on: cli.dsn_listen_on,
+                            ..subspace_networking::Config::with_generated_keypair()
+                        })
                     };
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
-                        dsn_node_config,
+                        dsn_config,
                     };
 
                     let primary_chain_node = subspace_service::new_full::<

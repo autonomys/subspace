@@ -122,6 +122,7 @@ impl MultiFarming {
 
             // Enable DSN subscription for segments archiving.
             if enable_dsn_archiving {
+                // TODO: Make sure this task can be cancelled
                 tokio::spawn({
                     let node = single_plot_farm.node.clone();
                     async move {

@@ -57,8 +57,6 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
-pub use subspace_networking::libp2p::Multiaddr;
-pub use subspace_networking::Config as DsnNetworkingConfig;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 
@@ -117,9 +115,8 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
-
-    /// DSN node configuration (optional). 'None' disables the DSN.
-    pub dsn_node_config: Option<subspace_networking::Config>,
+    /// Subspace networking configuration (for DSN). Will not be started if set to `None`.
+    pub dsn_config: Option<subspace_networking::Config>,
 }
 
 impl From<Configuration> for SubspaceConfiguration {
@@ -127,7 +124,7 @@ impl From<Configuration> for SubspaceConfiguration {
         Self {
             base,
             force_new_slot_notifications: false,
-            dsn_node_config: None,
+            dsn_config: None,
         }
     }
 }
@@ -376,7 +373,7 @@ where
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    if let Some(node_config) = config.dsn_node_config.clone() {
+    if let Some(node_config) = config.dsn_config.clone() {
         start_subspace_dsn_archiver(&subspace_link, node_config, &task_manager);
     }
 
