@@ -91,7 +91,7 @@ use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
-	RuntimeAppPublic, SaturatedConversion,
+	RuntimeAppPublic,
 };
 use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
@@ -682,25 +682,28 @@ where
 			})
 		}
 
-		let primary_number = execution_receipt.primary_number;
+		let primary_number: BlockNumber = execution_receipt
+			.primary_number
+			.try_into()
+			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
 		let best_execution_chain_number = self
 			.primary_chain_client
 			.runtime_api()
 			.best_execution_chain_number(&BlockId::Hash(
 				self.primary_chain_client.info().best_hash,
 			))?;
+		let best_execution_chain_number: BlockNumber = best_execution_chain_number
+			.try_into()
+			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
 		// Just ignore it if the receipt is too old and has been pruned.
-		if aux_schema::target_receipt_is_pruned(
-			best_execution_chain_number.saturated_into(),
-			primary_number.saturated_into(),
-		) {
+		if aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number) {
 			return Ok(Action::Empty)
 		}
 
 		let block_hash = execution_receipt.secondary_hash;
-		let block_number = <NumberFor<Block>>::decode(&mut primary_number.encode().as_slice())
-			.expect("Primary number and secondary number must use the same type; qed");
+		let block_number = primary_number.into();
 
 		// TODO: more efficient execution receipt checking strategy?
 		let local_receipt = if let Some(local_receipt) =

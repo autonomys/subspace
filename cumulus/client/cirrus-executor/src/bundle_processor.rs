@@ -31,7 +31,7 @@ use std::{
 	marker::PhantomData,
 	sync::Arc,
 };
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{BlockNumber, Randomness};
 
 const LOG_TARGET: &str = "bundle-processor";
 
@@ -168,9 +168,12 @@ where
 		let parent_hash = self.client.info().best_hash;
 		let parent_number = self.client.info().best_number;
 
+		let primary_number: BlockNumber = primary_number
+			.try_into()
+			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
 		assert_eq!(
-			<NumberFor<Block>>::decode(&mut primary_number.encode().as_slice())
-				.expect("Primary number and secondary number must use the same type; qed"),
+			Into::<NumberFor<Block>>::into(primary_number),
 			parent_number + One::one(),
 			"New secondary best number must be equal to the primary number"
 		);
@@ -266,7 +269,7 @@ where
 		);
 
 		let execution_receipt = ExecutionReceipt {
-			primary_number,
+			primary_number: primary_number.into(),
 			primary_hash,
 			secondary_hash: header_hash,
 			trace,
@@ -278,9 +281,11 @@ where
 			.runtime_api()
 			.best_execution_chain_number(&BlockId::Hash(primary_hash))?;
 
-		let best_execution_chain_number =
-			<NumberFor<Block>>::decode(&mut best_execution_chain_number.encode().as_slice())
-				.expect("Primary number and secondary number must use the same type; qed");
+		let best_execution_chain_number: BlockNumber = best_execution_chain_number
+			.try_into()
+			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+		let best_execution_chain_number = best_execution_chain_number.into();
 
 		assert!(
 			header_number > best_execution_chain_number,
@@ -315,10 +320,11 @@ where
 				.runtime_api()
 				.maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
 
-			let max_drift = <NumberFor<Block>>::decode(&mut max_drift.encode().as_slice())
-				.expect("Primary number and secondary number must use the same type; qed");
+			let max_drift: BlockNumber = max_drift
+				.try_into()
+				.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-			let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
+			let max_allowed = (best_execution_chain_number + max_drift.into()).min(header_number);
 
 			// TODO: parallelize and avoid spamming the missing receipts?
 			let mut to_send = best_execution_chain_number + One::one();
