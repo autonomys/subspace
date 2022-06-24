@@ -637,12 +637,12 @@ impl IndexHashToOffsetDB {
         let start = iter
             .key()
             .map(PieceDistance::from_big_endian)
-            .ok_or_else(|| io::Error::other("Failed to fetch piece range"))?;
+            .unwrap_or(PieceDistance::MIDDLE);
         iter.seek_to_last();
         let end = iter
             .key()
             .map(PieceDistance::from_big_endian)
-            .ok_or_else(|| io::Error::other("Failed to fetch piece range"))?;
+            .unwrap_or(PieceDistance::MIDDLE);
 
         Ok(Range {
             start: self.get_piece_index_hash(start),

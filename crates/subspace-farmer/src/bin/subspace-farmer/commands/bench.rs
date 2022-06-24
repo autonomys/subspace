@@ -355,7 +355,7 @@ async fn test_dsn_sync() {
             listen_on: vec![seeder_multiaddr.clone()],
             dsn_sync: false,
         },
-        seeder_max_plot_size,
+        seeder_max_plot_size * PIECE_SIZE as u64,
         seeder_max_plot_size,
         plot_factory,
         false,
@@ -369,11 +369,7 @@ async fn test_dsn_sync() {
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
 
-        for segment_index in 0..seeder_max_plot_size / PIECE_SIZE as u64 / 256 {
-            last_archived_block
-                .archived_progress
-                .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
-
+        for segment_index in 0..seeder_max_plot_size / 256 {
             let archived_segment = {
                 let root_block = RootBlock::V0 {
                     segment_index,
@@ -385,17 +381,10 @@ async fn test_dsn_sync() {
                 let mut pieces = FlatPieces::new(256);
                 rand::thread_rng().fill(pieces.as_mut());
 
-                let objects = std::iter::repeat_with(|| PieceObject::V0 {
-                    hash: rand::random(),
-                    offset: rand::random(),
-                })
-                .take(100)
-                .collect();
-
                 ArchivedSegment {
                     root_block,
                     pieces,
-                    object_mapping: vec![PieceObjectMapping { objects }],
+                    object_mapping: vec![PieceObjectMapping { objects: vec![] }],
                 }
             };
 
@@ -406,6 +395,7 @@ async fn test_dsn_sync() {
             {
                 break;
             }
+            last_archived_block.set_complete();
         }
     }
     seeder_multiaddr.push({
@@ -420,19 +410,13 @@ async fn test_dsn_sync() {
         .unwrap()
     });
 
-    let mut node_runners = seeder_multi_farming
-        .single_plot_farms
-        .iter_mut()
-        .filter_map(|farming| farming.node_runner.take())
-        .map(NodeRunner::run)
-        .collect::<FuturesUnordered<_>>();
-    let (seeder_wait_sender, seeder_wait_receiver) = tokio::sync::oneshot::channel();
+    let node_runners = futures::future::join_all(
+        std::mem::take(&mut seeder_multi_farming.networking_node_runners)
+            .into_iter()
+            .map(NodeRunner::run),
+    );
     tokio::spawn(async move {
-        while let Some(()) = node_runners.next().await {
-            break;
-        }
-        seeder_multi_farming.wait().await.unwrap();
-        seeder_wait_sender.send(()).unwrap();
+        node_runners.await;
     });
 
     for _ in 0..10 {
@@ -468,7 +452,7 @@ async fn test_dsn_sync() {
                 listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
                 dsn_sync: false,
             },
-            syncer_max_plot_size,
+            syncer_max_plot_size * PIECE_SIZE as u64,
             syncer_max_plot_size,
             plot_factory,
             false,
@@ -476,21 +460,16 @@ async fn test_dsn_sync() {
         .await
         .unwrap();
 
-        let mut node_runners = syncer_multi_farming
-            .single_plot_farms
-            .iter_mut()
-            .filter_map(|farming| farming.node_runner.take())
-            .map(NodeRunner::run)
-            .collect::<FuturesUnordered<_>>();
-        let (syncer_wait_sender, syncer_wait_receiver) = tokio::sync::oneshot::channel();
+        let node_runners = futures::future::join_all(
+            std::mem::take(&mut syncer_multi_farming.networking_node_runners)
+                .into_iter()
+                .map(NodeRunner::run),
+        );
         tokio::spawn(async move {
-            while let Some(()) = node_runners.next().await {
-                break;
-            }
-            syncer_wait_sender.send(()).unwrap();
+            node_runners.await;
         });
 
-        let expected_total_pieces = seeder_max_plot_size;
+        let expected_total_pieces = syncer_max_plot_size;
         let range_size = PieceIndexHashNumber::MAX / expected_total_pieces * request_pieces_size;
         let mut futures = syncer_multi_farming
             .single_plot_farms
@@ -501,6 +480,7 @@ async fn test_dsn_sync() {
             .collect::<FuturesUnordered<_>>();
 
         while let Some(result) = futures.next().await {
+            #[allow(unused)]
             let SyncResult {
                 expected_range:
                     Range {
@@ -511,28 +491,19 @@ async fn test_dsn_sync() {
                 total_pieces,
             } = result.unwrap();
 
-            assert!(Range {
-                start: expected_start * 9 / 10,
-                end: expected_start * 11 / 10,
-            }
-            .contains(&start));
-            assert!(Range {
-                start: expected_end * 9 / 10,
-                end: expected_end * 11 / 10,
-            }
-            .contains(&end));
-            assert!(Range {
-                start: total_pieces * 9 / 10,
-                end: total_pieces * 11 / 10,
-            }
-            .contains(&total_pieces));
+            // TODO: Add checks for range bounds
+            // expected_start <= start <  expected_end &&
+            // expected_start <  end   <= expected_end
+            assert!(
+                expected_total_pieces / 10 * 9 < total_pieces
+                    && total_pieces < expected_total_pieces / 10 * 11
+            );
         }
 
         syncer_client.stop().await;
-        syncer_multi_farming.wait().await.unwrap();
-        syncer_wait_receiver.await.unwrap();
     }
 
+    drop(seeder_archived_segments_sender);
     seeder_client.stop().await;
-    seeder_wait_receiver.await.unwrap();
+    seeder_multi_farming.wait().await.unwrap();
 }

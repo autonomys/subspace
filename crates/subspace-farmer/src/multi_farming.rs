@@ -25,7 +25,7 @@ use tracing::info;
 pub struct MultiFarming {
     pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
-    networking_node_runners: Vec<subspace_networking::NodeRunner>,
+    pub networking_node_runners: Vec<subspace_networking::NodeRunner>,
 }
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
