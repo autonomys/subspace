@@ -151,15 +151,19 @@ async fn execution_proof_creation_and_verification_should_work() {
 			.collect(),
 	}];
 
+	let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {
+		// The executor might have already imported the latest primary block, make a fake future block to
+		// bypass the check of `latest_primary_number = old_best_secondary_number + 1` in `process_bundles`.
+		//
+		// This invalid primary hash does not affect the test result.
+		(Hash::random(), ferdie.client.info().best_number + 1)
+	} else {
+		(ferdie.client.info().best_hash, ferdie.client.info().best_number)
+	};
 	alice
 		.executor
 		.clone()
-		.process_bundles(
-			(ferdie.client.info().best_hash, ferdie.client.info().best_number),
-			bundles,
-			BlakeTwo256::hash_of(&[1u8; 64]).into(),
-			None,
-		)
+		.process_bundles(primary_info, bundles, BlakeTwo256::hash_of(&[1u8; 64]).into(), None)
 		.await;
 
 	let best_hash = alice.client.info().best_hash;
@@ -639,7 +643,7 @@ async fn set_new_code_should_work() {
 		.build(Role::Authority)
 		.await;
 
-	alice.wait_for_blocks(3).await;
+	ferdie.wait_for_blocks(1).await;
 
 	let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
@@ -647,7 +651,7 @@ async fn set_new_code_should_work() {
 		.executor
 		.clone()
 		.process_bundles(
-			Default::default(),
+			(ferdie.client.info().best_hash, ferdie.client.info().best_number),
 			Default::default(),
 			BlakeTwo256::hash_of(&[1u8; 64]).into(),
 			Some(new_runtime_wasm_blob.clone().into()),
