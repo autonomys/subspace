@@ -312,6 +312,8 @@ fn get_size(path: impl AsRef<Path>) -> std::io::Result<u64> {
 async fn test_dsn_sync() {
     use std::ops::Range;
 
+    use num_traits::{WrappingAdd, WrappingSub};
+    use subspace_core_primitives::U256;
     use subspace_farmer::{PieceIndexHashNumber, SyncResult};
     use subspace_networking::libp2p::multiaddr::Protocol;
     use subspace_networking::libp2p::{identity, Multiaddr, PeerId};
@@ -489,11 +491,19 @@ async fn test_dsn_sync() {
                     },
                 got_range: Range { start, end },
                 total_pieces,
+                public_key,
             } = result.unwrap();
+            let shift_to_middle =
+                |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
 
-            // TODO: Add checks for range bounds
-            // expected_start <= start <  expected_end &&
-            // expected_start <  end   <= expected_end
+            let public_key = U256::from_big_endian(&public_key);
+            let expected_start = shift_to_middle(expected_start, &public_key);
+            let expected_end = shift_to_middle(expected_end, &public_key);
+            let start = shift_to_middle(start, &public_key);
+            let end = shift_to_middle(end, &public_key);
+
+            assert!(expected_start <= start && start <= expected_end);
+            assert!(expected_start <= end && end <= expected_end);
             assert!(
                 expected_total_pieces / 10 * 9 < total_pieces
                     && total_pieces < expected_total_pieces / 10 * 11

@@ -61,6 +61,8 @@ pub struct SyncResult {
     pub expected_range: Range<PieceIndexHashNumber>,
     /// Range of pieces which was actually synced
     pub got_range: Range<PieceIndexHashNumber>,
+    /// Public key of the plot
+    pub public_key: PublicKey,
     /// Total number of pieces synced
     pub total_pieces: u64,
 }
@@ -300,6 +302,7 @@ impl SinglePlotFarm {
                 result.map(|()| SyncResult {
                     expected_range,
                     got_range,
+                    public_key: plot.public_key(),
                     total_pieces: plot.piece_count(),
                 })
             }
