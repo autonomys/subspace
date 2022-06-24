@@ -202,7 +202,7 @@ impl MultiFarming {
                                 }
                             }
                             Err(err) => {
-                                error!("Pubsub archiving subscription failed: {:?}", err);
+                                error!(error = ?err, "Pubsub archiving subscription failed.");
                             }
                         }
                     }

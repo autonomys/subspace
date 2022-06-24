@@ -45,7 +45,7 @@ pub fn start_subspace_dsn_archiver<Block>(
                             trace!("Archived segment published.");
                         }
                         Err(err) => {
-                            error!("Failed to publish archived segment: {:?}", err);
+                            error!(error = ?err, "Failed to publish archived segment");
                         }
                     }
                 }
