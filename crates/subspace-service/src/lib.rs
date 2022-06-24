@@ -37,7 +37,6 @@ use sc_consensus_subspace::{
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-pub use sc_network::Keypair;
 use sc_service::error::Error as ServiceError;
 use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
@@ -378,11 +377,7 @@ where
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
     if let Some(node_config) = config.dsn_node_config.clone() {
-        start_subspace_dsn_archiver(
-            &subspace_link,
-            node_config,
-            &task_manager.spawn_essential_handle(),
-        );
+        start_subspace_dsn_archiver(&subspace_link, node_config, &task_manager);
     }
 
     let (network, system_rpc_tx, network_starter) =

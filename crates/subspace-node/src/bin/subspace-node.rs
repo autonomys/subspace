@@ -17,7 +17,6 @@
 //! Subspace node implementation.
 
 use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
-use clap::{self, Parser};
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -30,7 +29,7 @@ use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
 use subspace_node::{ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{Multiaddr, SubspaceConfiguration};
+use subspace_service::SubspaceConfiguration;
 
 /// Secondary executor instance.
 pub struct SecondaryExecutorDispatch;
@@ -99,15 +98,6 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 // TODO: Remove once paritydb is the default option, ref https://github.com/paritytech/substrate/pull/11537
 fn force_use_parity_db(database_params: &mut DatabaseParams) {
     database_params.database.replace(Database::ParityDb);
-}
-
-/// DSN configuration arguments. It expects raw clap argument string to parse (after "--").
-#[derive(Debug, Clone, Parser)]
-#[clap(no_binary_name(true), ignore_errors(true))]
-pub struct DsnConfigurationArgs {
-    /// DSN listen on multi-address
-    #[clap(long)]
-    pub dsn_listen_on: Option<Multiaddr>,
 }
 
 fn main() -> Result<(), Error> {
@@ -382,12 +372,10 @@ fn main() -> Result<(), Error> {
                         if let Ok(keypair) =
                             primary_chain_config.network.node_key.clone().into_keypair()
                         {
-                            let args: DsnConfigurationArgs =
-                                DsnConfigurationArgs::parse_from(cli.secondary_chain_args.clone());
-                            if let Some(dsn_listen_on) = args.dsn_listen_on {
+                            if !cli.dsn_listen_on.is_empty() {
                                 config = Some(subspace_service::DsnNetworkingConfig {
                                     keypair,
-                                    listen_on: vec![dsn_listen_on],
+                                    listen_on: cli.dsn_listen_on,
                                     ..subspace_service::DsnNetworkingConfig::with_generated_keypair(
                                     )
                                 });

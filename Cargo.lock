@@ -4408,9 +4408,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.10.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "oorandom"
@@ -8120,9 +8120,9 @@ dependencies = [
  "event-listener-primitives",
  "futures 0.3.21",
  "hex",
- "lazy_static",
  "libp2p",
  "nohash-hasher",
+ "once_cell",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "rand 0.7.3",
@@ -8257,6 +8257,7 @@ dependencies = [
  "jsonrpsee",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
  "parity-util-mem",
  "sc-basic-authorship",
  "sc-client-api",
@@ -8295,7 +8296,6 @@ dependencies = [
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
- "tokio",
  "tracing",
 ]
 
