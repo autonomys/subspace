@@ -158,9 +158,9 @@ pub async fn create(
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
         let transport = {
             let transport = {
-                let tcp = TokioTcpConfig::new().nodelay(true);
-                let dns_tcp = TokioDnsConfig::system(tcp)?;
-                let ws = WsConfig::new(dns_tcp.clone());
+                let dns_tcp = TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?;
+                let ws =
+                    WsConfig::new(TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?);
                 dns_tcp.or_transport(ws)
             };
 

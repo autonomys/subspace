@@ -20,14 +20,14 @@ use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
-use sc_cli::{ChainSpec, CliConfiguration, Database, DatabaseParams, SubstrateCli};
+use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_client_api::HeaderBackend;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
-use subspace_node::{ExecutorDispatch, SecondaryChainCli, Subcommand};
+use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::SubspaceConfiguration;
 
@@ -95,15 +95,8 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
-// TODO: Remove once paritydb is the default option, ref https://github.com/paritytech/substrate/pull/11537
-fn force_use_parity_db(database_params: &mut DatabaseParams) {
-    database_params.database.replace(Database::ParityDb);
-}
-
 fn main() -> Result<(), Error> {
-    let mut cli = <subspace_node::Cli as SubstrateCli>::from_args();
-
-    force_use_parity_db(&mut cli.run.import_params.database_params);
+    let cli = Cli::from_args();
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
@@ -192,9 +185,6 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
-            let mut cmd = cmd.clone();
-            force_use_parity_db(&mut cmd.base.database_params);
-
             // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
             //  wipe old data from disks of our users
             if cmd.base.shared_params.base_path().is_none() {
@@ -242,7 +232,7 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
-                let mut secondary_chain_cli = SecondaryChainCli::new(
+                let secondary_chain_cli = SecondaryChainCli::new(
                     cmd.base
                         .base_path()?
                         .map(|base_path| base_path.path().to_path_buf()),
@@ -251,7 +241,6 @@ fn main() -> Result<(), Error> {
                     })?,
                     cli.secondary_chain_args.iter(),
                 );
-                force_use_parity_db(&mut secondary_chain_cli.run.import_params.database_params);
 
                 let secondary_chain_config = SubstrateCli::create_configuration(
                     &secondary_chain_cli,
@@ -417,7 +406,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let mut secondary_chain_cli = SecondaryChainCli::new(
+                    let secondary_chain_cli = SecondaryChainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -426,7 +415,6 @@ fn main() -> Result<(), Error> {
                         })?,
                         cli.secondary_chain_args.iter(),
                     );
-                    force_use_parity_db(&mut secondary_chain_cli.run.import_params.database_params);
 
                     let secondary_chain_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
@@ -506,4 +494,17 @@ fn main() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use sc_cli::Database;
+
+    #[test]
+    fn rocksdb_disabled_in_substrate() {
+        assert_eq!(
+            Database::variants(),
+            &["paritydb", "paritydb-experimental", "auto"],
+        );
+    }
 }

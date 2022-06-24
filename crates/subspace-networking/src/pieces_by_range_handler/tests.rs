@@ -2,6 +2,7 @@ use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use libp2p::multiaddr::Protocol;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
 
@@ -21,7 +22,7 @@ async fn pieces_by_range_protocol_smoke() {
 
     let response = PiecesByRangeResponse {
         pieces,
-        next_piece_hash_index: None,
+        next_piece_index_hash: None,
     };
 
     let expected_request = request.clone();
@@ -84,23 +85,50 @@ async fn pieces_by_range_protocol_smoke() {
 
 #[tokio::test]
 async fn get_pieces_by_range_smoke() {
-    let piece_bytes: Vec<u8> = Piece::default().into();
-    let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-    let pieces = PiecesToPlot {
-        piece_indexes: vec![1],
-        pieces: flat_pieces,
-    };
+    let piece_index_from = PieceIndexHash(crypto::sha256_hash(b"from"));
+    let piece_index_continue = PieceIndexHash(crypto::sha256_hash(b"continue"));
+    let piece_index_end = PieceIndexHash(crypto::sha256_hash(b"end"));
 
-    let expected_data = pieces.clone();
+    fn get_pieces_to_plot_mock(seed: u8) -> PiecesToPlot {
+        let piece_bytes: Vec<u8> = [seed; 4096].to_vec();
+        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+
+        PiecesToPlot {
+            piece_indexes: vec![1],
+            pieces: flat_pieces,
+        }
+    }
+
+    static REQUEST_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    let expected_data = vec![get_pieces_to_plot_mock(0), get_pieces_to_plot_mock(1)];
+    let response_data = expected_data.clone();
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(move |_| {
-            Some(PiecesByRangeResponse {
-                pieces: pieces.clone(),
-                next_piece_hash_index: None,
-            })
+        pieces_by_range_request_handler: Arc::new(move |req| {
+            let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+
+            // Only two responses
+            if request_index == 2 {
+                return None;
+            }
+
+            if request_index == 0 {
+                Some(PiecesByRangeResponse {
+                    pieces: response_data[request_index].clone(),
+                    next_piece_index_hash: Some(piece_index_continue),
+                })
+            } else {
+                // New request starts from from the previous response.
+                assert_eq!(req.from, piece_index_continue);
+
+                Some(PiecesByRangeResponse {
+                    pieces: response_data[request_index].clone(),
+                    next_piece_index_hash: None,
+                })
+            }
         }),
         ..Config::with_generated_keypair()
     };
@@ -135,14 +163,15 @@ async fn get_pieces_by_range_smoke() {
         node_runner_2.run().await;
     });
 
-    let hashed_peer_id = PieceIndexHash(crypto::sha256_hash(&node_1.id().to_bytes()));
-
     let mut stream = node_2
-        .get_pieces_by_range(hashed_peer_id, hashed_peer_id)
+        .get_pieces_by_range(piece_index_from, piece_index_end)
         .await
         .unwrap();
 
-    let result = stream.next().await;
+    let mut result = Vec::new();
+    while let Some(piece_plot) = stream.next().await {
+        result.push(piece_plot);
+    }
 
-    assert_eq!(result.unwrap(), expected_data);
+    assert_eq!(result, expected_data);
 }

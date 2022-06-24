@@ -20,6 +20,7 @@ async-trait = "0.1.53"
 bytes = "1.1.0"
 event-listener-primitives = "2.0.1"
 futures = "0.3.21"
+generic-array = "0.14.5"
 hex = "0.4.3"
 once_cell = "1.12.0"
 nohash-hasher = "0.2.0"
@@ -29,10 +30,11 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
 tracing = "0.1"
+typenum = "1.15.0"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
 [dependencies.libp2p]
-version = "0.44.0"
+version = "0.45.1"
 default-features = false
 features = [
     "dns-tokio",

@@ -28,7 +28,7 @@ async fn main() {
 
             let response = Some(PiecesByRangeResponse {
                 pieces,
-                next_piece_hash_index: Some(PieceIndexHash([0; 32])),
+                next_piece_index_hash: Some(PieceIndexHash([0; 32])),
             });
 
             println!("Sending response... ");

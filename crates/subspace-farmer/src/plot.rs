@@ -424,8 +424,8 @@ impl Plot {
         })?
     }
 
+    // TODO: Return (Vec<PieceIndex>, FlatPieces) instead
     /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
-    #[allow(dead_code)]
     pub(crate) fn get_sequential_pieces(
         &self,
         from: PieceIndexHash,

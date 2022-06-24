@@ -34,6 +34,7 @@ pub(crate) mod object_mappings;
 pub(crate) mod plot;
 pub(crate) mod plotting;
 pub(crate) mod rpc_client;
+pub mod single_plot_farm;
 pub mod ws_rpc_server;
 
 pub use archiving::{Archiving, ArchivingError};

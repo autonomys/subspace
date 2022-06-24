@@ -24,6 +24,7 @@ pub(crate) async fn farm(
         plot_size,
         max_plot_size,
         enable_dsn_archiving,
+        dsn_sync,
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
@@ -60,9 +61,9 @@ pub(crate) async fn farm(
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
-        let base_directory = base_directory.clone();
+        let path = base_directory.join("object-mappings");
 
-        move || ObjectMappings::open_or_create(&base_directory)
+        move || ObjectMappings::open_or_create(path)
     })
     .await??;
 
@@ -76,6 +77,7 @@ pub(crate) async fn farm(
             bootstrap_nodes,
             listen_on,
             enable_dsn_archiving,
+            dsn_sync,
         },
         plot_size,
         max_plot_size,
@@ -115,7 +117,13 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        Arc::clone(&multi_farming.plots),
+        Arc::new(
+            multi_farming
+                .single_plot_farms
+                .iter()
+                .map(|single_plot_farm| single_plot_farm.plot.clone())
+                .collect(),
+        ),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;

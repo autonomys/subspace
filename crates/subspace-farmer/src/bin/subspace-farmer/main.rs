@@ -53,6 +53,9 @@ struct FarmingArgs {
     /// Enable DSN subscription for archiving segments.
     #[clap(long)]
     enable_dsn_archiving: bool,
+    /// Use dsn for syncing
+    #[clap(long)]
+    dsn_sync: bool,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]

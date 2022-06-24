@@ -110,6 +110,8 @@ const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
     record_size: PIECE_SIZE as u32 - 96, // PIECE_SIZE - WITNESS_SIZE
     recorded_history_segment_size: PIECE_SIZE as u32 * 256 / 2, // PIECE_SIZE * MERKLE_NUM_LEAVES / 2
     max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+    // Doesn't matter, as we don't start sync
+    total_pieces: 0,
 };
 
 pub(crate) async fn bench(
@@ -145,8 +147,9 @@ pub(crate) async fn bench(
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
-        let base_directory = base_directory.as_ref().to_owned();
-        move || ObjectMappings::open_or_create(&base_directory)
+        let path = base_directory.as_ref().join("object-mappings");
+
+        move || ObjectMappings::open_or_create(path)
     })
     .await??;
 
@@ -174,6 +177,7 @@ pub(crate) async fn bench(
             bootstrap_nodes: vec![],
             listen_on: vec![],
             enable_dsn_archiving: false,
+            dsn_sync: false,
         },
         plot_size,
         max_plot_size,
@@ -232,9 +236,9 @@ pub(crate) async fn bench(
 
     let space_allocated = get_size(base_directory)?;
     let actual_space_pledged = multi_farming
-        .plots
+        .single_plot_farms
         .iter()
-        .map(Plot::piece_count)
+        .map(|single_plot_farm| single_plot_farm.plot.piece_count())
         .sum::<u64>()
         * PIECE_SIZE as u64;
     let overhead = space_allocated - actual_space_pledged;
@@ -264,11 +268,15 @@ pub(crate) async fn bench(
         let start = Instant::now();
 
         let mut tasks = multi_farming
-            .commitments
+            .single_plot_farms
             .iter()
-            .cloned()
-            .zip(multi_farming.plots.iter().cloned())
-            .map(|(commitment, plot)| move || commitment.create(rand::random(), plot))
+            .map(|single_plot_farm| {
+                (
+                    single_plot_farm.commitments.clone(),
+                    single_plot_farm.plot.clone(),
+                )
+            })
+            .map(|(commitments, plot)| move || commitments.create(rand::random(), plot))
             .map(tokio::task::spawn_blocking)
             .collect::<FuturesUnordered<_>>();
         while let Some(result) = tasks.next().await {

@@ -3,7 +3,7 @@ use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, Stream};
+use futures::SinkExt;
 use libp2p::core::multihash::{Code, Multihash};
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
@@ -11,7 +11,6 @@ use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::ops::{Deref, DerefMut, Div};
-use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, U256};
 use thiserror::Error;
@@ -247,7 +246,7 @@ impl Node {
         &self,
         from: PieceIndexHash,
         to: PieceIndexHash,
-    ) -> Result<Pin<Box<dyn Stream<Item = PiecesToPlot>>>, GetPiecesByRangeError> {
+    ) -> Result<mpsc::Receiver<PiecesToPlot>, GetPiecesByRangeError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
         // calculate the middle of the range (big endian)
@@ -288,20 +287,26 @@ impl Node {
         // prepare stream channel
         let (mut tx, rx) = mpsc::channel::<PiecesToPlot>(PIECES_CHANNEL_BUFFER_SIZE);
 
-        // populate resulting stream in the separate async task
+        // populate resulting stream in a separate async task
         let node = self.clone();
         tokio::spawn(async move {
-            // indicates the next starting point for a request, initially None
-            let mut next_piece_hash_index = None;
+            // indicates the next starting point for a request
+            let mut starting_index_hash = from;
             loop {
                 trace!(
                     "Sending 'Piece-by-range' request to {} with {:?}",
                     peer_id,
-                    next_piece_hash_index
+                    starting_index_hash
                 );
-                // request data by range and starting point
+                // request data by range
                 let response = node
-                    .send_pieces_by_range_request(peer_id, PiecesByRangeRequest { from, to })
+                    .send_pieces_by_range_request(
+                        peer_id,
+                        PiecesByRangeRequest {
+                            from: starting_index_hash,
+                            to,
+                        },
+                    )
                     .await
                     .map_err(|_| SendPiecesByRangeRequestError::NodeRunnerDropped);
 
@@ -314,22 +319,22 @@ impl Node {
                             break;
                         }
 
-                        // prepare next starting point for data
-                        next_piece_hash_index = response.next_piece_hash_index
+                        // prepare the next starting point for data
+                        if let Some(next_piece_index_hash) = response.next_piece_index_hash {
+                            starting_index_hash = next_piece_index_hash;
+                        } else {
+                            // exit loop if the last response showed no remaining data
+                            break;
+                        }
                     }
                     Err(err) => {
                         debug!("Piece-by-range request returned an error: {}", err);
                         break;
                     }
                 }
-
-                // exit loop if the last response showed no remaining data
-                if next_piece_hash_index.is_none() {
-                    break;
-                }
             }
         });
 
-        Ok(Box::pin(rx))
+        Ok(rx)
     }
 }

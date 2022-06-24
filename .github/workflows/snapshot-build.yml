@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
       packages: write
@@ -107,12 +107,20 @@ jobs:
       matrix:
         build:
           - os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-${{ github.ref_name }}
-          - os: macos-11
+          - os: macos-12
+            target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
+          - os: macos-12
+            target: aarch64-apple-darwin
+            suffix: macos-aarch64-${{ github.ref_name }}
           - os: windows-2022
+            target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-${{ github.ref_name }}
     runs-on: ${{ matrix.build.os }}
+    env:
+      PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
 
     steps:
       - name: Checkout
@@ -124,13 +132,20 @@ jobs:
         with:
           version: "14.0"
 
-      - name: Rust toolchain
+      - name: Rust toolchain (${{ matrix.build.target }})
+        uses: actions-rs/toolchain@v1
+        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
+        with:
+          toolchain: nightly-2022-05-16
+          target: ${{ matrix.build.target }}
+          override: true
+
+      - name: Rust toolchain (wasm32)
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
           toolchain: nightly-2022-05-16
           target: wasm32-unknown-unknown
-          override: true
 
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64
@@ -149,14 +164,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/opencl
+          args: --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/opencl
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: Build (macOS without OpenCL)
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --profile production --bin subspace-node --bin subspace-farmer
+          args: --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer
         if: runner.os == 'macOS'
 
       - name: Sign Application (macOS)
@@ -169,20 +184,20 @@ jobs:
           security import certificate.p12 -k build.keychain -P "${{ secrets.MACOS_CERTIFICATE_PW }}" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.MACOS_CERTIFICATE_PW }}" build.keychain
           echo "Signing farmer"
-          codesign --force --options=runtime --entitlements .github/workflows/Entitlements.plist -s "${{ secrets.MACOS_IDENTITY }}" --timestamp target/production/subspace-farmer
+          codesign --force --options=runtime --entitlements .github/workflows/Entitlements.plist -s "${{ secrets.MACOS_IDENTITY }}" --timestamp ${{ env.PRODUCTION_TARGET }}/subspace-farmer
           echo "Signing node"
-          codesign --force --options=runtime --entitlements .github/workflows/Entitlements.plist -s "${{ secrets.MACOS_IDENTITY }}" --timestamp target/production/subspace-node
+          codesign --force --options=runtime --entitlements .github/workflows/Entitlements.plist -s "${{ secrets.MACOS_IDENTITY }}" --timestamp ${{ env.PRODUCTION_TARGET }}/subspace-node
           echo "Creating an archive"
-          mkdir target/production/macos-binaries
-          cp target/production/subspace-farmer target/production/subspace-node target/production/macos-binaries
-          ditto -c -k --rsrc target/production/macos-binaries subspace-binaries.zip
+          mkdir ${{ env.PRODUCTION_TARGET }}/macos-binaries
+          cp ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-node ${{ env.PRODUCTION_TARGET }}/macos-binaries
+          ditto -c -k --rsrc ${{ env.PRODUCTION_TARGET }}/macos-binaries subspace-binaries.zip
           echo "Notarizing"
           xcrun altool --notarize-app --primary-bundle-id binaries-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-binaries.zip
           # TODO: Wait for notarization before stapling
           # echo "Stapling farmer"
-          # xcrun stapler staple target/production/subspace-farmer
+          # xcrun stapler staple ${{ env.PRODUCTION_TARGET }}/subspace-farmer
           # echo "Stapling node"
-          # xcrun stapler staple target/production/subspace-node
+          # xcrun stapler staple ${{ env.PRODUCTION_TARGET }}/subspace-node
           echo "Done!"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
@@ -194,7 +209,7 @@ jobs:
           certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
           password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
           certificatesha1: '00A427587B911908F59B6C42BA2863109C599C1C'
-          folder: 'target/production'
+          folder: '${{ env.PRODUCTION_TARGET }}'
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
@@ -202,15 +217,15 @@ jobs:
       - name: Prepare executables for uploading (Ubuntu)
         run: |
           mkdir executables
-          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
         if: runner.os == 'Linux'
 
       - name: Prepare executables for uploading (macOS)
         run: |
           mkdir executables
-          mv target/production/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          mv target/production/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
           # Zip it so that signature is not lost
           ditto -c -k --rsrc executables/subspace-farmer-${{ matrix.build.suffix }} executables/subspace-farmer-${{ matrix.build.suffix }}.zip
           ditto -c -k --rsrc executables/subspace-node-${{ matrix.build.suffix }} executables/subspace-node-${{ matrix.build.suffix }}.zip
@@ -221,8 +236,8 @@ jobs:
       - name: Prepare executables for uploading (Windows)
         run: |
           mkdir executables
-          move target/production/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
-          move target/production/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to artifacts

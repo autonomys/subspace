@@ -3,7 +3,7 @@ use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
 use subspace_networking::PiecesToPlot;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -12,8 +12,12 @@ struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
 #[async_trait::async_trait]
 impl DSNSync for TestDSN {
     type Stream = futures::stream::Once<futures::future::Ready<PiecesToPlot>>;
+    type Error = std::convert::Infallible;
 
-    async fn get_pieces(&mut self, Range { start, end }: Range<PieceIndexHash>) -> Self::Stream {
+    async fn get_pieces(
+        &mut self,
+        Range { start, end }: Range<PieceIndexHash>,
+    ) -> Result<Self::Stream, Self::Error> {
         let (pieces, piece_indexes) = self
             .0
             .iter()
@@ -27,10 +31,12 @@ impl DSNSync for TestDSN {
                     (flat_pieces, piece_indexes)
                 },
             );
-        futures::stream::once(futures::future::ready(PiecesToPlot {
-            pieces: pieces.try_into().unwrap(),
-            piece_indexes,
-        }))
+        Ok(futures::stream::once(futures::future::ready(
+            PiecesToPlot {
+                pieces: pieces.try_into().unwrap(),
+                piece_indexes,
+            },
+        )))
     }
 }
 
@@ -56,7 +62,9 @@ async fn simple_test() {
         TestDSN(source.clone()),
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
-            address: Default::default(),
+            public_key: Default::default(),
+            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            total_pieces: 256,
         },
         {
             let result = Arc::clone(&result);
@@ -68,11 +76,8 @@ async fn simple_test() {
                         .zip(piece_indexes)
                         .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
                 );
-                if result.len() == 256 {
-                    std::ops::ControlFlow::Break(Ok(()))
-                } else {
-                    std::ops::ControlFlow::Continue(())
-                }
+
+                Ok(())
             }
         },
     )
@@ -94,7 +99,9 @@ async fn no_sync_test() {
         NoSync,
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
-            address: Default::default(),
+            public_key: Default::default(),
+            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            total_pieces: 0,
         },
         {
             let result = Arc::clone(&result);
@@ -106,7 +113,7 @@ async fn no_sync_test() {
                         .zip(piece_indexes)
                         .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
                 );
-                std::ops::ControlFlow::Continue(())
+                Ok(())
             }
         },
     )

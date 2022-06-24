@@ -20,7 +20,7 @@ env:
 
 jobs:
   cargo-fmt:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -59,8 +59,8 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-20.04
-          - macos-11
+          - ubuntu-22.04
+          - macos-12
           - windows-2022
 
     runs-on: ${{ matrix.os }}
@@ -116,7 +116,7 @@ jobs:
         if: runner.os == 'macOS'
 
   cargo-docs:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -152,8 +152,8 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-20.04
-          - macos-11
+          - ubuntu-22.04
+          - macos-12
           - windows-2022
 
     runs-on: ${{ matrix.os }}
