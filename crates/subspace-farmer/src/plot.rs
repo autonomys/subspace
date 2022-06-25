@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::ops::Range;
+use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Weak};
@@ -93,7 +93,7 @@ enum Request {
         result_sender: mpsc::Sender<io::Result<Vec<PieceIndex>>>,
     },
     GetPieceRange {
-        result_sender: mpsc::Sender<io::Result<Range<PieceIndexHash>>>,
+        result_sender: mpsc::Sender<io::Result<Option<RangeInclusive<PieceIndexHash>>>>,
     },
     WriteEncodings {
         encodings: Arc<FlatPieces>,
@@ -260,7 +260,7 @@ impl Plot {
     }
 
     /// Returns range which contains all of the pieces
-    pub fn get_piece_range(&self) -> io::Result<Range<PieceIndexHash>> {
+    pub fn get_piece_range(&self) -> io::Result<Option<RangeInclusive<PieceIndexHash>>> {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
@@ -630,7 +630,8 @@ impl IndexHashToOffsetDB {
         piece_index_hash
     }
 
-    fn get_piece_range(&self) -> io::Result<Range<PieceIndexHash>> {
+    // TODO: optimize fast path using `max_distance_cache`
+    fn get_piece_range(&self) -> io::Result<Option<RangeInclusive<PieceIndexHash>>> {
         let mut iter = self.inner.raw_iterator();
 
         iter.seek_to_first();
@@ -644,10 +645,10 @@ impl IndexHashToOffsetDB {
             .map(PieceDistance::from_big_endian)
             .unwrap_or(PieceDistance::MIDDLE);
 
-        Ok(Range {
-            start: self.piece_distance_to_hash(start),
-            end: self.piece_distance_to_hash(end),
-        })
+        Ok(Some(RangeInclusive::new(
+            self.piece_distance_to_hash(start),
+            self.piece_distance_to_hash(end),
+        )))
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {

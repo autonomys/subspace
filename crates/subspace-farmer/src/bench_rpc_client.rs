@@ -1,4 +1,4 @@
-use crate::{RpcClient, RpcClientError as MockError};
+use crate::rpc_client::{Error, RpcClient};
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
@@ -76,39 +76,39 @@ impl BenchRpcClient {
 
 #[async_trait]
 impl RpcClient for BenchRpcClient {
-    async fn farmer_metadata(&self) -> Result<FarmerMetadata, MockError> {
+    async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error> {
         Ok(self.inner.metadata.clone())
     }
 
     async fn subscribe_slot_info(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, MockError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = SlotInfo> + Send + 'static>>, Error> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
     async fn submit_solution_response(
         &self,
         _solution_response: SolutionResponse,
-    ) -> Result<(), MockError> {
+    ) -> Result<(), Error> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
     async fn subscribe_reward_signing(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, MockError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = RewardSigningInfo> + Send + 'static>>, Error> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
     async fn submit_reward_signature(
         &self,
         _reward_signature: RewardSignatureResponse,
-    ) -> Result<(), MockError> {
+    ) -> Result<(), Error> {
         unreachable!("Unreachable, as we don't start farming for benchmarking")
     }
 
     async fn subscribe_archived_segments(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, MockError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, Error> {
         let (mut sender, receiver) = mpsc::channel(10);
         let archived_segments_receiver = self.inner.archived_segments_receiver.clone();
         tokio::spawn(async move {
@@ -123,7 +123,7 @@ impl RpcClient for BenchRpcClient {
         Ok(Box::pin(receiver))
     }
 
-    async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), MockError> {
+    async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), Error> {
         self.inner
             .acknowledge_archived_segment_sender
             .clone()

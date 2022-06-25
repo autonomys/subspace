@@ -2,12 +2,10 @@ use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use crate::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use crate::{ObjectMappings, Plot};
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use rand::Rng;
 use std::collections::BTreeMap;
-use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use subspace_archiving::archiver::ArchivedSegment;
@@ -16,8 +14,7 @@ use subspace_core_primitives::{
     RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::{identity, Multiaddr, PeerId};
-use subspace_networking::{NodeRunner, PiecesToPlot};
+use subspace_networking::PiecesToPlot;
 use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -140,20 +137,13 @@ async fn no_sync_test() {
 #[tokio::test]
 async fn test_dsn_sync() {
     let seeder_max_plot_size = 20 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
-    let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
+    let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 2M
     let request_pieces_size = 20;
 
     let seeder_base_directory = TempDir::new().unwrap();
 
-    let free_port = (10_000..)
-        .find(|port| TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, *port)).is_ok())
-        .unwrap();
-    let mut seeder_multiaddr = format!("/ip4/127.0.0.1/tcp/{free_port}")
-        .parse::<Multiaddr>()
-        .unwrap();
-
     let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) =
-        futures::channel::mpsc::channel(10);
+        futures::channel::mpsc::channel(0);
     let seeder_client =
         BenchRpcClient::new(BENCH_FARMER_METADATA, seeder_archived_segments_receiver);
 
@@ -180,7 +170,7 @@ async fn test_dsn_sync() {
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             bootstrap_nodes: vec![],
-            listen_on: vec![seeder_multiaddr.clone()],
+            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             dsn_sync: false,
         },
         seeder_max_plot_size * PIECE_SIZE as u64,
@@ -196,8 +186,9 @@ async fn test_dsn_sync() {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
+        let number_of_segments = seeder_max_plot_size / 256;
 
-        for segment_index in 0..seeder_max_plot_size / 256 {
+        for segment_index in 0..number_of_segments {
             let archived_segment = {
                 let root_block = RootBlock::V0 {
                     segment_index,
@@ -226,26 +217,31 @@ async fn test_dsn_sync() {
             last_archived_block.set_complete();
         }
     }
-    seeder_multiaddr.push({
-        schnorrkel::PublicKey::from_bytes(
-            &*seeder_multi_farming.single_plot_farms[0].plot.public_key(),
-        )
-        .map(identity::sr25519::PublicKey::from)
-        .map(identity::PublicKey::Sr25519)
-        .map(PeerId::from)
-        .map(Into::into)
-        .map(Protocol::P2p)
-        .unwrap()
-    });
 
-    let node_runners = futures::future::join_all(
-        std::mem::take(&mut seeder_multi_farming.networking_node_runners)
-            .into_iter()
-            .map(NodeRunner::run),
-    );
+    let (seeder_address_sender, mut seeder_address_receiver) = futures::channel::mpsc::unbounded();
+    seeder_multi_farming.single_plot_farms[0]
+        .node
+        .on_new_listener(Arc::new(move |address| {
+            seeder_address_sender
+                .unbounded_send(address.clone())
+                .unwrap();
+        }))
+        .detach();
+    let node_runner = std::mem::take(&mut seeder_multi_farming.networking_node_runners)
+        .into_iter()
+        .next()
+        .unwrap();
     tokio::spawn(async move {
-        node_runners.await;
+        node_runner.run().await;
     });
+    let seeder_multiaddr = seeder_address_receiver
+        .next()
+        .await
+        .unwrap()
+        .with(Protocol::P2p(
+            seeder_multi_farming.single_plot_farms[0].node.id().into(),
+        ));
+    drop(seeder_address_receiver);
 
     for _ in 0..10 {
         let syncer_base_directory = TempDir::new().unwrap();
@@ -287,51 +283,41 @@ async fn test_dsn_sync() {
         .await
         .unwrap();
 
-        let node_runners = futures::future::join_all(
-            std::mem::take(&mut syncer_multi_farming.networking_node_runners)
-                .into_iter()
-                .map(NodeRunner::run),
-        );
+        let node_runner = std::mem::take(&mut syncer_multi_farming.networking_node_runners)
+            .into_iter()
+            .next()
+            .unwrap();
         tokio::spawn(async move {
-            node_runners.await;
+            node_runner.run().await;
         });
 
         let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
-        let mut futures = syncer_multi_farming
-            .single_plot_farms
-            .iter()
-            .map(|farming| {
-                let plot = farming.plot.clone();
-                farming
-                    .dsn_sync(syncer_max_plot_size, seeder_max_plot_size, range_size)
-                    .map(move |result| {
-                        result.unwrap();
-                        plot
-                    })
-            })
-            .collect::<FuturesUnordered<_>>();
+        let plot = syncer_multi_farming.single_plot_farms[0].plot.clone();
+        syncer_multi_farming.single_plot_farms[0]
+            .dsn_sync(syncer_max_plot_size, seeder_max_plot_size, range_size)
+            .await
+            .unwrap();
 
-        while let Some(plot) = futures.next().await {
-            let sync_sector_size =
-                PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
-            let expected_start =
-                U256::from_big_endian(&plot.public_key()).wrapping_sub(&(sync_sector_size / 2));
-            let expected_end =
-                U256::from_big_endian(&plot.public_key()).wrapping_add(&(sync_sector_size / 2));
-            let public_key = U256::from_big_endian(&plot.public_key());
-            let Range { start, end } = plot.get_piece_range().unwrap();
+        let sync_sector_size =
+            PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
+        let public_key = U256::from_big_endian(&plot.public_key());
+        let expected_start = public_key.wrapping_sub(&(sync_sector_size / 2));
+        let expected_end = public_key.wrapping_add(&(sync_sector_size / 2));
+        let (start, end) = match plot.get_piece_range().unwrap() {
+            Some(range) => (*range.start(), *range.end()),
+            None => continue,
+        };
 
-            let shift_to_middle =
-                |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
+        let shift_to_middle =
+            |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
 
-            let expected_start = shift_to_middle(expected_start, &public_key);
-            let expected_end = shift_to_middle(expected_end, &public_key);
-            let start = shift_to_middle(U256::from_big_endian(&start.0), &public_key);
-            let end = shift_to_middle(U256::from_big_endian(&end.0), &public_key);
+        let expected_start = shift_to_middle(expected_start, &public_key);
+        let expected_end = shift_to_middle(expected_end, &public_key);
+        let start = shift_to_middle(U256::from_big_endian(&start.0), &public_key);
+        let end = shift_to_middle(U256::from_big_endian(&end.0), &public_key);
 
-            assert!(expected_start <= start && start <= expected_end);
-            assert!(expected_start <= end && end <= expected_end);
-        }
+        assert!(expected_start <= start && start <= expected_end);
+        assert!(expected_start <= end && end <= expected_end);
 
         syncer_client.stop().await;
     }
