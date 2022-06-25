@@ -296,15 +296,14 @@ async fn test_dsn_sync() {
             node_runners.await;
         });
 
-        let expected_total_pieces = syncer_max_plot_size;
-        let range_size = PieceIndexHashNumber::MAX / expected_total_pieces * request_pieces_size;
+        let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
         let mut futures = syncer_multi_farming
             .single_plot_farms
             .iter()
             .map(|farming| {
                 let plot = farming.plot.clone();
                 farming
-                    .dsn_sync(syncer_max_plot_size, expected_total_pieces, range_size)
+                    .dsn_sync(syncer_max_plot_size, seeder_max_plot_size, range_size)
                     .map(move |result| {
                         result.unwrap();
                         plot
@@ -321,7 +320,6 @@ async fn test_dsn_sync() {
                 U256::from_big_endian(&plot.public_key()).wrapping_add(&(sync_sector_size / 2));
             let public_key = U256::from_big_endian(&plot.public_key());
             let Range { start, end } = plot.get_piece_range().unwrap();
-            let total_pieces = plot.piece_count();
 
             let shift_to_middle =
                 |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
@@ -333,10 +331,6 @@ async fn test_dsn_sync() {
 
             assert!(expected_start <= start && start <= expected_end);
             assert!(expected_start <= end && end <= expected_end);
-            assert!(
-                expected_total_pieces / 10 * 9 < total_pieces
-                    && total_pieces < expected_total_pieces / 10 * 11
-            );
         }
 
         syncer_client.stop().await;
