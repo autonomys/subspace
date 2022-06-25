@@ -613,7 +613,7 @@ impl IndexHashToOffsetDB {
             .map(|distance| distance.value)
     }
 
-    fn get_key(&self, index_hash: &PieceIndexHash) -> PieceDistance {
+    fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
         // We permute distance such that if piece index hash is equal to the `self.address` then it
         // lands to the `PieceDistance::MIDDLE`
         PieceDistance::from_big_endian(&index_hash.0)
@@ -621,7 +621,7 @@ impl IndexHashToOffsetDB {
             .wrapping_add(&PieceDistance::MIDDLE)
     }
 
-    fn get_piece_index_hash(&self, distance: PieceDistance) -> PieceIndexHash {
+    fn piece_distance_to_hash(&self, distance: PieceDistance) -> PieceIndexHash {
         let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
         distance
             .wrapping_sub(&PieceDistance::MIDDLE)
@@ -645,14 +645,14 @@ impl IndexHashToOffsetDB {
             .unwrap_or(PieceDistance::MIDDLE);
 
         Ok(Range {
-            start: self.get_piece_index_hash(start),
-            end: self.get_piece_index_hash(end),
+            start: self.piece_distance_to_hash(start),
+            end: self.piece_distance_to_hash(end),
         })
     }
 
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(&self.get_key(index_hash).to_bytes())
+            .get(&self.piece_hash_to_distance(index_hash).to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -697,7 +697,7 @@ impl IndexHashToOffsetDB {
     }
 
     fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let key = self.get_key(index_hash);
+        let key = self.piece_hash_to_distance(index_hash);
         self.inner
             .put(&key.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
@@ -970,7 +970,12 @@ impl<T: PlotFile> PlotWorker<T> {
         let mut piece_indexes = Vec::with_capacity(count as _);
 
         let mut iter = self.piece_index_hash_to_offset_db.inner.raw_iterator();
-        iter.seek(&self.piece_index_hash_to_offset_db.get_key(from).to_bytes());
+        iter.seek(
+            &self
+                .piece_index_hash_to_offset_db
+                .piece_hash_to_distance(from)
+                .to_bytes(),
+        );
 
         for _ in 0..count {
             if iter.key().is_none() {

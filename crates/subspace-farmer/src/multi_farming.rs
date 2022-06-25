@@ -137,6 +137,7 @@ impl MultiFarming {
 
         // Start syncing
         if dsn_sync {
+            // TODO: operate with number of pieces to fetch, instead of range calculations
             let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
 
             tokio::spawn({

@@ -310,9 +310,9 @@ fn get_size(path: impl AsRef<Path>) -> std::io::Result<u64> {
 #[cfg(test)]
 #[tokio::test]
 async fn test_dsn_sync() {
-    use std::ops::Range;
-
     use num_traits::{WrappingAdd, WrappingSub};
+    use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+    use std::ops::Range;
     use subspace_core_primitives::U256;
     use subspace_farmer::{PieceIndexHashNumber, SyncResult};
     use subspace_networking::libp2p::multiaddr::Protocol;
@@ -324,7 +324,13 @@ async fn test_dsn_sync() {
     let request_pieces_size = 20;
 
     let seeder_base_directory = TempDir::new().unwrap();
-    let mut seeder_multiaddr: Multiaddr = "/ip4/127.0.0.1/tcp/40000".parse().unwrap();
+
+    let free_port = (10_000..)
+        .find(|port| TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, *port)).is_ok())
+        .unwrap();
+    let mut seeder_multiaddr = format!("/ip4/127.0.0.1/tcp/{free_port}")
+        .parse::<Multiaddr>()
+        .unwrap();
 
     let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) =
         mpsc::channel(10);

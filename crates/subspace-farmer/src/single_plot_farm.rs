@@ -180,7 +180,10 @@ impl SinglePlotFarm {
                         plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
 
                     if pieces_and_indexes.len() == 1 {
-                        let (index, mut piece) = pieces_and_indexes.into_iter().next().unwrap();
+                        let (index, mut piece) = pieces_and_indexes
+                            .into_iter()
+                            .next()
+                            .expect("Always present as length is exactly one");
                         codec.decode(&mut piece, index).ok()?;
                         return Some(PiecesByRangeResponse {
                             pieces: PiecesToPlot {
