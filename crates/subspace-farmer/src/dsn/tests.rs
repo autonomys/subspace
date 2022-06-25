@@ -1,10 +1,9 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use crate::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
-use crate::single_plot_farm::SyncResult;
 use crate::{ObjectMappings, Plot};
 use futures::stream::FuturesUnordered;
-use futures::{SinkExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use rand::Rng;
 use std::collections::BTreeMap;
@@ -303,29 +302,34 @@ async fn test_dsn_sync() {
             .single_plot_farms
             .iter()
             .map(|farming| {
-                farming.dsn_sync(syncer_max_plot_size, expected_total_pieces, range_size)
+                let plot = farming.plot.clone();
+                farming
+                    .dsn_sync(syncer_max_plot_size, expected_total_pieces, range_size)
+                    .map(move |result| {
+                        result.unwrap();
+                        plot
+                    })
             })
             .collect::<FuturesUnordered<_>>();
 
-        while let Some(result) = futures.next().await {
-            let SyncResult {
-                expected_range:
-                    Range {
-                        start: expected_start,
-                        end: expected_end,
-                    },
-                got_range: Range { start, end },
-                total_pieces,
-                public_key,
-            } = result.unwrap();
+        while let Some(plot) = futures.next().await {
+            let sync_sector_size =
+                PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
+            let expected_start =
+                U256::from_big_endian(&plot.public_key()).wrapping_sub(&(sync_sector_size / 2));
+            let expected_end =
+                U256::from_big_endian(&plot.public_key()).wrapping_add(&(sync_sector_size / 2));
+            let public_key = U256::from_big_endian(&plot.public_key());
+            let Range { start, end } = plot.get_piece_range().unwrap();
+            let total_pieces = plot.piece_count();
+
             let shift_to_middle =
                 |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
 
-            let public_key = U256::from_big_endian(&public_key);
             let expected_start = shift_to_middle(expected_start, &public_key);
             let expected_end = shift_to_middle(expected_end, &public_key);
-            let start = shift_to_middle(start, &public_key);
-            let end = shift_to_middle(end, &public_key);
+            let start = shift_to_middle(U256::from_big_endian(&start.0), &public_key);
+            let end = shift_to_middle(U256::from_big_endian(&end.0), &public_key);
 
             assert!(expected_start <= start && start <= expected_end);
             assert!(expected_start <= end && end <= expected_end);

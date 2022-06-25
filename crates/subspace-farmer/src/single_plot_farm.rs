@@ -6,11 +6,8 @@ use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::plotting::plot_pieces;
 use crate::rpc_client::RpcClient;
-use futures::FutureExt;
-use num_traits::{WrappingAdd, WrappingSub};
 use parking_lot::Mutex;
 use std::future::Future;
-use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, PublicKey};
@@ -53,18 +50,6 @@ pub struct SinglePlotFarm {
     pub(crate) node: Node,
     /// Might be `None` if was already taken out before
     pub node_runner: Option<NodeRunner>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SyncResult {
-    /// Range expected to sync
-    pub expected_range: Range<PieceIndexHashNumber>,
-    /// Range of pieces which was actually synced
-    pub got_range: Range<PieceIndexHashNumber>,
-    /// Public key of the plot
-    pub public_key: PublicKey,
-    /// Total number of pieces synced
-    pub total_pieces: u64,
 }
 
 impl SinglePlotFarm {
@@ -261,7 +246,7 @@ impl SinglePlotFarm {
         max_plot_size: u64,
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
-    ) -> impl Future<Output = anyhow::Result<SyncResult>> {
+    ) -> impl Future<Output = anyhow::Result<()>> {
         let plot = self.plot.clone();
         let commitments = self.commitments.clone();
         let codec = self.codec.clone();
@@ -283,32 +268,6 @@ impl SinglePlotFarm {
                 return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
             }
             Ok(())
-        })
-        .map({
-            let plot = self.plot.clone();
-            move |result| {
-                let sync_sector_size = if total_pieces < max_plot_size {
-                    PieceIndexHashNumber::MAX
-                } else {
-                    PieceIndexHashNumber::MAX / total_pieces * max_plot_size
-                };
-                let expected_range = Range {
-                    start: PieceIndexHashNumber::from_big_endian(&plot.public_key())
-                        .wrapping_sub(&(sync_sector_size / 2)),
-                    end: PieceIndexHashNumber::from_big_endian(&plot.public_key())
-                        .wrapping_add(&(sync_sector_size / 2)),
-                };
-                let got_range = plot.get_piece_range().map(|Range { start, end }| Range {
-                    start: start.into(),
-                    end: end.into(),
-                })?;
-                result.map(|()| SyncResult {
-                    expected_range,
-                    got_range,
-                    public_key: plot.public_key(),
-                    total_pieces: plot.piece_count(),
-                })
-            }
         })
     }
 }
