@@ -1,10 +1,11 @@
+use crate::{RpcClient, RpcClientError as MockError};
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_farmer::{RpcClient, RpcClientError as MockError};
+use subspace_core_primitives::PIECE_SIZE;
 use subspace_rpc_primitives::{
     FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -24,6 +25,15 @@ pub struct Inner {
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     segment_producer_handle: Mutex<JoinHandle<()>>,
 }
+
+/// Default farmer metadata for benchmarking
+pub const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
+    record_size: PIECE_SIZE as u32 - 96, // PIECE_SIZE - WITNESS_SIZE
+    recorded_history_segment_size: PIECE_SIZE as u32 * 256 / 2, // PIECE_SIZE * MERKLE_NUM_LEAVES / 2
+    max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+    // Doesn't matter, as we don't start sync
+    total_pieces: 0,
+};
 
 impl BenchRpcClient {
     /// Create a new instance of [`BenchRpcClient`].

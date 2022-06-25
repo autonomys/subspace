@@ -246,7 +246,7 @@ impl SinglePlotFarm {
         }))
         .detach();
 
-        Ok::<_, anyhow::Error>(SinglePlotFarm {
+        Ok(SinglePlotFarm {
             codec,
             plot,
             commitments,
@@ -256,7 +256,7 @@ impl SinglePlotFarm {
         })
     }
 
-    pub fn dsn_sync(
+    pub(crate) fn dsn_sync(
         &self,
         max_plot_size: u64,
         total_pieces: u64,
