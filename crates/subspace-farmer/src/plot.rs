@@ -635,15 +635,15 @@ impl IndexHashToOffsetDB {
         let mut iter = self.inner.raw_iterator();
 
         iter.seek_to_first();
-        let start = iter
-            .key()
-            .map(PieceDistance::from_big_endian)
-            .unwrap_or(PieceDistance::MIDDLE);
+        let start = match iter.key() {
+            Some(key) => PieceDistance::from_big_endian(key),
+            None => return Ok(None),
+        };
         iter.seek_to_last();
         let end = iter
             .key()
             .map(PieceDistance::from_big_endian)
-            .unwrap_or(PieceDistance::MIDDLE);
+            .expect("Must have at least one key");
 
         Ok(Some(RangeInclusive::new(
             self.piece_distance_to_hash(start),

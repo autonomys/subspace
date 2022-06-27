@@ -222,9 +222,7 @@ async fn test_dsn_sync() {
     seeder_multi_farming.single_plot_farms[0]
         .node
         .on_new_listener(Arc::new(move |address| {
-            seeder_address_sender
-                .unbounded_send(address.clone())
-                .unwrap();
+            let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
     let node_runner = std::mem::take(&mut seeder_multi_farming.networking_node_runners)
