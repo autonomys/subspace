@@ -66,7 +66,7 @@ async fn plotting_happy_path() {
         }
     }
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key().as_ref());
+    let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
     // Start archiving task
     let archiving_instance = Archiving::start(
@@ -152,7 +152,7 @@ async fn plotting_piece_eviction() {
         }
     }
 
-    let subspace_codec = SubspaceCodec::new(identity.public_key().as_ref());
+    let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
     // Start archiving task
     let archiving_instance = Archiving::start(
