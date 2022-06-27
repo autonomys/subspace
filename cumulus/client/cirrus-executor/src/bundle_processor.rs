@@ -10,7 +10,7 @@ use sc_consensus::{
 };
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use sp_core::ByteArray;
@@ -301,7 +301,17 @@ where
 
 		// TODO: The applied txs can be fully removed from the transaction pool
 
-		self.check_receipts_in_primary_block(primary_number.into())?;
+		// TODO: Remove once the network is reset.
+		if self
+			.primary_chain_client
+			.runtime_api()
+			.api_version::<dyn ExecutorApi<PBlock, Block::Hash>>(&BlockId::Number(
+				primary_number.into(),
+			))?
+			.map_or(false, |v| v >= 3)
+		{
+			self.check_receipts_in_primary_block(primary_number.into())?;
+		}
 
 		if self.primary_network.is_major_syncing() {
 			tracing::debug!(
