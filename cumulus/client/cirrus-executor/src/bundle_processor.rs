@@ -305,12 +305,10 @@ where
 		if self
 			.primary_chain_client
 			.runtime_api()
-			.api_version::<dyn ExecutorApi<PBlock, Block::Hash>>(&BlockId::Number(
-				primary_number.into(),
-			))?
+			.api_version::<dyn ExecutorApi<PBlock, Block::Hash>>(&BlockId::Hash(primary_hash))?
 			.map_or(false, |v| v >= 3)
 		{
-			self.check_receipts_in_primary_block(primary_number.into())?;
+			self.check_receipts_in_primary_block(primary_hash)?;
 		}
 
 		if self.primary_network.is_major_syncing() {
@@ -442,24 +440,24 @@ where
 
 	fn check_receipts_in_primary_block(
 		&self,
-		primary_number: NumberFor<PBlock>,
+		primary_hash: PBlock::Hash,
 	) -> Result<(), sp_blockchain::Error> {
 		let extrinsics = self
 			.primary_chain_client
-			.block_body(&BlockId::Number(primary_number))?
+			.block_body(&BlockId::Hash(primary_hash))?
 			.ok_or_else(|| {
 				sp_blockchain::Error::Backend(format!(
 					"Primary block body for {:?} not found",
-					primary_number
+					primary_hash
 				))
 			})?;
 
-		let receipts = self
+		let signed_receipts = self
 			.primary_chain_client
 			.runtime_api()
-			.extract_receipts(&BlockId::Number(primary_number), extrinsics.clone())?;
+			.extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
-		for signed_receipt in receipts.iter() {
+		for signed_receipt in signed_receipts.iter() {
 			match aux_schema::load_execution_receipt::<
 				_,
 				Block::Hash,
@@ -486,7 +484,7 @@ where
 		let fraud_proofs = self
 			.primary_chain_client
 			.runtime_api()
-			.extract_fraud_proofs(&BlockId::Number(primary_number), extrinsics)?;
+			.extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
 
 		for _fraud_proof in fraud_proofs {
 			// TODO: Remove the corresponding invalid receipt entry from cache.
