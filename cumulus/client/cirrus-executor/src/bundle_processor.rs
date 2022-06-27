@@ -321,6 +321,8 @@ where
 			return Ok(())
 		}
 
+		// TODO: Generate FraudProof for the first incorrect ER which is still not _confirmed_.
+
 		// Ideally, the receipt of current block will be included in the next block, i.e., no
 		// missing receipts.
 		if header_number == best_execution_chain_number + One::one() {
