@@ -448,6 +448,7 @@ sp_api::decl_runtime_apis! {
         /// Extract the fraud proofs from the given extrinsics.
         fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
 
+        // TODO: remove and replace the usages with `extract_fraud_proofs` once api version is reset.
         /// Extract a fraud proof from given extrinsic if any.
         fn extract_fraud_proof(ext: &Block::Extrinsic) -> Option<FraudProof>;
 
