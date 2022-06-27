@@ -128,20 +128,28 @@ where
             [Some((sub_sector_start, sub_sector_end)), None]
         }
     })
-    .flatten()
-    .map(|(start, end)| Range {
-        start: start.into(),
-        end: end.into(),
-    });
+    .flatten();
 
-    for range in sync_ranges {
-        let mut stream = dsn.get_pieces(range).await?;
+    for (start, end) in sync_ranges {
+        let mut stream = dsn.get_pieces(start.into()..end.into()).await?;
 
         while let Some(PiecesToPlot {
             piece_indexes,
             pieces,
         }) = stream.next().await
         {
+            // Filter out pieces which are not in our range
+            let (piece_indexes, pieces) = piece_indexes
+                .into_iter()
+                .zip(pieces.as_pieces())
+                .filter(|(index, _)| {
+                    (start..end).contains(&PieceIndexHashNumber::from_big_endian(
+                        &PieceIndexHash::from(*index).0,
+                    ))
+                })
+                .map(|(index, piece)| (index, piece.try_into().unwrap()))
+                .unzip();
+
             // Writing pieces is usually synchronous, therefore might take some time
             on_pieces = tokio::task::spawn_blocking(move || {
                 on_pieces(pieces, piece_indexes).map(|()| on_pieces)
