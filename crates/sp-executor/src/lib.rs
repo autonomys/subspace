@@ -440,6 +440,14 @@ sp_api::decl_runtime_apis! {
         /// Extract the bundles from the given extrinsics.
         fn extract_bundles(extrinsics: Vec<Block::Extrinsic>) -> Vec<OpaqueBundle>;
 
+        /// Extract the receipts from the given extrinsics.
+        fn extract_receipts(
+            extrinsics: Vec<Block::Extrinsic>,
+        ) -> Vec<SignedExecutionReceipt<NumberFor<Block>, Block::Hash, SecondaryHash>>;
+
+        /// Extract the fraud proofs from the given extrinsics.
+        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
+
         /// Extract a fraud proof from given extrinsic if any.
         fn extract_fraud_proof(ext: &Block::Extrinsic) -> Option<FraudProof>;
 
