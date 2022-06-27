@@ -1,4 +1,4 @@
-use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor};
+use crate::{aux_schema, ExecutionReceiptFor, SignedExecutionReceiptFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -131,7 +131,7 @@ where
 		Transaction = TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
-	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
 	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 	Backend: sc_client_api::Backend<Block>,
 {
@@ -301,6 +301,8 @@ where
 
 		// TODO: The applied txs can be fully removed from the transaction pool
 
+		self.check_receipts_in_primary_block(primary_number.into())?;
+
 		if self.primary_network.is_major_syncing() {
 			tracing::debug!(
 				target: LOG_TARGET,
@@ -424,6 +426,61 @@ where
 			shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
 		Ok(extrinsics)
+	}
+
+	fn check_receipts_in_primary_block(
+		&self,
+		primary_number: NumberFor<PBlock>,
+	) -> Result<(), sp_blockchain::Error> {
+		let extrinsics = self
+			.primary_chain_client
+			.block_body(&BlockId::Number(primary_number))?
+			.ok_or_else(|| {
+				sp_blockchain::Error::Backend(format!(
+					"Primary block body for {:?} not found",
+					primary_number
+				))
+			})?;
+
+		let receipts = self
+			.primary_chain_client
+			.runtime_api()
+			.extract_receipts(&BlockId::Number(primary_number), extrinsics.clone())?;
+
+		for signed_receipt in receipts.iter() {
+			match aux_schema::load_execution_receipt::<
+				_,
+				Block::Hash,
+				NumberFor<PBlock>,
+				PBlock::Hash,
+			>(&*self.client, signed_receipt.execution_receipt.secondary_hash)?
+			{
+				Some(local_receipt) => {
+					if crate::find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
+						.is_some()
+					{
+						// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
+					}
+				},
+				None => {
+					// The receipt of a prior block must exist, otherwise it means the receipt included
+					// on the primary chain points to an invalid secondary block.
+
+					// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
+				},
+			}
+		}
+
+		let fraud_proofs = self
+			.primary_chain_client
+			.runtime_api()
+			.extract_fraud_proofs(&BlockId::Number(primary_number), extrinsics)?;
+
+		for _fraud_proof in fraud_proofs {
+			// TODO: Remove the corresponding invalid receipt entry from cache.
+		}
+
+		Ok(())
 	}
 
 	fn try_sign_and_send_receipt(
