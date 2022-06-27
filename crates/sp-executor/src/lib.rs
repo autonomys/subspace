@@ -437,8 +437,8 @@ sp_api::decl_runtime_apis! {
             invalid_transaction_proof: InvalidTransactionProof,
         );
 
-        /// Extract the bundles from extrinsics in a block.
-        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle>;
+        /// Extract the bundles from the given extrinsics.
+        fn extract_bundles(extrinsics: Vec<Block::Extrinsic>) -> Vec<OpaqueBundle>;
 
         /// Extract a fraud proof from given extrinsic if any.
         fn extract_fraud_proof(ext: &Block::Extrinsic) -> Option<FraudProof>;

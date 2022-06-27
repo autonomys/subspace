@@ -26,7 +26,7 @@ include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Compact, CompactLen, Decode, Encode};
+use codec::{Compact, CompactLen, Encode};
 use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
@@ -48,7 +48,10 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
-use sp_executor::{FraudProof, OpaqueBundle};
+use sp_executor::{
+    BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    SignedExecutionReceipt, SignedOpaqueBundle,
+};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
 };
@@ -56,8 +59,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, OpaqueExtrinsic,
-    Perbill,
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, Perbill,
 };
 use sp_std::borrow::Cow;
 use sp_std::iter::Peekable;
@@ -819,22 +821,17 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
     block_object_mapping
 }
 
-fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
+fn extract_bundles(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<OpaqueBundle> {
     extrinsics
         .into_iter()
-        .filter_map(|opaque_extrinsic| {
-            match <UncheckedExtrinsic>::decode(&mut opaque_extrinsic.encode().as_slice()) {
-                Ok(uxt) => {
-                    if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
-                        signed_opaque_bundle,
-                    }) = uxt.function
-                    {
-                        Some(signed_opaque_bundle.opaque_bundle)
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
+        .filter_map(|uxt| {
+            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+                signed_opaque_bundle,
+            }) = uxt.function
+            {
+                Some(signed_opaque_bundle.opaque_bundle)
+            } else {
+                None
             }
         })
         .collect()
@@ -1055,12 +1052,12 @@ impl_runtime_apis! {
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_execution_receipt_unsigned(
-            execution_receipt: sp_executor::SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
+            execution_receipt: SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
         ) {
             Executor::submit_execution_receipt_unsigned(execution_receipt)
         }
 
-        fn submit_transaction_bundle_unsigned(opaque_bundle: sp_executor::SignedOpaqueBundle) {
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) {
             Executor::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
@@ -1069,22 +1066,22 @@ impl_runtime_apis! {
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: sp_executor::BundleEquivocationProof,
+            bundle_equivocation_proof: BundleEquivocationProof,
         ) {
             Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
 
         fn submit_invalid_transaction_proof_unsigned(
-            invalid_transaction_proof: sp_executor::InvalidTransactionProof,
+            invalid_transaction_proof: InvalidTransactionProof,
         ) {
             Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<OpaqueExtrinsic>) -> Vec<OpaqueBundle> {
+        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle> {
             extract_bundles(extrinsics)
         }
 
-        fn extract_fraud_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<sp_executor::FraudProof> {
+        fn extract_fraud_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<FraudProof> {
             extract_fraud_proof(ext)
         }
 
