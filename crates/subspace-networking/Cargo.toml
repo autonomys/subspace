@@ -23,6 +23,7 @@ futures = "0.3.21"
 generic-array = "0.14.5"
 hex = "0.4.3"
 nohash-hasher = "0.2.0"
+once_cell = "1.12.0"
 parity-scale-codec = "3.1.2"
 parking_lot = "0.12.0"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }

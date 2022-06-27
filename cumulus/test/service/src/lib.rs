@@ -117,12 +117,14 @@ async fn run_executor(
 			base: primary_chain_config,
 			// Always enable the slot notification.
 			force_new_slot_notifications: true,
+			dsn_config: None,
 		};
 
 		subspace_service::new_full::<
 			subspace_test_runtime::RuntimeApi,
 			subspace_test_client::TestExecutorDispatch,
 		>(primary_chain_config, false)
+		.await
 		.map_err(|e| {
 			sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
 		})?
@@ -501,10 +503,10 @@ pub fn construct_extrinsic(
 ///
 /// This is essentially a wrapper around
 /// [`run_validator_node`](subspace_test_service::run_validator_node).
-pub fn run_primary_chain_validator_node(
+pub async fn run_primary_chain_validator_node(
 	tokio_handle: tokio::runtime::Handle,
 	key: Sr25519Keyring,
 	boot_nodes: Vec<MultiaddrWithPeerId>,
 ) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
-	subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true)
+	subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true).await
 }
