@@ -552,6 +552,23 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 	}
 }
 
+/// Compares if the receipt `other` is the same with `local`, return a tuple of (local_index,
+/// local_trace_root) if there is a mismatch.
+pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
+	local: &ExecutionReceipt<Number, PHash, Hash>,
+	other: &ExecutionReceipt<Number, PHash, Hash>,
+) -> Option<(usize, Hash)> {
+	local.trace.iter().enumerate().zip(other.trace.iter().enumerate()).find_map(
+		|((local_index, local_root), (_, other_root))| {
+			if local_root != other_root {
+				Some((local_index, *local_root))
+			} else {
+				None
+			}
+		},
+	)
+}
+
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 	GossipMessageHandler<PBlock, Block>
 	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
@@ -738,18 +755,9 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some((local_trace_idx, local_root)) = local_receipt
-			.trace
-			.iter()
-			.enumerate()
-			.zip(execution_receipt.trace.iter().enumerate())
-			.find_map(|((local_idx, local_root), (_, external_root))| {
-				if local_root != external_root {
-					Some((local_idx, local_root))
-				} else {
-					None
-				}
-			}) {
+		if let Some((local_trace_idx, local_root)) =
+			find_trace_mismatch(&local_receipt, execution_receipt)
+		{
 			let header = self.header(execution_receipt.secondary_hash)?;
 			let parent_header = self.header(*header.parent_hash())?;
 
@@ -772,7 +780,7 @@ where
 			let fraud_proof = if local_trace_idx == 0 {
 				// `initialize_block` execution proof.
 				let pre_state_root = as_h256(parent_header.state_root())?;
-				let post_state_root = as_h256(local_root)?;
+				let post_state_root = as_h256(&local_root)?;
 
 				let new_header = Block::Header::new(
 					block_number,
@@ -801,7 +809,7 @@ where
 			} else if local_trace_idx == local_receipt.trace.len() - 1 {
 				// `finalize_block` execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
-				let post_state_root = as_h256(local_root)?;
+				let post_state_root = as_h256(&local_root)?;
 				let execution_phase = ExecutionPhase::FinalizeBlock;
 
 				let block_builder = BlockBuilder::new(
@@ -836,7 +844,7 @@ where
 			} else {
 				// Regular extrinsic execution proof.
 				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
-				let post_state_root = as_h256(local_root)?;
+				let post_state_root = as_h256(&local_root)?;
 
 				let (proof, execution_phase) = self.create_extrinsic_execution_proof(
 					local_trace_idx - 1,
