@@ -15,9 +15,20 @@ use tempfile::TempDir;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
-use tracing_subscriber::fmt::{self};
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt, EnvFilter};
+
+#[derive(Debug, Clone, Copy, ArgEnum)]
+enum ArchivingFrom {
+    Node,
+    Dsn,
+}
+
+impl Default for ArchivingFrom {
+    fn default() -> Self {
+        Self::Node
+    }
+}
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]
@@ -50,9 +61,9 @@ struct FarmingArgs {
     /// Only a developer testing flag, as it might be needed for testing.
     #[clap(long, parse(try_from_str = parse_human_readable_size))]
     max_plot_size: Option<u64>,
-    /// Enable DSN subscription for archiving segments.
-    #[clap(long)]
-    enable_dsn_archiving: bool,
+    /// Archive data from
+    #[clap(arg_enum, long, default_value_t)]
+    archiving: ArchivingFrom,
     /// Use dsn for syncing
     #[clap(long)]
     dsn_sync: bool,

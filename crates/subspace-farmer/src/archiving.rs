@@ -4,7 +4,7 @@ use futures::StreamExt;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
-use subspace_networking::PiecesToPlot;
+use subspace_networking::{Node, PiecesToPlot};
 use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -41,6 +41,7 @@ impl Archiving {
         farmer_metadata: FarmerMetadata,
         object_mappings: ObjectMappings,
         client: Client,
+        node: Option<Node>,
         mut on_pieces_to_plot: OPTP,
     ) -> Result<Archiving, ArchivingError>
     where

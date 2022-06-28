@@ -117,6 +117,8 @@ impl MultiFarming {
         let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
         let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
 
+        let mut node = None;
+
         while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
             let mut single_plot_farm = single_plot_farm?;
 
@@ -148,6 +150,9 @@ impl MultiFarming {
                 });
             }
 
+            if node.is_none() {
+                node = Some(single_plot_farm.node.clone());
+            }
             networking_node_runners.push(
                 single_plot_farm
                     .node_runner
@@ -185,30 +190,37 @@ impl MultiFarming {
         }
 
         // Start archiving task
-        let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {
-            let mut on_pieces_to_plots = single_plot_farms
-                .iter()
-                .map(|single_plot_farm| {
-                    plotting::plot_pieces(
-                        single_plot_farm.codec.clone(),
-                        &single_plot_farm.plot,
-                        single_plot_farm.commitments.clone(),
-                    )
-                })
-                .collect::<Vec<_>>();
-
-            move |pieces_to_plot| {
-                on_pieces_to_plots
-                    .par_iter_mut()
-                    .map(|on_pieces_to_plot| {
-                        // TODO: It might be desirable to not clone it and instead pick just
-                        //  unnecessary pieces and copy pieces once since different plots will
-                        //  care about different pieces
-                        on_pieces_to_plot(pieces_to_plot.clone())
+        let archiving = Archiving::start(
+            farmer_metadata,
+            object_mappings,
+            archiving_client,
+            enable_dsn_archiving
+                .then(|| node.expect("Always set, as we have at least one networking instance")),
+            {
+                let mut on_pieces_to_plots = single_plot_farms
+                    .iter()
+                    .map(|single_plot_farm| {
+                        plotting::plot_pieces(
+                            single_plot_farm.codec.clone(),
+                            &single_plot_farm.plot,
+                            single_plot_farm.commitments.clone(),
+                        )
                     })
-                    .reduce(|| true, |result, should_continue| result && should_continue)
-            }
-        })
+                    .collect::<Vec<_>>();
+
+                move |pieces_to_plot| {
+                    on_pieces_to_plots
+                        .par_iter_mut()
+                        .map(|on_pieces_to_plot| {
+                            // TODO: It might be desirable to not clone it and instead pick just
+                            //  unnecessary pieces and copy pieces once since different plots will
+                            //  care about different pieces
+                            on_pieces_to_plot(pieces_to_plot.clone())
+                        })
+                        .reduce(|| true, |result, should_continue| result && should_continue)
+                }
+            },
+        )
         .await?;
 
         Ok(Self {
