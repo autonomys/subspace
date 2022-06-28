@@ -147,6 +147,7 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
+        // TODO: We do not rely on this event to collect the receipts included in a block, perhaps can be removed later.
         /// A new execution receipt was backed.
         NewExecutionReceipt {
             primary_number: T::BlockNumber,

@@ -172,6 +172,7 @@ async fn test_dsn_sync() {
             bootstrap_nodes: vec![],
             listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             dsn_sync: false,
+            enable_dsn_archiving: false,
         },
         // XXX: farmer reserves 8% for its own needs, so we need to update piece count here
         seeder_max_plot_size * 100 / 92 * PIECE_SIZE as u64,
@@ -275,6 +276,7 @@ async fn test_dsn_sync() {
             bootstrap_nodes: vec![seeder_multiaddr.clone()],
             listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             dsn_sync: false,
+            enable_dsn_archiving: false,
         },
         syncer_max_plot_size * PIECE_SIZE as u64,
         syncer_max_plot_size,

@@ -28,7 +28,6 @@ use sp_executor::{ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_runtime::{
 	generic::{BlockId, DigestItem},
 	traits::{Header as HeaderT, NumberFor, One, Saturating},
-	OpaqueExtrinsic,
 };
 use std::{
 	borrow::Cow,
@@ -396,15 +395,7 @@ where
 		Ok(Some(body)) => body,
 	};
 
-	let bundles = primary_chain_client.runtime_api().extract_bundles(
-		&block_id,
-		extrinsics
-			.into_iter()
-			.map(|xt| {
-				OpaqueExtrinsic::from_bytes(&xt.encode()).expect("Certainly a correct extrinsic")
-			})
-			.collect(),
-	)?;
+	let bundles = primary_chain_client.runtime_api().extract_bundles(&block_id, extrinsics)?;
 
 	let header = match primary_chain_client.header(block_id) {
 		Err(err) => {

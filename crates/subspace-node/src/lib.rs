@@ -32,6 +32,7 @@ use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
 use std::{fs, io};
+use subspace_networking::libp2p::Multiaddr;
 
 /// Executor dispatch for subspace runtime
 pub struct ExecutorDispatch;
@@ -173,6 +174,11 @@ pub struct Cli {
     /// Run a node.
     #[clap(flatten)]
     pub run: RunCmd,
+
+    /// DSN configuration arguments: DSN 'listen-on' multi-address
+    // TODO: Add more DSN-related parameters
+    #[clap(long)]
+    pub dsn_listen_on: Vec<Multiaddr>,
 
     /// Secondary chain arguments
     ///
