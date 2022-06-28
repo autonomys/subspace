@@ -968,19 +968,22 @@ impl<T: PlotFile> PlotWorker<T> {
         from: &PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<PieceIndex>> {
+        if self.piece_count.load(Ordering::Relaxed) == 0 {
+            return Ok(vec![]);
+        }
+
         let mut piece_indexes = Vec::with_capacity(count as _);
 
         let mut iter = self.piece_index_hash_to_offset_db.inner.raw_iterator();
         iter.seek(
-            &self
-                .piece_index_hash_to_offset_db
+            self.piece_index_hash_to_offset_db
                 .piece_hash_to_distance(from)
                 .to_bytes(),
         );
 
         for _ in 0..count {
             if iter.key().is_none() {
-                break;
+                iter.seek_to_first();
             }
 
             let offset = PieceOffset::from_le_bytes(
@@ -989,9 +992,13 @@ impl<T: PlotFile> PlotWorker<T> {
                     .try_into()
                     .expect("Failed to decode piece offsets from rocksdb"),
             );
-            iter.next();
+            let index = self.piece_offset_to_index.get_piece_index(offset)?;
+            if &PieceIndexHash::from(index) <= from {
+                break;
+            }
 
-            piece_indexes.push(self.piece_offset_to_index.get_piece_index(offset)?)
+            piece_indexes.push(index);
+            iter.next();
         }
 
         Ok(piece_indexes)
