@@ -173,7 +173,8 @@ async fn test_dsn_sync() {
             listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             dsn_sync: false,
         },
-        seeder_max_plot_size * PIECE_SIZE as u64,
+        // XXX: farmer reserves 8% for its own needs, so we need to update piece count here
+        seeder_max_plot_size * 100 / 92 * PIECE_SIZE as u64,
         seeder_max_plot_size,
         plot_factory,
         false,
@@ -181,12 +182,14 @@ async fn test_dsn_sync() {
     .await
     .unwrap();
 
-    {
+    let piece_index_hashes = {
+        let pieces_per_segment = 262;
+
         let mut last_archived_block = LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
-        let number_of_segments = seeder_max_plot_size / 256;
+        let number_of_segments = seeder_max_plot_size / pieces_per_segment;
 
         for segment_index in 0..number_of_segments {
             let archived_segment = {
@@ -197,7 +200,7 @@ async fn test_dsn_sync() {
                     last_archived_block,
                 };
 
-                let mut pieces = FlatPieces::new(256);
+                let mut pieces = FlatPieces::new(pieces_per_segment as _);
                 rand::thread_rng().fill(pieces.as_mut());
 
                 ArchivedSegment {
@@ -207,16 +210,17 @@ async fn test_dsn_sync() {
                 }
             };
 
-            if seeder_archived_segments_sender
+            seeder_archived_segments_sender
                 .send(archived_segment)
                 .await
-                .is_err()
-            {
-                break;
-            }
+                .unwrap();
             last_archived_block.set_complete();
         }
-    }
+
+        (0..number_of_segments * pieces_per_segment)
+            .map(|index| (U256::from_big_endian(&PieceIndexHash::from(index).0), index))
+            .collect::<BTreeMap<_, _>>()
+    };
 
     let (seeder_address_sender, mut seeder_address_receiver) = futures::channel::mpsc::unbounded();
     seeder_multi_farming.single_plot_farms[0]
@@ -280,6 +284,8 @@ async fn test_dsn_sync() {
         )
         .await
         .unwrap();
+        // XXX: farmer reserves 8% for its own needs, so we need to update piece count here
+        let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
         let node_runner = std::mem::take(&mut syncer_multi_farming.networking_node_runners)
             .into_iter()
@@ -301,21 +307,62 @@ async fn test_dsn_sync() {
         let public_key = U256::from_big_endian(&plot.public_key());
         let expected_start = public_key.wrapping_sub(&(sync_sector_size / 2));
         let expected_end = public_key.wrapping_add(&(sync_sector_size / 2));
-        let (start, end) = match plot.get_piece_range().unwrap() {
-            Some(range) => (*range.start(), *range.end()),
-            None => continue,
+        match plot.get_piece_range().unwrap() {
+            Some(range) => {
+                let (start, end) = (
+                    U256::from_big_endian(&range.start().0),
+                    U256::from_big_endian(&range.end().0),
+                );
+
+                let shift_to_middle =
+                    |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
+
+                let expected_start = shift_to_middle(expected_start, &public_key);
+                let expected_end = shift_to_middle(expected_end, &public_key);
+                let start = shift_to_middle(start, &public_key);
+                let end = shift_to_middle(end, &public_key);
+                let piece_index_hashes = piece_index_hashes
+                    .iter()
+                    .map(|(&index_hash, index)| (shift_to_middle(index_hash, &public_key), index))
+                    .filter(|(index_hash, _)| (expected_start..expected_end).contains(index_hash))
+                    .collect::<BTreeMap<_, _>>();
+
+                assert!((expected_start..expected_end).contains(&start));
+                assert!((expected_start..expected_end).contains(&end));
+
+                if piece_index_hashes.len() as u64 > syncer_max_plot_size {
+                    let expected_piece_count = piece_index_hashes.range(start..=end).count() as u64;
+                    assert_eq!(
+                        plot.piece_count(),
+                        expected_piece_count,
+                        "Synced wrong amount of pieces"
+                    );
+                    assert_eq!(
+                        plot.piece_count(),
+                        syncer_max_plot_size,
+                        "Didn't sync all that we need"
+                    );
+                } else {
+                    let got_range_piece_count = piece_index_hashes.range(start..=end).count();
+                    let expected_range_piece_count = piece_index_hashes.len();
+                    assert_eq!(
+                        got_range_piece_count, expected_range_piece_count,
+                        "Didn't sync all that we need"
+                    );
+                    assert_eq!(
+                        plot.piece_count(),
+                        expected_range_piece_count as u64,
+                        "Synced wrong amount of pieces"
+                    );
+                }
+            }
+            None => assert_eq!(
+                piece_index_hashes
+                    .range(expected_start..expected_end)
+                    .count(),
+                0
+            ),
         };
-
-        let shift_to_middle =
-            |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
-
-        let expected_start = shift_to_middle(expected_start, &public_key);
-        let expected_end = shift_to_middle(expected_end, &public_key);
-        let start = shift_to_middle(U256::from_big_endian(&start.0), &public_key);
-        let end = shift_to_middle(U256::from_big_endian(&end.0), &public_key);
-
-        assert!(expected_start <= start && start <= expected_end);
-        assert!(expected_start <= end && end <= expected_end);
 
         syncer_client.stop().await;
     }
