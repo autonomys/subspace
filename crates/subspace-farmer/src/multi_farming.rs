@@ -22,7 +22,7 @@ use tracing::{error, info, trace};
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct MultiFarming {
     pub single_plot_farms: Vec<SinglePlotFarm>,
-    archiving: Archiving,
+    archiving: Option<Archiving>,
     networking_node_runners: Vec<subspace_networking::NodeRunner>,
 }
 
@@ -58,6 +58,7 @@ pub struct Options<C> {
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub dsn_sync: bool,
+    pub enable_node_archiving: bool,
 }
 
 impl MultiFarming {
@@ -73,6 +74,7 @@ impl MultiFarming {
             listen_on,
             enable_dsn_archiving,
             dsn_sync,
+            enable_node_archiving,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
@@ -185,31 +187,36 @@ impl MultiFarming {
         }
 
         // Start archiving task
-        let archiving = Archiving::start(farmer_metadata, object_mappings, archiving_client, {
-            let mut on_pieces_to_plots = single_plot_farms
-                .iter()
-                .map(|single_plot_farm| {
-                    plotting::plot_pieces(
-                        single_plot_farm.codec.clone(),
-                        &single_plot_farm.plot,
-                        single_plot_farm.commitments.clone(),
-                    )
-                })
-                .collect::<Vec<_>>();
-
-            move |pieces_to_plot| {
-                on_pieces_to_plots
-                    .par_iter_mut()
-                    .map(|on_pieces_to_plot| {
-                        // TODO: It might be desirable to not clone it and instead pick just
-                        //  unnecessary pieces and copy pieces once since different plots will
-                        //  care about different pieces
-                        on_pieces_to_plot(pieces_to_plot.clone())
+        let archiving = if enable_node_archiving {
+            Archiving::start(farmer_metadata, object_mappings, archiving_client, {
+                let mut on_pieces_to_plots = single_plot_farms
+                    .iter()
+                    .map(|single_plot_farm| {
+                        plotting::plot_pieces(
+                            single_plot_farm.codec.clone(),
+                            &single_plot_farm.plot,
+                            single_plot_farm.commitments.clone(),
+                        )
                     })
-                    .reduce(|| true, |result, should_continue| result && should_continue)
-            }
-        })
-        .await?;
+                    .collect::<Vec<_>>();
+
+                move |pieces_to_plot| {
+                    on_pieces_to_plots
+                        .par_iter_mut()
+                        .map(|on_pieces_to_plot| {
+                            // TODO: It might be desirable to not clone it and instead pick just
+                            //  unnecessary pieces and copy pieces once since different plots will
+                            //  care about different pieces
+                            on_pieces_to_plot(pieces_to_plot.clone())
+                        })
+                        .reduce(|| true, |result, should_continue| result && should_continue)
+                }
+            })
+            .await
+            .map(Some)?
+        } else {
+            None
+        };
 
         Ok(Self {
             single_plot_farms,
@@ -219,13 +226,16 @@ impl MultiFarming {
     }
 
     /// Waits for farming and plotting completion (or errors)
-    pub async fn wait(self) -> anyhow::Result<()> {
+    pub async fn wait(mut self) -> anyhow::Result<()> {
         if !self
             .single_plot_farms
             .iter()
             .any(|single_plot_farm| single_plot_farm.farming.is_some())
         {
-            return self.archiving.wait().await.map_err(Into::into);
+            if let Some(archiving) = self.archiving.take() {
+                return archiving.wait().await.map_err(Into::into);
+            }
+            return Ok(());
         }
 
         let mut farming = self
@@ -241,13 +251,19 @@ impl MultiFarming {
             .into_iter()
             .map(|node_runner| async move { node_runner.run().await })
             .collect::<FuturesUnordered<_>>();
+        let archiving = async {
+            if let Some(archiving) = self.archiving.take() {
+                archiving.wait().await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        };
 
         tokio::select! {
             res = farming.select_next_some() => {
                 res?;
             },
             () = node_runners.select_next_some() => {},
-            res = self.archiving.wait() => {
+            res = archiving => {
                 res?;
             },
         }

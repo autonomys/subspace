@@ -178,6 +178,7 @@ pub(crate) async fn bench(
             listen_on: vec![],
             enable_dsn_archiving: false,
             dsn_sync: false,
+            enable_node_archiving: true,
         },
         plot_size,
         max_plot_size,

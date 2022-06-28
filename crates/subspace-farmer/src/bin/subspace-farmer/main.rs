@@ -56,6 +56,9 @@ struct FarmingArgs {
     /// Use dsn for syncing
     #[clap(long)]
     dsn_sync: bool,
+    /// Do not archive from the node
+    #[clap(long)]
+    disable_node_archiving: bool,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
