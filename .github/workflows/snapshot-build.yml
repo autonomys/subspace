@@ -88,7 +88,7 @@ jobs:
       - name: Upload executable to artifacts (aarch64)
         uses: actions/upload-artifact@v2
         with:
-          name: executables
+          name: executables-${{ matrix.platform.suffix }}
           path: |
             subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}
           if-no-files-found: error
@@ -160,19 +160,28 @@ jobs:
         run: sudo apt-get install -y ocl-icd-opencl-dev
         if: runner.os == 'Linux'
 
-      - name: Build (Linux or Windows with OpenCL)
+      - name: Build (farmer on Ubuntu or Windows with OpenCL)
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer --features=subspace-farmer/opencl
+          args: --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features=subspace-farmer/opencl
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
-      - name: Build (macOS without OpenCL)
+      - name: Rename OpenCL farmer executable (Ubuntu)
+        run: |
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl
+        if: runner.os == 'Linux'
+
+      - name: Rename OpenCL farmer executable (Windows)
+        run: |
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl.exe
+        if: runner.os == 'Windows'
+
+      - name: Build (farmer and node without OpenCL)
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer
-        if: runner.os == 'macOS'
 
       - name: Sign Application (macOS)
         run: |
@@ -218,6 +227,7 @@ jobs:
         run: |
           mkdir executables
           mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl executables/subspace-farmer-opencl-${{ matrix.build.suffix }}
           mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
         if: runner.os == 'Linux'
 
@@ -237,6 +247,7 @@ jobs:
         run: |
           mkdir executables
           move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
+          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl.exe executables/subspace-farmer-opencl-${{ matrix.build.suffix }}.exe
           move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
         if: runner.os == 'Windows'
 
