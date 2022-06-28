@@ -29,12 +29,12 @@ jobs:
           - node
         platform:
           - arch: linux/amd64
-            profile: production
+            dockerfile-suffix: ''
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             image-suffix: ''
-          - arch: linux/arm64
-            # Build at least something for aarch64 that doesn't exceed CI's time limit
-            profile: dev
+          # We build AArch64
+          - arch: linux/amd64
+            dockerfile-suffix: '.aarch64'
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             image-suffix: '-aarch64'
 
@@ -68,7 +68,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v2
         with:
-          file: Dockerfile-${{ matrix.image }}
+          file: Dockerfile-${{ matrix.image }}${{ matrix.dockerfile-suffix }}
           platforms: ${{ matrix.platform.arch }}
           # Only push for releases
           push: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
@@ -76,7 +76,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
-            PROFILE=${{ matrix.platform.profile }}
 
   executables:
     strategy:
