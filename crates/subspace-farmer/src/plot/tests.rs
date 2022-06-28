@@ -1,5 +1,6 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE};
 use tempfile::TempDir;
@@ -131,4 +132,35 @@ async fn sequential_pieces_iterator() {
         .take(100)
         .collect::<Vec<_>>();
     assert_eq!(got_indexes, piece_indexes[..got_indexes.len()]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn indexes_retrievable() {
+    init();
+    let base_directory = TempDir::new().unwrap();
+
+    let pieces = Arc::new(generate_random_pieces(10_000));
+    let offset = 0;
+
+    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let count = pieces.count();
+    let piece_indexes = (offset..).take(count).collect::<Vec<_>>();
+    plot.write_many(Arc::clone(&pieces), piece_indexes.clone())
+        .unwrap();
+    let piece_indexes = (offset..)
+        .take(pieces.count())
+        .map(|index| (PieceIndexHash::from(index), index))
+        .collect::<BTreeMap<_, _>>();
+
+    for _ in 0..10000 {
+        let from = PieceIndexHash(rand::random());
+        let take = rand::thread_rng().gen_range(0..12000);
+        let indexes = plot.read_sequential_piece_indexes(from, take).unwrap();
+        let expected_indexes = piece_indexes
+            .range(from..)
+            .take(take as _)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
 }

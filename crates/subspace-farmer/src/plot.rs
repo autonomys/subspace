@@ -715,6 +715,63 @@ impl IndexHashToOffsetDB {
 
         Ok(())
     }
+
+    fn get_sequential(
+        &self,
+        from: &PieceIndexHash,
+        count: usize,
+    ) -> Vec<(PieceIndexHash, PieceOffset)> {
+        let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
+
+        let mut iter = self.inner.raw_iterator();
+        iter.seek(self.piece_hash_to_distance(from).to_bytes());
+
+        for _ in 0..count {
+            if iter.key().is_none() {
+                break;
+            }
+
+            let offset = PieceOffset::from_le_bytes(
+                iter.value()
+                    .unwrap()
+                    .try_into()
+                    .expect("Failed to decode piece offsets from rocksdb"),
+            );
+            let index_hash =
+                self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
+            if &index_hash <= from {
+                return piece_index_hashes_and_offsets;
+            }
+
+            piece_index_hashes_and_offsets.push((index_hash, offset));
+            iter.next();
+        }
+
+        iter.seek_to_first();
+
+        for _ in 0..count - piece_index_hashes_and_offsets.len() {
+            if iter.key().is_none() {
+                break;
+            }
+
+            let offset = PieceOffset::from_le_bytes(
+                iter.value()
+                    .unwrap()
+                    .try_into()
+                    .expect("Failed to decode piece offsets from rocksdb"),
+            );
+            let index_hash =
+                self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
+            if &index_hash <= from {
+                break;
+            }
+
+            piece_index_hashes_and_offsets.push((index_hash, offset));
+            iter.next();
+        }
+
+        piece_index_hashes_and_offsets
+    }
 }
 
 /// Trait for mocking plot behaviour
@@ -968,40 +1025,11 @@ impl<T: PlotFile> PlotWorker<T> {
         from: &PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<PieceIndex>> {
-        if self.piece_count.load(Ordering::Relaxed) == 0 {
-            return Ok(vec![]);
-        }
-
-        let mut piece_indexes = Vec::with_capacity(count as _);
-
-        let mut iter = self.piece_index_hash_to_offset_db.inner.raw_iterator();
-        iter.seek(
-            self.piece_index_hash_to_offset_db
-                .piece_hash_to_distance(from)
-                .to_bytes(),
-        );
-
-        for _ in 0..count {
-            if iter.key().is_none() {
-                iter.seek_to_first();
-            }
-
-            let offset = PieceOffset::from_le_bytes(
-                iter.value()
-                    .unwrap()
-                    .try_into()
-                    .expect("Failed to decode piece offsets from rocksdb"),
-            );
-            let index = self.piece_offset_to_index.get_piece_index(offset)?;
-            if &PieceIndexHash::from(index) <= from {
-                break;
-            }
-
-            piece_indexes.push(index);
-            iter.next();
-        }
-
-        Ok(piece_indexes)
+        self.piece_index_hash_to_offset_db
+            .get_sequential(from, count as usize)
+            .into_iter()
+            .map(|(_, offset)| self.piece_offset_to_index.get_piece_index(offset))
+            .collect()
     }
 
     fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
