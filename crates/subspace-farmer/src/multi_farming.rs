@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use tracing::info;
+use tracing::{error, info, trace};
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
 // will have the same length.
@@ -55,6 +55,8 @@ pub struct Options<C> {
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
     pub listen_on: Vec<Multiaddr>,
+    /// Enable DSN subscription for archiving segments.
+    pub enable_dsn_archiving: bool,
     pub dsn_sync: bool,
 }
 
@@ -69,6 +71,7 @@ impl MultiFarming {
             reward_address,
             bootstrap_nodes,
             listen_on,
+            enable_dsn_archiving,
             dsn_sync,
         }: Options<C>,
         total_plot_size: u64,
@@ -116,6 +119,34 @@ impl MultiFarming {
 
         while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
             let mut single_plot_farm = single_plot_farm?;
+
+            // Enable DSN subscription for segments archiving.
+            if enable_dsn_archiving {
+                // TODO: Make sure this task can be cancelled
+                tokio::spawn({
+                    let node = single_plot_farm.node.clone();
+                    async move {
+                        trace!("Subscribing to pubsub archiving...");
+                        match node
+                            .subscribe(subspace_networking::PUB_SUB_ARCHIVING_TOPIC.clone())
+                            .await
+                        {
+                            Ok(mut subscription) => {
+                                info!("Subscribed to pubsub archiving.");
+
+                                //TODO: Integrate with archiving process.
+                                #[allow(clippy::redundant_pattern_matching)]
+                                while let Some(_) = subscription.next().await {
+                                    info!("Archiving segment received from pubsub subscription.");
+                                }
+                            }
+                            Err(err) => {
+                                error!(error = ?err, "Pubsub archiving subscription failed.");
+                            }
+                        }
+                    }
+                });
+            }
 
             networking_node_runners.push(
                 single_plot_farm

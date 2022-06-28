@@ -31,7 +31,7 @@ async fn test_executor_full_node_catching_up() {
 
 	// Start Ferdie
 	let (ferdie, ferdie_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
 	ferdie_network_starter.start_network();
 
 	// Run Alice (a secondary chain authority node)
@@ -73,7 +73,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
 	// Start Ferdie
 	let (ferdie, ferdie_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
 	ferdie_network_starter.start_network();
 
 	// Run Alice (a secondary chain authority node)
@@ -360,7 +360,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
 	// Start Ferdie
 	let (ferdie, ferdie_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
 	ferdie_network_starter.start_network();
 
 	// Run Alice (a secondary chain authority node)
@@ -468,7 +468,7 @@ async fn invalid_execution_proof_should_not_work() {
 
 	// Start Ferdie
 	let (ferdie, ferdie_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
 	ferdie_network_starter.start_network();
 
 	// Run Alice (a secondary chain authority node)
@@ -634,7 +634,7 @@ async fn set_new_code_should_work() {
 
 	// Start Ferdie
 	let (ferdie, ferdie_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
 	ferdie_network_starter.start_network();
 
 	// Run Alice (a secondary chain authority node)
@@ -680,7 +680,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 
 	// Start Ferdie
 	let (ferdie, ferdie_network_starter) =
-		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]);
+		run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
 	ferdie_network_starter.start_network();
 
 	// Run Alice (a secondary chain full node)

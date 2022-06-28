@@ -23,6 +23,7 @@ pub(crate) async fn farm(
         reward_address,
         plot_size,
         max_plot_size,
+        enable_dsn_archiving,
         dsn_sync,
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
@@ -75,6 +76,7 @@ pub(crate) async fn farm(
             reward_address,
             bootstrap_nodes,
             listen_on,
+            enable_dsn_archiving,
             dsn_sync,
         },
         plot_size,

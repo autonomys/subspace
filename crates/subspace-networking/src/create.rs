@@ -94,6 +94,7 @@ impl Config {
             .message_id_fn(|message: &GossipsubMessage| {
                 MessageId::from(crypto::sha256_hash(&message.data))
             })
+            .max_transmit_size(2 * 1024 * 1024) // 2MB
             .build()
             .expect("Default config for gossipsub is always correct; qed");
 
