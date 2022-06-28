@@ -38,9 +38,12 @@ COPY test /code/test
 
 # TODO: Re-enable cost of storage in future
 RUN \
-    /root/.cargo/bin/cargo build --profile $PROFILE \
+    /root/.cargo/bin/cargo build \
+        -Z build-std \
+        --profile $PROFILE \
         --package subspace-runtime \
-        --features=subspace-runtime/do-not-enforce-cost-of-storage && \
+        --features=subspace-runtime/do-not-enforce-cost-of-storage \
+        --target x86_64-unknown-linux-gnu && \
     mv \
       target/*/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \
       subspace_runtime.compact.compressed.wasm && \

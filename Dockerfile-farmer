@@ -37,8 +37,12 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 RUN \
-    /root/.cargo/bin/cargo build --profile $PROFILE --bin subspace-farmer && \
-    mv target/*/subspace-farmer subspace-farmer && \
+    /root/.cargo/bin/cargo build \
+        -Z build-std \
+        --profile $PROFILE \
+        --bin subspace-farmer \
+        --target x86_64-unknown-linux-gnu && \
+    mv target/*/*/subspace-farmer subspace-farmer && \
     rm -rf target
 
 FROM ubuntu:20.04

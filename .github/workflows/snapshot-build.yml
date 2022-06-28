@@ -29,12 +29,12 @@ jobs:
           - node
         platform:
           - arch: linux/amd64
-            profile: production
+            dockerfile-suffix: ''
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             image-suffix: ''
-          - arch: linux/arm64
-            # Build at least something for aarch64 that doesn't exceed CI's time limit
-            profile: dev
+          # We build AArch64
+          - arch: linux/amd64
+            dockerfile-suffix: '.aarch64'
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             image-suffix: '-aarch64'
 
@@ -68,7 +68,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v2
         with:
-          file: Dockerfile-${{ matrix.image }}
+          file: Dockerfile-${{ matrix.image }}${{ matrix.dockerfile-suffix }}
           platforms: ${{ matrix.platform.arch }}
           # Only push for releases
           push: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
@@ -76,31 +76,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SUBSTRATE_CLI_GIT_COMMIT_HASH=${{ github.sha }}
-            PROFILE=${{ matrix.platform.profile }}
-            RUSTFLAGS=-C strip=debuginfo
-
-      - name: Extract executable from container image (aarch64)
-        # Using `steps.meta.outputs.tags` instead of `steps.build.outputs.digest` because of https://github.com/docker/build-push-action/issues/321
-        run: |
-          docker run --rm -u root --platform ${{ matrix.platform.arch }} --entrypoint /bin/cat ${{ steps.meta.outputs.tags }} /subspace-${{ matrix.image }} > subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}
-        if: matrix.platform.arch == 'linux/arm64'
-
-      - name: Upload executable to artifacts (aarch64)
-        uses: actions/upload-artifact@v2
-        with:
-          name: executables-${{ matrix.platform.suffix }}
-          path: |
-            subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}
-          if-no-files-found: error
-        if: matrix.platform.arch == 'linux/arm64'
-
-      - name: Upload executable to assets (aarch64)
-        uses: alexellis/upload-assets@0.3.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          asset_paths: '["subspace-${{ matrix.image }}-${{ matrix.platform.suffix }}"]'
-        if: matrix.platform.arch == 'linux/arm64' && github.event_name == 'push' && github.ref_type == 'tag'
 
   executables:
     strategy:
@@ -109,18 +84,27 @@ jobs:
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-${{ github.ref_name }}
+            rustflags: ''
+          - os: ubuntu-20.04
+            target: aarch64-unknown-linux-gnu
+            suffix: ubuntu-aarch64-${{ github.ref_name }}
+            rustflags: '-C linker=aarch64-linux-gnu-gcc'
           - os: macos-12
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
+            rustflags: ''
           - os: macos-12
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
+            rustflags: ''
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-${{ github.ref_name }}
+            rustflags: ''
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
+      RUSTFLAGS: ${{ matrix.build.rustflags }}
 
     steps:
       - name: Checkout
@@ -138,6 +122,7 @@ jobs:
         with:
           toolchain: nightly-2022-05-16
           target: ${{ matrix.build.target }}
+          components: rust-src
           override: true
 
       - name: Rust toolchain (wasm32)
@@ -157,20 +142,24 @@ jobs:
         if: runner.os == 'Linux' || runner.os == 'Windows'
 
       - name: OpenCL
-        run: sudo apt-get install -y ocl-icd-opencl-dev
+        run: sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev
         if: runner.os == 'Linux'
+
+      - name: AArch64 cross-compile packages
+        run: sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+        if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
       - name: Build (farmer on Ubuntu or Windows with OpenCL)
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features=subspace-farmer/opencl
-        if: runner.os == 'Linux' || runner.os == 'Windows'
+          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features=subspace-farmer/opencl
+        if: (runner.os == 'Linux' || runner.os == 'Windows') && matrix.build.target != 'aarch64-unknown-linux-gnu'
 
       - name: Rename OpenCL farmer executable (Ubuntu)
         run: |
           mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.build.target != 'aarch64-unknown-linux-gnu'
 
       - name: Rename OpenCL farmer executable (Windows)
         run: |
@@ -181,7 +170,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer
+          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer
 
       - name: Sign Application (macOS)
         run: |
@@ -227,7 +216,8 @@ jobs:
         run: |
           mkdir executables
           mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl executables/subspace-farmer-opencl-${{ matrix.build.suffix }}
+          # AArch64 doesn't have OpenCL build (yet)
+          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl executables/subspace-farmer-opencl-${{ matrix.build.suffix }} || true
           mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
         if: runner.os == 'Linux'
 
