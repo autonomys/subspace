@@ -20,13 +20,15 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
 enum ArchivingFrom {
-    Node,
+    /// Sync from node using RPC endpoint (recommended)
+    Rpc,
+    /// Sync from node using DSN (experimental)
     Dsn,
 }
 
 impl Default for ArchivingFrom {
     fn default() -> Self {
-        Self::Node
+        Self::Rpc
     }
 }
 
