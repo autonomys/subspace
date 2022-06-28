@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use futures::StreamExt;
+use parity_scale_codec::Decode;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
@@ -27,6 +28,8 @@ pub enum ArchivingError {
     JoinTask(tokio::task::JoinError),
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
+    #[error("Failed to subscribe to new segments: {0}")]
+    Subscribe(#[from] subspace_networking::SubscribeError),
 }
 
 /// Abstraction around archiving blocks and updating global object map
@@ -94,27 +97,50 @@ impl Archiving {
             ControlFlow::Continue(())
         };
 
-        // Erasure coding in archiver and piece encoding are CPU-intensive operations.
-        tokio::task::spawn_blocking({
-            move || {
-                let mut last_archived_segment_index = None;
-                while let Ok((archived_segment, acknowledgement_sender)) =
-                    archived_segments_sync_receiver.recv()
-                {
-                    let segment_index = archived_segment.root_block.segment_index();
-                    if last_archived_segment_index == Some(segment_index) {
-                        continue;
+        if let Some(node) = node {
+            tracing::trace!("Subscribing to pubsub archiving...");
+            let mut subscription = node
+                .subscribe(subspace_networking::PUB_SUB_ARCHIVING_TOPIC.clone())
+                .await?;
+            // TODO: Make sure this task can be cancelled
+            tokio::spawn(async move {
+                while let Some(bytes) = subscription.next().await {
+                    match Decode::decode(&mut bytes.as_ref()) {
+                        Ok(archived_segment) => {
+                            if plot_segment(archived_segment) == ControlFlow::Break(()) {
+                                break;
+                            }
+                        }
+                        Err(error) => tracing::error!(%error, "Failed to decode archived segment"),
                     }
-                    last_archived_segment_index.replace(segment_index);
+                    info!("Archiving segment received from pubsub subscription.");
+                }
+            });
+        } else {
+            // Erasure coding in archiver and piece encoding are CPU-intensive operations.
+            tokio::task::spawn_blocking({
+                move || {
+                    let mut last_archived_segment_index = None;
+                    while let Ok((archived_segment, acknowledgement_sender)) =
+                        archived_segments_sync_receiver.recv()
+                    {
+                        let segment_index = archived_segment.root_block.segment_index();
+                        if last_archived_segment_index == Some(segment_index) {
+                            continue;
+                        }
+                        last_archived_segment_index.replace(segment_index);
 
-                    plot_segment(archived_segment);
+                        if plot_segment(archived_segment) == ControlFlow::Break(()) {
+                            break;
+                        }
 
-                    if let Err(()) = acknowledgement_sender.send(()) {
-                        error!("Failed to send archived segment acknowledgement");
+                        if let Err(()) = acknowledgement_sender.send(()) {
+                            error!("Failed to send archived segment acknowledgement");
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         info!("Subscribing to archived segments");
         let mut archived_segments = client
