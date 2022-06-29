@@ -7970,6 +7970,7 @@ dependencies = [
  "once_cell",
  "parity-scale-codec",
  "parking_lot 0.12.0",
+ "pin-project",
  "rand 0.7.3",
  "subspace-core-primitives",
  "thiserror",
