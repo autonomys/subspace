@@ -1,5 +1,3 @@
-use std::ops::ControlFlow;
-
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use futures::StreamExt;
