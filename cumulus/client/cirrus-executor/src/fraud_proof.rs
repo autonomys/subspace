@@ -78,7 +78,7 @@ where
 	pub(crate) fn generate_proof<Number, PHash>(
 		&self,
 		block_number: NumberFor<Block>,
-		(local_trace_idx, local_root): (usize, Block::Hash),
+		local_trace_idx: usize,
 		local_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
 		execution_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
 	) -> Result<FraudProof, FraudProofError> {
@@ -99,6 +99,8 @@ where
 
 		let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
 			.unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
+
+		let local_root = local_receipt.trace[local_trace_idx];
 
 		// TODO: abstract the execution proof impl to be reusable in the test.
 		let fraud_proof = if local_trace_idx == 0 {
@@ -249,11 +251,11 @@ where
 pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
 	local: &ExecutionReceipt<Number, PHash, Hash>,
 	other: &ExecutionReceipt<Number, PHash, Hash>,
-) -> Option<(usize, Hash)> {
+) -> Option<usize> {
 	local.trace.iter().enumerate().zip(other.trace.iter().enumerate()).find_map(
 		|((local_index, local_root), (_, other_root))| {
 			if local_root != other_root {
-				Some((local_index, *local_root))
+				Some(local_index)
 			} else {
 				None
 			}

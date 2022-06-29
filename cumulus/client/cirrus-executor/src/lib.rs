@@ -689,10 +689,10 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some(trace_mismatch) = find_trace_mismatch(&local_receipt, execution_receipt) {
+		if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
 			let fraud_proof = self.fraud_proof_generator.generate_proof(
 				block_number,
-				trace_mismatch,
+				trace_mismatch_index,
 				&local_receipt,
 				execution_receipt,
 			)?;
