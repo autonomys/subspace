@@ -73,6 +73,7 @@ async fn plotting_happy_path() {
         farmer_metadata,
         object_mappings,
         client.clone(),
+        None,
         plotting::plot_pieces(subspace_codec, &plot, commitments),
     )
     .await
@@ -159,6 +160,7 @@ async fn plotting_piece_eviction() {
         farmer_metadata,
         object_mappings,
         client.clone(),
+        None,
         plotting::plot_pieces(subspace_codec.clone(), &plot, commitments.clone()),
     )
     .await
