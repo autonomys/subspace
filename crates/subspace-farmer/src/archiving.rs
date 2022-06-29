@@ -68,35 +68,6 @@ impl Archiving {
         let (archived_segments_sync_sender, archived_segments_sync_receiver) =
             std::sync::mpsc::sync_channel::<(ArchivedSegment, oneshot::Sender<()>)>(5);
 
-        let mut plot_segment = move |archived_segment| {
-            let ArchivedSegment {
-                root_block,
-                pieces,
-                object_mapping,
-            } = archived_segment;
-            let segment_index = root_block.segment_index();
-            let piece_index_offset = merkle_num_leaves * segment_index;
-
-            let pieces_to_plot = PiecesToPlot {
-                piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
-                pieces,
-            };
-            if !on_pieces_to_plot(pieces_to_plot) {
-                // No need to continue
-                return ControlFlow::Break(());
-            }
-
-            let object_mapping = create_global_object_mapping(piece_index_offset, object_mapping);
-
-            if let Err(error) = object_mappings.store(&object_mapping) {
-                error!(%error, "Failed to store object mappings for pieces");
-            }
-
-            info!(segment_index, "Plotted segment");
-
-            ControlFlow::Continue(())
-        };
-
         // Erasure coding in archiver and piece encoding are CPU-intensive operations.
         tokio::task::spawn_blocking({
             move || {
@@ -104,15 +75,36 @@ impl Archiving {
                 while let Ok((archived_segment, acknowledgement_sender)) =
                     archived_segments_sync_receiver.recv()
                 {
-                    let segment_index = archived_segment.root_block.segment_index();
+                    let ArchivedSegment {
+                        root_block,
+                        pieces,
+                        object_mapping,
+                    } = archived_segment;
+                    let segment_index = root_block.segment_index();
                     if last_archived_segment_index == Some(segment_index) {
                         continue;
                     }
                     last_archived_segment_index.replace(segment_index);
 
-                    if plot_segment(archived_segment) == ControlFlow::Break(()) {
+                    let piece_index_offset = merkle_num_leaves * segment_index;
+
+                    let pieces_to_plot = PiecesToPlot {
+                        piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
+                        pieces,
+                    };
+                    if !on_pieces_to_plot(pieces_to_plot) {
+                        // No need to continue
                         break;
                     }
+
+                    let object_mapping =
+                        create_global_object_mapping(piece_index_offset, object_mapping);
+
+                    if let Err(error) = object_mappings.store(&object_mapping) {
+                        error!(%error, "Failed to store object mappings for pieces");
+                    }
+
+                    info!(segment_index, "Plotted segment");
 
                     if let Err(()) = acknowledgement_sender.send(()) {
                         error!("Failed to send archived segment acknowledgement");
