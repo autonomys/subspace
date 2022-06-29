@@ -174,9 +174,8 @@ async fn test_dsn_sync() {
             dsn_sync: false,
             enable_dsn_archiving: false,
         },
-        // XXX: farmer reserves 8% for its own needs, so we need to update piece count here
-        seeder_max_plot_size * 100 / 92 * PIECE_SIZE as u64,
-        seeder_max_plot_size,
+        u64::MAX / 100,
+        u64::MAX,
         plot_factory,
         false,
     )
@@ -285,7 +284,7 @@ async fn test_dsn_sync() {
     )
     .await
     .unwrap();
-    // XXX: farmer reserves 8% for its own needs, so we need to update piece count here
+    // HACK: farmer reserves 8% for its own needs, so we need to update piece count here
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
     let node_runner = std::mem::take(&mut syncer_multi_farming.networking_node_runners)

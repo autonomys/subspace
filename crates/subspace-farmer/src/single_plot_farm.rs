@@ -170,10 +170,10 @@ impl SinglePlotFarm {
                             .next()
                             .expect("Always present as length is exactly one");
                         let index_hash = PieceIndexHash::from(index);
-                        if index_hash >= to {
+                        if index_hash > to {
                             return Some(PiecesByRangeResponse {
                                 pieces: PiecesToPlot::default(),
-                                next_piece_index_hash: Some(index_hash),
+                                next_piece_index_hash: None,
                             });
                         }
                         codec.decode(&mut piece, index).ok()?;
@@ -188,7 +188,7 @@ impl SinglePlotFarm {
 
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
-                        .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) >= to)
+                        .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) > to)
                     {
                         pieces_and_indexes.truncate(idx);
                         None

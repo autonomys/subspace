@@ -121,8 +121,8 @@ where
 
         if sub_sector_start > sub_sector_end {
             [
-                Some((PieceIndexHashNumber::zero(), sub_sector_end)),
                 Some((sub_sector_start, PieceIndexHashNumber::MAX)),
+                Some((PieceIndexHashNumber::zero(), sub_sector_end)),
             ]
         } else {
             [Some((sub_sector_start, sub_sector_end)), None]
@@ -147,7 +147,14 @@ where
                         &PieceIndexHash::from(*index).0,
                     ))
                 })
-                .map(|(index, piece)| (index, piece.try_into().unwrap()))
+                .map(|(index, piece)| {
+                    (
+                        index,
+                        piece
+                            .try_into()
+                            .expect("`as_pieces` always returns a piece"),
+                    )
+                })
                 .unzip();
 
             // Writing pieces is usually synchronous, therefore might take some time
