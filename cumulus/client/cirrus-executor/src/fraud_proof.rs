@@ -243,3 +243,20 @@ where
 		Ok((execution_proof, execution_phase))
 	}
 }
+
+/// Compares if the receipt `other` is the same with `local`, return a tuple of (local_index,
+/// local_trace_root) if there is a mismatch.
+pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
+	local: &ExecutionReceipt<Number, PHash, Hash>,
+	other: &ExecutionReceipt<Number, PHash, Hash>,
+) -> Option<(usize, Hash)> {
+	local.trace.iter().enumerate().zip(other.trace.iter().enumerate()).find_map(
+		|((local_index, local_root), (_, other_root))| {
+			if local_root != other_root {
+				Some((local_index, *local_root))
+			} else {
+				None
+			}
+		},
+	)
+}

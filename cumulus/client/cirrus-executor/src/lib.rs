@@ -68,7 +68,7 @@ mod worker;
 use crate::{
 	bundle_processor::BundleProcessor,
 	bundle_producer::BundleProducer,
-	fraud_proof::{FraudProofError, FraudProofGenerator},
+	fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator},
 	worker::BlockInfo,
 };
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
@@ -503,23 +503,6 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 	}
 }
 
-/// Compares if the receipt `other` is the same with `local`, return a tuple of (local_index,
-/// local_trace_root) if there is a mismatch.
-pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
-	local: &ExecutionReceipt<Number, PHash, Hash>,
-	other: &ExecutionReceipt<Number, PHash, Hash>,
-) -> Option<(usize, Hash)> {
-	local.trace.iter().enumerate().zip(other.trace.iter().enumerate()).find_map(
-		|((local_index, local_root), (_, other_root))| {
-			if local_root != other_root {
-				Some((local_index, *local_root))
-			} else {
-				None
-			}
-		},
-	)
-}
-
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 	GossipMessageHandler<PBlock, Block>
 	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
@@ -706,12 +689,10 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some((local_trace_idx, local_root)) =
-			find_trace_mismatch(&local_receipt, execution_receipt)
-		{
+		if let Some(trace_mismatch) = find_trace_mismatch(&local_receipt, execution_receipt) {
 			let fraud_proof = self.fraud_proof_generator.generate_proof(
 				block_number,
-				(local_trace_idx, local_root),
+				trace_mismatch,
 				&local_receipt,
 				execution_receipt,
 			)?;
