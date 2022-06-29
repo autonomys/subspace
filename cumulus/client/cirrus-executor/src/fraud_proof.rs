@@ -75,13 +75,16 @@ where
 		Self { client, spawner, backend, code_executor, _phantom: Default::default() }
 	}
 
-	pub(crate) fn generate_proof<Number, PHash>(
+	pub(crate) fn generate_proof<PBlock: BlockT>(
 		&self,
-		block_number: NumberFor<Block>,
 		local_trace_index: usize,
-		local_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
+		local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 	) -> Result<FraudProof, FraudProofError> {
 		let block_hash = local_receipt.secondary_hash;
+		let block_number: BlockNumber = local_receipt
+			.primary_number
+			.try_into()
+			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
 		let header = self.header(block_hash)?;
 		let parent_header = self.header(*header.parent_hash())?;
@@ -110,7 +113,7 @@ where
 			let post_state_root = as_h256(&local_root)?;
 
 			let new_header = Block::Header::new(
-				block_number,
+				block_number.into(),
 				Default::default(),
 				Default::default(),
 				parent_header.hash(),
