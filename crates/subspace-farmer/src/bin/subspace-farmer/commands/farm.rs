@@ -25,6 +25,7 @@ pub(crate) async fn farm(
         max_plot_size,
         dsn_sync,
         archiving,
+        disable_farming,
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
@@ -78,6 +79,7 @@ pub(crate) async fn farm(
             listen_on,
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             dsn_sync,
+            enable_farming: !disable_farming,
         },
         plot_size,
         max_plot_size,
@@ -88,7 +90,6 @@ pub(crate) async fn farm(
                 max_piece_count,
             )
         },
-        true,
     )
     .await?;
 
