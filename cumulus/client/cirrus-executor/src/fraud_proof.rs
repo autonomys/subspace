@@ -78,11 +78,13 @@ where
 	pub(crate) fn generate_proof<Number, PHash>(
 		&self,
 		block_number: NumberFor<Block>,
-		local_trace_idx: usize,
+		local_trace_index: usize,
 		local_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
 		execution_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
 	) -> Result<FraudProof, FraudProofError> {
-		let header = self.header(execution_receipt.secondary_hash)?;
+		let block_hash = execution_receipt.secondary_hash;
+
+		let header = self.header(block_hash)?;
 		let parent_header = self.header(*header.parent_hash())?;
 
 		// TODO: avoid the encode & decode?
@@ -100,10 +102,10 @@ where
 		let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
 			.unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
 
-		let local_root = local_receipt.trace[local_trace_idx];
+		let local_root = local_receipt.trace[local_trace_index];
 
 		// TODO: abstract the execution proof impl to be reusable in the test.
-		let fraud_proof = if local_trace_idx == 0 {
+		let fraud_proof = if local_trace_index == 0 {
 			// `initialize_block` execution proof.
 			let pre_state_root = as_h256(parent_header.state_root())?;
 			let post_state_root = as_h256(&local_root)?;
@@ -132,9 +134,9 @@ where
 				proof,
 				execution_phase,
 			}
-		} else if local_trace_idx == local_receipt.trace.len() - 1 {
+		} else if local_trace_index == local_receipt.trace.len() - 1 {
 			// `finalize_block` execution proof.
-			let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
+			let pre_state_root = as_h256(&execution_receipt.trace[local_trace_index - 1])?;
 			let post_state_root = as_h256(&local_root)?;
 			let execution_phase = ExecutionPhase::FinalizeBlock;
 
@@ -145,7 +147,7 @@ where
 				RecordProof::No,
 				Default::default(),
 				&*self.backend,
-				self.block_body(execution_receipt.secondary_hash)?,
+				self.block_body(block_hash)?,
 			)?;
 			let storage_changes = block_builder.prepare_storage_changes_before_finalize_block()?;
 
@@ -168,13 +170,13 @@ where
 			}
 		} else {
 			// Regular extrinsic execution proof.
-			let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
+			let pre_state_root = as_h256(&execution_receipt.trace[local_trace_index - 1])?;
 			let post_state_root = as_h256(&local_root)?;
 
 			let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-				local_trace_idx - 1,
+				local_trace_index - 1,
 				&parent_header,
-				execution_receipt.secondary_hash,
+				block_hash,
 				&prover,
 			)?;
 
