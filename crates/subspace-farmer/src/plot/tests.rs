@@ -145,8 +145,7 @@ async fn indexes_retrievable() {
     let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
     let count = pieces.count();
     let piece_indexes = (offset..).take(count).collect::<Vec<_>>();
-    plot.write_many(Arc::clone(&pieces), piece_indexes.clone())
-        .unwrap();
+    plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     let piece_indexes = (offset..)
         .take(pieces.count())
         .map(|index| (PieceIndexHash::from(index), index))
