@@ -9,7 +9,7 @@ use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
 use subspace_rpc_primitives::FarmerMetadata;
 use tracing::{info, warn};
 
-use crate::{utils, FarmingArgs};
+use crate::{utils, ArchivingFrom, FarmingArgs};
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -23,8 +23,8 @@ pub(crate) async fn farm(
         reward_address,
         plot_size,
         max_plot_size,
-        enable_dsn_archiving,
         dsn_sync,
+        archiving,
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
@@ -76,7 +76,7 @@ pub(crate) async fn farm(
             reward_address,
             bootstrap_nodes,
             listen_on,
-            enable_dsn_archiving,
+            enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             dsn_sync,
         },
         plot_size,

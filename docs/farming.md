@@ -24,7 +24,7 @@ Our snapshots are categorized as the following:
 
 You need 2 executables, select whichever applies to your operating system
 * Node Executable - `subspace-node-...`
-* Farmer Executable - `subspace-farmer-...`
+* Farmer Executable - `subspace-farmer-...` or `subspace-farmer-opencl-...` (in case you have OpenCL-capable AMD, Intel or Nvidia GPU)
 
 You can find these executables in the [Releases](https://github.com/subspace/subspace/releases) section of this Repository.
 
@@ -43,6 +43,13 @@ On the desktop side if you have a router in front of your computer, you'll need 
 If you're connected directly without any router, then again nothing needs to be done in such case.
 
 ## 🖼️ Windows Instructions
+
+### OpenCL support
+If you use farmer executable starting with `subspace-farmer-opencl-` and see this error:
+> The code execution cannot proceed because OpenCL.dll was not found. Reinstalling the program may fix this problem.
+
+Or farmer exits in CLI without any messages, it means you don't have OpenCL-capable GPU or drivers installed.
+Installing OpenCL GPU drivers or using farmer executable without `opencl` in file name will fix the issue.
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open `Powershell` (we do not recommend using Command Prompt as it's syntax is slightly different)
