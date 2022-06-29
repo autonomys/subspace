@@ -190,20 +190,13 @@ mod pallet {
             let primary_hash = execution_receipt.primary_hash;
             let primary_number = execution_receipt.primary_number;
 
-            // Execution receipt starts from the primary block #1.
-            if primary_number > One::one() {
-                ensure!(
-                    Receipts::<T>::get(primary_number - One::one()).is_some(),
-                    Error::<T>::ExecutionReceipt(ExecutionReceiptError::MissingParent)
-                );
-            } else {
-                // Initialize the oldest receipt with block #1.
-                OldestReceiptNumber::<T>::put(primary_number);
-            }
-
             // Apply the execution receipt.
             <Receipts<T>>::insert(primary_number, execution_receipt);
             <ExecutionChainBestNumber<T>>::put(primary_number);
+            if primary_number == One::one() {
+                // Initialize the oldest receipt with block #1.
+                OldestReceiptNumber::<T>::put(primary_number);
+            }
 
             // Remove the oldest once the receipts cache is full.
             if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
@@ -417,6 +410,16 @@ mod pallet {
                         } else {
                             return Err(InvalidTransaction::Future.into());
                         }
+                    }
+
+                    // Ensure the parent receipt exists after block #1.
+                    if primary_number > One::one() {
+                        ensure!(
+                            Receipts::<T>::get(primary_number - One::one()).is_some(),
+                            TransactionValidityError::Invalid(
+                                InvalidTransactionCode::ExecutionReceipt.into()
+                            )
+                        );
                     }
 
                     Ok(())
