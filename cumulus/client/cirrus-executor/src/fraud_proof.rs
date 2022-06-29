@@ -80,9 +80,8 @@ where
 		block_number: NumberFor<Block>,
 		local_trace_index: usize,
 		local_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
-		execution_receipt: &ExecutionReceipt<Number, PHash, Block::Hash>,
 	) -> Result<FraudProof, FraudProofError> {
-		let block_hash = execution_receipt.secondary_hash;
+		let block_hash = local_receipt.secondary_hash;
 
 		let header = self.header(block_hash)?;
 		let parent_header = self.header(*header.parent_hash())?;
@@ -136,7 +135,7 @@ where
 			}
 		} else if local_trace_index == local_receipt.trace.len() - 1 {
 			// `finalize_block` execution proof.
-			let pre_state_root = as_h256(&execution_receipt.trace[local_trace_index - 1])?;
+			let pre_state_root = as_h256(&local_receipt.trace[local_trace_index - 1])?;
 			let post_state_root = as_h256(&local_root)?;
 			let execution_phase = ExecutionPhase::FinalizeBlock;
 
@@ -170,7 +169,7 @@ where
 			}
 		} else {
 			// Regular extrinsic execution proof.
-			let pre_state_root = as_h256(&execution_receipt.trace[local_trace_index - 1])?;
+			let pre_state_root = as_h256(&local_receipt.trace[local_trace_index - 1])?;
 			let post_state_root = as_h256(&local_root)?;
 
 			let (proof, execution_phase) = self.create_extrinsic_execution_proof(

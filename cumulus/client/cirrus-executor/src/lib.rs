@@ -694,7 +694,6 @@ where
 				block_number,
 				trace_mismatch_index,
 				&local_receipt,
-				execution_receipt,
 			)?;
 
 			self.submit_fraud_proof(fraud_proof);
