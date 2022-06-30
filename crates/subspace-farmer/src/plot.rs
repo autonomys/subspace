@@ -122,7 +122,7 @@ struct Inner {
     handlers: Handlers,
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     piece_count: Arc<AtomicU64>,
-    address: PublicKey,
+    public_key: PublicKey,
 }
 
 impl Drop for Inner {
@@ -173,9 +173,9 @@ pub fn retrieve_piece_from_plots(
 
 /// `Plot` is an abstraction for plotted pieces and some mappings.
 ///
-/// Pieces plotted for single identity, that's why it is required to supply both address of single
-/// replica farmer and maximum number of pieces to be stored. It offloads disk writing to separate
-/// worker, which runs in the background.
+/// Pieces plotted for single identity, that's why it is required to supply both public key of
+/// single replica farmer and maximum number of pieces to be stored. It offloads disk writing to
+/// separate worker, which runs in the background.
 ///
 /// The worker converts requests to internal reads/writes to the plot database to direct disk
 /// reads/writes. It prioritizes reads over writes by having separate queues for high and low
@@ -191,11 +191,11 @@ impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create<B: AsRef<Path>>(
         base_directory: B,
-        address: PublicKey,
+        public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Plot, PlotError> {
         let plot_worker =
-            PlotWorker::from_base_directory(base_directory.as_ref(), address, max_piece_count)?;
+            PlotWorker::from_base_directory(base_directory.as_ref(), public_key, max_piece_count)?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
@@ -206,7 +206,7 @@ impl Plot {
             handlers: Handlers::default(),
             requests_sender,
             piece_count,
-            address,
+            public_key,
         };
 
         Ok(Plot {
@@ -218,14 +218,14 @@ impl Plot {
     pub fn with_plot_file<P>(
         plot: P,
         base_directory: impl AsRef<Path>,
-        address: PublicKey,
+        public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Plot, PlotError>
     where
         P: PlotFile + Send + 'static,
     {
         let plot_worker =
-            PlotWorker::with_plot_file(plot, base_directory.as_ref(), address, max_piece_count)?;
+            PlotWorker::with_plot_file(plot, base_directory.as_ref(), public_key, max_piece_count)?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
@@ -236,7 +236,7 @@ impl Plot {
             handlers: Handlers::default(),
             requests_sender,
             piece_count,
-            address,
+            public_key,
         };
 
         Ok(Plot {
@@ -250,8 +250,8 @@ impl Plot {
     }
 
     /// Public key for which pieces were plotted
-    pub fn public_key(&self) -> PublicKey {
-        self.inner.address
+    fn public_key(&self) -> PublicKey {
+        self.inner.public_key
     }
 
     /// Whether plot doesn't have anything in it
@@ -544,12 +544,12 @@ impl BidirectionalDistanceSorted<PieceDistance> {
 /// Mapping from piece index hash to piece offset.
 ///
 /// Piece index hashes are transformed in the following manner:
-/// - Assume that farmer address is the middle (`2 ^ 255`) of the `PieceDistance` field
+/// - Assume that farmer public key is the middle (`2 ^ 255`) of the `PieceDistance` field
 /// - Move every piece according to that
 #[derive(Debug)]
 struct IndexHashToOffsetDB {
     inner: DB,
-    address: PublicKey,
+    public_key: PublicKey,
     max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
 }
 
@@ -560,11 +560,11 @@ impl IndexHashToOffsetDB {
     /// https://github.com/subspace/subspace/pull/449
     const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
 
-    fn open_default(path: impl AsRef<Path>, address: PublicKey) -> Result<Self, PlotError> {
+    fn open_default(path: impl AsRef<Path>, public_key: PublicKey) -> Result<Self, PlotError> {
         let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
-            address,
+            public_key,
             max_distance_cache: BTreeSet::new(),
         };
         me.update_max_distance_cache();
@@ -614,10 +614,10 @@ impl IndexHashToOffsetDB {
     }
 
     fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
-        // We permute distance such that if piece index hash is equal to the `self.address` then it
-        // lands to the `PieceDistance::MIDDLE`
+        // We permute distance such that if piece index hash is equal to the `self.public_key` then
+        // it lands to the `PieceDistance::MIDDLE`
         PieceDistance::from_big_endian(&index_hash.0)
-            .wrapping_sub(&PieceDistance::from_big_endian(self.address.as_ref()))
+            .wrapping_sub(&PieceDistance::from_big_endian(self.public_key.as_ref()))
             .wrapping_add(&PieceDistance::MIDDLE)
     }
 
@@ -625,7 +625,7 @@ impl IndexHashToOffsetDB {
         let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
         distance
             .wrapping_sub(&PieceDistance::MIDDLE)
-            .wrapping_add(&PieceDistance::from_big_endian(self.address.as_ref()))
+            .wrapping_add(&PieceDistance::from_big_endian(self.public_key.as_ref()))
             .to_big_endian(&mut piece_index_hash.0);
         piece_index_hash
     }
@@ -671,7 +671,7 @@ impl IndexHashToOffsetDB {
                 subspace_core_primitives::bidirectional_distance(
                     &max_distance_key,
                     &PieceDistance::MIDDLE,
-                ) >= PieceDistance::distance(index_hash, self.address.as_ref())
+                ) >= PieceDistance::distance(index_hash, self.public_key.as_ref())
             })
             .unwrap_or(true)
     }
@@ -849,7 +849,7 @@ struct PlotWorker<T> {
 impl PlotWorker<File> {
     fn from_base_directory(
         base_directory: impl AsRef<Path>,
-        address: PublicKey,
+        public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
         let plot = OpenOptions::new()
@@ -858,7 +858,7 @@ impl PlotWorker<File> {
             .create(true)
             .open(base_directory.as_ref().join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
-        Self::with_plot_file(plot, base_directory, address, max_piece_count)
+        Self::with_plot_file(plot, base_directory, public_key, max_piece_count)
     }
 }
 
@@ -866,7 +866,7 @@ impl<T: PlotFile> PlotWorker<T> {
     fn with_plot_file(
         mut plot: T,
         base_directory: impl AsRef<Path>,
-        address: PublicKey,
+        public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
         let piece_count = plot
@@ -884,7 +884,7 @@ impl<T: PlotFile> PlotWorker<T> {
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             base_directory.as_ref().join("plot-index-to-offset"),
-            address,
+            public_key,
         )?;
 
         Ok(Self {

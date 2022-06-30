@@ -49,6 +49,7 @@ where
 /// disk plot.
 // TODO: Make fields private
 pub struct SinglePlotFarm {
+    pub(crate) identity: Identity,
     pub(crate) codec: SubspaceCodec,
     pub plot: Plot,
     pub commitments: Commitments,
@@ -90,12 +91,15 @@ impl SinglePlotFarm {
         std::fs::create_dir_all(&base_directory)?;
 
         let identity = Identity::open_or_create(&base_directory)?;
-        let public_key = identity.public_key().to_bytes().into();
 
         // TODO: This doesn't account for the fact that node can
         // have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
+        let plot = new_plot(
+            plot_index,
+            identity.public_key().to_bytes().into(),
+            max_plot_pieces,
+        )?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(base_directory.join("commitments"))?;
@@ -141,7 +145,7 @@ impl SinglePlotFarm {
             }
         }
 
-        let codec = SubspaceCodec::new_with_gpu(&plot.public_key());
+        let codec = SubspaceCodec::new_with_gpu(&identity.public_key().to_bytes());
         let create_networking_fut = subspace_networking::create(Config {
             bootstrap_nodes,
             // TODO: Do we still need it?
@@ -234,6 +238,7 @@ impl SinglePlotFarm {
         .detach();
 
         let mut farm = Self {
+            identity,
             codec,
             plot,
             commitments,
@@ -271,18 +276,17 @@ impl SinglePlotFarm {
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
     ) -> impl Future<Output = anyhow::Result<()>> {
-        let plot = self.plot.clone();
         let commitments = self.commitments.clone();
         let codec = self.codec.clone();
         let node = self.node.clone();
 
         let options = SyncOptions {
             range_size,
-            public_key: plot.public_key(),
+            public_key: self.identity.public_key().to_bytes().into(),
             max_plot_size,
             total_pieces,
         };
-        let mut plot_pieces = plot_pieces(codec, &plot, commitments);
+        let mut plot_pieces = plot_pieces(codec, &self.plot, commitments);
 
         dsn::sync(node, options, move |pieces, piece_indexes| {
             if !plot_pieces(PiecesToPlot {

@@ -296,6 +296,7 @@ async fn test_dsn_sync() {
     });
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
+    let identity = syncer_multi_farming.single_plot_farms[0].identity.clone();
     let plot = syncer_multi_farming.single_plot_farms[0].plot.clone();
     syncer_multi_farming.single_plot_farms[0]
         .dsn_sync(syncer_max_plot_size, seeder_max_plot_size, range_size)
@@ -303,7 +304,7 @@ async fn test_dsn_sync() {
         .unwrap();
 
     let sync_sector_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
-    let public_key = U256::from_big_endian(&plot.public_key());
+    let public_key = U256::from_big_endian(&identity.public_key().to_bytes());
     let expected_start = public_key.wrapping_sub(&(sync_sector_size / 2));
     let expected_end = public_key.wrapping_add(&(sync_sector_size / 2));
     match plot.get_piece_range().unwrap() {

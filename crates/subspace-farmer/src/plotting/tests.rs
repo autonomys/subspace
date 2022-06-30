@@ -32,8 +32,8 @@ async fn plotting_happy_path() {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let address = identity.public_key().to_bytes().into();
-    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let public_key = identity.public_key().to_bytes().into();
+    let plot = Plot::open_or_create(&base_directory, public_key, u64::MAX).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings =
         ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
@@ -106,9 +106,9 @@ async fn plotting_piece_eviction() {
         .expect("Could not open/create identity!");
     let mut rng = StdRng::seed_from_u64(0);
 
-    let address = identity.public_key().to_bytes().into();
+    let public_key = identity.public_key().to_bytes().into();
     let salt = Salt::default();
-    let plot = Plot::open_or_create(&base_directory, address, 5).unwrap();
+    let plot = Plot::open_or_create(&base_directory, public_key, 5).unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings =
         ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
