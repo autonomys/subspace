@@ -721,16 +721,7 @@ impl IndexHashToOffsetDB {
         from: &PieceIndexHash,
         count: usize,
     ) -> Vec<(PieceIndexHash, PieceOffset)> {
-        let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
-
-        let mut iter = self.inner.raw_iterator();
-        iter.seek(self.piece_hash_to_distance(from).to_bytes());
-
-        for _ in 0..count {
-            if iter.key().is_none() {
-                break;
-            }
-
+        let get_item = |iter: &mut rocksdb::DBRawIteratorWithThreadMode<_>| {
             let offset = PieceOffset::from_le_bytes(
                 iter.value()
                     .unwrap()
@@ -739,6 +730,30 @@ impl IndexHashToOffsetDB {
             );
             let index_hash =
                 self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
+            (index_hash, offset)
+        };
+
+        let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
+
+        let mut iter = self.inner.raw_iterator();
+        iter.seek(self.piece_hash_to_distance(from).to_bytes());
+
+        if iter.key().is_some() {
+            let (index_hash, offset) = get_item(&mut iter);
+            if &index_hash < from {
+                return piece_index_hashes_and_offsets;
+            }
+
+            iter.next();
+            piece_index_hashes_and_offsets.push((index_hash, offset));
+        }
+
+        for _ in piece_index_hashes_and_offsets.len()..count {
+            if iter.key().is_none() {
+                break;
+            }
+
+            let (index_hash, offset) = get_item(&mut iter);
             if &index_hash <= from {
                 return piece_index_hashes_and_offsets;
             }
@@ -749,19 +764,12 @@ impl IndexHashToOffsetDB {
 
         iter.seek_to_first();
 
-        for _ in 0..count - piece_index_hashes_and_offsets.len() {
+        for _ in piece_index_hashes_and_offsets.len()..count {
             if iter.key().is_none() {
                 break;
             }
 
-            let offset = PieceOffset::from_le_bytes(
-                iter.value()
-                    .unwrap()
-                    .try_into()
-                    .expect("Failed to decode piece offsets from rocksdb"),
-            );
-            let index_hash =
-                self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
+            let (index_hash, offset) = get_item(&mut iter);
             if &index_hash <= from {
                 break;
             }
