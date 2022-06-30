@@ -14,18 +14,6 @@ use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::NodeRunner;
 
-// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
-// will have the same length.
-/// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
-///
-/// It is needed because of the limit of a single plot size from the consensus
-/// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
-pub struct MultiFarming {
-    pub single_plot_farms: Vec<SinglePlotFarm>,
-    archiving: Archiving,
-    pub(crate) networking_node_runners: Vec<NodeRunner>,
-}
-
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
     // less than it was specified before.
@@ -59,6 +47,18 @@ pub struct Options<C> {
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
+}
+
+// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
+// will have the same length.
+/// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
+///
+/// It is needed because of the limit of a single plot size from the consensus
+/// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
+pub struct MultiFarming {
+    pub single_plot_farms: Vec<SinglePlotFarm>,
+    archiving: Archiving,
+    pub(crate) networking_node_runners: Vec<NodeRunner>,
 }
 
 impl MultiFarming {

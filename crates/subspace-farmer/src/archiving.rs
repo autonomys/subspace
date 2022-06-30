@@ -36,6 +36,12 @@ pub struct Archiving {
     archiving_handle: Option<JoinHandle<()>>,
 }
 
+impl Drop for Archiving {
+    fn drop(&mut self) {
+        let _ = self.stop_sender.take().unwrap().send(());
+    }
+}
+
 impl Archiving {
     // TODO: Blocks that are coming form substrate node are fully trusted right now, which we probably
     //  don't want eventually
@@ -185,12 +191,6 @@ impl Archiving {
             .unwrap()
             .await
             .map_err(ArchivingError::JoinTask)
-    }
-}
-
-impl Drop for Archiving {
-    fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
     }
 }
 
