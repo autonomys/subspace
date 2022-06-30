@@ -173,11 +173,11 @@ async fn test_dsn_sync() {
             listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             dsn_sync: false,
             enable_dsn_archiving: false,
+            enable_farming: false,
         },
         u64::MAX / 100,
         u64::MAX,
         plot_factory,
-        false,
     )
     .await
     .unwrap();
@@ -276,11 +276,11 @@ async fn test_dsn_sync() {
             listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             dsn_sync: false,
             enable_dsn_archiving: false,
+            enable_farming: false,
         },
         syncer_max_plot_size * PIECE_SIZE as u64,
         syncer_max_plot_size,
         plot_factory,
-        false,
     )
     .await
     .unwrap();
