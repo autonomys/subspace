@@ -37,7 +37,7 @@ where
     pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
-    pub(crate) start_farmings: bool,
+    pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
 }
 
@@ -63,7 +63,7 @@ impl SinglePlotFarm {
             mut listen_on,
             mut bootstrap_nodes,
             first_listen_on,
-            start_farmings,
+            enable_farming,
             reward_address,
         }: SinglePlotFarmOptions<C, NewPlot>,
     ) -> anyhow::Result<Self>
@@ -85,7 +85,7 @@ impl SinglePlotFarm {
         let commitments = Commitments::new(base_directory.join("commitments"))?;
 
         // Start the farming task
-        let farming = start_farmings.then(|| {
+        let farming = enable_farming.then(|| {
             Farming::start(
                 plot.clone(),
                 commitments.clone(),

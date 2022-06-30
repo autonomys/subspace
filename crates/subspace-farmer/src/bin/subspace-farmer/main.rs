@@ -68,6 +68,9 @@ struct FarmingArgs {
     /// Use dsn for syncing
     #[clap(long)]
     dsn_sync: bool,
+    /// Disable farming
+    #[clap(long)]
+    disable_farming: bool,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
