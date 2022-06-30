@@ -139,27 +139,47 @@ async fn indexes_retrievable() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let pieces = Arc::new(generate_random_pieces(10_000));
+    let n_pieces = 10_000;
+    let pieces = Arc::new(generate_random_pieces(n_pieces));
     let offset = 0;
 
     let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
-    let count = pieces.count();
-    let piece_indexes = (offset..).take(count).collect::<Vec<_>>();
+    let piece_indexes = (offset..).take(n_pieces).collect::<Vec<_>>();
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
-    let piece_indexes = (offset..)
-        .take(pieces.count())
-        .map(|index| (PieceIndexHash::from(index), index))
+    let piece_index_hashes = (offset..)
+        .take(n_pieces)
+        .map(|index| {
+            (
+                PieceDistance::from_big_endian(&PieceIndexHash::from(index).0),
+                index,
+            )
+        })
         .collect::<BTreeMap<_, _>>();
+    let before_wrap = PieceDistance::MIDDLE - PieceDistance::MAX / n_pieces * 10;
+    let cases = [
+        (PieceDistance::zero(), 100, "Non-wrapping simple case"),
+        (before_wrap, 20, "Wrapping before reaching `max`"),
+        (
+            before_wrap,
+            piece_index_hashes.range(before_wrap..).count(),
+            "wrapping that crosses `max`, but doesn't reach `min`",
+        ),
+        (
+            before_wrap,
+            piece_index_hashes.range(before_wrap..).count() + 20,
+            "wrapping that crosses `max`, and reaches `min`",
+        ),
+    ];
 
-    for _ in 0..10000 {
-        let from = PieceIndexHash(rand::random());
-        let take = rand::thread_rng().gen_range(0..12000);
-        let indexes = plot.read_sequential_piece_indexes(from, take).unwrap();
-        let expected_indexes = piece_indexes
+    for (from, take, msg) in cases {
+        let indexes = plot
+            .read_sequential_piece_indexes(PieceIndexHash(from.into()), take as u64)
+            .unwrap();
+        let expected_indexes = piece_index_hashes
             .range(from..)
-            .take(take as _)
+            .take(take)
             .map(|(_, index)| *index)
             .collect::<Vec<_>>();
-        assert_eq!(indexes, expected_indexes);
+        assert_eq!(indexes, expected_indexes, "{}", msg);
     }
 }
