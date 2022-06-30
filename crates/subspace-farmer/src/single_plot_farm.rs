@@ -41,6 +41,8 @@ where
     pub(crate) reward_address: PublicKey,
 }
 
+/// Single plot farm abstraction is a container for everything necessary to plot/farm with a single
+/// disk plot.
 // TODO: Make fields private
 pub struct SinglePlotFarm {
     pub(crate) codec: SubspaceCodec,
@@ -48,8 +50,6 @@ pub struct SinglePlotFarm {
     pub commitments: Commitments,
     pub(crate) farming: Option<Farming>,
     pub(crate) node: Node,
-    /// Might be `None` if was already taken out before
-    pub node_runner: Option<NodeRunner>,
 }
 
 impl SinglePlotFarm {
@@ -66,7 +66,7 @@ impl SinglePlotFarm {
             enable_farming,
             reward_address,
         }: SinglePlotFarmOptions<C, NewPlot>,
-    ) -> anyhow::Result<Self>
+    ) -> anyhow::Result<(Self, NodeRunner)>
     where
         C: RpcClient,
         NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
@@ -217,14 +217,15 @@ impl SinglePlotFarm {
         }))
         .detach();
 
-        Ok(SinglePlotFarm {
+        let farm = Self {
             codec,
             plot,
             commitments,
             farming,
             node,
-            node_runner: Some(node_runner),
-        })
+        };
+
+        Ok((farm, node_runner))
     }
 
     pub(crate) fn dsn_sync(

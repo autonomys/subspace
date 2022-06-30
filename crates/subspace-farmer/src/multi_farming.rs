@@ -6,7 +6,7 @@ use crate::plotting;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
-use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
+use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
@@ -25,7 +25,7 @@ use tracing::info;
 pub struct MultiFarming {
     pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
-    pub(crate) networking_node_runners: Vec<subspace_networking::NodeRunner>,
+    pub(crate) networking_node_runners: Vec<NodeRunner>,
 }
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
@@ -80,62 +80,15 @@ impl MultiFarming {
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
-        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
-
-        let mut single_plot_farm_instantiations = plot_sizes
-            .iter()
-            .enumerate()
-            .map(|(plot_index, &max_plot_pieces)| {
-                let base_directory = base_directory.join(format!("plot{plot_index}"));
-                let farming_client = farming_client.clone();
-                let new_plot = new_plot.clone();
-                let listen_on = listen_on.clone();
-                let bootstrap_nodes = bootstrap_nodes.clone();
-                let first_listen_on = Arc::clone(&first_listen_on);
-
-                tokio::task::spawn_blocking(move || {
-                    SinglePlotFarm::new(SinglePlotFarmOptions {
-                        base_directory,
-                        plot_index,
-                        max_plot_pieces,
-                        farming_client,
-                        new_plot,
-                        listen_on,
-                        bootstrap_nodes,
-                        first_listen_on,
-                        enable_farming,
-                        reward_address,
-                    })
-                })
-            })
-            .collect::<FuturesOrdered<_>>()
-            .map(|single_plot_farm| {
-                single_plot_farm.expect("Blocking task above never supposed to panic")
-            });
-
-        let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
-        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
-
-        let mut node = None;
-
-        while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
-            let mut single_plot_farm = single_plot_farm?;
-
-            if node.is_none() {
-                node = Some(single_plot_farm.node.clone());
-            }
-            networking_node_runners.push(
-                single_plot_farm
-                    .node_runner
-                    .take()
-                    .expect("Node runner was never taken out before this; qed"),
-            );
-            single_plot_farms.push(single_plot_farm);
-        }
 
         let farmer_metadata = farming_client
             .farmer_metadata()
@@ -143,6 +96,51 @@ impl MultiFarming {
             .map_err(|error| anyhow!(error))?;
         let max_plot_size = farmer_metadata.max_plot_size;
         let total_pieces = farmer_metadata.total_pieces;
+
+        let (single_plot_farms, networking_node_runners, node) =
+            tokio::task::spawn_blocking(move || {
+                let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
+                let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
+                let mut node = None;
+
+                let single_plot_farm_instantiations = plot_sizes
+                    .par_iter()
+                    .enumerate()
+                    .map(|(plot_index, &max_plot_pieces)| {
+                        let base_directory = base_directory.join(format!("plot{plot_index}"));
+                        let farming_client = farming_client.clone();
+                        let new_plot = new_plot.clone();
+                        let listen_on = listen_on.clone();
+                        let bootstrap_nodes = bootstrap_nodes.clone();
+                        let first_listen_on = Arc::clone(&first_listen_on);
+
+                        SinglePlotFarm::new(SinglePlotFarmOptions {
+                            base_directory,
+                            plot_index,
+                            max_plot_pieces,
+                            farming_client,
+                            new_plot,
+                            listen_on,
+                            bootstrap_nodes,
+                            first_listen_on,
+                            enable_farming,
+                            reward_address,
+                        })
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+
+                for (farm, node_runner) in single_plot_farm_instantiations {
+                    if node.is_none() {
+                        node = Some(farm.node.clone());
+                    }
+                    networking_node_runners.push(node_runner);
+                    single_plot_farms.push(farm);
+                }
+
+                Ok::<_, anyhow::Error>((single_plot_farms, networking_node_runners, node))
+            })
+            .await
+            .expect("Not supposed to panic, crash if it does")?;
 
         // Start syncing
         if dsn_sync {
