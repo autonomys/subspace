@@ -14,7 +14,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::NodeRunner;
-use tracing::{error, info, trace};
+use tracing::info;
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
 // will have the same length.
@@ -124,34 +124,6 @@ impl MultiFarming {
 
         while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
             let mut single_plot_farm = single_plot_farm?;
-
-            // Enable DSN subscription for segments archiving.
-            if enable_dsn_archiving {
-                // TODO: Make sure this task can be cancelled
-                tokio::spawn({
-                    let node = single_plot_farm.node.clone();
-                    async move {
-                        trace!("Subscribing to pubsub archiving...");
-                        match node
-                            .subscribe(subspace_networking::PUB_SUB_ARCHIVING_TOPIC.clone())
-                            .await
-                        {
-                            Ok(mut subscription) => {
-                                info!("Subscribed to pubsub archiving.");
-
-                                //TODO: Integrate with archiving process.
-                                #[allow(clippy::redundant_pattern_matching)]
-                                while let Some(_) = subscription.next().await {
-                                    info!("Archiving segment received from pubsub subscription.");
-                                }
-                            }
-                            Err(err) => {
-                                error!(error = ?err, "Pubsub archiving subscription failed.");
-                            }
-                        }
-                    }
-                });
-            }
 
             if node.is_none() {
                 node = Some(single_plot_farm.node.clone());
