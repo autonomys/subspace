@@ -164,39 +164,18 @@ impl SinglePlotFarm {
                     let mut pieces_and_indexes =
                         plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
 
-                    if pieces_and_indexes.len() == 1 {
-                        let (index, mut piece) = pieces_and_indexes
-                            .into_iter()
-                            .next()
-                            .expect("Always present as length is exactly one");
-                        let index_hash = PieceIndexHash::from(index);
-                        if index_hash > to {
-                            return Some(PiecesByRangeResponse {
-                                pieces: PiecesToPlot::default(),
-                                next_piece_index_hash: None,
-                            });
-                        }
-                        codec.decode(&mut piece, index).ok()?;
-                        return Some(PiecesByRangeResponse {
-                            pieces: PiecesToPlot {
-                                piece_indexes: vec![index],
-                                pieces: piece.into(),
-                            },
-                            next_piece_index_hash: None,
-                        });
-                    }
-
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
                         .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) > to)
                     {
                         pieces_and_indexes.truncate(idx);
                         None
+                    } else if pieces_and_indexes.len() == 1 {
+                        None
                     } else {
                         pieces_and_indexes
                             .pop()
-                            .map(|(index, _)| Some(PieceIndexHash::from(index)))
-                            .unwrap_or_default()
+                            .map(|(index, _)| PieceIndexHash::from(index))
                     };
 
                     let (piece_indexes, pieces) = pieces_and_indexes
