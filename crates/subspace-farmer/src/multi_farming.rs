@@ -58,6 +58,7 @@ pub struct Options<C> {
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub dsn_sync: bool,
+    pub enable_farming: bool,
 }
 
 impl MultiFarming {
@@ -73,11 +74,11 @@ impl MultiFarming {
             listen_on,
             enable_dsn_archiving,
             dsn_sync,
+            enable_farming,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
         new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
-        start_farmings: bool,
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
@@ -104,7 +105,7 @@ impl MultiFarming {
                         listen_on,
                         bootstrap_nodes,
                         first_listen_on,
-                        start_farmings,
+                        enable_farming,
                         reward_address,
                     })
                 })
