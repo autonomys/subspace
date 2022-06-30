@@ -412,6 +412,7 @@ mod pallet {
                         }
                     }
 
+                    // TODO: is this check unnecessary as it's actually guaranteed by the above one?
                     // Ensure the parent receipt exists after block #1.
                     if primary_number > One::one() {
                         ensure!(

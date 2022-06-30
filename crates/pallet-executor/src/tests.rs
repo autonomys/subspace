@@ -1,6 +1,5 @@
 use crate::{
-    self as pallet_executor, BlockHash, Error, ExecutionChainBestNumber, ExecutionReceiptError,
-    OldestReceiptNumber, Receipts,
+    self as pallet_executor, BlockHash, ExecutionChainBestNumber, OldestReceiptNumber, Receipts,
 };
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
@@ -10,7 +9,8 @@ use sp_executor::{
     ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof, SignedExecutionReceipt,
 };
 use sp_runtime::testing::Header;
-use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
+use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_trie::StorageProof;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -118,6 +118,11 @@ fn submit_execution_receipt_should_work() {
 
     new_test_ext().execute_with(|| {
         (0..256).for_each(|index| {
+            assert_ok!(pallet_executor::Pallet::<Test>::pre_dispatch(
+                &pallet_executor::Call::submit_execution_receipt {
+                    signed_execution_receipt: dummy_receipts[index].clone()
+                }
+            ));
             assert_ok!(Executor::submit_execution_receipt(
                 Origin::none(),
                 dummy_receipts[index].clone(),
@@ -137,10 +142,16 @@ fn submit_execution_receipt_should_work() {
 
         assert!(Receipts::<Test>::get(2).is_some());
         assert!(Receipts::<Test>::get(258).is_none());
+
         assert_noop!(
-            Executor::submit_execution_receipt(Origin::none(), dummy_receipts[258].clone(),),
-            Error::<Test>::ExecutionReceipt(ExecutionReceiptError::MissingParent)
+            pallet_executor::Pallet::<Test>::pre_dispatch(
+                &pallet_executor::Call::submit_execution_receipt {
+                    signed_execution_receipt: dummy_receipts[258].clone()
+                }
+            ),
+            TransactionValidityError::Invalid(InvalidTransaction::Future)
         );
+
         assert_ok!(Executor::submit_execution_receipt(
             Origin::none(),
             dummy_receipts[257].clone(),

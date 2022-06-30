@@ -55,6 +55,7 @@
 //! - Secondary chain, execution layer.
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
+//! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
 
 mod aux_schema;
 mod bundle_processor;
