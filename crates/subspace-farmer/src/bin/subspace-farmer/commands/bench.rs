@@ -168,7 +168,7 @@ pub(crate) async fn bench(
             bootstrap_nodes: vec![],
             listen_on: vec![],
             enable_dsn_archiving: false,
-            dsn_sync: false,
+            enable_dsn_sync: false,
             enable_farming: false,
         },
         plot_size,

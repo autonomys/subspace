@@ -20,7 +20,8 @@ use subspace_networking::{
 };
 use subspace_solving::SubspaceCodec;
 use tokio::runtime::Handle;
-use tracing::info;
+use tokio::task::JoinHandle;
+use tracing::{error, info};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
@@ -32,6 +33,8 @@ where
     pub(crate) base_directory: PathBuf,
     pub(crate) plot_index: usize,
     pub(crate) max_plot_pieces: u64,
+    pub(crate) max_plot_size: u64,
+    pub(crate) total_pieces: u64,
     pub(crate) farming_client: C,
     pub(crate) new_plot: NewPlot,
     pub(crate) listen_on: Vec<Multiaddr>,
@@ -39,6 +42,7 @@ where
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
+    pub(crate) enable_dsn_sync: bool,
 }
 
 /// Single plot farm abstraction is a container for everything necessary to plot/farm with a single
@@ -50,6 +54,15 @@ pub struct SinglePlotFarm {
     pub commitments: Commitments,
     pub(crate) farming: Option<Farming>,
     pub(crate) node: Node,
+    background_task_handles: Vec<JoinHandle<()>>,
+}
+
+impl Drop for SinglePlotFarm {
+    fn drop(&mut self) {
+        for handle in &self.background_task_handles {
+            handle.abort();
+        }
+    }
 }
 
 impl SinglePlotFarm {
@@ -58,6 +71,8 @@ impl SinglePlotFarm {
             base_directory,
             plot_index,
             max_plot_pieces,
+            max_plot_size,
+            total_pieces,
             farming_client,
             new_plot,
             mut listen_on,
@@ -65,6 +80,7 @@ impl SinglePlotFarm {
             first_listen_on,
             enable_farming,
             reward_address,
+            enable_dsn_sync,
         }: SinglePlotFarmOptions<C, NewPlot>,
     ) -> anyhow::Result<(Self, NodeRunner)>
     where
@@ -217,13 +233,34 @@ impl SinglePlotFarm {
         }))
         .detach();
 
-        let farm = Self {
+        let mut farm = Self {
             codec,
             plot,
             commitments,
             farming,
             node,
+            background_task_handles: vec![],
         };
+
+        // Start syncing
+        if enable_dsn_sync {
+            // TODO: operate with number of pieces to fetch, instead of range calculations
+            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
+            let dsn_sync_fut = farm.dsn_sync(max_plot_size, total_pieces, sync_range_size);
+
+            let dsn_sync_handle = tokio::spawn(async move {
+                match dsn_sync_fut.await {
+                    Ok(()) => {
+                        info!("DSN sync done successfully");
+                    }
+                    Err(error) => {
+                        error!(?error, "DSN sync failed");
+                    }
+                }
+            });
+
+            farm.background_task_handles.push(dsn_sync_handle);
+        }
 
         Ok((farm, node_runner))
     }

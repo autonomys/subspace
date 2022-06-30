@@ -1,5 +1,4 @@
 use crate::archiving::Archiving;
-use crate::dsn::PieceIndexHashNumber;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::plotting;
@@ -14,7 +13,6 @@ use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::NodeRunner;
-use tracing::info;
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
 // will have the same length.
@@ -59,7 +57,7 @@ pub struct Options<C> {
     pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
-    pub dsn_sync: bool,
+    pub enable_dsn_sync: bool,
     pub enable_farming: bool,
 }
 
@@ -75,7 +73,7 @@ impl MultiFarming {
             bootstrap_nodes,
             listen_on,
             enable_dsn_archiving,
-            dsn_sync,
+            enable_dsn_sync,
             enable_farming,
         }: Options<C>,
         total_plot_size: u64,
@@ -118,6 +116,8 @@ impl MultiFarming {
                             base_directory,
                             plot_index,
                             max_plot_pieces,
+                            max_plot_size,
+                            total_pieces,
                             farming_client,
                             new_plot,
                             listen_on,
@@ -125,6 +125,7 @@ impl MultiFarming {
                             first_listen_on,
                             enable_farming,
                             reward_address,
+                            enable_dsn_sync,
                         })
                     })
                     .collect::<anyhow::Result<Vec<_>>>()?;
@@ -141,31 +142,6 @@ impl MultiFarming {
             })
             .await
             .expect("Not supposed to panic, crash if it does")?;
-
-        // Start syncing
-        if dsn_sync {
-            // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
-
-            tokio::spawn({
-                let mut futures = single_plot_farms
-                    .iter()
-                    .map(|single_plot_farm| {
-                        single_plot_farm.dsn_sync(max_plot_size, total_pieces, sync_range_size)
-                    })
-                    .collect::<FuturesUnordered<_>>();
-
-                async move {
-                    while let Some(result) = futures.next().await {
-                        result?;
-                    }
-
-                    info!("Sync done");
-
-                    Ok::<_, anyhow::Error>(())
-                }
-            });
-        }
 
         // Start archiving task
         let archiving = Archiving::start(
@@ -209,7 +185,7 @@ impl MultiFarming {
     }
 
     /// Waits for farming and plotting completion (or errors)
-    pub async fn wait(self) -> anyhow::Result<()> {
+    pub async fn wait(mut self) -> anyhow::Result<()> {
         if !self
             .single_plot_farms
             .iter()
@@ -218,11 +194,13 @@ impl MultiFarming {
             return self.archiving.wait().await.map_err(Into::into);
         }
 
+        // `.iter_mut()` so that we don't drop `SinglePlotFarm` and continue background tasks if
+        // there are any
         let mut farming = self
             .single_plot_farms
-            .into_iter()
+            .iter_mut()
             .filter_map(|single_plot_farm| {
-                let farming = single_plot_farm.farming?;
+                let farming = single_plot_farm.farming.take()?;
                 Some(farming.wait())
             })
             .collect::<FuturesUnordered<_>>();
