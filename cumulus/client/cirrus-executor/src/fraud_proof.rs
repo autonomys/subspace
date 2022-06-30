@@ -18,7 +18,7 @@ use sp_trie::StorageProof;
 use std::{marker::PhantomData, sync::Arc};
 use subspace_core_primitives::BlockNumber;
 
-/// Error type for cirrus gossip handling.
+/// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
 pub enum FraudProofError {
 	#[error("State root not using H256")]
@@ -250,8 +250,7 @@ where
 	}
 }
 
-/// Compares if the receipt `other` is the same with `local`, return a tuple of (local_index,
-/// local_trace_root) if there is a mismatch.
+/// Returns the index of first mismatch between the receipts `local` and `other` if any.
 pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
 	local: &ExecutionReceipt<Number, PHash, Hash>,
 	other: &ExecutionReceipt<Number, PHash, Hash>,
