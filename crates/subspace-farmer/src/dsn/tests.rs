@@ -1,6 +1,6 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
-use crate::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
+use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::{ObjectMappings, Plot};
 use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -163,7 +163,7 @@ async fn test_dsn_sync() {
         Plot::open_or_create(base_path, public_key, max_piece_count)
     };
 
-    let mut seeder_multi_farming = MultiFarming::new(
+    let mut seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
             archiving_client: seeder_client.clone(),
@@ -265,7 +265,7 @@ async fn test_dsn_sync() {
         Plot::open_or_create(base_path, public_key, max_piece_count)
     };
 
-    let mut syncer_multi_farming = MultiFarming::new(
+    let mut syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: syncer_base_directory.as_ref().to_owned(),
             archiving_client: syncer_client.clone(),

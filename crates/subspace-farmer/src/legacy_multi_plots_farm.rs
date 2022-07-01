@@ -53,13 +53,13 @@ pub struct Options<C> {
 ///
 /// It is needed because of the limit of a single plot size from the consensus
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
-pub struct MultiFarming {
+pub struct LegacyMultiPlotsFarm {
     pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
     pub(crate) networking_node_runners: Vec<NodeRunner>,
 }
 
-impl MultiFarming {
+impl LegacyMultiPlotsFarm {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new<C: RpcClient>(
         Options {

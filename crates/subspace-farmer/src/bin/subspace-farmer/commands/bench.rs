@@ -14,7 +14,9 @@ use subspace_core_primitives::{
     PIECE_SIZE,
 };
 use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
-use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
+use subspace_farmer::legacy_multi_plots_farm::{
+    LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
+};
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
 use tempfile::TempDir;
 use tokio::time::Instant;
@@ -158,7 +160,7 @@ pub(crate) async fn bench(
         }
     };
 
-    let multi_farming = MultiFarming::new(
+    let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
             archiving_client: client.clone(),

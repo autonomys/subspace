@@ -27,9 +27,9 @@ pub(crate) mod commitments;
 pub(crate) mod dsn;
 pub(crate) mod farming;
 pub(crate) mod identity;
+pub mod legacy_multi_plots_farm;
 #[cfg(test)]
 mod mock_rpc_client;
-pub mod multi_farming;
 pub(crate) mod node_rpc_client;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
