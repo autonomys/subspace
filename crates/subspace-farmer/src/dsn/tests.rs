@@ -135,6 +135,7 @@ async fn no_sync_test() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_dsn_sync() {
     let seeder_max_plot_size = 20 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
     let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 2M
