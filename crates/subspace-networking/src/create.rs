@@ -7,6 +7,9 @@ use crate::pieces_by_range_handler::{
 };
 use crate::shared::Shared;
 use futures::channel::mpsc;
+use futures::{AsyncRead, AsyncWrite};
+use libp2p::core::muxing::StreamMuxerBox;
+use libp2p::core::transport::{Boxed, MemoryTransport, OrTransport};
 use libp2p::dns::TokioDnsConfig;
 use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
@@ -15,11 +18,16 @@ use libp2p::identify::IdentifyConfig;
 use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
-use libp2p::swarm::SwarmBuilder;
+use libp2p::relay::v2::client::transport::ClientTransport;
+use libp2p::relay::v2::client::Client as RelayClient;
+use libp2p::relay::v2::relay::{rate_limiter, Config as RelayConfig};
+use libp2p::swarm::{AddressScore, SwarmBuilder};
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use once_cell::sync::Lazy;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -29,6 +37,153 @@ use tracing::info;
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
+
+/// Provides the default relay server multi-address. It's memory based and can be used in both
+/// development and in-memory relay scenarios.
+pub static DEFAULT_RELAY_SERVER_ADDRESS: Lazy<Multiaddr> =
+    Lazy::new(|| Multiaddr::empty().with(Protocol::Memory(1_000_000_000)));
+
+/// A helper structure for working with libp2p `relay::Config`. The original structure is not Clone,
+/// Send and Sync which is not convenient. `RelayLimitSettings` implements a conversion method to the
+/// original `relay::Config` and the default method with the original recommended settings.
+#[derive(Clone, Debug)]
+pub struct RelayLimitSettings {
+    pub max_reservations: usize,
+    pub max_reservations_per_peer: usize,
+    pub reservation_duration: Duration,
+    pub reservation_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig,
+    pub reservation_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig,
+    pub max_circuits: usize,
+    pub max_circuits_per_peer: usize,
+    pub max_circuit_duration: Duration,
+    pub max_circuit_bytes: u64,
+    pub circuit_src_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig,
+    pub circuit_src_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig,
+}
+
+impl Default for RelayLimitSettings {
+    fn default() -> Self {
+        let default_relay_config = RelayConfig::default();
+
+        Self {
+            max_reservations: default_relay_config.max_reservations,
+            max_reservations_per_peer: default_relay_config.max_circuits_per_peer,
+            reservation_duration: default_relay_config.reservation_duration,
+            max_circuits: default_relay_config.max_circuits,
+            max_circuits_per_peer: default_relay_config.max_circuits_per_peer,
+            max_circuit_duration: default_relay_config.max_circuit_duration,
+            max_circuit_bytes: default_relay_config.max_circuit_bytes,
+
+            // Copied from the  RelayConfig::default() implementation:
+            // For each peer ID one reservation every 2 minutes with up to 30 reservations per hour.
+            reservation_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig {
+                limit: NonZeroU32::new(30).expect("30 > 0"),
+                interval: Duration::from_secs(60 * 2),
+            },
+            // For each IP address one reservation every minute with up to 60 reservations per hour.
+            reservation_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig {
+                limit: NonZeroU32::new(60).expect("60 > 0"),
+                interval: Duration::from_secs(60),
+            },
+            // For each source peer ID one circuit every 2 minute with up to 30 circuits per hour.
+            circuit_src_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig {
+                limit: NonZeroU32::new(30).expect("30 > 0"),
+                interval: Duration::from_secs(60 * 2),
+            },
+            // For each source IP address one circuit every minute with up to 60 circuits per hour.
+            circuit_src_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig {
+                limit: NonZeroU32::new(60).expect("60 > 0"),
+                interval: Duration::from_secs(60),
+            },
+        }
+    }
+}
+
+impl RelayLimitSettings {
+    /// Converts `RelayLimitSettings` to libp2p `relay::Config`.
+    pub fn to_relay_config(self) -> RelayConfig {
+        let reservation_rate_limiters = vec![
+            rate_limiter::new_per_peer(self.reservation_rate_limit_per_peer),
+            rate_limiter::new_per_ip(self.circuit_src_rate_limit_per_ip),
+        ];
+
+        let circuit_src_rate_limiters = vec![
+            rate_limiter::new_per_peer(self.circuit_src_rate_limit_per_peer),
+            rate_limiter::new_per_ip(self.circuit_src_rate_limit_per_ip),
+        ];
+
+        RelayConfig {
+            max_reservations: self.max_reservations,
+            max_reservations_per_peer: self.max_circuits_per_peer,
+            reservation_duration: self.reservation_duration,
+            reservation_rate_limiters,
+            max_circuits: self.max_circuits,
+            max_circuits_per_peer: self.max_circuits_per_peer,
+            max_circuit_duration: self.max_circuit_duration,
+            max_circuit_bytes: self.max_circuit_bytes,
+            circuit_src_rate_limiters,
+        }
+    }
+}
+
+/// Defines relay circuits configuration for the networking.
+#[derive(Clone, Debug)]
+pub enum RelayConfiguration {
+    /// Relay server configuration. The node will be able to listen on the provided Multiaddr with
+    /// adding it as an external address.
+    /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000
+    /// The relay configuration will be configured with provided RelayLimitSettings.
+    /// This option will toggle the relay behaviour (relay server).
+    Server(Multiaddr, RelayLimitSettings),
+
+    /// Relay-client configuration in accepting mode (server behind NAT). It will enable listening
+    /// on the provided Multiaddr with registering a circuit reservation.
+    /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000/p2p/<server_peer_id>/p2p-circuit
+    /// This option will toggle the relay-client behaviour.
+    ClientAcceptor(Multiaddr),
+
+    /// Relay-client configuration in requesting mode (a client for a server behind NAT).
+    /// It will enable creating a relay circuit.
+    /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000/p2p/<server_peer_id>/p2p-circuit
+    /// This option will toggle the relay-client behaviour.
+    ClientInitiator,
+
+    /// No relay configuration.
+    /// This option will have both relay (server) and relay client behaviour disabled.
+    NoRelay,
+}
+
+impl Default for RelayConfiguration {
+    fn default() -> Self {
+        Self::NoRelay
+    }
+}
+
+impl RelayConfiguration {
+    /// Creates the default relay server configuration with the default memory based multi-address
+    /// and the default relay limit settings.
+    pub fn default_server_configuration() -> Self {
+        Self::Server(DEFAULT_RELAY_SERVER_ADDRESS.clone(), Default::default())
+    }
+
+    /// Defines whether `self` is configured as a relay client in either ClientInitiator or
+    /// ClientAcceptor modes.
+    pub fn is_client_enabled(&self) -> bool {
+        matches!(
+            self,
+            RelayConfiguration::ClientInitiator | RelayConfiguration::ClientAcceptor(..)
+        )
+    }
+
+    /// Extracts `RelayLimitSettings` from the `Server` configuration option. Returns None otherwise.
+    pub fn server_relay_settings(&self) -> Option<RelayLimitSettings> {
+        if let RelayConfiguration::Server(_, settings) = self {
+            return Some(settings.clone());
+        }
+
+        None
+    }
+}
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -60,6 +215,8 @@ pub struct Config {
     pub initial_random_query_interval: Duration,
     /// Defines a handler for the pieces-by-range protocol.
     pub pieces_by_range_request_handler: ExternalPiecesByRangeRequestHandler,
+    /// Defines relay mode and limit settings.
+    pub relay_config: RelayConfiguration,
 }
 
 impl fmt::Debug for Config {
@@ -116,6 +273,7 @@ impl Config {
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             pieces_by_range_request_handler: Arc::new(|_| None),
+            relay_config: Default::default(),
         }
     }
 }
@@ -150,32 +308,27 @@ pub async fn create(
         allow_non_globals_in_dht,
         initial_random_query_interval,
         pieces_by_range_request_handler,
+        relay_config,
     }: Config,
 ) -> Result<(Node, NodeRunner), CreationError> {
     let local_peer_id = keypair.public().to_peer_id();
 
+    // Create optional relay transport and client.
+    let (relay_transport, relay_client) = relay_config
+        .is_client_enabled()
+        .then(|| {
+            let (relay_transport, relay_client) =
+                RelayClient::new_transport_and_behaviour(local_peer_id);
+
+            (Some(relay_transport), Some(relay_client))
+        })
+        .unwrap_or((None, None));
+
+    let transport = build_transport(keypair, timeout, yamux_config, relay_transport).await?;
+
+    let relay_config_for_swarm = relay_config.clone();
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let transport = {
-            let transport = {
-                let dns_tcp = TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?;
-                let ws =
-                    WsConfig::new(TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?);
-                dns_tcp.or_transport(ws)
-            };
-
-            let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-                .into_authentic(&keypair)
-                .expect("Signing libp2p-noise static DH keypair failed.");
-
-            transport
-                .upgrade(core::upgrade::Version::V1Lazy)
-                .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-                .multiplex(yamux_config)
-                .timeout(timeout)
-                .boxed()
-        };
-
         // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
         let bootstrap_nodes = bootstrap_nodes
             .into_iter()
@@ -198,16 +351,20 @@ pub async fn create(
         let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
             PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
 
-        let behaviour = Behavior::new(BehaviorConfig {
-            peer_id: local_peer_id,
-            bootstrap_nodes,
-            identify,
-            kademlia,
-            gossipsub,
-            value_getter,
-            pieces_by_range_protocol_config,
-            pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
-        });
+        let behaviour = Behavior::new(
+            BehaviorConfig {
+                peer_id: local_peer_id,
+                bootstrap_nodes,
+                identify,
+                kademlia,
+                gossipsub,
+                value_getter,
+                pieces_by_range_protocol_config,
+                pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
+                relay_config: relay_config_for_swarm.clone(),
+            },
+            relay_client,
+        );
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             .executor(Box::new(|fut| {
@@ -233,6 +390,17 @@ pub async fn create(
             }
         }
 
+        // Setup circuit for the accepting relay client.
+        if let RelayConfiguration::ClientAcceptor(addr) = relay_config_for_swarm.clone() {
+            swarm.listen_on(addr)?;
+        }
+
+        // Setup external address for relay server.
+        if let RelayConfiguration::Server(addr, _) = relay_config_for_swarm {
+            swarm.listen_on(addr.clone())?;
+            swarm.add_external_address(addr, AddressScore::Infinite);
+        }
+
         Ok::<_, CreationError>(swarm)
     });
 
@@ -242,7 +410,7 @@ pub async fn create(
 
     let shared = Arc::new(Shared::new(local_peer_id, command_sender));
 
-    let node = Node::new(Arc::clone(&shared));
+    let node = Node::new(Arc::clone(&shared), relay_config);
     let node_runner = NodeRunner::new(
         allow_non_globals_in_dht,
         command_receiver,
@@ -252,4 +420,61 @@ pub async fn create(
     );
 
     Ok((node, node_runner))
+}
+
+// Builds the transport stack that LibP2P will communicate over along with an optional relay client.
+async fn build_transport(
+    keypair: identity::Keypair,
+    timeout: Duration,
+    yamux_config: YamuxConfig,
+    relay_transport: Option<ClientTransport>,
+) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
+    let transport = {
+        let dns_tcp = TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?;
+        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?);
+        let transport = dns_tcp.or_transport(ws);
+
+        // Add MemoryTransport to the chain to enable in-memory relay configurations.
+        MemoryTransport::default().or_transport(transport)
+    };
+
+    if let Some(relay_transport) = relay_transport {
+        let transport = OrTransport::new(relay_transport, transport);
+
+        Ok(upgrade_transport(
+            transport.boxed(),
+            &keypair,
+            timeout,
+            yamux_config,
+        ))
+    } else {
+        Ok(upgrade_transport(
+            transport.boxed(),
+            &keypair,
+            timeout,
+            yamux_config,
+        ))
+    }
+}
+
+// Upgrades a provided transport with a multiplexer and a Noise authenticator.
+fn upgrade_transport<StreamSink>(
+    transport: Boxed<StreamSink>,
+    keypair: &identity::Keypair,
+    timeout: Duration,
+    yamux_config: YamuxConfig,
+) -> Boxed<(PeerId, StreamMuxerBox)>
+where
+    StreamSink: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+{
+    let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
+        .into_authentic(keypair)
+        .expect("Signing libp2p-noise static DH keypair failed.");
+
+    transport
+        .upgrade(core::upgrade::Version::V1Lazy)
+        .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
+        .multiplex(yamux_config)
+        .timeout(timeout)
+        .boxed()
 }

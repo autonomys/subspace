@@ -1,6 +1,6 @@
 pub(crate) mod custom_record_store;
 
-use crate::create::ValueGetter;
+use crate::create::{RelayConfiguration, ValueGetter};
 use crate::request_responses::{
     Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
     RequestResponseHandlerRunner, RequestResponseInstanceConfig, RequestResponsesBehaviour,
@@ -11,6 +11,9 @@ use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthe
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping::{Ping, PingEvent};
+use libp2p::relay::v2::client::{Client as RelayClient, Event as RelayClientEvent};
+use libp2p::relay::v2::relay::{Event as RelayEvent, Relay};
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{Multiaddr, NetworkBehaviour, PeerId};
 
 pub(crate) struct BehaviorConfig {
@@ -30,6 +33,8 @@ pub(crate) struct BehaviorConfig {
     pub(crate) pieces_by_range_protocol_config: RequestResponseConfig,
     /// The pieces-by-range request handler.
     pub(crate) pieces_by_range_request_handler: Box<dyn RequestResponseHandlerRunner + Send>,
+    /// Defines relay circuits configuration.
+    pub(crate) relay_config: RelayConfiguration,
 }
 
 #[derive(NetworkBehaviour)]
@@ -41,10 +46,12 @@ pub(crate) struct Behavior {
     pub(crate) gossipsub: Gossipsub,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponsesBehaviour,
+    pub(crate) relay: Toggle<Relay>,
+    pub(crate) relay_client: Toggle<RelayClient>,
 }
 
 impl Behavior {
-    pub(crate) fn new(config: BehaviorConfig) -> Self {
+    pub(crate) fn new(config: BehaviorConfig, relay_client: Option<RelayClient>) -> Self {
         let kademlia = {
             let store = CustomRecordStore::new(config.value_getter);
             let mut kademlia =
@@ -64,6 +71,12 @@ impl Behavior {
         )
         .expect("Correct configuration");
 
+        let relay = config
+            .relay_config
+            .server_relay_settings()
+            .map(|settings| Relay::new(config.peer_id, settings.to_relay_config()))
+            .into();
+
         Self {
             identify: Identify::new(config.identify),
             kademlia,
@@ -78,6 +91,8 @@ impl Behavior {
             )
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
+            relay,
+            relay_client: relay_client.into(),
         }
     }
 }
@@ -89,6 +104,8 @@ pub(crate) enum Event {
     Gossipsub(GossipsubEvent),
     Ping(PingEvent),
     RequestResponse(RequestResponseEvent),
+    Relay(RelayEvent),
+    RelayClient(RelayClientEvent),
 }
 
 impl From<IdentifyEvent> for Event {
@@ -118,5 +135,17 @@ impl From<PingEvent> for Event {
 impl From<RequestResponseEvent> for Event {
     fn from(event: RequestResponseEvent) -> Self {
         Event::RequestResponse(event)
+    }
+}
+
+impl From<RelayEvent> for Event {
+    fn from(event: RelayEvent) -> Self {
+        Event::Relay(event)
+    }
+}
+
+impl From<RelayClientEvent> for Event {
+    fn from(event: RelayClientEvent) -> Self {
+        Event::RelayClient(event)
     }
 }

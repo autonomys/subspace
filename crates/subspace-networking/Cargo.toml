@@ -43,11 +43,12 @@ features = [
     "kad",
     "noise",
     "ping",
+    "relay",
     "request-response",
     "sr25519",
     "tcp-tokio",
     "websocket",
-    "yamux"
+    "yamux",
 ]
 
 [dev-dependencies]
