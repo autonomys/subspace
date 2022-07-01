@@ -4,7 +4,8 @@ use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use crate::{plotting, Archiving};
+use crate::single_plot_farm::SinglePlotPlotter;
+use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
 use subspace_archiving::archiver::Archiver;
@@ -13,6 +14,7 @@ use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZ
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
+use tracing::error;
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
@@ -68,13 +70,21 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
+    let single_plot_plotter = SinglePlotPlotter::new(subspace_codec, plot.clone(), commitments);
+
     // Start archiving task
     let archiving_instance = Archiving::start(
         farmer_metadata,
         object_mappings,
         client.clone(),
         None,
-        plotting::plot_pieces(subspace_codec, &plot, commitments),
+        move |pieces_to_plot| match single_plot_plotter.plot_pieces(&pieces_to_plot) {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%error, "Failed to plot pieces");
+                false
+            }
+        },
     )
     .await
     .unwrap();
@@ -155,13 +165,22 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
+    let single_plot_plotter =
+        SinglePlotPlotter::new(subspace_codec.clone(), plot.clone(), commitments.clone());
+
     // Start archiving task
     let archiving_instance = Archiving::start(
         farmer_metadata,
         object_mappings,
         client.clone(),
         None,
-        plotting::plot_pieces(subspace_codec.clone(), &plot, commitments.clone()),
+        move |pieces_to_plot| match single_plot_plotter.plot_pieces(&pieces_to_plot) {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%error, "Failed to plot pieces");
+                false
+            }
+        },
     )
     .await
     .unwrap();

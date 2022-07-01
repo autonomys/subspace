@@ -12,6 +12,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::NodeRunner;
+use tracing::error;
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
@@ -150,15 +151,20 @@ impl LegacyMultiPlotsFarm {
             {
                 let plotters = single_plot_farms
                     .iter()
-                    .map(SinglePlotFarm::get_plotter)
+                    .map(|single_plot_farm| single_plot_farm.get_plotter())
                     .collect::<Vec<_>>();
 
                 move |pieces_to_plot| {
-                    plotters.par_iter().for_each(|plotter| {
-                        plotter.plot_pieces(&pieces_to_plot);
-                    });
-
-                    true
+                    if let Some(Err(error)) = plotters
+                        .par_iter()
+                        .map(|plotter| plotter.plot_pieces(&pieces_to_plot))
+                        .find_first(|result| result.is_err())
+                    {
+                        error!(%error, "Failed to plot pieces");
+                        false
+                    } else {
+                        true
+                    }
                 }
             },
         )

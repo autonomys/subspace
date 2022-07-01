@@ -2,13 +2,12 @@
 mod tests;
 
 use crate::commitments::Commitments;
-use crate::dsn;
 use crate::dsn::{PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
-use crate::plotting::plot_pieces;
 use crate::rpc_client::RpcClient;
+use crate::{dsn, CommitmentError};
 use parking_lot::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
@@ -21,12 +20,27 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
     libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{BatchEncodeError, SubspaceCodec};
+use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
+
+/// Errors that happen during plotting of pieces
+#[derive(Debug, Error)]
+pub enum SinglePlotPlotterError {
+    /// Encode error
+    #[error("Encode error: {0}")]
+    Encode(#[from] BatchEncodeError),
+    /// Plot error
+    #[error("Plot error: {0}")]
+    Plot(#[from] std::io::Error),
+    /// Commitments error
+    #[error("Commitment error: {0}")]
+    Commitment(#[from] CommitmentError),
+}
 
 #[derive(Debug, Clone)]
 pub struct SinglePlotPlotter {
@@ -36,47 +50,32 @@ pub struct SinglePlotPlotter {
 }
 
 impl SinglePlotPlotter {
-    fn new(codec: SubspaceCodec, plot: Plot, commitments: Commitments) -> Self {
+    fn new(codec: SubspaceCodec, weak_plot: Plot, commitments: Commitments) -> Self {
         Self {
             codec,
-            plot,
+            plot: weak_plot,
             commitments,
         }
     }
 
     /// Plot specified pieces in this farm, potentially replacing some of existing pieces
-    pub fn plot_pieces(&self, pieces_to_plot: &PiecesToPlot) {
+    pub fn plot_pieces(&self, pieces_to_plot: &PiecesToPlot) -> Result<(), SinglePlotPlotterError> {
         let PiecesToPlot {
             piece_indexes,
             mut pieces,
         } = pieces_to_plot.clone();
-        if let Err(error) = self.codec.batch_encode(&mut pieces, &piece_indexes) {
-            error!(%error, "Failed to encode pieces");
-            return;
-        }
+        self.codec.batch_encode(&mut pieces, &piece_indexes)?;
 
         let pieces = Arc::new(pieces);
 
-        match self.plot.write_many(Arc::clone(&pieces), piece_indexes) {
-            Ok(write_result) => {
-                if let Err(error) = self
-                    .commitments
-                    .remove_pieces(write_result.evicted_pieces())
-                {
-                    error!(%error, "Failed to remove old commitments for pieces");
-                }
+        let write_result = self.plot.write_many(Arc::clone(&pieces), piece_indexes)?;
 
-                if let Err(error) = self
-                    .commitments
-                    .create_for_pieces(|| write_result.to_recommitment_iterator())
-                {
-                    error!(%error, "Failed to create commitments for pieces");
-                }
-            }
-            Err(error) => {
-                error!(%error, "Failed to write encoded pieces")
-            }
-        }
+        self.commitments
+            .remove_pieces(write_result.evicted_pieces())?;
+
+        self.commitments
+            .create_for_pieces(|| write_result.to_recommitment_iterator())
+            .map_err(Into::into)
     }
 }
 
@@ -105,7 +104,7 @@ where
 // TODO: Make fields private
 pub struct SinglePlotFarm {
     public_key: PublicKey,
-    pub(crate) codec: SubspaceCodec,
+    codec: SubspaceCodec,
     pub plot: Plot,
     pub commitments: Commitments,
     pub(crate) farming: Option<Farming>,
@@ -342,26 +341,22 @@ impl SinglePlotFarm {
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
     ) -> impl Future<Output = anyhow::Result<()>> {
-        let commitments = self.commitments.clone();
-        let codec = self.codec.clone();
-        let node = self.node.clone();
-
         let options = SyncOptions {
             range_size,
             public_key: self.public_key,
             max_plot_size,
             total_pieces,
         };
-        let mut plot_pieces = plot_pieces(codec, &self.plot, commitments);
 
-        dsn::sync(node, options, move |pieces, piece_indexes| {
-            if !plot_pieces(PiecesToPlot {
-                pieces,
-                piece_indexes,
-            }) {
-                return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
-            }
-            Ok(())
+        let single_plot_plotter = self.get_plotter();
+
+        dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
+            single_plot_plotter
+                .plot_pieces(&PiecesToPlot {
+                    pieces,
+                    piece_indexes,
+                })
+                .map_err(Into::into)
         })
     }
 }

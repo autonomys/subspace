@@ -10,7 +10,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Weak};
+use std::sync::{mpsc, Arc};
 use std::{fmt, io};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
@@ -353,12 +353,6 @@ impl Plot {
         })?
     }
 
-    pub(crate) fn downgrade(&self) -> WeakPlot {
-        WeakPlot {
-            inner: Arc::downgrade(&self.inner),
-        }
-    }
-
     pub fn read_piece(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Vec<u8>> {
         self.read(index_hash).map(Into::into)
     }
@@ -507,17 +501,6 @@ impl Plot {
         Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
 
         Ok(())
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct WeakPlot {
-    inner: Weak<Inner>,
-}
-
-impl WeakPlot {
-    pub(crate) fn upgrade(&self) -> Option<Plot> {
-        self.inner.upgrade().map(|inner| Plot { inner })
     }
 }
 
