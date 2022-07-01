@@ -6,12 +6,12 @@ use num_traits::{WrappingAdd, WrappingSub};
 use rocksdb::DB;
 use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
-use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Weak};
+use std::{fmt, io};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
 };
@@ -185,6 +185,12 @@ pub fn retrieve_piece_from_plots(
 #[derive(Clone)]
 pub struct Plot {
     inner: Arc<Inner>,
+}
+
+impl fmt::Debug for Plot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Plot").finish()
+    }
 }
 
 impl Plot {

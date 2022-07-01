@@ -25,6 +25,58 @@ use tracing::{error, info};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
+#[derive(Debug, Clone)]
+pub struct SinglePlotPlotter {
+    codec: SubspaceCodec,
+    plot: Plot,
+    commitments: Commitments,
+}
+
+impl SinglePlotPlotter {
+    fn new(codec: SubspaceCodec, plot: Plot, commitments: Commitments) -> Self {
+        Self {
+            codec,
+            plot,
+            commitments,
+        }
+    }
+
+    /// Plot specified pieces in this farm, potentially replacing some of existing pieces
+    pub fn plot_pieces(&self, pieces_to_plot: &PiecesToPlot) {
+        let PiecesToPlot {
+            piece_indexes,
+            mut pieces,
+        } = pieces_to_plot.clone();
+        if let Err(error) = self.codec.batch_encode(&mut pieces, &piece_indexes) {
+            error!(%error, "Failed to encode pieces");
+            return;
+        }
+
+        let pieces = Arc::new(pieces);
+
+        match self.plot.write_many(Arc::clone(&pieces), piece_indexes) {
+            Ok(write_result) => {
+                if let Err(error) = self
+                    .commitments
+                    .remove_pieces(write_result.evicted_pieces())
+                {
+                    error!(%error, "Failed to remove old commitments for pieces");
+                }
+
+                if let Err(error) = self
+                    .commitments
+                    .create_for_pieces(|| write_result.to_recommitment_iterator())
+                {
+                    error!(%error, "Failed to create commitments for pieces");
+                }
+            }
+            Err(error) => {
+                error!(%error, "Failed to write encoded pieces")
+            }
+        }
+    }
+}
+
 pub(crate) struct SinglePlotFarmOptions<C, NewPlot>
 where
     C: RpcClient,
@@ -267,8 +319,18 @@ impl SinglePlotFarm {
         Ok((farm, node_runner))
     }
 
+    /// Public key associated with this farm
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
+    }
+
+    /// Get plotter for this plot
+    pub fn get_plotter(&self) -> SinglePlotPlotter {
+        SinglePlotPlotter::new(
+            self.codec.clone(),
+            self.plot.clone(),
+            self.commitments.clone(),
+        )
     }
 
     pub(crate) fn dsn_sync(

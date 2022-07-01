@@ -1,7 +1,6 @@
 use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
-use crate::plotting;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
@@ -149,27 +148,17 @@ impl LegacyMultiPlotsFarm {
             enable_dsn_archiving
                 .then(|| node.expect("Always set, as we have at least one networking instance")),
             {
-                let mut on_pieces_to_plots = single_plot_farms
+                let plotters = single_plot_farms
                     .iter()
-                    .map(|single_plot_farm| {
-                        plotting::plot_pieces(
-                            single_plot_farm.codec.clone(),
-                            &single_plot_farm.plot,
-                            single_plot_farm.commitments.clone(),
-                        )
-                    })
+                    .map(SinglePlotFarm::get_plotter)
                     .collect::<Vec<_>>();
 
                 move |pieces_to_plot| {
-                    on_pieces_to_plots
-                        .par_iter_mut()
-                        .map(|on_pieces_to_plot| {
-                            // TODO: It might be desirable to not clone it and instead pick just
-                            //  unnecessary pieces and copy pieces once since different plots will
-                            //  care about different pieces
-                            on_pieces_to_plot(pieces_to_plot.clone())
-                        })
-                        .reduce(|| true, |result, should_continue| result && should_continue)
+                    plotters.par_iter().for_each(|plotter| {
+                        plotter.plot_pieces(&pieces_to_plot);
+                    });
+
+                    true
                 }
             },
         )
