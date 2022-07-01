@@ -3,7 +3,7 @@ mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::DB;
+use rocksdb::{DBRawIteratorWithThreadMode, DB};
 use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -564,7 +564,7 @@ impl IndexHashToOffsetDB {
         let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
-            address,
+            address: address,
             max_distance_cache: BTreeSet::new(),
         };
         me.update_max_distance_cache();
@@ -606,7 +606,7 @@ impl IndexHashToOffsetDB {
 
     fn max_distance_key(&mut self) -> Option<PieceDistance> {
         if self.max_distance_cache.is_empty() {
-            self.update_max_distance_cache()
+            self.update_max_distance_cache();
         }
         self.max_distance_cache
             .last()
@@ -721,7 +721,13 @@ impl IndexHashToOffsetDB {
         from: &PieceIndexHash,
         count: usize,
     ) -> Vec<(PieceIndexHash, PieceOffset)> {
-        let get_item = |iter: &mut rocksdb::DBRawIteratorWithThreadMode<_>| {
+        if count == 0 {
+            return vec![];
+        }
+
+        let mut iter = self.inner.raw_iterator();
+
+        let get_item = |iter: &mut DBRawIteratorWithThreadMode<_>| {
             let offset = PieceOffset::from_le_bytes(
                 iter.value()
                     .unwrap()
@@ -735,45 +741,14 @@ impl IndexHashToOffsetDB {
 
         let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
 
-        let mut iter = self.inner.raw_iterator();
         iter.seek(self.piece_hash_to_distance(from).to_bytes());
 
-        if iter.key().is_some() {
-            let (index_hash, offset) = get_item(&mut iter);
-            if &index_hash < from {
-                return piece_index_hashes_and_offsets;
-            }
-
-            iter.next();
-            piece_index_hashes_and_offsets.push((index_hash, offset));
-        }
-
-        for _ in piece_index_hashes_and_offsets.len()..count {
+        while piece_index_hashes_and_offsets.len() < count {
             if iter.key().is_none() {
                 break;
             }
 
             let (index_hash, offset) = get_item(&mut iter);
-            if &index_hash <= from {
-                return piece_index_hashes_and_offsets;
-            }
-
-            piece_index_hashes_and_offsets.push((index_hash, offset));
-            iter.next();
-        }
-
-        iter.seek_to_first();
-
-        for _ in piece_index_hashes_and_offsets.len()..count {
-            if iter.key().is_none() {
-                break;
-            }
-
-            let (index_hash, offset) = get_item(&mut iter);
-            if &index_hash <= from {
-                break;
-            }
-
             piece_index_hashes_and_offsets.push((index_hash, offset));
             iter.next();
         }
