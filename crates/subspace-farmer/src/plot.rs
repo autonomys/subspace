@@ -3,7 +3,7 @@ mod tests;
 
 use event_listener_primitives::{Bag, HandlerId};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::{DBRawIteratorWithThreadMode, DB};
+use rocksdb::DB;
 use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -727,18 +727,6 @@ impl IndexHashToOffsetDB {
 
         let mut iter = self.inner.raw_iterator();
 
-        let get_item = |iter: &mut DBRawIteratorWithThreadMode<_>| {
-            let offset = PieceOffset::from_le_bytes(
-                iter.value()
-                    .unwrap()
-                    .try_into()
-                    .expect("Failed to decode piece offsets from rocksdb"),
-            );
-            let index_hash =
-                self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
-            (index_hash, offset)
-        };
-
         let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
 
         iter.seek(self.piece_hash_to_distance(from).to_bytes());
@@ -748,7 +736,14 @@ impl IndexHashToOffsetDB {
                 break;
             }
 
-            let (index_hash, offset) = get_item(&mut iter);
+            let offset = PieceOffset::from_le_bytes(
+                iter.value()
+                    .unwrap()
+                    .try_into()
+                    .expect("Failed to decode piece offsets from rocksdb"),
+            );
+            let index_hash =
+                self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
             piece_index_hashes_and_offsets.push((index_hash, offset));
             iter.next();
         }
