@@ -200,8 +200,7 @@ async fn test_dsn_sync() {
                     last_archived_block,
                 };
 
-                let mut pieces = FlatPieces::new(pieces_per_segment as usize);
-                rand::thread_rng().fill(pieces.as_mut());
+                let pieces = FlatPieces::new(pieces_per_segment as usize);
 
                 ArchivedSegment {
                     root_block,
