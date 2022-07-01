@@ -63,6 +63,9 @@ async fn test_executor_full_node_catching_up() {
 	);
 }
 
+// TODO: This is basically an unit test for the features provided by `subspace_fraud_proof`, move
+// it there and add a new test which simulates a situation that an executor produces a fraud proof
+// when an invalid receipt is received.
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn execution_proof_creation_and_verification_should_work() {
 	let mut builder = sc_cli::LoggerBuilder::new("");
