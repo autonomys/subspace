@@ -459,6 +459,12 @@ impl From<PieceIndex> for PieceIndexHash {
     }
 }
 
+impl AsRef<[u8]> for PieceIndexHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
