@@ -7,6 +7,9 @@
 
 #![warn(missing_docs)]
 
+#[cfg(test)]
+mod tests;
+
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
