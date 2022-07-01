@@ -49,7 +49,7 @@ where
 /// disk plot.
 // TODO: Make fields private
 pub struct SinglePlotFarm {
-    pub(crate) identity: Identity,
+    public_key: PublicKey,
     pub(crate) codec: SubspaceCodec,
     pub plot: Plot,
     pub commitments: Commitments,
@@ -91,29 +91,15 @@ impl SinglePlotFarm {
         std::fs::create_dir_all(&base_directory)?;
 
         let identity = Identity::open_or_create(&base_directory)?;
+        let public_key = identity.public_key().to_bytes().into();
 
         // TODO: This doesn't account for the fact that node can
         // have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = new_plot(
-            plot_index,
-            identity.public_key().to_bytes().into(),
-            max_plot_pieces,
-        )?;
+        let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(base_directory.join("commitments"))?;
-
-        // Start the farming task
-        let farming = enable_farming.then(|| {
-            Farming::start(
-                plot.clone(),
-                commitments.clone(),
-                farming_client.clone(),
-                identity.clone(),
-                reward_address,
-            )
-        });
 
         for multiaddr in &mut listen_on {
             if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
@@ -145,7 +131,7 @@ impl SinglePlotFarm {
             }
         }
 
-        let codec = SubspaceCodec::new_with_gpu(&identity.public_key().to_bytes());
+        let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
         let create_networking_fut = subspace_networking::create(Config {
             bootstrap_nodes,
             // TODO: Do we still need it?
@@ -237,8 +223,19 @@ impl SinglePlotFarm {
         }))
         .detach();
 
+        // Start the farming task
+        let farming = enable_farming.then(|| {
+            Farming::start(
+                plot.clone(),
+                commitments.clone(),
+                farming_client,
+                identity,
+                reward_address,
+            )
+        });
+
         let mut farm = Self {
-            identity,
+            public_key,
             codec,
             plot,
             commitments,
@@ -270,6 +267,10 @@ impl SinglePlotFarm {
         Ok((farm, node_runner))
     }
 
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+
     pub(crate) fn dsn_sync(
         &self,
         max_plot_size: u64,
@@ -282,7 +283,7 @@ impl SinglePlotFarm {
 
         let options = SyncOptions {
             range_size,
-            public_key: self.identity.public_key().to_bytes().into(),
+            public_key: self.public_key,
             max_plot_size,
             total_pieces,
         };
