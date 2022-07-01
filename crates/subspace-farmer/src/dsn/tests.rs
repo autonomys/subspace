@@ -333,7 +333,7 @@ async fn test_dsn_sync() {
                 assert_eq!(
                     plot.piece_count(),
                     expected_piece_count,
-                    "Synced wrong amount of pieces"
+                    "Synced wrong number of pieces"
                 );
                 assert_eq!(
                     plot.piece_count(),
@@ -350,7 +350,7 @@ async fn test_dsn_sync() {
                 assert_eq!(
                     plot.piece_count(),
                     expected_range_piece_count as u64,
-                    "Synced wrong amount of pieces"
+                    "Synced wrong number of pieces"
                 );
             }
         }

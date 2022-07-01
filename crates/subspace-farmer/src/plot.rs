@@ -174,7 +174,7 @@ pub fn retrieve_piece_from_plots(
 /// `Plot` is an abstraction for plotted pieces and some mappings.
 ///
 /// Pieces plotted for single identity, that's why it is required to supply both address of single
-/// replica farmer and maximum amount of pieces to be stored. It offloads disk writing to separate
+/// replica farmer and maximum number of pieces to be stored. It offloads disk writing to separate
 /// worker, which runs in the background.
 ///
 /// The worker converts requests to internal reads/writes to the plot database to direct disk
