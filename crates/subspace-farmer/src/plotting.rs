@@ -15,7 +15,7 @@ use tracing::error;
 
 /// Generates a function that will plot pieces.
 pub fn plot_pieces(
-    mut subspace_codec: SubspaceCodec,
+    subspace_codec: SubspaceCodec,
     plot: &Plot,
     commitments: Commitments,
 ) -> impl FnMut(PiecesToPlot) -> bool + Send + 'static {
@@ -24,7 +24,7 @@ pub fn plot_pieces(
     move |pieces_to_plot| {
         if let Some(plot) = weak_plot.upgrade() {
             if let Err(error) =
-                plot_pieces_internal(&mut subspace_codec, &plot, &commitments, pieces_to_plot)
+                plot_pieces_internal(&subspace_codec, &plot, &commitments, pieces_to_plot)
             {
                 error!(%error, "Failed to encode a piece");
                 return false;
@@ -39,7 +39,7 @@ pub fn plot_pieces(
 
 /// Plot a set of pieces into a particular plot and commitment database.
 fn plot_pieces_internal(
-    subspace_codec: &mut SubspaceCodec,
+    subspace_codec: &SubspaceCodec,
     plot: &Plot,
     commitments: &Commitments,
     PiecesToPlot {
