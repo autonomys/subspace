@@ -144,7 +144,6 @@ pub enum RelayConfiguration {
 
     /// Relay-client configuration in requesting mode (a client for a server behind NAT).
     /// It will enable creating a relay circuit.
-    /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000/p2p/<server_peer_id>/p2p-circuit
     /// This option will toggle the relay-client behaviour.
     ClientInitiator,
 
@@ -390,12 +389,13 @@ pub async fn create(
             }
         }
 
-        // Setup circuit for the accepting relay client.
+        // Setup circuit for the accepting relay client. This will reserve a circuit.
         if let RelayConfiguration::ClientAcceptor(addr) = relay_config_for_swarm.clone() {
             swarm.listen_on(addr)?;
         }
 
-        // Setup external address for relay server.
+        // Listen on an address and set is as an external address for relay server.
+        // Initially a server is not aware of its external addresses.
         if let RelayConfiguration::Server(addr, _) = relay_config_for_swarm {
             swarm.listen_on(addr.clone())?;
             swarm.add_external_address(addr, AddressScore::Infinite);
