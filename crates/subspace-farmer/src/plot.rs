@@ -8,11 +8,12 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Weak};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
 };
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -90,6 +91,9 @@ enum Request {
         from_index_hash: PieceIndexHash,
         count: u64,
         result_sender: mpsc::Sender<io::Result<Vec<PieceIndex>>>,
+    },
+    GetPieceRange {
+        result_sender: mpsc::Sender<io::Result<Option<RangeInclusive<PieceIndexHash>>>>,
     },
     WriteEncodings {
         encodings: Arc<FlatPieces>,
@@ -170,7 +174,7 @@ pub fn retrieve_piece_from_plots(
 /// `Plot` is an abstraction for plotted pieces and some mappings.
 ///
 /// Pieces plotted for single identity, that's why it is required to supply both address of single
-/// replica farmer and maximum amount of pieces to be stored. It offloads disk writing to separate
+/// replica farmer and maximum number of pieces to be stored. It offloads disk writing to separate
 /// worker, which runs in the background.
 ///
 /// The worker converts requests to internal reads/writes to the plot database to direct disk
@@ -253,6 +257,25 @@ impl Plot {
     /// Whether plot doesn't have anything in it
     pub fn is_empty(&self) -> bool {
         self.piece_count() == 0
+    }
+
+    /// Returns range which contains all of the pieces
+    pub fn get_piece_range(&self) -> io::Result<Option<RangeInclusive<PieceIndexHash>>> {
+        let (result_sender, result_receiver) = mpsc::channel();
+
+        self.inner
+            .requests_sender
+            .send(RequestWithPriority {
+                request: Request::GetPieceRange { result_sender },
+                priority: RequestPriority::Low,
+            })
+            .map_err(|error| {
+                io::Error::other(format!("Failed sending piece range request: {error}"))
+            })?;
+
+        result_receiver.recv().map_err(|error| {
+            io::Error::other(format!("Piece range result sender was dropped: {error}"))
+        })?
     }
 
     /// Reads a piece from plot by index
@@ -583,14 +606,14 @@ impl IndexHashToOffsetDB {
 
     fn max_distance_key(&mut self) -> Option<PieceDistance> {
         if self.max_distance_cache.is_empty() {
-            self.update_max_distance_cache()
+            self.update_max_distance_cache();
         }
         self.max_distance_cache
             .last()
             .map(|distance| distance.value)
     }
 
-    fn get_key(&self, index_hash: &PieceIndexHash) -> PieceDistance {
+    fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
         // We permute distance such that if piece index hash is equal to the `self.address` then it
         // lands to the `PieceDistance::MIDDLE`
         PieceDistance::from_big_endian(&index_hash.0)
@@ -598,9 +621,39 @@ impl IndexHashToOffsetDB {
             .wrapping_add(&PieceDistance::MIDDLE)
     }
 
+    fn piece_distance_to_hash(&self, distance: PieceDistance) -> PieceIndexHash {
+        let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
+        distance
+            .wrapping_sub(&PieceDistance::MIDDLE)
+            .wrapping_add(&PieceDistance::from_big_endian(self.address.as_ref()))
+            .to_big_endian(&mut piece_index_hash.0);
+        piece_index_hash
+    }
+
+    // TODO: optimize fast path using `max_distance_cache`
+    fn get_piece_range(&self) -> io::Result<Option<RangeInclusive<PieceIndexHash>>> {
+        let mut iter = self.inner.raw_iterator();
+
+        iter.seek_to_first();
+        let start = match iter.key() {
+            Some(key) => PieceDistance::from_big_endian(key),
+            None => return Ok(None),
+        };
+        iter.seek_to_last();
+        let end = iter
+            .key()
+            .map(PieceDistance::from_big_endian)
+            .expect("Must have at least one key");
+
+        Ok(Some(RangeInclusive::new(
+            self.piece_distance_to_hash(start),
+            self.piece_distance_to_hash(end),
+        )))
+    }
+
     fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(&self.get_key(index_hash).to_bytes())
+            .get(&self.piece_hash_to_distance(index_hash).to_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -645,7 +698,7 @@ impl IndexHashToOffsetDB {
     }
 
     fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let key = self.get_key(index_hash);
+        let key = self.piece_hash_to_distance(index_hash);
         self.inner
             .put(&key.to_bytes(), offset.to_le_bytes())
             .map_err(io::Error::other)?;
@@ -661,6 +714,44 @@ impl IndexHashToOffsetDB {
         }
 
         Ok(())
+    }
+
+    fn get_sequential(
+        &self,
+        from: &PieceIndexHash,
+        count: usize,
+    ) -> Vec<(PieceIndexHash, PieceOffset)> {
+        if count == 0 {
+            return vec![];
+        }
+
+        let mut iter = self.inner.raw_iterator();
+
+        let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
+
+        iter.seek(self.piece_hash_to_distance(from).to_bytes());
+
+        while piece_index_hashes_and_offsets.len() < count {
+            match iter.key() {
+                Some(key) => {
+                    let offset =
+                        PieceOffset::from_le_bytes(iter.value().unwrap().try_into().expect(
+                            "Value read from database must always have correct length; qed",
+                        ));
+                    let index_hash =
+                        self.piece_distance_to_hash(PieceDistance::from_big_endian(key));
+
+                    piece_index_hashes_and_offsets.push((index_hash, offset));
+
+                    iter.next();
+                }
+                None => {
+                    break;
+                }
+            }
+        }
+
+        piece_index_hashes_and_offsets
     }
 }
 
@@ -915,28 +1006,11 @@ impl<T: PlotFile> PlotWorker<T> {
         from: &PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<PieceIndex>> {
-        let mut piece_indexes = Vec::with_capacity(count as _);
-
-        let mut iter = self.piece_index_hash_to_offset_db.inner.raw_iterator();
-        iter.seek(&self.piece_index_hash_to_offset_db.get_key(from).to_bytes());
-
-        for _ in 0..count {
-            if iter.key().is_none() {
-                break;
-            }
-
-            let offset = PieceOffset::from_le_bytes(
-                iter.value()
-                    .unwrap()
-                    .try_into()
-                    .expect("Failed to decode piece offsets from rocksdb"),
-            );
-            iter.next();
-
-            piece_indexes.push(self.piece_offset_to_index.get_piece_index(offset)?)
-        }
-
-        Ok(piece_indexes)
+        self.piece_index_hash_to_offset_db
+            .get_sequential(from, count as usize)
+            .into_iter()
+            .map(|(_, offset)| self.piece_offset_to_index.get_piece_index(offset))
+            .collect()
     }
 
     fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
@@ -994,6 +1068,10 @@ impl<T: PlotFile> PlotWorker<T> {
                         } => {
                             let _ = result_sender
                                 .send(self.read_piece_indexes(&from_index_hash, count));
+                        }
+                        Request::GetPieceRange { result_sender } => {
+                            let _ = result_sender
+                                .send(self.piece_index_hash_to_offset_db.get_piece_range());
                         }
                         Request::WriteEncodings {
                             encodings,

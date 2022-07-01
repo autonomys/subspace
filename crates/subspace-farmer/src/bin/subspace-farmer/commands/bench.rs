@@ -1,4 +1,3 @@
-use crate::bench_rpc_client::BenchRpcClient;
 use crate::{utils, WriteToDisk};
 use anyhow::anyhow;
 use futures::channel::mpsc;
@@ -14,9 +13,9 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
     PIECE_SIZE,
 };
+use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
-use subspace_rpc_primitives::FarmerMetadata;
 use tempfile::TempDir;
 use tokio::time::Instant;
 use tracing::info;
@@ -105,14 +104,6 @@ impl fmt::Display for HumanReadableDuration {
         out.trim_end().fmt(f)
     }
 }
-
-const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
-    record_size: PIECE_SIZE as u32 - 96, // PIECE_SIZE - WITNESS_SIZE
-    recorded_history_segment_size: PIECE_SIZE as u32 * 256 / 2, // PIECE_SIZE * MERKLE_NUM_LEAVES / 2
-    max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
-    // Doesn't matter, as we don't start sync
-    total_pieces: 0,
-};
 
 pub(crate) async fn bench(
     base_directory: PathBuf,

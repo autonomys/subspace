@@ -1,4 +1,5 @@
 use crate::archiving::Archiving;
+use crate::dsn::PieceIndexHashNumber;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::plotting;
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::NodeRunner;
 use tracing::{error, info, trace};
 
 // TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
@@ -23,7 +25,7 @@ use tracing::{error, info, trace};
 pub struct MultiFarming {
     pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
-    networking_node_runners: Vec<subspace_networking::NodeRunner>,
+    pub(crate) networking_node_runners: Vec<subspace_networking::NodeRunner>,
 }
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
@@ -172,10 +174,15 @@ impl MultiFarming {
 
         // Start syncing
         if dsn_sync {
+            // TODO: operate with number of pieces to fetch, instead of range calculations
+            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
+
             tokio::spawn({
                 let mut futures = single_plot_farms
                     .iter()
-                    .map(|single_plot_farm| single_plot_farm.dsn_sync(max_plot_size, total_pieces))
+                    .map(|single_plot_farm| {
+                        single_plot_farm.dsn_sync(max_plot_size, total_pieces, sync_range_size)
+                    })
                     .collect::<FuturesUnordered<_>>();
 
                 async move {
@@ -252,7 +259,7 @@ impl MultiFarming {
         let mut node_runners = self
             .networking_node_runners
             .into_iter()
-            .map(|node_runner| async move { node_runner.run().await })
+            .map(NodeRunner::run)
             .collect::<FuturesUnordered<_>>();
 
         tokio::select! {

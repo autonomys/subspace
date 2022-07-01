@@ -1,4 +1,3 @@
-mod bench_rpc_client;
 mod commands;
 mod ss58;
 mod utils;

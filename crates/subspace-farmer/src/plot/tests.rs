@@ -1,7 +1,7 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
 use tempfile::TempDir;
 
 fn init() {
@@ -116,7 +116,7 @@ async fn sequential_pieces_iterator() {
     let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
     let pieces_to_plot = 1000;
 
-    let pieces = Arc::new(generate_random_pieces(pieces_to_plot as _));
+    let pieces = Arc::new(FlatPieces::new(pieces_to_plot as usize));
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
     plot.write_many(Arc::clone(&pieces), piece_indexes.clone())
         .unwrap();
@@ -131,4 +131,174 @@ async fn sequential_pieces_iterator() {
         .take(100)
         .collect::<Vec<_>>();
     assert_eq!(got_indexes, piece_indexes[..got_indexes.len()]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_read_sequential_pieces() {
+    init();
+    let base_directory = TempDir::new().unwrap();
+
+    let n_pieces = 6;
+    let pieces = Arc::new(FlatPieces::new(n_pieces));
+
+    let piece_indexes = (0..).take(n_pieces).collect::<Vec<_>>();
+    let mut piece_index_hashes = piece_indexes
+        .iter()
+        .map(|&index| (PieceIndexHash::from_index(index), index))
+        .collect::<Vec<_>>();
+    piece_index_hashes.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // 6 piece index hashes, sorted as big endian numbers
+    let expected_piece_index_hashes: Vec<(PieceIndexHash, u64)> = vec![
+        (
+            PieceIndexHash([
+                53, 190, 50, 45, 9, 79, 157, 21, 74, 138, 186, 71, 51, 184, 73, 127, 24, 3, 83,
+                189, 122, 231, 176, 161, 95, 144, 181, 134, 181, 73, 242, 139,
+            ]),
+            3,
+        ),
+        (
+            PieceIndexHash([
+                124, 159, 161, 54, 212, 65, 63, 166, 23, 54, 55, 232, 131, 182, 153, 141, 50, 225,
+                214, 117, 248, 140, 221, 255, 157, 203, 207, 51, 24, 32, 244, 184,
+            ]),
+            1,
+        ),
+        (
+            PieceIndexHash([
+                175, 85, 112, 245, 161, 129, 11, 122, 247, 140, 175, 75, 199, 10, 102, 15, 13, 245,
+                30, 66, 186, 249, 29, 77, 229, 178, 50, 141, 224, 232, 61, 252,
+            ]),
+            0,
+        ),
+        (
+            PieceIndexHash([
+                216, 110, 129, 18, 243, 196, 196, 68, 33, 38, 248, 233, 244, 79, 22, 134, 125, 164,
+                135, 242, 144, 82, 191, 145, 184, 16, 69, 125, 179, 66, 9, 164,
+            ]),
+            2,
+        ),
+        (
+            PieceIndexHash([
+                240, 160, 39, 142, 67, 114, 69, 156, 202, 97, 89, 205, 94, 113, 207, 238, 99, 131,
+                2, 167, 185, 202, 155, 5, 195, 65, 129, 172, 10, 101, 172, 93,
+            ]),
+            4,
+        ),
+        (
+            PieceIndexHash([
+                241, 62, 230, 237, 84, 234, 42, 174, 159, 196, 154, 159, 174, 181, 218, 110, 141,
+                222, 240, 225, 46, 213, 211, 13, 53, 166, 36, 174, 129, 62, 4, 133,
+            ]),
+            5,
+        ),
+    ];
+    assert_eq!(piece_index_hashes, expected_piece_index_hashes);
+
+    // Public key in the middle of piece index hashes, so we can test all necessary edge-cases
+    let public_key_bytes = {
+        let mut bytes = [0u8; 32];
+        // Just after second out of four hashes
+        (PieceDistance::from_big_endian(piece_index_hashes[1].0.as_ref()) + 1)
+            .to_big_endian(&mut bytes);
+        bytes
+    };
+    let plot = Plot::open_or_create(&base_directory, public_key_bytes.into(), u64::MAX).unwrap();
+    plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
+
+    // Zero count should return no indexes
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(PieceIndexHash([0; 32]), 0)
+            .unwrap();
+        let expected_indexes: Vec<PieceIndex> = vec![];
+        assert_eq!(indexes, expected_indexes);
+    }
+
+    // Non-wrapping simple case start at the left side of number line
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(piece_index_hashes[1].0, 2)
+            .unwrap();
+        let expected_indexes = piece_index_hashes
+            .iter()
+            .skip(1)
+            .take(2)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
+
+    // Non-wrapping simple case start at the right side of number line
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(piece_index_hashes[3].0, 2)
+            .unwrap();
+        let expected_indexes = piece_index_hashes
+            .iter()
+            .skip(3)
+            .take(2)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
+
+    // Wrapping before reaching `max`
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(piece_index_hashes[3].0, 2)
+            .unwrap();
+        // This will wrap around number line, but will not reach the last pieces index hash
+        let expected_indexes = piece_index_hashes
+            .iter()
+            .skip(3)
+            .take(2)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
+
+    // Wrapping that crosses `max`, but doesn't reach `min`
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(piece_index_hashes[4].0, 2)
+            .unwrap();
+        // This will wrap around number line and capture `max`, but will not go any further
+        let expected_indexes = piece_index_hashes
+            .iter()
+            .skip(4)
+            .take(2)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
+
+    // Wrapping that crosses `max`, and crosses `min`
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(piece_index_hashes[4].0, 3)
+            .unwrap();
+        // This will wrap around number line, capture `max` and crosses `min`, but will not
+        // capture it because it crosses public key itself
+        let expected_indexes = piece_index_hashes
+            .iter()
+            .skip(4)
+            .take(2)
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
+
+    // Wrapping case, read more than there is pieces from zero
+    {
+        let indexes = plot
+            .read_sequential_piece_indexes(PieceIndexHash([0; 32]), 10)
+            .unwrap();
+        // This should read all piece indexes and nothing else
+        let expected_indexes = piece_index_hashes
+            .iter()
+            .map(|(_, index)| *index)
+            .collect::<Vec<_>>();
+        assert_eq!(indexes, expected_indexes);
+    }
 }

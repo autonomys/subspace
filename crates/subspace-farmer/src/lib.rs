@@ -22,6 +22,7 @@
 //! 64-bit unsigned integers.
 
 pub(crate) mod archiving;
+pub mod bench_rpc_client;
 pub(crate) mod commitments;
 pub(crate) mod dsn;
 pub(crate) mod farming;

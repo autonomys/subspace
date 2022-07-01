@@ -263,6 +263,12 @@ impl FlatPieces {
     }
 }
 
+impl From<Piece> for FlatPieces {
+    fn from(Piece(piece): Piece) -> Self {
+        Self(piece)
+    }
+}
+
 // TODO: Remove once we no longer use `unzip` in farmer and get `(Vec<PieceIndex>, FlatPieces)`
 // after requesting sequential pieces.
 impl Extend<Piece> for FlatPieces {
@@ -450,6 +456,12 @@ pub struct PieceIndexHash(pub Sha256Hash);
 impl From<PieceIndex> for PieceIndexHash {
     fn from(index: PieceIndex) -> Self {
         Self::from_index(index)
+    }
+}
+
+impl AsRef<[u8]> for PieceIndexHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 

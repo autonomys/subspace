@@ -49,7 +49,7 @@ pub struct SinglePlotFarm {
     pub(crate) farming: Option<Farming>,
     pub(crate) node: Node,
     /// Might be `None` if was already taken out before
-    pub(crate) node_runner: Option<NodeRunner>,
+    pub node_runner: Option<NodeRunner>,
 }
 
 impl SinglePlotFarm {
@@ -163,17 +163,19 @@ impl SinglePlotFarm {
                 move |&PiecesByRangeRequest { from, to }| {
                     let mut pieces_and_indexes =
                         plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
+
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
-                        .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) >= to)
+                        .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) > to)
                     {
                         pieces_and_indexes.truncate(idx);
+                        None
+                    } else if pieces_and_indexes.len() == 1 {
                         None
                     } else {
                         pieces_and_indexes
                             .pop()
-                            .map(|(index, _)| Some(PieceIndexHash::from(index)))
-                            .unwrap_or_default()
+                            .map(|(index, _)| PieceIndexHash::from(index))
                     };
 
                     let (piece_indexes, pieces) = pieces_and_indexes
@@ -215,7 +217,7 @@ impl SinglePlotFarm {
         }))
         .detach();
 
-        Ok::<_, anyhow::Error>(SinglePlotFarm {
+        Ok(SinglePlotFarm {
             codec,
             plot,
             commitments,
@@ -229,6 +231,7 @@ impl SinglePlotFarm {
         &self,
         max_plot_size: u64,
         total_pieces: u64,
+        range_size: PieceIndexHashNumber,
     ) -> impl Future<Output = anyhow::Result<()>> {
         let plot = self.plot.clone();
         let commitments = self.commitments.clone();
@@ -236,7 +239,7 @@ impl SinglePlotFarm {
         let node = self.node.clone();
 
         let options = SyncOptions {
-            range_size: PieceIndexHashNumber::MAX / 1024,
+            range_size,
             public_key: plot.public_key(),
             max_plot_size,
             total_pieces,
