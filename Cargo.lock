@@ -7939,16 +7939,26 @@ dependencies = [
 name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "cirrus-block-builder",
+ "cirrus-primitives",
+ "cirrus-test-service",
+ "futures 0.3.21",
  "hash-db",
+ "pallet-balances",
  "parity-scale-codec",
+ "sc-cli",
  "sc-client-api",
+ "sc-service",
  "sp-api",
  "sp-blockchain",
  "sp-core",
  "sp-executor",
+ "sp-keyring",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
+ "substrate-test-utils",
+ "tokio",
  "tracing",
 ]
 
