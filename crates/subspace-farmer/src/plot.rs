@@ -564,7 +564,7 @@ impl IndexHashToOffsetDB {
         let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
-            address: address,
+            address,
             max_distance_cache: BTreeSet::new(),
         };
         me.update_max_distance_cache();
