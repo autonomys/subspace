@@ -78,7 +78,7 @@ pub(crate) async fn farm(
             bootstrap_nodes,
             listen_on,
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
-            dsn_sync,
+            enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
         },
         plot_size,

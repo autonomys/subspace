@@ -1,12 +1,11 @@
 use crate::archiving::Archiving;
-use crate::dsn::PieceIndexHashNumber;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::plotting;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
-use futures::stream::{FuturesOrdered, FuturesUnordered, StreamExt};
+use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
@@ -14,19 +13,6 @@ use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::NodeRunner;
-use tracing::{error, info, trace};
-
-// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
-// will have the same length.
-/// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
-///
-/// It is needed because of the limit of a single plot size from the consensus
-/// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
-pub struct MultiFarming {
-    pub single_plot_farms: Vec<SinglePlotFarm>,
-    archiving: Archiving,
-    pub(crate) networking_node_runners: Vec<subspace_networking::NodeRunner>,
-}
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
@@ -59,8 +45,20 @@ pub struct Options<C> {
     pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
-    pub dsn_sync: bool,
+    pub enable_dsn_sync: bool,
     pub enable_farming: bool,
+}
+
+// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
+// will have the same length.
+/// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
+///
+/// It is needed because of the limit of a single plot size from the consensus
+/// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
+pub struct MultiFarming {
+    pub single_plot_farms: Vec<SinglePlotFarm>,
+    archiving: Archiving,
+    pub(crate) networking_node_runners: Vec<NodeRunner>,
 }
 
 impl MultiFarming {
@@ -75,95 +73,20 @@ impl MultiFarming {
             bootstrap_nodes,
             listen_on,
             enable_dsn_archiving,
-            dsn_sync,
+            enable_dsn_sync,
             enable_farming,
         }: Options<C>,
         total_plot_size: u64,
         max_plot_size: u64,
-        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     ) -> anyhow::Result<Self> {
         let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
-
-        let mut single_plot_farm_instantiations = plot_sizes
-            .iter()
-            .enumerate()
-            .map(|(plot_index, &max_plot_pieces)| {
-                let base_directory = base_directory.join(format!("plot{plot_index}"));
-                let farming_client = farming_client.clone();
-                let new_plot = new_plot.clone();
-                let listen_on = listen_on.clone();
-                let bootstrap_nodes = bootstrap_nodes.clone();
-                let first_listen_on = Arc::clone(&first_listen_on);
-
-                tokio::task::spawn_blocking(move || {
-                    SinglePlotFarm::new(SinglePlotFarmOptions {
-                        base_directory,
-                        plot_index,
-                        max_plot_pieces,
-                        farming_client,
-                        new_plot,
-                        listen_on,
-                        bootstrap_nodes,
-                        first_listen_on,
-                        enable_farming,
-                        reward_address,
-                    })
-                })
-            })
-            .collect::<FuturesOrdered<_>>()
-            .map(|single_plot_farm| {
-                single_plot_farm.expect("Blocking task above never supposed to panic")
-            });
-
-        let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
-        let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
-
-        let mut node = None;
-
-        while let Some(single_plot_farm) = single_plot_farm_instantiations.next().await {
-            let mut single_plot_farm = single_plot_farm?;
-
-            // Enable DSN subscription for segments archiving.
-            if enable_dsn_archiving {
-                // TODO: Make sure this task can be cancelled
-                tokio::spawn({
-                    let node = single_plot_farm.node.clone();
-                    async move {
-                        trace!("Subscribing to pubsub archiving...");
-                        match node
-                            .subscribe(subspace_networking::PUB_SUB_ARCHIVING_TOPIC.clone())
-                            .await
-                        {
-                            Ok(mut subscription) => {
-                                info!("Subscribed to pubsub archiving.");
-
-                                //TODO: Integrate with archiving process.
-                                #[allow(clippy::redundant_pattern_matching)]
-                                while let Some(_) = subscription.next().await {
-                                    info!("Archiving segment received from pubsub subscription.");
-                                }
-                            }
-                            Err(err) => {
-                                error!(error = ?err, "Pubsub archiving subscription failed.");
-                            }
-                        }
-                    }
-                });
-            }
-
-            if node.is_none() {
-                node = Some(single_plot_farm.node.clone());
-            }
-            networking_node_runners.push(
-                single_plot_farm
-                    .node_runner
-                    .take()
-                    .expect("Node runner was never taken out before this; qed"),
-            );
-            single_plot_farms.push(single_plot_farm);
-        }
 
         let farmer_metadata = farming_client
             .farmer_metadata()
@@ -172,30 +95,53 @@ impl MultiFarming {
         let max_plot_size = farmer_metadata.max_plot_size;
         let total_pieces = farmer_metadata.total_pieces;
 
-        // Start syncing
-        if dsn_sync {
-            // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
+        let (single_plot_farms, networking_node_runners, node) =
+            tokio::task::spawn_blocking(move || {
+                let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
+                let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
+                let mut node = None;
 
-            tokio::spawn({
-                let mut futures = single_plot_farms
-                    .iter()
-                    .map(|single_plot_farm| {
-                        single_plot_farm.dsn_sync(max_plot_size, total_pieces, sync_range_size)
+                let single_plot_farm_instantiations = plot_sizes
+                    .par_iter()
+                    .enumerate()
+                    .map(|(plot_index, &max_plot_pieces)| {
+                        let base_directory = base_directory.join(format!("plot{plot_index}"));
+                        let farming_client = farming_client.clone();
+                        let new_plot = new_plot.clone();
+                        let listen_on = listen_on.clone();
+                        let bootstrap_nodes = bootstrap_nodes.clone();
+                        let first_listen_on = Arc::clone(&first_listen_on);
+
+                        SinglePlotFarm::new(SinglePlotFarmOptions {
+                            base_directory,
+                            plot_index,
+                            max_plot_pieces,
+                            max_plot_size,
+                            total_pieces,
+                            farming_client,
+                            new_plot,
+                            listen_on,
+                            bootstrap_nodes,
+                            first_listen_on,
+                            enable_farming,
+                            reward_address,
+                            enable_dsn_sync,
+                        })
                     })
-                    .collect::<FuturesUnordered<_>>();
+                    .collect::<anyhow::Result<Vec<_>>>()?;
 
-                async move {
-                    while let Some(result) = futures.next().await {
-                        result?;
+                for (farm, node_runner) in single_plot_farm_instantiations {
+                    if node.is_none() {
+                        node = Some(farm.node.clone());
                     }
-
-                    info!("Sync done");
-
-                    Ok::<_, anyhow::Error>(())
+                    networking_node_runners.push(node_runner);
+                    single_plot_farms.push(farm);
                 }
-            });
-        }
+
+                Ok::<_, anyhow::Error>((single_plot_farms, networking_node_runners, node))
+            })
+            .await
+            .expect("Not supposed to panic, crash if it does")?;
 
         // Start archiving task
         let archiving = Archiving::start(
@@ -239,7 +185,7 @@ impl MultiFarming {
     }
 
     /// Waits for farming and plotting completion (or errors)
-    pub async fn wait(self) -> anyhow::Result<()> {
+    pub async fn wait(mut self) -> anyhow::Result<()> {
         if !self
             .single_plot_farms
             .iter()
@@ -248,11 +194,13 @@ impl MultiFarming {
             return self.archiving.wait().await.map_err(Into::into);
         }
 
+        // `.iter_mut()` so that we don't drop `SinglePlotFarm` and continue background tasks if
+        // there are any
         let mut farming = self
             .single_plot_farms
-            .into_iter()
+            .iter_mut()
             .filter_map(|single_plot_farm| {
-                let farming = single_plot_farm.farming?;
+                let farming = single_plot_farm.farming.take()?;
                 Some(farming.wait())
             })
             .collect::<FuturesUnordered<_>>();

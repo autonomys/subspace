@@ -79,9 +79,9 @@ async fn partial_plot() {
     let base_directory = TempDir::new().unwrap();
 
     let max_plot_pieces = 10;
-    let address = rand::random::<[u8; 32]>().into();
+    let public_key = random::<[u8; 32]>().into();
 
-    let plot = Plot::open_or_create(&base_directory, address, max_plot_pieces).unwrap();
+    let plot = Plot::open_or_create(&base_directory, public_key, max_plot_pieces).unwrap();
     assert!(plot.is_empty());
 
     let pieces_to_plot = max_plot_pieces * 2;
@@ -92,7 +92,7 @@ async fn partial_plot() {
     assert!(!plot.is_empty());
 
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
-    piece_indexes.sort_by_key(|i| PieceDistance::distance(&(*i).into(), &address));
+    piece_indexes.sort_by_key(|i| PieceDistance::distance(&(*i).into(), &public_key));
 
     // First pieces should be present and equal
     for &i in &piece_indexes[..max_plot_pieces as usize] {
@@ -111,9 +111,9 @@ async fn sequential_pieces_iterator() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let address = rand::random::<[u8; 32]>().into();
+    let public_key = random::<[u8; 32]>().into();
 
-    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let plot = Plot::open_or_create(&base_directory, public_key, u64::MAX).unwrap();
     let pieces_to_plot = 1000;
 
     let pieces = Arc::new(FlatPieces::new(pieces_to_plot as usize));

@@ -20,7 +20,8 @@ use subspace_networking::{
 };
 use subspace_solving::SubspaceCodec;
 use tokio::runtime::Handle;
-use tracing::info;
+use tokio::task::JoinHandle;
+use tracing::{error, info};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
@@ -32,6 +33,8 @@ where
     pub(crate) base_directory: PathBuf,
     pub(crate) plot_index: usize,
     pub(crate) max_plot_pieces: u64,
+    pub(crate) max_plot_size: u64,
+    pub(crate) total_pieces: u64,
     pub(crate) farming_client: C,
     pub(crate) new_plot: NewPlot,
     pub(crate) listen_on: Vec<Multiaddr>,
@@ -39,17 +42,28 @@ where
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
+    pub(crate) enable_dsn_sync: bool,
 }
 
+/// Single plot farm abstraction is a container for everything necessary to plot/farm with a single
+/// disk plot.
 // TODO: Make fields private
 pub struct SinglePlotFarm {
+    pub(crate) identity: Identity,
     pub(crate) codec: SubspaceCodec,
     pub plot: Plot,
     pub commitments: Commitments,
     pub(crate) farming: Option<Farming>,
     pub(crate) node: Node,
-    /// Might be `None` if was already taken out before
-    pub node_runner: Option<NodeRunner>,
+    background_task_handles: Vec<JoinHandle<()>>,
+}
+
+impl Drop for SinglePlotFarm {
+    fn drop(&mut self) {
+        for handle in &self.background_task_handles {
+            handle.abort();
+        }
+    }
 }
 
 impl SinglePlotFarm {
@@ -58,6 +72,8 @@ impl SinglePlotFarm {
             base_directory,
             plot_index,
             max_plot_pieces,
+            max_plot_size,
+            total_pieces,
             farming_client,
             new_plot,
             mut listen_on,
@@ -65,8 +81,9 @@ impl SinglePlotFarm {
             first_listen_on,
             enable_farming,
             reward_address,
+            enable_dsn_sync,
         }: SinglePlotFarmOptions<C, NewPlot>,
-    ) -> anyhow::Result<Self>
+    ) -> anyhow::Result<(Self, NodeRunner)>
     where
         C: RpcClient,
         NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
@@ -74,12 +91,15 @@ impl SinglePlotFarm {
         std::fs::create_dir_all(&base_directory)?;
 
         let identity = Identity::open_or_create(&base_directory)?;
-        let public_key = identity.public_key().to_bytes().into();
 
         // TODO: This doesn't account for the fact that node can
         // have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
+        let plot = new_plot(
+            plot_index,
+            identity.public_key().to_bytes().into(),
+            max_plot_pieces,
+        )?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(base_directory.join("commitments"))?;
@@ -125,7 +145,7 @@ impl SinglePlotFarm {
             }
         }
 
-        let codec = SubspaceCodec::new_with_gpu(&plot.public_key());
+        let codec = SubspaceCodec::new_with_gpu(&identity.public_key().to_bytes());
         let create_networking_fut = subspace_networking::create(Config {
             bootstrap_nodes,
             // TODO: Do we still need it?
@@ -217,14 +237,37 @@ impl SinglePlotFarm {
         }))
         .detach();
 
-        Ok(SinglePlotFarm {
+        let mut farm = Self {
+            identity,
             codec,
             plot,
             commitments,
             farming,
             node,
-            node_runner: Some(node_runner),
-        })
+            background_task_handles: vec![],
+        };
+
+        // Start syncing
+        if enable_dsn_sync {
+            // TODO: operate with number of pieces to fetch, instead of range calculations
+            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
+            let dsn_sync_fut = farm.dsn_sync(max_plot_size, total_pieces, sync_range_size);
+
+            let dsn_sync_handle = tokio::spawn(async move {
+                match dsn_sync_fut.await {
+                    Ok(()) => {
+                        info!("DSN sync done successfully");
+                    }
+                    Err(error) => {
+                        error!(?error, "DSN sync failed");
+                    }
+                }
+            });
+
+            farm.background_task_handles.push(dsn_sync_handle);
+        }
+
+        Ok((farm, node_runner))
     }
 
     pub(crate) fn dsn_sync(
@@ -233,18 +276,17 @@ impl SinglePlotFarm {
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
     ) -> impl Future<Output = anyhow::Result<()>> {
-        let plot = self.plot.clone();
         let commitments = self.commitments.clone();
         let codec = self.codec.clone();
         let node = self.node.clone();
 
         let options = SyncOptions {
             range_size,
-            public_key: plot.public_key(),
+            public_key: self.identity.public_key().to_bytes().into(),
             max_plot_size,
             total_pieces,
         };
-        let mut plot_pieces = plot_pieces(codec, &plot, commitments);
+        let mut plot_pieces = plot_pieces(codec, &self.plot, commitments);
 
         dsn::sync(node, options, move |pieces, piece_indexes| {
             if !plot_pieces(PiecesToPlot {
