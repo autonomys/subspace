@@ -732,20 +732,23 @@ impl IndexHashToOffsetDB {
         iter.seek(self.piece_hash_to_distance(from).to_bytes());
 
         while piece_index_hashes_and_offsets.len() < count {
-            if iter.key().is_none() {
-                break;
-            }
+            match iter.key() {
+                Some(key) => {
+                    let offset =
+                        PieceOffset::from_le_bytes(iter.value().unwrap().try_into().expect(
+                            "Value read from database must always have correct length; qed",
+                        ));
+                    let index_hash =
+                        self.piece_distance_to_hash(PieceDistance::from_big_endian(key));
 
-            let offset = PieceOffset::from_le_bytes(
-                iter.value()
-                    .unwrap()
-                    .try_into()
-                    .expect("Failed to decode piece offsets from rocksdb"),
-            );
-            let index_hash =
-                self.piece_distance_to_hash(PieceDistance::from_big_endian(iter.key().unwrap()));
-            piece_index_hashes_and_offsets.push((index_hash, offset));
-            iter.next();
+                    piece_index_hashes_and_offsets.push((index_hash, offset));
+
+                    iter.next();
+                }
+                None => {
+                    break;
+                }
+            }
         }
 
         piece_index_hashes_and_offsets
