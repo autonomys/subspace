@@ -49,8 +49,6 @@ pub struct Options<C> {
     pub enable_farming: bool,
 }
 
-// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
-// will have the same length.
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 ///
 /// It is needed because of the limit of a single plot size from the consensus
