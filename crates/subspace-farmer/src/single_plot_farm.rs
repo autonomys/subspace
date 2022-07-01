@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::commitments::Commitments;
 use crate::dsn;
 use crate::dsn::{PieceIndexHashNumber, SyncOptions};

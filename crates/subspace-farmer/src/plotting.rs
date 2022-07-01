@@ -3,9 +3,6 @@
 //! * write them to the plot
 //! * update commitments accordingly to change in piece set
 
-#[cfg(test)]
-mod tests;
-
 use crate::commitments::Commitments;
 use crate::plot::Plot;
 use std::sync::Arc;
