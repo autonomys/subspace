@@ -229,7 +229,7 @@ async fn test_dsn_sync() {
             let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
-    let node_runner = std::mem::take(&mut seeder_multi_farming.networking_node_runners)
+    let mut node_runner = std::mem::take(&mut seeder_multi_farming.networking_node_runners)
         .into_iter()
         .next()
         .unwrap();
@@ -287,7 +287,7 @@ async fn test_dsn_sync() {
     // HACK: farmer reserves 8% for its own needs, so we need to update piece count here
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
-    let node_runner = std::mem::take(&mut syncer_multi_farming.networking_node_runners)
+    let mut node_runner = std::mem::take(&mut syncer_multi_farming.networking_node_runners)
         .into_iter()
         .next()
         .unwrap();

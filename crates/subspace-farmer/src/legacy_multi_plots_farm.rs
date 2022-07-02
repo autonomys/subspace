@@ -199,7 +199,7 @@ impl LegacyMultiPlotsFarm {
             .collect::<FuturesUnordered<_>>();
         let mut node_runners = self
             .networking_node_runners
-            .into_iter()
+            .iter_mut()
             .map(NodeRunner::run)
             .collect::<FuturesUnordered<_>>();
 

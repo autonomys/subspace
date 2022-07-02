@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
                 allow_non_globals_in_dht: true,
                 ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
             };
-            let (node, node_runner) = subspace_networking::create(config).await.unwrap();
+            let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
             node.on_new_listener(Arc::new({
                 let node_id = node.id();

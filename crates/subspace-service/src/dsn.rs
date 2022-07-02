@@ -19,14 +19,16 @@ where
 {
     trace!(target: "dsn", "Subspace networking starting.");
 
-    let (node, node_runner) = subspace_networking::create(networking_config).await?;
+    let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
 
     info!(target: "dsn", "Subspace networking initialized: Node ID is {}", node.id());
 
     spawner.spawn_essential(
         "node-runner",
         Some("subspace-networking"),
-        Box::pin(node_runner.run()),
+        Box::pin(async move {
+            node_runner.run().await;
+        }),
     );
 
     let mut archived_segment_notification_stream = subspace_link
