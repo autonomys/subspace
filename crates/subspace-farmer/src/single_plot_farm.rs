@@ -110,7 +110,7 @@ pub struct SinglePlotFarm {
     pub plot: Plot,
     pub commitments: Commitments,
     farming: Option<Farming>,
-    pub(crate) node: Node,
+    node: Node,
     node_runner: NodeRunner,
     background_task_handles: Vec<JoinHandle<()>>,
 }
@@ -328,6 +328,11 @@ impl SinglePlotFarm {
     /// Public key associated with this farm
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
+    }
+
+    /// Access network node instance of the farm
+    pub fn node(&self) -> &Node {
+        &self.node
     }
 
     /// Get plotter for this plot

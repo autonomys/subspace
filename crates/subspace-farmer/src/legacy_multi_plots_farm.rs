@@ -133,7 +133,7 @@ impl LegacyMultiPlotsFarm {
                 single_plot_farms
                     .get(0)
                     .expect("There is always at least one farm; qed")
-                    .node
+                    .node()
                     .clone()
             }),
             {
