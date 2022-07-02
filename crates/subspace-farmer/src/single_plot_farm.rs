@@ -8,6 +8,7 @@ use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::{dsn, CommitmentError};
+use futures::future::try_join;
 use parking_lot::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
@@ -102,13 +103,15 @@ where
 /// Single plot farm abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 // TODO: Make fields private
+#[must_use = "Farm does not function properly unless run() method is called"]
 pub struct SinglePlotFarm {
     public_key: PublicKey,
     codec: SubspaceCodec,
     pub plot: Plot,
     pub commitments: Commitments,
-    pub(crate) farming: Option<Farming>,
+    farming: Option<Farming>,
     pub(crate) node: Node,
+    node_runner: NodeRunner,
     background_task_handles: Vec<JoinHandle<()>>,
 }
 
@@ -137,7 +140,7 @@ impl SinglePlotFarm {
             reward_address,
             enable_dsn_sync,
         }: SinglePlotFarmOptions<C, NewPlot>,
-    ) -> anyhow::Result<(Self, NodeRunner)>
+    ) -> anyhow::Result<Self>
     where
         C: RpcClient,
         NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
@@ -295,6 +298,7 @@ impl SinglePlotFarm {
             commitments,
             farming,
             node,
+            node_runner,
             background_task_handles: vec![],
         };
 
@@ -318,7 +322,7 @@ impl SinglePlotFarm {
             farm.background_task_handles.push(dsn_sync_handle);
         }
 
-        Ok((farm, node_runner))
+        Ok(farm)
     }
 
     /// Public key associated with this farm
@@ -333,6 +337,21 @@ impl SinglePlotFarm {
             self.plot.clone(),
             self.commitments.clone(),
         )
+    }
+
+    pub async fn run(&mut self) -> anyhow::Result<()> {
+        if let Some(farming) = self.farming.as_mut() {
+            try_join(farming.wait(), async {
+                (&mut self.node_runner).run().await;
+
+                Ok(())
+            })
+            .await?;
+        } else {
+            self.node_runner.run().await;
+        }
+
+        Ok(())
     }
 
     pub(crate) fn dsn_sync(

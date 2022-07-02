@@ -2,6 +2,7 @@ use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::{ObjectMappings, Plot};
+use futures::channel::oneshot;
 use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use rand::Rng;
@@ -163,7 +164,7 @@ async fn test_dsn_sync() {
         Plot::open_or_create(base_path, public_key, max_piece_count)
     };
 
-    let mut seeder_multi_farming = LegacyMultiPlotsFarm::new(
+    let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
             archiving_client: seeder_client.clone(),
@@ -229,20 +230,25 @@ async fn test_dsn_sync() {
             let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
-    let mut node_runner = std::mem::take(&mut seeder_multi_farming.networking_node_runners)
-        .into_iter()
-        .next()
-        .unwrap();
+
+    let peer_id = seeder_multi_farming.single_plot_farms[0].node.id().into();
+
+    let (seeder_multi_farming_finished_sender, seeder_multi_farming_finished_receiver) =
+        oneshot::channel();
+
     tokio::spawn(async move {
-        node_runner.run().await;
+        if let Err(error) = seeder_multi_farming.wait().await {
+            eprintln!("Seeder exited with error: {error}");
+        }
+
+        let _ = seeder_multi_farming_finished_sender.send(());
     });
+
     let seeder_multiaddr = seeder_address_receiver
         .next()
         .await
         .unwrap()
-        .with(Protocol::P2p(
-            seeder_multi_farming.single_plot_farms[0].node.id().into(),
-        ));
+        .with(Protocol::P2p(peer_id));
     drop(seeder_address_receiver);
 
     let syncer_base_directory = TempDir::new().unwrap();
@@ -265,7 +271,7 @@ async fn test_dsn_sync() {
         Plot::open_or_create(base_path, public_key, max_piece_count)
     };
 
-    let mut syncer_multi_farming = LegacyMultiPlotsFarm::new(
+    let syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: syncer_base_directory.as_ref().to_owned(),
             archiving_client: syncer_client.clone(),
@@ -287,29 +293,31 @@ async fn test_dsn_sync() {
     // HACK: farmer reserves 8% for its own needs, so we need to update piece count here
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
-    let mut node_runner = std::mem::take(&mut syncer_multi_farming.networking_node_runners)
-        .into_iter()
-        .next()
-        .unwrap();
-    tokio::spawn(async move {
-        node_runner.run().await;
-    });
-
     let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
     let plot = syncer_multi_farming.single_plot_farms[0].plot.clone();
-    syncer_multi_farming.single_plot_farms[0]
-        .dsn_sync(syncer_max_plot_size, seeder_max_plot_size, range_size)
-        .await
-        .unwrap();
-
-    let sync_sector_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
+    let dsn_sync = syncer_multi_farming.single_plot_farms[0].dsn_sync(
+        syncer_max_plot_size,
+        seeder_max_plot_size,
+        range_size,
+    );
     let public_key = U256::from_big_endian(
         syncer_multi_farming.single_plot_farms[0]
             .public_key()
             .as_ref(),
     );
+
+    tokio::spawn(async move {
+        if let Err(error) = syncer_multi_farming.wait().await {
+            eprintln!("Syncer exited with error: {error}");
+        }
+    });
+
+    dsn_sync.await.unwrap();
+
+    let sync_sector_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
     let expected_start = public_key.wrapping_sub(&(sync_sector_size / 2));
     let expected_end = public_key.wrapping_add(&(sync_sector_size / 2));
+
     match plot.get_piece_range().unwrap() {
         Some(range) => {
             let (start, end) = (
@@ -371,5 +379,5 @@ async fn test_dsn_sync() {
 
     drop(seeder_archived_segments_sender);
     seeder_client.stop().await;
-    seeder_multi_farming.wait().await.unwrap();
+    seeder_multi_farming_finished_receiver.await.unwrap();
 }
