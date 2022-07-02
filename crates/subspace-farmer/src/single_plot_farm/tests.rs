@@ -216,7 +216,7 @@ async fn plotting_piece_eviction() {
                         .is_some());
 
                     assert!(
-                        read_piece.as_slice() == piece,
+                        read_piece.as_ref() == piece,
                         "Read incorrect piece for piece index {}",
                         piece_index
                     );

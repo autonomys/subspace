@@ -231,7 +231,7 @@ pub(crate) async fn bench(
     let actual_space_pledged = multi_farming
         .single_plot_farms
         .iter()
-        .map(|single_plot_farm| single_plot_farm.plot.piece_count())
+        .map(|single_plot_farm| single_plot_farm.plot().piece_count())
         .sum::<u64>()
         * PIECE_SIZE as u64;
     let overhead = space_allocated - actual_space_pledged;
@@ -266,7 +266,7 @@ pub(crate) async fn bench(
             .map(|single_plot_farm| {
                 (
                     single_plot_farm.commitments.clone(),
-                    single_plot_farm.plot.clone(),
+                    single_plot_farm.plot().clone(),
                 )
             })
             .map(|(commitments, plot)| move || commitments.create(rand::random(), plot))

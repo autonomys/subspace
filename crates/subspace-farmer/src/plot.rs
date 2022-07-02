@@ -284,10 +284,11 @@ impl Plot {
         })?
     }
 
+    // TODO: De-duplicate this method
     /// Reads a piece from plot by index
-    pub(crate) fn read(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Piece> {
+    pub(crate) fn read(&self, piece_index_hash: impl Into<PieceIndexHash>) -> io::Result<Piece> {
         let (result_sender, result_receiver) = mpsc::channel();
-        let index_hash = index_hash.into();
+        let index_hash = piece_index_hash.into();
 
         self.inner
             .requests_sender
@@ -353,8 +354,8 @@ impl Plot {
         })?
     }
 
-    pub fn read_piece(&self, index_hash: impl Into<PieceIndexHash>) -> io::Result<Vec<u8>> {
-        self.read(index_hash).map(Into::into)
+    pub fn read_piece(&self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
+        self.read(piece_index_hash)
     }
 
     pub(crate) fn read_piece_with_index(
