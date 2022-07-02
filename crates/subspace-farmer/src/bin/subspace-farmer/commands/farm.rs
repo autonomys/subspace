@@ -3,7 +3,9 @@ use jsonrpsee::ws_server::WsServerBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::PIECE_SIZE;
-use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
+use subspace_farmer::legacy_multi_plots_farm::{
+    LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
+};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
 use subspace_rpc_primitives::FarmerMetadata;
@@ -68,7 +70,7 @@ pub(crate) async fn farm(
     })
     .await??;
 
-    let multi_farming = MultiFarming::new(
+    let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.clone(),
             archiving_client,

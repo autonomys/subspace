@@ -66,7 +66,7 @@ pub struct PiecesByRangeResponse {
     /// Returned data.
     pub pieces: PiecesToPlot,
     /// Defines starting point (cursor) of the next request.
-    /// None means no further data avalaible.
+    /// None means no further data available.
     pub next_piece_index_hash: Option<PieceIndexHash>,
 }
 

@@ -1,7 +1,6 @@
 use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
-use crate::plotting;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
@@ -13,6 +12,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::NodeRunner;
+use tracing::error;
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
     // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
@@ -49,19 +49,17 @@ pub struct Options<C> {
     pub enable_farming: bool,
 }
 
-// TODO: tie `plots`, `commitments`, `farmings`, ``networking_node_runners` together as they always
-// will have the same length.
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 ///
 /// It is needed because of the limit of a single plot size from the consensus
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
-pub struct MultiFarming {
+pub struct LegacyMultiPlotsFarm {
     pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
     pub(crate) networking_node_runners: Vec<NodeRunner>,
 }
 
-impl MultiFarming {
+impl LegacyMultiPlotsFarm {
     /// Starts multiple farmers with any plot sizes which user gives
     pub async fn new<C: RpcClient>(
         Options {
@@ -151,27 +149,22 @@ impl MultiFarming {
             enable_dsn_archiving
                 .then(|| node.expect("Always set, as we have at least one networking instance")),
             {
-                let mut on_pieces_to_plots = single_plot_farms
+                let plotters = single_plot_farms
                     .iter()
-                    .map(|single_plot_farm| {
-                        plotting::plot_pieces(
-                            single_plot_farm.codec.clone(),
-                            &single_plot_farm.plot,
-                            single_plot_farm.commitments.clone(),
-                        )
-                    })
+                    .map(|single_plot_farm| single_plot_farm.get_plotter())
                     .collect::<Vec<_>>();
 
                 move |pieces_to_plot| {
-                    on_pieces_to_plots
-                        .par_iter_mut()
-                        .map(|on_pieces_to_plot| {
-                            // TODO: It might be desirable to not clone it and instead pick just
-                            //  unnecessary pieces and copy pieces once since different plots will
-                            //  care about different pieces
-                            on_pieces_to_plot(pieces_to_plot.clone())
-                        })
-                        .reduce(|| true, |result, should_continue| result && should_continue)
+                    if let Some(Err(error)) = plotters
+                        .par_iter()
+                        .map(|plotter| plotter.plot_pieces(&pieces_to_plot))
+                        .find_first(|result| result.is_err())
+                    {
+                        error!(%error, "Failed to plot pieces");
+                        false
+                    } else {
+                        true
+                    }
                 }
             },
         )

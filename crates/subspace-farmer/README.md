@@ -95,9 +95,9 @@ Think of it as the following pipeline:
 
 1. [Farmer receives new blocks from the blockchain](src/archiving.rs)
 2. [Archives each of them](src/archiving.rs)
-3. [Encodes each archived piece by applying the time-asymmetric SLOTH permutation as `encode(genesis_piece, farmer_public_key_hash, plot_index)`](src/plotting.rs)
-4. [Each encoding is written to the disk](src/plotting.rs)
-3. [A commitment, or tag, to each encoding is created as `hmac(encoding, salt)` and stored within a binary search tree (BST)](src/plotting.rs).
+3. [Encodes each archived piece by applying the time-asymmetric SLOTH permutation as `encode(genesis_piece, farmer_public_key_hash, plot_index)`](src/single_plot_farm)
+4. [Each encoding is written to the disk](src/single_plot_farm.rs)
+3. [A commitment, or tag, to each encoding is created as `hmac(encoding, salt)` and stored within a binary search tree (BST)](src/single_plot_farm).
 
 This process currently takes ~ 36 hours per TiB on a quad-core machine, but for 1 GiB plotting should take between a few seconds and a few minutes.
 

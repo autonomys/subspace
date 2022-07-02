@@ -1,11 +1,13 @@
+#[cfg(test)]
+mod tests;
+
 use crate::commitments::Commitments;
-use crate::dsn;
 use crate::dsn::{PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
-use crate::plotting::plot_pieces;
 use crate::rpc_client::RpcClient;
+use crate::{dsn, CommitmentError};
 use parking_lot::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
@@ -18,12 +20,64 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
     libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{BatchEncodeError, SubspaceCodec};
+use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
+
+/// Errors that happen during plotting of pieces
+#[derive(Debug, Error)]
+pub enum SinglePlotPlotterError {
+    /// Encode error
+    #[error("Encode error: {0}")]
+    Encode(#[from] BatchEncodeError),
+    /// Plot error
+    #[error("Plot error: {0}")]
+    Plot(#[from] std::io::Error),
+    /// Commitments error
+    #[error("Commitment error: {0}")]
+    Commitment(#[from] CommitmentError),
+}
+
+#[derive(Debug, Clone)]
+pub struct SinglePlotPlotter {
+    codec: SubspaceCodec,
+    plot: Plot,
+    commitments: Commitments,
+}
+
+impl SinglePlotPlotter {
+    fn new(codec: SubspaceCodec, weak_plot: Plot, commitments: Commitments) -> Self {
+        Self {
+            codec,
+            plot: weak_plot,
+            commitments,
+        }
+    }
+
+    /// Plot specified pieces in this farm, potentially replacing some of existing pieces
+    pub fn plot_pieces(&self, pieces_to_plot: &PiecesToPlot) -> Result<(), SinglePlotPlotterError> {
+        let PiecesToPlot {
+            piece_indexes,
+            mut pieces,
+        } = pieces_to_plot.clone();
+        self.codec.batch_encode(&mut pieces, &piece_indexes)?;
+
+        let pieces = Arc::new(pieces);
+
+        let write_result = self.plot.write_many(Arc::clone(&pieces), piece_indexes)?;
+
+        self.commitments
+            .remove_pieces(write_result.evicted_pieces())?;
+
+        self.commitments
+            .create_for_pieces(|| write_result.to_recommitment_iterator())
+            .map_err(Into::into)
+    }
+}
 
 pub(crate) struct SinglePlotFarmOptions<C, NewPlot>
 where
@@ -49,8 +103,8 @@ where
 /// disk plot.
 // TODO: Make fields private
 pub struct SinglePlotFarm {
-    pub(crate) identity: Identity,
-    pub(crate) codec: SubspaceCodec,
+    public_key: PublicKey,
+    codec: SubspaceCodec,
     pub plot: Plot,
     pub commitments: Commitments,
     pub(crate) farming: Option<Farming>,
@@ -91,29 +145,15 @@ impl SinglePlotFarm {
         std::fs::create_dir_all(&base_directory)?;
 
         let identity = Identity::open_or_create(&base_directory)?;
+        let public_key = identity.public_key().to_bytes().into();
 
         // TODO: This doesn't account for the fact that node can
         // have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = new_plot(
-            plot_index,
-            identity.public_key().to_bytes().into(),
-            max_plot_pieces,
-        )?;
+        let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(base_directory.join("commitments"))?;
-
-        // Start the farming task
-        let farming = enable_farming.then(|| {
-            Farming::start(
-                plot.clone(),
-                commitments.clone(),
-                farming_client.clone(),
-                identity.clone(),
-                reward_address,
-            )
-        });
 
         for multiaddr in &mut listen_on {
             if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
@@ -145,7 +185,7 @@ impl SinglePlotFarm {
             }
         }
 
-        let codec = SubspaceCodec::new_with_gpu(&identity.public_key().to_bytes());
+        let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
         let create_networking_fut = subspace_networking::create(Config {
             bootstrap_nodes,
             // TODO: Do we still need it?
@@ -237,8 +277,19 @@ impl SinglePlotFarm {
         }))
         .detach();
 
+        // Start the farming task
+        let farming = enable_farming.then(|| {
+            Farming::start(
+                plot.clone(),
+                commitments.clone(),
+                farming_client,
+                identity,
+                reward_address,
+            )
+        });
+
         let mut farm = Self {
-            identity,
+            public_key,
             codec,
             plot,
             commitments,
@@ -270,32 +321,42 @@ impl SinglePlotFarm {
         Ok((farm, node_runner))
     }
 
+    /// Public key associated with this farm
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+
+    /// Get plotter for this plot
+    pub fn get_plotter(&self) -> SinglePlotPlotter {
+        SinglePlotPlotter::new(
+            self.codec.clone(),
+            self.plot.clone(),
+            self.commitments.clone(),
+        )
+    }
+
     pub(crate) fn dsn_sync(
         &self,
         max_plot_size: u64,
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
     ) -> impl Future<Output = anyhow::Result<()>> {
-        let commitments = self.commitments.clone();
-        let codec = self.codec.clone();
-        let node = self.node.clone();
-
         let options = SyncOptions {
             range_size,
-            public_key: self.identity.public_key().to_bytes().into(),
+            public_key: self.public_key,
             max_plot_size,
             total_pieces,
         };
-        let mut plot_pieces = plot_pieces(codec, &self.plot, commitments);
 
-        dsn::sync(node, options, move |pieces, piece_indexes| {
-            if !plot_pieces(PiecesToPlot {
-                pieces,
-                piece_indexes,
-            }) {
-                return Err(anyhow::anyhow!("Failed to plot pieces in archiving"));
-            }
-            Ok(())
+        let single_plot_plotter = self.get_plotter();
+
+        dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
+            single_plot_plotter
+                .plot_pieces(&PiecesToPlot {
+                    pieces,
+                    piece_indexes,
+                })
+                .map_err(Into::into)
         })
     }
 }
