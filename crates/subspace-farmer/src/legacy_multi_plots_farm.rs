@@ -129,7 +129,13 @@ impl LegacyMultiPlotsFarm {
             farmer_metadata,
             object_mappings,
             archiving_client,
-            enable_dsn_archiving.then(|| single_plot_farms[0].node.clone()),
+            enable_dsn_archiving.then(|| {
+                single_plot_farms
+                    .get(0)
+                    .expect("There is always at least one farm; qed")
+                    .node
+                    .clone()
+            }),
             {
                 let plotters = single_plot_farms
                     .iter()
