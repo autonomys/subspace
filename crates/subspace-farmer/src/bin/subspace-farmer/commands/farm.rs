@@ -69,7 +69,7 @@ pub(crate) async fn farm(
     })
     .await??;
 
-    let multi_farming = LegacyMultiPlotsFarm::new(
+    let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.clone(),
             archiving_client,
@@ -119,12 +119,12 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        multi_farming.piece_getter(),
+        multi_plots_farm.piece_getter(),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
     info!("WS RPC server listening on {ws_server_addr}");
 
-    multi_farming.wait().await
+    multi_plots_farm.wait().await
 }

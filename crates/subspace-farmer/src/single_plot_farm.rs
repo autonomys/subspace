@@ -385,8 +385,8 @@ impl SinglePlotFarm {
         SinglePlotPieceGetter::new(self.codec.clone(), self.plot.clone())
     }
 
-    /// Get plotter for this plot
-    pub fn get_plotter(&self) -> SinglePlotPlotter {
+    /// Plotter for this plot
+    pub fn plotter(&self) -> SinglePlotPlotter {
         SinglePlotPlotter::new(
             self.codec.clone(),
             self.plot.clone(),
@@ -422,7 +422,7 @@ impl SinglePlotFarm {
             total_pieces,
         };
 
-        let single_plot_plotter = self.get_plotter();
+        let single_plot_plotter = self.plotter();
 
         dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
             single_plot_plotter

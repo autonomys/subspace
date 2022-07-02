@@ -140,7 +140,7 @@ impl LegacyMultiPlotsFarm {
             {
                 let plotters = single_plot_farms
                     .iter()
-                    .map(|single_plot_farm| single_plot_farm.get_plotter())
+                    .map(|single_plot_farm| single_plot_farm.plotter())
                     .collect::<Vec<_>>();
 
                 move |pieces_to_plot| {
