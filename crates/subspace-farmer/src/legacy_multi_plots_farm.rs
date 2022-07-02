@@ -193,8 +193,8 @@ impl LegacyMultiPlotsFarm {
             .single_plot_farms
             .iter_mut()
             .filter_map(|single_plot_farm| {
-                let farming = single_plot_farm.farming.take()?;
-                Some(farming.wait())
+                let mut farming = single_plot_farm.farming.take()?;
+                Some(async move { farming.wait().await })
             })
             .collect::<FuturesUnordered<_>>();
         let mut node_runners = self

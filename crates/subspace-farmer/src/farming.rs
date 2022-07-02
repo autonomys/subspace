@@ -7,8 +7,8 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use futures::future::Either;
-use futures::{future, StreamExt};
+use futures::future::{Either, Fuse};
+use futures::{future, FutureExt, StreamExt};
 use std::sync::mpsc;
 use std::time::Instant;
 use subspace_core_primitives::{PublicKey, Salt, Solution};
@@ -37,7 +37,7 @@ pub enum FarmingError {
 /// in its `Commitments` database.
 pub struct Farming {
     stop_sender: async_oneshot::Sender<()>,
-    handle: Option<JoinHandle<Result<(), FarmingError>>>,
+    handle: Fuse<JoinHandle<Result<(), FarmingError>>>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
@@ -83,17 +83,13 @@ impl Farming {
 
         Farming {
             stop_sender,
-            handle: Some(farming_handle),
+            handle: farming_handle.fuse(),
         }
     }
 
     /// Waits for the background farming to finish
-    pub async fn wait(mut self) -> Result<(), FarmingError> {
-        self.handle
-            .take()
-            .unwrap()
-            .await
-            .map_err(FarmingError::JoinTask)?
+    pub async fn wait(&mut self) -> Result<(), FarmingError> {
+        (&mut self.handle).await.map_err(FarmingError::JoinTask)?
     }
 }
 
