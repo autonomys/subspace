@@ -722,12 +722,17 @@ pub trait PlotFile {
     fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
 }
 
-impl PlotFile for File {
+impl<T> PlotFile for T
+where
+    T: Read + Write + Seek,
+{
     fn piece_count(&mut self) -> io::Result<u64> {
-        self.metadata()
-            .map(|metadata| metadata.len() / PIECE_SIZE as u64)
+        let plot_file_size = self.seek(SeekFrom::End(0))?;
+
+        Ok(plot_file_size / PIECE_SIZE as u64)
     }
 
+    /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
         self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
         self.write_all(pieces.as_ref())
