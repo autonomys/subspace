@@ -1,13 +1,12 @@
+mod piece_index_hash_to_offset_db;
+mod piece_offset_to_index_db;
 #[cfg(test)]
 mod tests;
 mod worker;
 
 use crate::plot::worker::{PlotWorker, Request, RequestPriority, RequestWithPriority, WriteResult};
 use event_listener_primitives::{Bag, HandlerId};
-use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::DB;
-use std::collections::BTreeSet;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::RangeInclusive;
 use std::path::Path;
@@ -15,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::{fmt, io};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
@@ -387,246 +386,6 @@ impl Plot {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct BidirectionalDistanceSorted<T> {
-    distance: T,
-    value: T,
-}
-
-impl<T: PartialOrd> PartialOrd for BidirectionalDistanceSorted<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.distance.partial_cmp(&other.distance)
-    }
-}
-
-impl<T: Ord> Ord for BidirectionalDistanceSorted<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.distance.cmp(&other.distance)
-    }
-}
-
-impl BidirectionalDistanceSorted<PieceDistance> {
-    pub fn new(value: PieceDistance) -> Self {
-        let distance =
-            subspace_core_primitives::bidirectional_distance(&value, &PieceDistance::MIDDLE);
-        Self { value, distance }
-    }
-}
-
-/// Mapping from piece index hash to piece offset.
-///
-/// Piece index hashes are transformed in the following manner:
-/// - Assume that farmer public key is the middle (`2 ^ 255`) of the `PieceDistance` field
-/// - Move every piece according to that
-#[derive(Debug)]
-struct IndexHashToOffsetDB {
-    inner: DB,
-    public_key: PublicKey,
-    max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
-}
-
-impl IndexHashToOffsetDB {
-    /// Max distance cache size.
-    ///
-    /// You can find discussion of derivation of this number here:
-    /// https://github.com/subspace/subspace/pull/449
-    const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
-
-    fn open_default(path: impl AsRef<Path>, public_key: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
-        let mut me = Self {
-            inner,
-            public_key,
-            max_distance_cache: BTreeSet::new(),
-        };
-        me.update_max_distance_cache();
-        Ok(me)
-    }
-
-    fn update_max_distance_cache(&mut self) {
-        let mut iter = self.inner.raw_iterator();
-
-        iter.seek_to_first();
-        self.max_distance_cache.extend(
-            std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
-                if piece_index_hash.is_some() {
-                    iter.next();
-                }
-                piece_index_hash
-            })
-            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
-            .map(BidirectionalDistanceSorted::new),
-        );
-
-        iter.seek_to_last();
-        self.max_distance_cache.extend(
-            std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
-                if piece_index_hash.is_some() {
-                    iter.prev();
-                }
-                piece_index_hash
-            })
-            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
-            .map(BidirectionalDistanceSorted::new),
-        );
-        while self.max_distance_cache.len() > Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
-            self.max_distance_cache.pop_first();
-        }
-    }
-
-    fn max_distance_key(&mut self) -> Option<PieceDistance> {
-        if self.max_distance_cache.is_empty() {
-            self.update_max_distance_cache();
-        }
-        self.max_distance_cache
-            .last()
-            .map(|distance| distance.value)
-    }
-
-    fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
-        // We permute distance such that if piece index hash is equal to the `self.public_key` then
-        // it lands to the `PieceDistance::MIDDLE`
-        PieceDistance::from_big_endian(&index_hash.0)
-            .wrapping_sub(&PieceDistance::from_big_endian(self.public_key.as_ref()))
-            .wrapping_add(&PieceDistance::MIDDLE)
-    }
-
-    fn piece_distance_to_hash(&self, distance: PieceDistance) -> PieceIndexHash {
-        let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
-        distance
-            .wrapping_sub(&PieceDistance::MIDDLE)
-            .wrapping_add(&PieceDistance::from_big_endian(self.public_key.as_ref()))
-            .to_big_endian(&mut piece_index_hash.0);
-        piece_index_hash
-    }
-
-    // TODO: optimize fast path using `max_distance_cache`
-    fn get_piece_range(&self) -> io::Result<Option<RangeInclusive<PieceIndexHash>>> {
-        let mut iter = self.inner.raw_iterator();
-
-        iter.seek_to_first();
-        let start = match iter.key() {
-            Some(key) => PieceDistance::from_big_endian(key),
-            None => return Ok(None),
-        };
-        iter.seek_to_last();
-        let end = iter
-            .key()
-            .map(PieceDistance::from_big_endian)
-            .expect("Must have at least one key");
-
-        Ok(Some(RangeInclusive::new(
-            self.piece_distance_to_hash(start),
-            self.piece_distance_to_hash(end),
-        )))
-    }
-
-    fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
-        self.inner
-            .get(&self.piece_hash_to_distance(index_hash).to_bytes())
-            .map_err(io::Error::other)
-            .and_then(|opt_val| {
-                opt_val
-                    .map(|val| <[u8; 8]>::try_from(val).map(PieceOffset::from_le_bytes))
-                    .transpose()
-                    .map_err(|_| io::Error::other("Offsets in rocksdb supposed to be 8 bytes long"))
-            })
-    }
-
-    /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
-    /// already
-    fn should_store(&mut self, index_hash: &PieceIndexHash) -> bool {
-        self.max_distance_key()
-            .map(|max_distance_key| {
-                subspace_core_primitives::bidirectional_distance(
-                    &max_distance_key,
-                    &PieceDistance::MIDDLE,
-                ) >= PieceDistance::distance(index_hash, self.public_key.as_ref())
-            })
-            .unwrap_or(true)
-    }
-
-    fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance_key() {
-            Some(max_distance) => max_distance,
-            None => return Ok(None),
-        };
-
-        let result = self
-            .inner
-            .get(&max_distance.to_bytes())
-            .map_err(io::Error::other)?
-            .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
-            .map(PieceOffset::from_le_bytes);
-        self.inner
-            .delete(&max_distance.to_bytes())
-            .map_err(io::Error::other)?;
-        self.max_distance_cache
-            .remove(&BidirectionalDistanceSorted::new(max_distance));
-
-        Ok(result)
-    }
-
-    fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let key = self.piece_hash_to_distance(index_hash);
-        self.inner
-            .put(&key.to_bytes(), offset.to_le_bytes())
-            .map_err(io::Error::other)?;
-
-        if let Some(first) = self.max_distance_cache.first() {
-            let key = BidirectionalDistanceSorted::new(key);
-            if key > *first {
-                self.max_distance_cache.insert(key);
-                if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
-                    self.max_distance_cache.pop_first();
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn get_sequential(
-        &self,
-        from: &PieceIndexHash,
-        count: usize,
-    ) -> Vec<(PieceIndexHash, PieceOffset)> {
-        if count == 0 {
-            return vec![];
-        }
-
-        let mut iter = self.inner.raw_iterator();
-
-        let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
-
-        iter.seek(self.piece_hash_to_distance(from).to_bytes());
-
-        while piece_index_hashes_and_offsets.len() < count {
-            match iter.key() {
-                Some(key) => {
-                    let offset =
-                        PieceOffset::from_le_bytes(iter.value().unwrap().try_into().expect(
-                            "Value read from database must always have correct length; qed",
-                        ));
-                    let index_hash =
-                        self.piece_distance_to_hash(PieceDistance::from_big_endian(key));
-
-                    piece_index_hashes_and_offsets.push((index_hash, offset));
-
-                    iter.next();
-                }
-                None => {
-                    break;
-                }
-            }
-        }
-
-        piece_index_hashes_and_offsets
-    }
-}
-
 /// Trait for mocking plot behaviour
 pub trait PlotFile {
     /// Get number of pieces in plot
@@ -657,53 +416,5 @@ where
     fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
         self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
         self.read_exact(buf.as_mut())
-    }
-}
-
-struct PieceOffsetToIndexDb(File);
-
-impl PieceOffsetToIndexDb {
-    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(path)
-            .map(Self)
-    }
-
-    pub fn get_piece_index(&mut self, offset: PieceOffset) -> io::Result<PieceIndex> {
-        let mut buf = [0; 8];
-        self.0.seek(SeekFrom::Start(
-            offset * std::mem::size_of::<PieceIndex>() as u64,
-        ))?;
-        self.0.read_exact(&mut buf)?;
-        Ok(PieceIndex::from_le_bytes(buf))
-    }
-
-    pub fn put_piece_index(
-        &mut self,
-        offset: PieceOffset,
-        piece_index: PieceIndex,
-    ) -> io::Result<()> {
-        self.0.seek(SeekFrom::Start(
-            offset * std::mem::size_of::<PieceIndex>() as u64,
-        ))?;
-        self.0.write_all(&piece_index.to_le_bytes())
-    }
-
-    pub fn put_piece_indexes(
-        &mut self,
-        start_offset: PieceOffset,
-        piece_indexes: &[PieceIndex],
-    ) -> io::Result<()> {
-        self.0.seek(SeekFrom::Start(
-            start_offset * std::mem::size_of::<PieceIndex>() as u64,
-        ))?;
-        let piece_indexes = piece_indexes
-            .iter()
-            .flat_map(|piece_index| piece_index.to_le_bytes())
-            .collect::<Vec<_>>();
-        self.0.write_all(&piece_indexes)
     }
 }

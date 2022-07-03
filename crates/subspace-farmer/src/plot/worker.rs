@@ -1,4 +1,6 @@
-use crate::plot::{IndexHashToOffsetDB, PieceOffset, PieceOffsetToIndexDb, PlotError, PlotFile};
+use crate::plot::piece_index_hash_to_offset_db::IndexHashToOffsetDB;
+use crate::plot::piece_offset_to_index_db::PieceOffsetToIndexDb;
+use crate::plot::{PieceOffset, PlotError, PlotFile};
 use std::collections::VecDeque;
 use std::io;
 use std::ops::RangeInclusive;
