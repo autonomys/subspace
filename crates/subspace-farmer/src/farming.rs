@@ -7,7 +7,7 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use futures::future::{Either, Fuse};
+use futures::future::{Either, Fuse, FusedFuture};
 use futures::{future, FutureExt, StreamExt};
 use std::sync::mpsc;
 use std::time::Instant;
@@ -89,6 +89,9 @@ impl Farming {
 
     /// Waits for the background farming to finish
     pub async fn wait(&mut self) -> Result<(), FarmingError> {
+        if self.handle.is_terminated() {
+            return Ok(());
+        }
         (&mut self.handle).await.map_err(FarmingError::JoinTask)?
     }
 }
