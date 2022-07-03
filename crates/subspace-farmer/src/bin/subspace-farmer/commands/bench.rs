@@ -154,11 +154,13 @@ pub(crate) async fn bench(
         match write_to_disk {
             WriteToDisk::Nothing => Plot::with_plot_file(
                 BenchPlotMock::new(max_piece_count),
-                base_path,
+                &base_path,
                 public_key,
                 max_piece_count,
             ),
-            WriteToDisk::Everything => Plot::open_or_create(base_path, public_key, max_piece_count),
+            WriteToDisk::Everything => {
+                Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
+            }
         }
     };
 

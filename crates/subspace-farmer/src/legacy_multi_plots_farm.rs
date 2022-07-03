@@ -77,7 +77,7 @@ impl LegacyMultiPlotsFarm {
         }: Options<C>,
         allocated_space: u64,
         max_plot_size: u64,
-        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
+        plot_factory: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
             + Clone
             + Send
             + Sync
@@ -101,7 +101,7 @@ impl LegacyMultiPlotsFarm {
                 .map(|(plot_index, &max_plot_pieces)| {
                     let base_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
-                    let new_plot = new_plot.clone();
+                    let plot_factory = plot_factory.clone();
                     let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
                     let first_listen_on = Arc::clone(&first_listen_on);
@@ -113,7 +113,7 @@ impl LegacyMultiPlotsFarm {
                         max_plot_size,
                         total_pieces,
                         farming_client,
-                        new_plot,
+                        plot_factory,
                         listen_on,
                         bootstrap_nodes,
                         first_listen_on,

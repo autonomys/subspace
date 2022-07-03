@@ -27,7 +27,13 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
 
     let public_key = identity.public_key().to_bytes().into();
-    let plot = Plot::open_or_create(&base_directory, public_key, u64::MAX).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        public_key,
+        u64::MAX,
+    )
+    .unwrap();
 
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 

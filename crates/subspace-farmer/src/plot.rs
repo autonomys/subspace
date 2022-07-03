@@ -195,13 +195,18 @@ impl fmt::Debug for Plot {
 
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
-    pub fn open_or_create<B: AsRef<Path>>(
-        base_directory: B,
+    pub fn open_or_create(
+        plot_directory: &Path,
+        metadata_directory: &Path,
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Plot, PlotError> {
-        let plot_worker =
-            PlotWorker::from_base_directory(base_directory.as_ref(), public_key, max_piece_count)?;
+        let plot_worker = PlotWorker::new(
+            plot_directory,
+            metadata_directory,
+            public_key,
+            max_piece_count,
+        )?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
@@ -223,7 +228,7 @@ impl Plot {
     /// Creates a new plot from any kind of plot file
     pub fn with_plot_file<P>(
         plot: P,
-        base_directory: impl AsRef<Path>,
+        metadata_directory: &Path,
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Plot, PlotError>
@@ -231,7 +236,7 @@ impl Plot {
         P: PlotFile + Send + 'static,
     {
         let plot_worker =
-            PlotWorker::with_plot_file(plot, base_directory.as_ref(), public_key, max_piece_count)?;
+            PlotWorker::with_plot_file(plot, metadata_directory, public_key, max_piece_count)?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
@@ -798,8 +803,9 @@ struct PlotWorker<T> {
 }
 
 impl PlotWorker<File> {
-    fn from_base_directory(
-        base_directory: impl AsRef<Path>,
+    fn new(
+        plot_directory: &Path,
+        metadata_directory: &Path,
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
@@ -807,16 +813,16 @@ impl PlotWorker<File> {
             .read(true)
             .write(true)
             .create(true)
-            .open(base_directory.as_ref().join("plot.bin"))
+            .open(plot_directory.join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
-        Self::with_plot_file(plot, base_directory, public_key, max_piece_count)
+        Self::with_plot_file(plot, metadata_directory, public_key, max_piece_count)
     }
 }
 
 impl<T: PlotFile> PlotWorker<T> {
     fn with_plot_file(
         mut plot: T,
-        base_directory: impl AsRef<Path>,
+        metadata_directory: &Path,
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
@@ -827,14 +833,14 @@ impl<T: PlotFile> PlotWorker<T> {
             .map(Arc::new)?;
 
         let piece_offset_to_index =
-            PieceOffsetToIndexDb::open(base_directory.as_ref().join("plot-offset-to-index.bin"))
+            PieceOffsetToIndexDb::open(metadata_directory.join("plot-offset-to-index.bin"))
                 .map_err(PlotError::OffsetDbOpen)?;
 
         // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
         //  here
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
-            base_directory.as_ref().join("plot-index-to-offset"),
+            metadata_directory.join("plot-index-to-offset"),
             public_key,
         )?;
 

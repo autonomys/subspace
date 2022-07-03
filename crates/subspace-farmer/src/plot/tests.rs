@@ -28,7 +28,13 @@ async fn read_write() {
     let pieces = Arc::<FlatPieces>::new(generate_random_piece().to_vec().try_into().unwrap());
     let piece_index_start = 0;
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        [0; 32].into(),
+        u64::MAX,
+    )
+    .unwrap();
     assert!(plot.is_empty());
     let piece_indexes = (piece_index_start..).take(pieces.count()).collect();
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
@@ -42,7 +48,13 @@ async fn read_write() {
     drop(plot);
 
     // Make sure it is still not empty on reopen
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        [0; 32].into(),
+        u64::MAX,
+    )
+    .unwrap();
     assert!(!plot.is_empty());
 }
 
@@ -51,7 +63,13 @@ async fn piece_retrievable() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        [0; 32].into(),
+        u64::MAX,
+    )
+    .unwrap();
     assert!(plot.is_empty());
 
     let pieces = Arc::new(generate_random_pieces(10));
@@ -87,7 +105,13 @@ async fn partial_plot() {
     let max_plot_pieces = 10;
     let public_key = random::<[u8; 32]>().into();
 
-    let plot = Plot::open_or_create(&base_directory, public_key, max_plot_pieces).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        public_key,
+        max_plot_pieces,
+    )
+    .unwrap();
     assert!(plot.is_empty());
 
     let pieces_to_plot = max_plot_pieces * 2;
@@ -127,7 +151,13 @@ async fn sequential_pieces_iterator() {
 
     let public_key = random::<[u8; 32]>().into();
 
-    let plot = Plot::open_or_create(&base_directory, public_key, u64::MAX).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        public_key,
+        u64::MAX,
+    )
+    .unwrap();
     let pieces_to_plot = 1000;
 
     let pieces = Arc::new(FlatPieces::new(pieces_to_plot as usize));
@@ -217,7 +247,13 @@ async fn test_read_sequential_pieces() {
             .to_big_endian(&mut bytes);
         bytes
     };
-    let plot = Plot::open_or_create(&base_directory, public_key_bytes.into(), u64::MAX).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        public_key_bytes.into(),
+        u64::MAX,
+    )
+    .unwrap();
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
 
     // Zero count should return no indexes

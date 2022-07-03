@@ -161,7 +161,7 @@ async fn test_dsn_sync() {
     let base_path = seeder_base_directory.as_ref().to_owned();
     let plot_factory = move |plot_index, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(base_path, public_key, max_piece_count)
+        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
     };
 
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
@@ -273,7 +273,7 @@ async fn test_dsn_sync() {
     let base_path = syncer_base_directory.as_ref().to_owned();
     let plot_factory = move |plot_index, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(base_path, public_key, max_piece_count)
+        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
     };
 
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
