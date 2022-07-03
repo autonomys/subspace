@@ -66,7 +66,7 @@ async fn simple_test() {
             rand::thread_rng().fill(&mut piece[..]);
             (piece, i as PieceIndex)
         })
-        .map(|(piece, index)| (index.into(), (piece, index)))
+        .map(|(piece, index)| (PieceIndexHash::from_index(index), (piece, index)))
         .collect::<BTreeMap<_, _>>();
     let result = Arc::new(Mutex::new(BTreeMap::new()));
 
@@ -82,12 +82,12 @@ async fn simple_test() {
             let result = Arc::clone(&result);
             move |pieces, piece_indexes| {
                 let mut result = result.lock().unwrap();
-                result.extend(
-                    pieces
-                        .as_pieces()
-                        .zip(piece_indexes)
-                        .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
-                );
+                result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
+                    (
+                        PieceIndexHash::from_index(index),
+                        (piece.try_into().unwrap(), index),
+                    )
+                }));
 
                 Ok(())
             }
@@ -119,12 +119,12 @@ async fn no_sync_test() {
             let result = Arc::clone(&result);
             move |pieces, piece_indexes| {
                 let mut result = result.lock().unwrap();
-                result.extend(
-                    pieces
-                        .as_pieces()
-                        .zip(piece_indexes)
-                        .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
-                );
+                result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
+                    (
+                        PieceIndexHash::from_index(index),
+                        (piece.try_into().unwrap(), index),
+                    )
+                }));
                 Ok(())
             }
         },
@@ -219,7 +219,12 @@ async fn test_dsn_sync() {
         }
 
         (0..number_of_segments * pieces_per_segment)
-            .map(|index| (U256::from_big_endian(&PieceIndexHash::from(index).0), index))
+            .map(|index| {
+                (
+                    U256::from_big_endian(&PieceIndexHash::from_index(index).0),
+                    index,
+                )
+            })
             .collect::<BTreeMap<_, _>>()
     };
 

@@ -148,7 +148,7 @@ pub fn retrieve_piece_from_plots(
     plots: &[Plot],
     piece_index: PieceIndex,
 ) -> io::Result<Option<Piece>> {
-    let piece_index_hash = PieceIndexHash::from(piece_index);
+    let piece_index_hash = PieceIndexHash::from_index(piece_index);
     let mut plots = plots.iter().collect::<Vec<_>>();
     plots
         .sort_by_key(|plot| PieceDistance::distance(&piece_index_hash, plot.public_key().as_ref()));
@@ -157,7 +157,7 @@ pub fn retrieve_piece_from_plots(
         .iter()
         .take(2)
         .find_map(|plot| {
-            plot.read(piece_index_hash)
+            plot.read_piece(piece_index_hash)
                 .map(|piece| (piece, plot.public_key()))
                 .ok()
         })
@@ -284,17 +284,15 @@ impl Plot {
         })?
     }
 
-    // TODO: De-duplicate this method
-    /// Reads a piece from plot by index
-    pub(crate) fn read(&self, piece_index_hash: impl Into<PieceIndexHash>) -> io::Result<Piece> {
+    /// Reads a piece from plot by piece index hash
+    pub(crate) fn read_piece(&self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
         let (result_sender, result_receiver) = mpsc::channel();
-        let index_hash = piece_index_hash.into();
 
         self.inner
             .requests_sender
             .send(RequestWithPriority {
                 request: Request::ReadEncoding {
-                    index_hash,
+                    index_hash: piece_index_hash,
                     result_sender,
                 },
                 priority: RequestPriority::High,
@@ -352,10 +350,6 @@ impl Plot {
         result_receiver.recv().map_err(|error| {
             io::Error::other(format!("Write many result sender was dropped: {error}"))
         })?
-    }
-
-    pub fn read_piece(&self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
-        self.read(piece_index_hash)
     }
 
     pub(crate) fn read_piece_with_index(
@@ -457,7 +451,10 @@ impl Plot {
     ) -> io::Result<Vec<(PieceIndex, Piece)>> {
         self.read_sequential_piece_indexes(from, count)?
             .into_iter()
-            .map(|index| self.read(index).map(|piece| (index, piece)))
+            .map(|index| {
+                self.read_piece(PieceIndexHash::from_index(index))
+                    .map(|piece| (index, piece))
+            })
             .collect()
     }
 
@@ -891,7 +888,7 @@ impl<T: PlotFile> PlotWorker<T> {
                 (current_piece_count..).zip(sequential_piece_indexes)
             {
                 self.piece_index_hash_to_offset_db
-                    .put(&piece_index.into(), piece_offset)?;
+                    .put(&PieceIndexHash::from_index(piece_index), piece_offset)?;
             }
 
             self.piece_offset_to_index
@@ -922,7 +919,7 @@ impl<T: PlotFile> PlotWorker<T> {
             // Check if piece is out of plot range or if it is in the plot
             if !self
                 .piece_index_hash_to_offset_db
-                .should_store(&piece_index.into())
+                .should_store(&PieceIndexHash::from_index(piece_index))
             {
                 continue;
             }
@@ -938,7 +935,7 @@ impl<T: PlotFile> PlotWorker<T> {
             self.plot.write(piece, piece_offset)?;
 
             self.piece_index_hash_to_offset_db
-                .put(&piece_index.into(), piece_offset)?;
+                .put(&PieceIndexHash::from_index(piece_index), piece_offset)?;
             self.piece_offset_to_index
                 .put_piece_index(piece_offset, piece_index)?;
 

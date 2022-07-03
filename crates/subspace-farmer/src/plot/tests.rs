@@ -26,14 +26,16 @@ async fn read_write() {
     let base_directory = TempDir::new().unwrap();
 
     let pieces = Arc::<FlatPieces>::new(generate_random_piece().to_vec().try_into().unwrap());
-    let offset = 0;
+    let piece_index_start = 0;
 
     let plot = Plot::open_or_create(&base_directory, [0; 32].into(), u64::MAX).unwrap();
     assert!(plot.is_empty());
-    let piece_indexes = (offset..).take(pieces.count()).collect();
+    let piece_indexes = (piece_index_start..).take(pieces.count()).collect();
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
-    let extracted_piece = plot.read(offset).unwrap();
+    let extracted_piece = plot
+        .read_piece(PieceIndexHash::from_index(piece_index_start))
+        .unwrap();
 
     assert_eq!(pieces[..], extracted_piece[..]);
 
@@ -57,8 +59,10 @@ async fn piece_retrievable() {
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
 
-    for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(0..) {
-        let piece = plot.read(offset).unwrap();
+    for (original_piece, piece_index) in pieces.chunks_exact(PIECE_SIZE).zip(0..) {
+        let piece = plot
+            .read_piece(PieceIndexHash::from_index(piece_index))
+            .unwrap();
         assert_eq!(piece.as_ref(), original_piece)
     }
 
@@ -67,8 +71,10 @@ async fn piece_retrievable() {
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
 
-    for (original_piece, offset) in pieces.chunks_exact(PIECE_SIZE).zip(2..) {
-        let piece = plot.read(offset).unwrap();
+    for (original_piece, piece_index) in pieces.chunks_exact(PIECE_SIZE).zip(2..) {
+        let piece = plot
+            .read_piece(PieceIndexHash::from_index(piece_index))
+            .unwrap();
         assert_eq!(piece.as_ref(), original_piece)
     }
 }
@@ -92,17 +98,25 @@ async fn partial_plot() {
     assert!(!plot.is_empty());
 
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
-    piece_indexes.sort_by_key(|i| PieceDistance::distance(&(*i).into(), &public_key));
+    piece_indexes
+        .sort_by_key(|i| PieceDistance::distance(&PieceIndexHash::from_index(*i), &public_key));
 
     // First pieces should be present and equal
-    for &i in &piece_indexes[..max_plot_pieces as usize] {
-        let piece = plot.read(i).unwrap();
-        let original_piece = pieces.chunks_exact(PIECE_SIZE).nth(i as usize).unwrap();
+    for &piece_index in &piece_indexes[..max_plot_pieces as usize] {
+        let piece = plot
+            .read_piece(PieceIndexHash::from_index(piece_index))
+            .unwrap();
+        let original_piece = pieces
+            .chunks_exact(PIECE_SIZE)
+            .nth(piece_index as usize)
+            .unwrap();
         assert_eq!(piece.as_ref(), original_piece);
     }
     // Last pieces should not be present at all
-    for &i in &piece_indexes[max_plot_pieces as usize..] {
-        assert!(plot.read(i).is_err());
+    for &piece_index in &piece_indexes[max_plot_pieces as usize..] {
+        assert!(plot
+            .read_piece(PieceIndexHash::from_index(piece_index))
+            .is_err());
     }
 }
 
@@ -121,7 +135,7 @@ async fn sequential_pieces_iterator() {
     plot.write_many(Arc::clone(&pieces), piece_indexes.clone())
         .unwrap();
 
-    piece_indexes.sort_by_key(|i| PieceIndexHash::from(*i));
+    piece_indexes.sort_by_key(|i| PieceIndexHash::from_index(*i));
 
     let got_indexes = plot
         .get_sequential_pieces(PieceIndexHash([0; 32]), 100)

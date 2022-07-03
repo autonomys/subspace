@@ -252,7 +252,7 @@ impl SinglePlotFarm {
                     let piece_index = u64::from_le_bytes(
                         key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
                     );
-                    plot.read(piece_index)
+                    plot.read_piece(PieceIndexHash::from_index(piece_index))
                         .ok()
                         .and_then(|mut piece| {
                             codec
@@ -274,7 +274,7 @@ impl SinglePlotFarm {
 
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
-                        .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) > to)
+                        .position(|(piece_index, _)| PieceIndexHash::from_index(*piece_index) > to)
                     {
                         pieces_and_indexes.truncate(idx);
                         None
@@ -283,7 +283,7 @@ impl SinglePlotFarm {
                     } else {
                         pieces_and_indexes
                             .pop()
-                            .map(|(index, _)| PieceIndexHash::from(index))
+                            .map(|(index, _)| PieceIndexHash::from_index(index))
                     };
 
                     let (piece_indexes, pieces) = pieces_and_indexes
