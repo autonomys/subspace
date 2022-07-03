@@ -51,10 +51,6 @@ impl PlotFile for BenchPlotMock {
         rand::thread_rng().fill(buf.as_mut());
         Ok(())
     }
-
-    fn sync_all(&mut self) -> io::Result<()> {
-        Ok(())
-    }
 }
 
 struct HumanReadableSize(pub u64);
@@ -127,15 +123,17 @@ pub(crate) async fn bench(
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
-        Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
+    // TODO: `max_plot_size` in the protocol must change to bytes as well
+    let consensus_max_plot_size = metadata.max_plot_size * PIECE_SIZE as u64;
+    let max_plot_size = match max_plot_size {
+        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
             tracing::warn!(
                 "Passed `max_plot_size` is too big. Fallback to the one from consensus."
             );
-            metadata.max_plot_size
+            consensus_max_plot_size
         }
         Some(max_plot_size) => max_plot_size,
-        None => metadata.max_plot_size,
+        None => consensus_max_plot_size,
     };
 
     info!("Opening object mapping");
@@ -152,11 +150,13 @@ pub(crate) async fn bench(
         match write_to_disk {
             WriteToDisk::Nothing => Plot::with_plot_file(
                 BenchPlotMock::new(max_piece_count),
-                base_path,
+                &base_path,
                 public_key,
                 max_piece_count,
             ),
-            WriteToDisk::Everything => Plot::open_or_create(base_path, public_key, max_piece_count),
+            WriteToDisk::Everything => {
+                Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
+            }
         }
     };
 

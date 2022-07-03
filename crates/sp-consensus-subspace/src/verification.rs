@@ -25,7 +25,9 @@ use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
-use subspace_core_primitives::{PieceIndex, Randomness, Salt, Sha256Hash, Solution, Tag, U256};
+use subspace_core_primitives::{
+    PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, U256,
+};
 use subspace_solving::{
     derive_global_challenge, derive_target, is_tag_valid, verify_local_challenge,
     verify_tag_signature, SubspaceCodec,
@@ -265,7 +267,8 @@ fn is_within_max_plot(
         return true;
     }
     let max_distance_one_direction = U256::MAX / total_pieces * max_plot_size / 2;
-    U256::distance(&piece_index.into(), key.as_ref()) <= max_distance_one_direction
+    U256::distance(&PieceIndexHash::from_index(piece_index), key.as_ref())
+        <= max_distance_one_direction
 }
 
 /// Parameters for checking piece validity

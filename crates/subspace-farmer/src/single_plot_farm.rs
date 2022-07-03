@@ -136,7 +136,7 @@ where
     pub(crate) max_plot_size: u64,
     pub(crate) total_pieces: u64,
     pub(crate) farming_client: C,
-    pub(crate) new_plot: NewPlot,
+    pub(crate) plot_factory: NewPlot,
     pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
@@ -177,7 +177,7 @@ impl SinglePlotFarm {
             max_plot_size,
             total_pieces,
             farming_client,
-            new_plot,
+            plot_factory,
             mut listen_on,
             mut bootstrap_nodes,
             first_listen_on,
@@ -198,7 +198,7 @@ impl SinglePlotFarm {
         // TODO: This doesn't account for the fact that node can
         // have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = new_plot(plot_index, public_key, max_plot_pieces)?;
+        let plot = plot_factory(plot_index, public_key, max_plot_pieces)?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(base_directory.join("commitments"))?;
@@ -252,7 +252,7 @@ impl SinglePlotFarm {
                     let piece_index = u64::from_le_bytes(
                         key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
                     );
-                    plot.read(piece_index)
+                    plot.read_piece(PieceIndexHash::from_index(piece_index))
                         .ok()
                         .and_then(|mut piece| {
                             codec
@@ -274,7 +274,7 @@ impl SinglePlotFarm {
 
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
-                        .position(|(piece_index, _)| PieceIndexHash::from(*piece_index) > to)
+                        .position(|(piece_index, _)| PieceIndexHash::from_index(*piece_index) > to)
                     {
                         pieces_and_indexes.truncate(idx);
                         None
@@ -283,7 +283,7 @@ impl SinglePlotFarm {
                     } else {
                         pieces_and_indexes
                             .pop()
-                            .map(|(index, _)| PieceIndexHash::from(index))
+                            .map(|(index, _)| PieceIndexHash::from_index(index))
                     };
 
                     let (piece_indexes, pieces) = pieces_and_indexes

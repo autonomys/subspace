@@ -14,18 +14,20 @@ use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use tracing::error;
 
-fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
+fn get_plot_sizes(allocated_space: u64, max_plot_size: u64) -> Vec<u64> {
     // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
-    // less than it was specified before.
-    // TODO: Piece count should account for database overhead of various additional databases
-    // For now assume 92% will go for plot itself
-    let total_plot_size = total_plot_size * 92 / 100 / PIECE_SIZE as u64;
+    //  less than it was specified before.
+    // TODO: Piece count should account for database overhead of various additional databases.
+    //  For now assume 92% will go for plot itself
+    let usable_space_for_plots = allocated_space * 92 / 100;
 
     let plot_sizes =
-        std::iter::repeat(max_plot_size).take((total_plot_size / max_plot_size) as usize);
-    if total_plot_size / max_plot_size == 0 || total_plot_size % max_plot_size > max_plot_size / 2 {
+        std::iter::repeat(max_plot_size).take((usable_space_for_plots / max_plot_size) as usize);
+    if usable_space_for_plots / max_plot_size == 0
+        || usable_space_for_plots % max_plot_size > max_plot_size / 2
+    {
         plot_sizes
-            .chain(std::iter::once(total_plot_size % max_plot_size))
+            .chain(std::iter::once(usable_space_for_plots % max_plot_size))
             .collect::<Vec<_>>()
     } else {
         plot_sizes.collect()
@@ -73,15 +75,15 @@ impl LegacyMultiPlotsFarm {
             enable_dsn_sync,
             enable_farming,
         }: Options<C>,
-        total_plot_size: u64,
+        allocated_space: u64,
         max_plot_size: u64,
-        new_plot: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
+        plot_factory: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
             + Clone
             + Send
             + Sync
             + 'static,
     ) -> anyhow::Result<Self> {
-        let plot_sizes = get_plot_sizes(total_plot_size, max_plot_size);
+        let plot_sizes = get_plot_sizes(allocated_space, max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
@@ -95,11 +97,12 @@ impl LegacyMultiPlotsFarm {
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             plot_sizes
                 .par_iter()
+                .map(|&plot_size| plot_size / PIECE_SIZE as u64)
                 .enumerate()
-                .map(|(plot_index, &max_plot_pieces)| {
+                .map(|(plot_index, max_plot_pieces)| {
                     let base_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
-                    let new_plot = new_plot.clone();
+                    let plot_factory = plot_factory.clone();
                     let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
                     let first_listen_on = Arc::clone(&first_listen_on);
@@ -111,7 +114,7 @@ impl LegacyMultiPlotsFarm {
                         max_plot_size,
                         total_pieces,
                         farming_client,
-                        new_plot,
+                        plot_factory,
                         listen_on,
                         bootstrap_nodes,
                         first_listen_on,

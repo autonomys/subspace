@@ -453,12 +453,6 @@ pub type PieceIndex = u64;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(pub Sha256Hash);
 
-impl From<PieceIndex> for PieceIndexHash {
-    fn from(index: PieceIndex) -> Self {
-        Self::from_index(index)
-    }
-}
-
 impl AsRef<[u8]> for PieceIndexHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()

@@ -15,7 +15,13 @@ async fn main() {
     rand::thread_rng().fill(&mut pieces[..]);
     let pieces = Arc::new(pieces.try_into().unwrap());
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), piece_count).unwrap();
+    let plot = Plot::open_or_create(
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        [0; 32].into(),
+        piece_count,
+    )
+    .unwrap();
 
     let start = std::time::Instant::now();
 

@@ -47,13 +47,15 @@ pub(crate) async fn farm(
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
-        Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
+    // TODO: `max_plot_size` in the protocol must change to bytes as well
+    let consensus_max_plot_size = metadata.max_plot_size * PIECE_SIZE as u64;
+    let max_plot_size = match max_plot_size {
+        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
             warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
-            metadata.max_plot_size
+            consensus_max_plot_size
         }
         Some(max_plot_size) => max_plot_size,
-        None => metadata.max_plot_size,
+        None => consensus_max_plot_size,
     };
 
     let FarmerMetadata {
@@ -86,8 +88,10 @@ pub(crate) async fn farm(
         plot_size,
         max_plot_size,
         move |plot_index, public_key, max_piece_count| {
+            let plot_directory = base_directory.join(format!("plot{plot_index}"));
             Plot::open_or_create(
-                base_directory.join(format!("plot{plot_index}")),
+                &plot_directory,
+                &plot_directory,
                 public_key,
                 max_piece_count,
             )

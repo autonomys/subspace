@@ -66,7 +66,7 @@ async fn simple_test() {
             rand::thread_rng().fill(&mut piece[..]);
             (piece, i as PieceIndex)
         })
-        .map(|(piece, index)| (index.into(), (piece, index)))
+        .map(|(piece, index)| (PieceIndexHash::from_index(index), (piece, index)))
         .collect::<BTreeMap<_, _>>();
     let result = Arc::new(Mutex::new(BTreeMap::new()));
 
@@ -75,19 +75,19 @@ async fn simple_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             public_key: Default::default(),
-            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            max_plot_size: 100 * 1024 * 1024 * 1024,
             total_pieces: 256,
         },
         {
             let result = Arc::clone(&result);
             move |pieces, piece_indexes| {
                 let mut result = result.lock().unwrap();
-                result.extend(
-                    pieces
-                        .as_pieces()
-                        .zip(piece_indexes)
-                        .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
-                );
+                result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
+                    (
+                        PieceIndexHash::from_index(index),
+                        (piece.try_into().unwrap(), index),
+                    )
+                }));
 
                 Ok(())
             }
@@ -112,19 +112,19 @@ async fn no_sync_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             public_key: Default::default(),
-            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            max_plot_size: 100 * 1024 * 1024 * 1024,
             total_pieces: 0,
         },
         {
             let result = Arc::clone(&result);
             move |pieces, piece_indexes| {
                 let mut result = result.lock().unwrap();
-                result.extend(
-                    pieces
-                        .as_pieces()
-                        .zip(piece_indexes)
-                        .map(|(piece, index)| (index.into(), (piece.try_into().unwrap(), index))),
-                );
+                result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
+                    (
+                        PieceIndexHash::from_index(index),
+                        (piece.try_into().unwrap(), index),
+                    )
+                }));
                 Ok(())
             }
         },
@@ -161,7 +161,7 @@ async fn test_dsn_sync() {
     let base_path = seeder_base_directory.as_ref().to_owned();
     let plot_factory = move |plot_index, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(base_path, public_key, max_piece_count)
+        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
     };
 
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
@@ -219,7 +219,12 @@ async fn test_dsn_sync() {
         }
 
         (0..number_of_segments * pieces_per_segment)
-            .map(|index| (U256::from_big_endian(&PieceIndexHash::from(index).0), index))
+            .map(|index| {
+                (
+                    U256::from_big_endian(&PieceIndexHash::from_index(index).0),
+                    index,
+                )
+            })
             .collect::<BTreeMap<_, _>>()
     };
 
@@ -268,7 +273,7 @@ async fn test_dsn_sync() {
     let base_path = syncer_base_directory.as_ref().to_owned();
     let plot_factory = move |plot_index, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(base_path, public_key, max_piece_count)
+        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
     };
 
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
