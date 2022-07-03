@@ -126,8 +126,8 @@ impl Commitments {
         }
 
         let piece_count = plot.piece_count();
-        for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
-            let pieces_to_process = (batch_start + BATCH_SIZE).min(piece_count) - batch_start;
+        for batch_start in (0..*piece_count).step_by(BATCH_SIZE as usize) {
+            let pieces_to_process = (batch_start + BATCH_SIZE).min(*piece_count) - batch_start;
             // TODO: Read next batch while creating tags for the previous one for faster
             //  recommitment.
             let pieces = plot

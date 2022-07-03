@@ -18,7 +18,7 @@
 use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::{
-    PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
+    NPieces, PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
 };
 
 /// Metadata necessary for farmer operation
@@ -30,9 +30,9 @@ pub struct FarmerMetadata {
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
     pub recorded_history_segment_size: u32,
     /// Maximum number of pieces in each plot
-    pub max_plot_size: u64,
+    pub max_plot_size: NPieces,
     /// Total number of pieces stored on the network
-    pub total_pieces: u64,
+    pub total_pieces: NPieces,
 }
 
 /// Information about new slot that just arrived

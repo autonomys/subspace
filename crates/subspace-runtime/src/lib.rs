@@ -65,7 +65,7 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{NPieces, Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE, SHANNON,
@@ -246,6 +246,7 @@ parameter_types! {
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
+    pub const MaxPlotSize: NPieces = MAX_PLOT_SIZE;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -259,7 +260,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
     type RecordSize = ConstU32<RECORD_SIZE>;
-    type MaxPlotSize = ConstU64<MAX_PLOT_SIZE>;
+    type MaxPlotSize = MaxPlotSize;
     type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -708,11 +709,11 @@ impl_runtime_apis! {
             <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
         }
 
-        fn total_pieces() -> u64 {
+        fn total_pieces() -> NPieces {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
-        fn max_plot_size() -> u64 {
+        fn max_plot_size() -> NPieces {
             <Self as pallet_subspace::Config>::MaxPlotSize::get()
         }
 

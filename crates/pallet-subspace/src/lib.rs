@@ -61,7 +61,7 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+    crypto, NPieces, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 
@@ -135,8 +135,8 @@ struct VoteVerificationData {
     salt: Salt,
     record_size: u32,
     recorded_history_segment_size: u32,
-    max_plot_size: u64,
-    total_pieces: u64,
+    max_plot_size: NPieces,
+    total_pieces: NPieces,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -156,7 +156,7 @@ mod pallet {
     use sp_runtime::traits::One;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
-    use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
+    use subspace_core_primitives::{NPieces, Randomness, RootBlock, Sha256Hash};
 
     pub(super) struct InitialSolutionRanges<T: Config> {
         _config: T,
@@ -253,7 +253,7 @@ mod pallet {
 
         /// Maximum number of pieces in each plot
         #[pallet::constant]
-        type MaxPlotSize: Get<u64>;
+        type MaxPlotSize: Get<NPieces>;
 
         // TODO: This will probably become configurable later
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
@@ -663,10 +663,10 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Total number of pieces in the blockchain
-    pub fn total_pieces() -> u64 {
+    pub fn total_pieces() -> NPieces {
         // TODO: This assumes fixed size segments, which might not be the case
         let merkle_num_leaves = T::RecordedHistorySegmentSize::get() / T::RecordSize::get() * 2;
-        u64::from(RecordsRoot::<T>::count()) * u64::from(merkle_num_leaves)
+        NPieces(u64::from(RecordsRoot::<T>::count()) * u64::from(merkle_num_leaves))
     }
 
     /// Determine whether a randomness update should take place at this block.

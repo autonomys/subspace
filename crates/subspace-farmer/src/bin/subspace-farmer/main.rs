@@ -8,7 +8,7 @@ use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::{NPieces, PublicKey};
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
@@ -60,8 +60,8 @@ struct FarmingArgs {
     /// Only `G` and `T` endings are supported.
     ///
     /// Only a developer testing flag, as it might be needed for testing.
-    #[clap(long, parse(try_from_str = parse_human_readable_size))]
-    max_plot_size: Option<u64>,
+    #[clap(long, parse(try_from_str = parse_npieces))]
+    max_plot_size: Option<NPieces>,
     /// Archive data from
     #[clap(arg_enum, long, default_value_t)]
     archiving: ArchivingFrom,
@@ -103,8 +103,8 @@ enum Subcommand {
         /// Only `G` and `T` endings are supported.
         ///
         /// Only a developer testing flag, as it might be needed for testing.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        max_plot_size: Option<u64>,
+        #[clap(long, parse(try_from_str = parse_npieces))]
+        max_plot_size: Option<NPieces>,
         /// How much things to write on disk (the more we write during benchmark, the more accurate
         /// it is)
         #[clap(arg_enum, long, default_value_t)]
@@ -112,8 +112,8 @@ enum Subcommand {
         /// Amount of data to plot for benchmarking.
         ///
         /// Only `G` and `T` endings are supported.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        write_pieces_size: u64,
+        #[clap(long, parse(try_from_str = parse_npieces))]
+        write_pieces_size: NPieces,
         /// Skip recommitment benchmark
         #[clap(long)]
         no_recommitments: bool,
@@ -147,6 +147,10 @@ fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
         .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
         .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
         .unwrap_or_else(|| s.parse::<u64>())
+}
+
+fn parse_npieces(s: &str) -> Result<NPieces, std::num::ParseIntError> {
+    parse_human_readable_size(s).map(NPieces::from_bytes)
 }
 
 // TODO: Add graceful shutdown handling, without it temporary directory may be left not deleted

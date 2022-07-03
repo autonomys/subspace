@@ -7882,6 +7882,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "hmac 0.12.1",
  "num-traits",
  "parity-scale-codec",

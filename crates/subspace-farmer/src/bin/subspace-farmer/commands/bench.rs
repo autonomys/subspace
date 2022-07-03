@@ -10,8 +10,8 @@ use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
-    PIECE_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, NPieces, PublicKey, RootBlock,
+    Sha256Hash, PIECE_SIZE,
 };
 use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use subspace_farmer::legacy_multi_plots_farm::{
@@ -23,26 +23,26 @@ use tokio::time::Instant;
 use tracing::info;
 
 pub struct BenchPlotMock {
-    piece_count: u64,
-    max_piece_count: u64,
+    piece_count: NPieces,
+    max_piece_count: NPieces,
 }
 
 impl BenchPlotMock {
-    pub fn new(max_piece_count: u64) -> Self {
+    pub fn new(max_piece_count: NPieces) -> Self {
         Self {
             max_piece_count,
-            piece_count: 0,
+            piece_count: NPieces(0),
         }
     }
 }
 
 impl PlotFile for BenchPlotMock {
-    fn piece_count(&mut self) -> io::Result<u64> {
+    fn piece_count(&mut self) -> io::Result<NPieces> {
         Ok(self.piece_count)
     }
 
     fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
-        self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
+        self.piece_count = (self.piece_count + NPieces::from_bytes(pieces.as_ref().len() as u64))
             .max(self.max_piece_count);
         Ok(())
     }
@@ -106,9 +106,9 @@ impl fmt::Display for HumanReadableDuration {
 pub(crate) async fn bench(
     base_directory: PathBuf,
     plot_size: u64,
-    max_plot_size: Option<u64>,
+    max_plot_size: Option<NPieces>,
     write_to_disk: WriteToDisk,
-    write_pieces_size: u64,
+    write_pieces_size: NPieces,
     do_recommitments: bool,
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
@@ -123,8 +123,7 @@ pub(crate) async fn bench(
         .await
         .map_err(|error| anyhow!(error))?;
 
-    // TODO: `max_plot_size` in the protocol must change to bytes as well
-    let consensus_max_plot_size = metadata.max_plot_size * PIECE_SIZE as u64;
+    let consensus_max_plot_size = metadata.max_plot_size;
     let max_plot_size = match max_plot_size {
         Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
             tracing::warn!(
@@ -186,7 +185,7 @@ pub(crate) async fn bench(
         archived_progress: ArchivedBlockProgress::Partial(0),
     };
 
-    for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
+    for segment_index in 0..*write_pieces_size / 256 {
         last_archived_block
             .archived_progress
             .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
@@ -231,7 +230,7 @@ pub(crate) async fn bench(
     let actual_space_pledged = multi_farming
         .single_plot_farms
         .iter()
-        .map(|single_plot_farm| single_plot_farm.plot().piece_count())
+        .map(|single_plot_farm| *single_plot_farm.plot().piece_count())
         .sum::<u64>()
         * PIECE_SIZE as u64;
     let overhead = space_allocated - actual_space_pledged;

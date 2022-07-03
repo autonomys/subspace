@@ -16,7 +16,7 @@ use parking_lot::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
+use subspace_core_primitives::{NPieces, Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::{Multiaddr, PeerId};
@@ -131,11 +131,11 @@ impl SinglePlotPlotter {
 pub(crate) struct SinglePlotFarmOptions<C, NewPlot>
 where
     C: RpcClient,
-    NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+    NewPlot: Fn(usize, PublicKey, NPieces) -> Result<Plot, PlotError> + Clone + Send + 'static,
 {
     pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
-    pub(crate) max_plot_pieces: u64,
+    pub(crate) max_plot_pieces: NPieces,
     pub(crate) farmer_metadata: FarmerMetadata,
     pub(crate) farming_client: C,
     pub(crate) plot_factory: NewPlot,
@@ -191,7 +191,7 @@ impl SinglePlotFarm {
     ) -> anyhow::Result<Self>
     where
         C: RpcClient,
-        NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+        NewPlot: Fn(usize, PublicKey, NPieces) -> Result<Plot, PlotError> + Clone + Send + 'static,
     {
         std::fs::create_dir_all(&metadata_directory)?;
 
@@ -377,7 +377,7 @@ impl SinglePlotFarm {
         // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = PieceIndexHashNumber::MAX / farmer_metadata.total_pieces * 1024; // 4M per stream
+            let sync_range_size = PieceIndexHashNumber::MAX / *farmer_metadata.total_pieces * 1024; // 4M per stream
             let dsn_sync_fut = farm.dsn_sync(
                 farmer_metadata.max_plot_size,
                 farmer_metadata.total_pieces,
@@ -446,8 +446,8 @@ impl SinglePlotFarm {
 
     pub(crate) fn dsn_sync(
         &self,
-        max_plot_size: u64,
-        total_pieces: u64,
+        max_plot_size: NPieces,
+        total_pieces: NPieces,
         range_size: PieceIndexHashNumber,
     ) -> impl Future<Output = anyhow::Result<()>> {
         let options = SyncOptions {

@@ -3,7 +3,7 @@ use crate::plot::Plot;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, NPieces, Salt, Tag};
 use tempfile::TempDir;
 
 fn init() {
@@ -24,7 +24,7 @@ async fn create() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
@@ -50,14 +50,14 @@ async fn find_by_tag() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
 
     // Generate deterministic pieces, such that we don't have random errors in CI
     let mut rng = StdRng::seed_from_u64(0);
-    let mut pieces: FlatPieces = vec![0u8; 1024 * PIECE_SIZE].try_into().unwrap();
+    let mut pieces = FlatPieces::new(1024);
     rng.fill(pieces.as_mut());
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
@@ -138,7 +138,7 @@ async fn remove_commitments() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();

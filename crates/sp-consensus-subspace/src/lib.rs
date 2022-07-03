@@ -43,7 +43,7 @@ use sp_io::hashing;
 use sp_runtime::ConsensusEngineId;
 use sp_std::vec::Vec;
 use subspace_core_primitives::{
-    Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
+    NPieces, Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
 };
 use subspace_solving::{create_tag_signature_transcript, REWARD_SIGNING_CONTEXT};
 
@@ -293,7 +293,7 @@ sp_api::decl_runtime_apis! {
         fn recorded_history_segment_size() -> u32;
 
         /// Maximum number of pieces in each plot
-        fn max_plot_size() -> u64;
+        fn max_plot_size() -> NPieces;
 
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> Duration;
@@ -331,7 +331,7 @@ sp_api::decl_runtime_apis! {
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 
         /// Total number of pieces in a blockchain
-        fn total_pieces() -> u64;
+        fn total_pieces() -> NPieces;
 
         /// Get the merkle tree root of records for specified segment index
         fn records_root(segment_index: u64) -> Option<Sha256Hash>;

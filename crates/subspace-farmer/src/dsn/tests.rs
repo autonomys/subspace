@@ -11,8 +11,8 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PieceIndex, PieceIndexHash,
-    RootBlock, Sha256Hash, PIECE_SIZE, U256,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, NPieces, Piece, PieceIndex,
+    PieceIndexHash, RootBlock, Sha256Hash, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::PiecesToPlot;
@@ -75,8 +75,8 @@ async fn simple_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             public_key: Default::default(),
-            max_plot_size: 100 * 1024 * 1024 * 1024,
-            total_pieces: 256,
+            max_plot_size: NPieces::from_bytes(100 * 1024 * 1024 * 1024),
+            total_pieces: NPieces(256),
         },
         {
             let result = Arc::clone(&result);
@@ -112,8 +112,8 @@ async fn no_sync_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             public_key: Default::default(),
-            max_plot_size: 100 * 1024 * 1024 * 1024,
-            total_pieces: 0,
+            max_plot_size: NPieces::from_bytes(100 * 1024 * 1024 * 1024),
+            total_pieces: NPieces(0),
         },
         {
             let result = Arc::clone(&result);
@@ -138,8 +138,8 @@ async fn no_sync_test() {
 #[tokio::test]
 #[ignore]
 async fn test_dsn_sync() {
-    let seeder_max_plot_size = 20 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
-    let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 2M
+    let seeder_max_plot_size = NPieces::from_bytes(20 * 1024 * 1024); // 20M
+    let syncer_max_plot_size = NPieces::from_bytes(2 * 1024 * 1024); // 2M
     let request_pieces_size = 20;
 
     let seeder_base_directory = TempDir::new().unwrap();
@@ -178,7 +178,7 @@ async fn test_dsn_sync() {
             enable_farming: false,
         },
         u64::MAX / 100,
-        u64::MAX,
+        subspace_core_primitives::NPieces::MAX,
         plot_factory,
     )
     .await
@@ -191,7 +191,7 @@ async fn test_dsn_sync() {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
-        let number_of_segments = seeder_max_plot_size / pieces_per_segment;
+        let number_of_segments = *seeder_max_plot_size / pieces_per_segment;
 
         for segment_index in 0..number_of_segments {
             let archived_segment = {
@@ -289,7 +289,7 @@ async fn test_dsn_sync() {
             enable_dsn_archiving: false,
             enable_farming: false,
         },
-        syncer_max_plot_size * PIECE_SIZE as u64,
+        syncer_max_plot_size.to_bytes(),
         syncer_max_plot_size,
         plot_factory,
     )
@@ -298,7 +298,7 @@ async fn test_dsn_sync() {
     // HACK: farmer reserves 8% for its own needs, so we need to update piece count here
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
-    let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
+    let range_size = PieceIndexHashNumber::MAX / *seeder_max_plot_size * request_pieces_size;
     let plot = syncer_multi_farming.single_plot_farms[0].plot().clone();
     let dsn_sync = syncer_multi_farming.single_plot_farms[0].dsn_sync(
         syncer_max_plot_size,
@@ -319,7 +319,8 @@ async fn test_dsn_sync() {
 
     dsn_sync.await.unwrap();
 
-    let sync_sector_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * syncer_max_plot_size;
+    let sync_sector_size =
+        PieceIndexHashNumber::MAX / *seeder_max_plot_size * *syncer_max_plot_size;
     let expected_start = public_key.wrapping_sub(&(sync_sector_size / 2));
     let expected_end = public_key.wrapping_add(&(sync_sector_size / 2));
 
@@ -346,10 +347,10 @@ async fn test_dsn_sync() {
             assert!((expected_start..expected_end).contains(&start));
             assert!((expected_start..expected_end).contains(&end));
 
-            if piece_index_hashes.len() as u64 > syncer_max_plot_size {
+            if piece_index_hashes.len() as u64 > *syncer_max_plot_size {
                 let expected_piece_count = piece_index_hashes.range(start..=end).count() as u64;
                 assert_eq!(
-                    plot.piece_count(),
+                    *plot.piece_count(),
                     expected_piece_count,
                     "Synced wrong number of pieces"
                 );
@@ -366,7 +367,7 @@ async fn test_dsn_sync() {
                     "Didn't sync all that we need"
                 );
                 assert_eq!(
-                    plot.piece_count(),
+                    *plot.piece_count(),
                     expected_range_piece_count as u64,
                     "Synced wrong number of pieces"
                 );

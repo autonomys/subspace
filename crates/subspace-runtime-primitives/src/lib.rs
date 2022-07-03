@@ -23,7 +23,7 @@ use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
 use sp_std::vec::Vec;
 pub use subspace_core_primitives::BlockNumber;
-use subspace_core_primitives::{PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{NPieces, PIECE_SIZE, SHA256_HASH_SIZE};
 
 // TODO: Proper value here
 pub const CONFIRMATION_DEPTH_K: BlockNumber = 100;
@@ -44,9 +44,9 @@ const MERKLE_NUM_LEAVES: u32 = 256;
 const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
-///Maximum number of pieces in each plot
+/// Maximum number of pieces in each plot
 // TODO: Proper value here
-pub const MAX_PLOT_SIZE: u64 = 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64;
+pub const MAX_PLOT_SIZE: NPieces = NPieces::from_bytes(100 * 1024 * 1024 * 1024);
 /// Recorded History Segment Size includes half of the records (just data records) that will later
 /// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
 /// pieces of archival history.

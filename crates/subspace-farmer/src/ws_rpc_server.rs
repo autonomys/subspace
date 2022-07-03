@@ -141,6 +141,7 @@ pub trait Rpc {
 /// use subspace_farmer::single_plot_farm::SinglePlotPieceGetter;
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 /// use subspace_solving::SubspaceCodec;
+/// use subspace_core_primitives::NPieces;
 /// use std::path::PathBuf;
 /// use std::sync::Arc;
 ///
@@ -149,7 +150,7 @@ pub trait Rpc {
 ///
 /// let identity = Identity::open_or_create(&base_directory)?;
 /// let public_key = identity.public_key().to_bytes().into();
-/// let plot = Plot::open_or_create(&base_directory, &base_directory, public_key, u64::MAX)?;
+/// let plot = Plot::open_or_create(&base_directory, &base_directory, public_key, NPieces::MAX)?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory.join("object-mappings"))?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(

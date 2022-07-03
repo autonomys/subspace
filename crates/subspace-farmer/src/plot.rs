@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::{fmt, io};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
+    FlatPieces, NPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use thiserror::Error;
 use tracing::error;
@@ -28,7 +28,7 @@ pub type PieceOffset = u64;
 /// Trait for mocking plot behaviour
 pub trait PlotFile {
     /// Get number of pieces in plot
-    fn piece_count(&mut self) -> io::Result<u64>;
+    fn piece_count(&mut self) -> io::Result<NPieces>;
 
     /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
@@ -40,10 +40,10 @@ impl<T> PlotFile for T
 where
     T: Read + Write + Seek,
 {
-    fn piece_count(&mut self) -> io::Result<u64> {
+    fn piece_count(&mut self) -> io::Result<NPieces> {
         let plot_file_size = self.seek(SeekFrom::End(0))?;
 
-        Ok(plot_file_size / PIECE_SIZE as u64)
+        Ok(NPieces::from_bytes(plot_file_size))
     }
 
     /// Write pieces sequentially under some offset
@@ -132,7 +132,7 @@ impl Plot {
         plot_directory: &Path,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_piece_count: NPieces,
     ) -> Result<Plot, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -149,7 +149,7 @@ impl Plot {
         plot: P,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_piece_count: NPieces,
     ) -> Result<Plot, PlotError>
     where
         P: PlotFile + Send + 'static,
@@ -173,13 +173,13 @@ impl Plot {
     }
 
     /// How many pieces are there in the plot
-    pub fn piece_count(&self) -> PieceOffset {
-        self.inner.piece_count.load(Ordering::Acquire)
+    pub fn piece_count(&self) -> NPieces {
+        NPieces(self.inner.piece_count.load(Ordering::Acquire))
     }
 
     /// Whether plot doesn't have anything in it
     pub fn is_empty(&self) -> bool {
-        self.piece_count() == 0
+        self.piece_count() == NPieces(0)
     }
 
     /// Returns range which contains all of the pieces

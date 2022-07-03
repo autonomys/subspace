@@ -1,7 +1,9 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
+use subspace_core_primitives::{
+    FlatPieces, NPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE,
+};
 use tempfile::TempDir;
 
 fn init() {
@@ -32,7 +34,7 @@ async fn read_write() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     assert!(plot.is_empty());
@@ -52,7 +54,7 @@ async fn read_write() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     assert!(!plot.is_empty());
@@ -67,7 +69,7 @@ async fn piece_retrievable() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     assert!(plot.is_empty());
@@ -102,7 +104,7 @@ async fn partial_plot() {
     init();
     let base_directory = TempDir::new().unwrap();
 
-    let max_plot_pieces = 10;
+    let max_plot_pieces = NPieces(10);
     let public_key = random::<[u8; 32]>().into();
 
     let plot = Plot::open_or_create(
@@ -116,17 +118,17 @@ async fn partial_plot() {
 
     let pieces_to_plot = max_plot_pieces * 2;
 
-    let pieces = Arc::new(generate_random_pieces(pieces_to_plot as usize));
+    let pieces = Arc::new(generate_random_pieces(*pieces_to_plot as usize));
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();
     assert!(!plot.is_empty());
 
-    let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
+    let mut piece_indexes = (0..*pieces_to_plot).collect::<Vec<_>>();
     piece_indexes
         .sort_by_key(|i| PieceDistance::distance(&PieceIndexHash::from_index(*i), &public_key));
 
     // First pieces should be present and equal
-    for &piece_index in &piece_indexes[..max_plot_pieces as usize] {
+    for &piece_index in &piece_indexes[..*max_plot_pieces as usize] {
         let piece = plot
             .read_piece(PieceIndexHash::from_index(piece_index))
             .unwrap();
@@ -137,7 +139,7 @@ async fn partial_plot() {
         assert_eq!(piece.as_ref(), original_piece);
     }
     // Last pieces should not be present at all
-    for &piece_index in &piece_indexes[max_plot_pieces as usize..] {
+    for &piece_index in &piece_indexes[*max_plot_pieces as usize..] {
         assert!(plot
             .read_piece(PieceIndexHash::from_index(piece_index))
             .is_err());
@@ -155,7 +157,7 @@ async fn sequential_pieces_iterator() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     let pieces_to_plot = 1000;
@@ -251,7 +253,7 @@ async fn test_read_sequential_pieces() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key_bytes.into(),
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     plot.write_many(Arc::clone(&pieces), piece_indexes).unwrap();

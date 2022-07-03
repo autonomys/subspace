@@ -10,7 +10,7 @@ use rand::prelude::*;
 use rand::Rng;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{NPieces, PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
@@ -39,7 +39,7 @@ async fn plotting_happy_path() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        u64::MAX,
+        NPieces::MAX,
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
@@ -52,8 +52,8 @@ async fn plotting_happy_path() {
     let farmer_metadata = FarmerMetadata {
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
-        max_plot_size: u64::MAX,
-        total_pieces: 0,
+        max_plot_size: NPieces::MAX,
+        total_pieces: NPieces(0),
     };
 
     client.send_metadata(farmer_metadata).await;
@@ -127,7 +127,7 @@ async fn plotting_piece_eviction() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        5,
+        NPieces(5),
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
@@ -144,8 +144,8 @@ async fn plotting_piece_eviction() {
     let farmer_metadata = FarmerMetadata {
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
-        max_plot_size: u64::MAX,
-        total_pieces: 0,
+        max_plot_size: NPieces::MAX,
+        total_pieces: NPieces(0),
     };
 
     client.send_metadata(farmer_metadata).await;

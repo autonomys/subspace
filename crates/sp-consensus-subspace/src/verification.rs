@@ -26,7 +26,7 @@ use sp_consensus_slots::Slot;
 use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, U256,
+    NPieces, PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, U256,
 };
 use subspace_solving::{
     derive_global_challenge, derive_target, is_tag_valid, verify_local_challenge,
@@ -260,13 +260,13 @@ pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> b
 fn is_within_max_plot(
     piece_index: PieceIndex,
     key: &FarmerPublicKey,
-    total_pieces: u64,
-    max_plot_size: u64,
+    total_pieces: NPieces,
+    max_plot_size: NPieces,
 ) -> bool {
     if total_pieces < max_plot_size {
         return true;
     }
-    let max_distance_one_direction = U256::MAX / total_pieces * max_plot_size / 2;
+    let max_distance_one_direction = U256::MAX / *total_pieces * *max_plot_size / 2;
     U256::distance(&PieceIndexHash::from_index(piece_index), key.as_ref())
         <= max_distance_one_direction
 }
@@ -280,9 +280,9 @@ pub struct PieceCheckParams {
     /// Record size, system parameter
     pub record_size: u32,
     /// Max plot size in pieces, system parameter
-    pub max_plot_size: u64,
+    pub max_plot_size: NPieces,
     /// Total number of pieces in the whole archival history
-    pub total_pieces: u64,
+    pub total_pieces: NPieces,
 }
 
 /// Parameters for solution verification

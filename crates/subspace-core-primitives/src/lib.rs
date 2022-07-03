@@ -33,6 +33,12 @@ use alloc::vec::Vec;
 pub use construct_uint::U256;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
+use derive_more::{
+    Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub,
+    SubAssign,
+};
+#[cfg(feature = "std")]
+use parity_scale_codec::MaxEncodedLen;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
@@ -79,6 +85,77 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
+
+/// Measure of number of pieces. (Just a smart wrapper around `u64`)
+#[derive(
+    Add,
+    AddAssign,
+    Clone,
+    Copy,
+    Debug,
+    Deref,
+    DerefMut,
+    Display,
+    DivAssign,
+    Eq,
+    Hash,
+    MulAssign,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Sub,
+    SubAssign,
+    Rem,
+    RemAssign,
+    Div,
+    Mul,
+    Decode,
+    Encode,
+    TypeInfo,
+)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, MaxEncodedLen))]
+#[cfg_attr(feature = "std", serde(transparent))]
+pub struct NPieces(pub u64);
+
+impl core::ops::Mul<NPieces> for u64 {
+    type Output = u64;
+    fn mul(self, NPieces(n): NPieces) -> u64 {
+        self * n
+    }
+}
+
+impl core::ops::Div<NPieces> for u64 {
+    type Output = u64;
+    fn div(self, NPieces(n): NPieces) -> u64 {
+        self / n
+    }
+}
+
+impl core::ops::Rem<NPieces> for u64 {
+    type Output = u64;
+    fn rem(self, NPieces(n): NPieces) -> u64 {
+        self % n
+    }
+}
+
+impl NPieces {
+    /// Zero
+    pub const ZERO: Self = Self(0);
+    /// Minimal value
+    pub const MIN: Self = Self(u64::MIN);
+    /// Maximum value
+    pub const MAX: Self = Self(u64::MAX);
+
+    /// Construct number of pieces from number of bytes
+    pub const fn from_bytes(nbytes: u64) -> Self {
+        Self(nbytes / PIECE_SIZE as u64)
+    }
+
+    /// Export to bytes
+    pub const fn to_bytes(&self) -> u64 {
+        self.0 * PIECE_SIZE as u64
+    }
+}
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(

@@ -5,7 +5,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::PIECE_SIZE;
+use subspace_core_primitives::NPieces;
 use subspace_rpc_primitives::{
     FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -30,9 +30,9 @@ pub struct Inner {
 pub const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
     record_size: 3840,                     // PIECE_SIZE - WITNESS_SIZE
     recorded_history_segment_size: 491520, // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
-    max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+    max_plot_size: NPieces::from_bytes(100 * 1024 * 1024 * 1024), // 100G
     // Doesn't matter, as we don't start sync
-    total_pieces: 0,
+    total_pieces: NPieces::from_bytes(0),
 };
 
 impl BenchRpcClient {

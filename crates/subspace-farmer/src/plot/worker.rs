@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
+    FlatPieces, NPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
 };
 
 #[derive(Debug, Default)]
@@ -87,7 +87,7 @@ pub(super) struct PlotWorker<T> {
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: PieceOffsetToIndexDb,
     piece_count: Arc<AtomicU64>,
-    max_piece_count: u64,
+    max_piece_count: NPieces,
 }
 
 impl<T: PlotFile> PlotWorker<T> {
@@ -95,12 +95,12 @@ impl<T: PlotFile> PlotWorker<T> {
         mut plot: T,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_piece_count: NPieces,
     ) -> Result<Self, PlotError> {
         let piece_count = plot
             .piece_count()
             .map_err(PlotError::PlotOpen)
-            .map(AtomicU64::new)
+            .map(|NPieces(piece_count)| AtomicU64::new(piece_count))
             .map(Arc::new)?;
 
         let piece_offset_to_index =
@@ -249,7 +249,7 @@ impl<T: PlotFile> PlotWorker<T> {
     ) -> io::Result<WriteResult> {
         let current_piece_count = self.piece_count.load(Ordering::SeqCst);
         let pieces_left_until_full_plot =
-            (self.max_piece_count - current_piece_count).min(pieces.count() as u64);
+            (self.max_piece_count.0 - current_piece_count).min(pieces.count() as u64);
 
         // Split pieces and indexes in those that can be appended to the end of plot (thus written
         // sequentially) and those that need to be checked individually and plotted one by one in

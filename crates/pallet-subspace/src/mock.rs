@@ -36,8 +36,8 @@ use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
-    Sha256Hash, Solution, Tag, PIECE_SIZE,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, NPieces, Piece, Randomness,
+    RootBlock, Salt, Sha256Hash, Solution, Tag, PIECE_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
@@ -146,7 +146,7 @@ parameter_types! {
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
-    pub const MaxPlotSize: u64 = 10 * 2u64.pow(18);
+    pub const MaxPlotSize: NPieces = NPieces::from_bytes(10 * 2u64.pow(30));
     pub const ShouldAdjustSolutionRange: bool = false;
 }
 

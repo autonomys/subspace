@@ -25,11 +25,9 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
-use frame_support::{
-    parameter_types,
-    traits::{ConstU32, ConstU64, CrateVersion, Get},
-    weights::RuntimeDbWeight,
-};
+use frame_support::parameter_types;
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get};
+use frame_support::weights::RuntimeDbWeight;
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
@@ -37,25 +35,23 @@ use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
 use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
-use sp_runtime::traits::NumberFor;
-use sp_runtime::{
-    create_runtime_str, impl_opaque_keys,
-    traits::{
-        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
-        GetRuntimeBlockType, Header as HeaderT, IdentityLookup, Verify,
-    },
-    transaction_validity::{
-        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-        ValidTransaction,
-    },
-    ApplyExtrinsicResult, Perbill,
+use sp_runtime::traits::{
+    BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
+    GetRuntimeBlockType, Header as HeaderT, IdentityLookup, NumberFor, Verify,
 };
-use sp_std::{marker::PhantomData, prelude::*};
-use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
+};
+use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
+use sp_std::marker::PhantomData;
+use sp_std::prelude::*;
+use sp_trie::trie_types::TrieDB;
+use sp_trie::{PrefixedMemoryDB, StorageProof};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::PIECE_SIZE;
+use subspace_core_primitives::NPieces;
 use trie_db::{Trie, TrieMut};
 // bench on latest state.
 use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
@@ -607,6 +603,7 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = (3, 10);
     pub const ExpectedBlockTime: u64 = 10_000;
     pub const ShouldAdjustSolutionRange: bool = false;
+    pub const MaxPlotSize: NPieces = NPieces::from_bytes(10 * 1024 * 1024 * 1024);
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -620,7 +617,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
     type RecordSize = ConstU32<3840>;
-    type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 / PIECE_SIZE as u64 }>;
+    type MaxPlotSize = MaxPlotSize;
     type RecordedHistorySegmentSize = ConstU32<{ 3840 * 256 / 2 }>;
     type ExpectedVotesPerBlock = ConstU32<9>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -843,7 +840,7 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
                 }
 
-                fn max_plot_size() -> u64 {
+                fn max_plot_size() -> NPieces {
                     <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
 
@@ -851,7 +848,7 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::RecordSize::get()
                 }
 
-                fn total_pieces() -> u64 {
+                fn total_pieces() -> NPieces {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }
 
@@ -1315,9 +1312,9 @@ mod tests {
     use sp_core::storage::well_known_keys::HEAP_PAGES;
     use sp_runtime::generic::BlockId;
     use sp_state_machine::ExecutionStrategy;
-    use substrate_test_runtime_client::{
-        prelude::*, runtime::TestAPI, DefaultTestClientBuilderExt, TestClientBuilder,
-    };
+    use substrate_test_runtime_client::prelude::*;
+    use substrate_test_runtime_client::runtime::TestAPI;
+    use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilder};
 
     #[test]
     fn heap_pages_is_respected() {
