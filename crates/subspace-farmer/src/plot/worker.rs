@@ -1,6 +1,5 @@
 use crate::plot::{IndexHashToOffsetDB, PieceOffset, PieceOffsetToIndexDb, PlotError, PlotFile};
 use std::collections::VecDeque;
-use std::fs::{File, OpenOptions};
 use std::io;
 use std::ops::RangeInclusive;
 use std::path::Path;
@@ -85,29 +84,12 @@ pub(super) struct PlotWorker<T> {
     plot: T,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: PieceOffsetToIndexDb,
-    pub(super) piece_count: Arc<AtomicU64>,
+    piece_count: Arc<AtomicU64>,
     max_piece_count: u64,
 }
 
-impl PlotWorker<File> {
-    pub(super) fn new(
-        plot_directory: &Path,
-        metadata_directory: &Path,
-        public_key: PublicKey,
-        max_piece_count: u64,
-    ) -> Result<Self, PlotError> {
-        let plot = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(plot_directory.join("plot.bin"))
-            .map_err(PlotError::PlotOpen)?;
-        Self::with_plot_file(plot, metadata_directory, public_key, max_piece_count)
-    }
-}
-
 impl<T: PlotFile> PlotWorker<T> {
-    pub(super) fn with_plot_file(
+    pub(super) fn new(
         mut plot: T,
         metadata_directory: &Path,
         public_key: PublicKey,
@@ -138,6 +120,10 @@ impl<T: PlotFile> PlotWorker<T> {
             piece_count,
             max_piece_count,
         })
+    }
+
+    pub(super) fn piece_count(&self) -> &Arc<AtomicU64> {
+        &self.piece_count
     }
 
     pub(super) fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {

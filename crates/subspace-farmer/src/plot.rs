@@ -132,28 +132,14 @@ impl Plot {
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Plot, PlotError> {
-        let plot_worker = PlotWorker::new(
-            plot_directory,
-            metadata_directory,
-            public_key,
-            max_piece_count,
-        )?;
+        let plot = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(plot_directory.join("plot.bin"))
+            .map_err(PlotError::PlotOpen)?;
 
-        let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
-
-        let piece_count = Arc::clone(&plot_worker.piece_count);
-        tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
-
-        let inner = Inner {
-            handlers: Handlers::default(),
-            requests_sender,
-            piece_count,
-            public_key,
-        };
-
-        Ok(Plot {
-            inner: Arc::new(inner),
-        })
+        Self::with_plot_file(plot, metadata_directory, public_key, max_piece_count)
     }
 
     /// Creates a new plot from any kind of plot file
@@ -166,12 +152,11 @@ impl Plot {
     where
         P: PlotFile + Send + 'static,
     {
-        let plot_worker =
-            PlotWorker::with_plot_file(plot, metadata_directory, public_key, max_piece_count)?;
+        let plot_worker = PlotWorker::new(plot, metadata_directory, public_key, max_piece_count)?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
-        let piece_count = Arc::clone(&plot_worker.piece_count);
+        let piece_count = Arc::clone(plot_worker.piece_count());
         tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
 
         let inner = Inner {
