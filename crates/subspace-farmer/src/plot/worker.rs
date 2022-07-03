@@ -140,6 +140,108 @@ impl<T: PlotFile> PlotWorker<T> {
         })
     }
 
+    pub(super) fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
+        let mut low_priority_requests = VecDeque::new();
+        let mut exit_result_sender = None;
+
+        // Process as many high priority as possible, interleaved with single low priority request
+        // in case no high priority requests are available.
+        'outer: while let Ok(request_with_priority) = requests_receiver.recv() {
+            let RequestWithPriority {
+                mut request,
+                mut priority,
+            } = request_with_priority;
+
+            loop {
+                if matches!(priority, RequestPriority::Low) {
+                    low_priority_requests.push_back(request);
+                } else {
+                    match request {
+                        Request::ReadEncoding {
+                            index_hash,
+                            result_sender,
+                        } => {
+                            let _ = result_sender.send(self.read_encoding(index_hash));
+                        }
+                        Request::ReadEncodingWithIndex {
+                            piece_offset,
+                            result_sender,
+                        } => {
+                            let result = try {
+                                let mut buffer = Piece::default();
+                                self.plot.read(piece_offset, &mut buffer)?;
+                                let index =
+                                    self.piece_offset_to_index.get_piece_index(piece_offset)?;
+                                (buffer, index)
+                            };
+                            let _ = result_sender.send(result);
+                        }
+                        Request::ReadEncodings {
+                            piece_offset,
+                            count,
+                            result_sender,
+                        } => {
+                            let result = try {
+                                let mut buffer = vec![0u8; count as usize * PIECE_SIZE];
+                                self.plot.read(piece_offset, &mut buffer)?;
+                                buffer
+                            };
+                            let _ = result_sender.send(result);
+                        }
+                        Request::ReadPieceIndexes {
+                            from_index_hash,
+                            count,
+                            result_sender,
+                        } => {
+                            let _ = result_sender
+                                .send(self.read_piece_indexes(&from_index_hash, count));
+                        }
+                        Request::GetPieceRange { result_sender } => {
+                            let _ = result_sender
+                                .send(self.piece_index_hash_to_offset_db.get_piece_range());
+                        }
+                        Request::WriteEncodings {
+                            encodings,
+                            piece_indexes,
+                            result_sender,
+                        } => {
+                            let _ =
+                                result_sender.send(self.write_encodings(encodings, piece_indexes));
+                        }
+                        Request::Exit { result_sender } => {
+                            exit_result_sender.replace(result_sender);
+                            break 'outer;
+                        }
+                    }
+                }
+
+                match requests_receiver.try_recv() {
+                    Ok(some_request_with_priority) => {
+                        request = some_request_with_priority.request;
+                        priority = some_request_with_priority.priority;
+                        continue;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {
+                        // If no high priority requests available, process one low priority request.
+                        if let Some(low_priority_request) = low_priority_requests.pop_front() {
+                            request = low_priority_request;
+                            priority = RequestPriority::High;
+                            continue;
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        // Ignore
+                    }
+                }
+
+                break;
+            }
+        }
+
+        // Close the rest of databases
+        drop(self);
+    }
+
     fn read_encoding(&mut self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {
         let mut buffer = Piece::default();
         let offset = self
@@ -255,107 +357,5 @@ impl<T: PlotFile> PlotWorker<T> {
             .into_iter()
             .map(|(_, offset)| self.piece_offset_to_index.get_piece_index(offset))
             .collect()
-    }
-
-    pub(super) fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
-        let mut low_priority_requests = VecDeque::new();
-        let mut exit_result_sender = None;
-
-        // Process as many high priority as possible, interleaved with single low priority request
-        // in case no high priority requests are available.
-        'outer: while let Ok(request_with_priority) = requests_receiver.recv() {
-            let RequestWithPriority {
-                mut request,
-                mut priority,
-            } = request_with_priority;
-
-            loop {
-                if matches!(priority, RequestPriority::Low) {
-                    low_priority_requests.push_back(request);
-                } else {
-                    match request {
-                        Request::ReadEncoding {
-                            index_hash,
-                            result_sender,
-                        } => {
-                            let _ = result_sender.send(self.read_encoding(index_hash));
-                        }
-                        Request::ReadEncodingWithIndex {
-                            piece_offset,
-                            result_sender,
-                        } => {
-                            let result = try {
-                                let mut buffer = Piece::default();
-                                self.plot.read(piece_offset, &mut buffer)?;
-                                let index =
-                                    self.piece_offset_to_index.get_piece_index(piece_offset)?;
-                                (buffer, index)
-                            };
-                            let _ = result_sender.send(result);
-                        }
-                        Request::ReadEncodings {
-                            piece_offset,
-                            count,
-                            result_sender,
-                        } => {
-                            let result = try {
-                                let mut buffer = vec![0u8; count as usize * PIECE_SIZE];
-                                self.plot.read(piece_offset, &mut buffer)?;
-                                buffer
-                            };
-                            let _ = result_sender.send(result);
-                        }
-                        Request::ReadPieceIndexes {
-                            from_index_hash,
-                            count,
-                            result_sender,
-                        } => {
-                            let _ = result_sender
-                                .send(self.read_piece_indexes(&from_index_hash, count));
-                        }
-                        Request::GetPieceRange { result_sender } => {
-                            let _ = result_sender
-                                .send(self.piece_index_hash_to_offset_db.get_piece_range());
-                        }
-                        Request::WriteEncodings {
-                            encodings,
-                            piece_indexes,
-                            result_sender,
-                        } => {
-                            let _ =
-                                result_sender.send(self.write_encodings(encodings, piece_indexes));
-                        }
-                        Request::Exit { result_sender } => {
-                            exit_result_sender.replace(result_sender);
-                            break 'outer;
-                        }
-                    }
-                }
-
-                match requests_receiver.try_recv() {
-                    Ok(some_request_with_priority) => {
-                        request = some_request_with_priority.request;
-                        priority = some_request_with_priority.priority;
-                        continue;
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {
-                        // If no high priority requests available, process one low priority request.
-                        if let Some(low_priority_request) = low_priority_requests.pop_front() {
-                            request = low_priority_request;
-                            priority = RequestPriority::High;
-                            continue;
-                        }
-                    }
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        // Ignore
-                    }
-                }
-
-                break;
-            }
-        }
-
-        // Close the rest of databases
-        drop(self);
     }
 }
