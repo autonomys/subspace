@@ -75,7 +75,7 @@ async fn simple_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             public_key: Default::default(),
-            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            max_plot_size: 100 * 1024 * 1024 * 1024,
             total_pieces: 256,
         },
         {
@@ -112,7 +112,7 @@ async fn no_sync_test() {
         SyncOptions {
             range_size: PieceIndexHashNumber::MAX / 1024,
             public_key: Default::default(),
-            max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+            max_plot_size: 100 * 1024 * 1024 * 1024,
             total_pieces: 0,
         },
         {

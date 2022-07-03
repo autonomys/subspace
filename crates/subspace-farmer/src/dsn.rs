@@ -2,7 +2,7 @@ use futures::{Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, U256,
+    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::PiecesToPlot;
 
@@ -13,7 +13,7 @@ pub type PieceIndexHashNumber = U256;
 
 /// Options for syncing
 pub struct SyncOptions {
-    /// Max plot size from node (in pieces)
+    /// Max plot size from node (in bytes)
     pub max_plot_size: u64,
     /// Total number of pieces in the network
     pub total_pieces: u64,
@@ -84,10 +84,10 @@ where
     } = options;
     let public_key = PieceIndexHashNumber::from(Sha256Hash::from(public_key));
 
-    let sync_sector_size = if total_pieces < max_plot_size {
+    let sync_sector_size = if total_pieces < max_plot_size / PIECE_SIZE as u64 {
         PieceIndexHashNumber::MAX
     } else {
-        PieceIndexHashNumber::MAX / total_pieces * max_plot_size
+        PieceIndexHashNumber::MAX / total_pieces * max_plot_size / PIECE_SIZE as u64
     };
     let from = public_key.wrapping_sub(&(sync_sector_size / 2));
 
