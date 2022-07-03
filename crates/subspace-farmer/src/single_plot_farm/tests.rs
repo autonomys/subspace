@@ -83,8 +83,7 @@ async fn plotting_happy_path() {
         farmer_metadata,
         object_mappings,
         client.clone(),
-        None,
-        move |pieces_to_plot| match single_plot_plotter.plot_pieces(&pieces_to_plot) {
+        move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,
             Err(error) => {
                 error!(%error, "Failed to plot pieces");
@@ -185,8 +184,7 @@ async fn plotting_piece_eviction() {
         farmer_metadata,
         object_mappings,
         client.clone(),
-        None,
-        move |pieces_to_plot| match single_plot_plotter.plot_pieces(&pieces_to_plot) {
+        move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,
             Err(error) => {
                 error!(%error, "Failed to plot pieces");

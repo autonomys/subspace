@@ -1,3 +1,4 @@
+pub mod dsn_archiving;
 #[cfg(test)]
 mod tests;
 
@@ -7,8 +8,9 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
+use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::ws_rpc_server::PieceGetter;
-use crate::{dsn, CommitmentError};
+use crate::{dsn, CommitmentError, ObjectMappings};
 use futures::future::try_join;
 use parking_lot::Mutex;
 use std::future::Future;
@@ -22,11 +24,12 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
     libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
+use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
@@ -105,11 +108,11 @@ impl SinglePlotPlotter {
     }
 
     /// Plot specified pieces in this farm, potentially replacing some of existing pieces
-    pub fn plot_pieces(&self, pieces_to_plot: &PiecesToPlot) -> Result<(), SinglePlotPlotterError> {
+    pub fn plot_pieces(&self, pieces_to_plot: PiecesToPlot) -> Result<(), SinglePlotPlotterError> {
         let PiecesToPlot {
             piece_indexes,
             mut pieces,
-        } = pieces_to_plot.clone();
+        } = pieces_to_plot;
         self.codec.batch_encode(&mut pieces, &piece_indexes)?;
 
         let pieces = Arc::new(pieces);
@@ -130,11 +133,10 @@ where
     C: RpcClient,
     NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
 {
-    pub(crate) base_directory: PathBuf,
+    pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
     pub(crate) max_plot_pieces: u64,
-    pub(crate) max_plot_size: u64,
-    pub(crate) total_pieces: u64,
+    pub(crate) farmer_metadata: FarmerMetadata,
     pub(crate) farming_client: C,
     pub(crate) plot_factory: NewPlot,
     pub(crate) listen_on: Vec<Multiaddr>,
@@ -142,6 +144,7 @@ where
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
+    pub(crate) enable_dsn_archiving: bool,
     pub(crate) enable_dsn_sync: bool,
 }
 
@@ -171,11 +174,10 @@ impl Drop for SinglePlotFarm {
 impl SinglePlotFarm {
     pub(crate) fn new<C, NewPlot>(
         SinglePlotFarmOptions {
-            base_directory,
+            metadata_directory,
             plot_index,
             max_plot_pieces,
-            max_plot_size,
-            total_pieces,
+            farmer_metadata,
             farming_client,
             plot_factory,
             mut listen_on,
@@ -183,6 +185,7 @@ impl SinglePlotFarm {
             first_listen_on,
             enable_farming,
             reward_address,
+            enable_dsn_archiving,
             enable_dsn_sync,
         }: SinglePlotFarmOptions<C, NewPlot>,
     ) -> anyhow::Result<Self>
@@ -190,9 +193,9 @@ impl SinglePlotFarm {
         C: RpcClient,
         NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
     {
-        std::fs::create_dir_all(&base_directory)?;
+        std::fs::create_dir_all(&metadata_directory)?;
 
-        let identity = Identity::open_or_create(&base_directory)?;
+        let identity = Identity::open_or_create(&metadata_directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
         // TODO: This doesn't account for the fact that node can
@@ -200,8 +203,12 @@ impl SinglePlotFarm {
         info!("Opening plot");
         let plot = plot_factory(plot_index, public_key, max_plot_pieces)?;
 
+        info!("Opening object mappings");
+        let object_mappings =
+            ObjectMappings::open_or_create(metadata_directory.join("object-mappings"))?;
+
         info!("Opening commitments");
-        let commitments = Commitments::new(base_directory.join("commitments"))?;
+        let commitments = Commitments::new(metadata_directory.join("commitments"))?;
 
         for multiaddr in &mut listen_on {
             if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
@@ -342,16 +349,40 @@ impl SinglePlotFarm {
             plot,
             commitments,
             farming,
-            node,
+            node: node.clone(),
             node_runner,
             background_task_handles: vec![],
         };
 
-        // Start syncing
+        // Start DSN archiving
+        if enable_dsn_archiving {
+            let archiving_fut = start_archiving(
+                farmer_metadata.record_size,
+                farmer_metadata.recorded_history_segment_size,
+                object_mappings,
+                node,
+                farm.plotter(),
+            );
+            let dsn_archiving_handle = tokio::spawn(async move {
+                if let Err(error) = archiving_fut.await {
+                    error!(%error, "DSN archiving task has ended with error");
+                } else {
+                    warn!("DSN archiving task has finished");
+                }
+            });
+
+            farm.background_task_handles.push(dsn_archiving_handle);
+        }
+
+        // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = PieceIndexHashNumber::MAX / total_pieces * 1024; // 4M per stream
-            let dsn_sync_fut = farm.dsn_sync(max_plot_size, total_pieces, sync_range_size);
+            let sync_range_size = PieceIndexHashNumber::MAX / farmer_metadata.total_pieces * 1024; // 4M per stream
+            let dsn_sync_fut = farm.dsn_sync(
+                farmer_metadata.max_plot_size,
+                farmer_metadata.total_pieces,
+                sync_range_size,
+            );
 
             let dsn_sync_handle = tokio::spawn(async move {
                 match dsn_sync_fut.await {
@@ -430,7 +461,7 @@ impl SinglePlotFarm {
 
         dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
             single_plot_plotter
-                .plot_pieces(&PiecesToPlot {
+                .plot_pieces(PiecesToPlot {
                     pieces,
                     piece_indexes,
                 })

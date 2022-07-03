@@ -57,7 +57,7 @@ pub struct Options<C> {
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct LegacyMultiPlotsFarm {
     pub single_plot_farms: Vec<SinglePlotFarm>,
-    archiving: Archiving,
+    archiving: Option<Archiving>,
 }
 
 impl LegacyMultiPlotsFarm {
@@ -91,8 +91,6 @@ impl LegacyMultiPlotsFarm {
             .farmer_metadata()
             .await
             .map_err(|error| anyhow!(error))?;
-        let max_plot_size = farmer_metadata.max_plot_size;
-        let total_pieces = farmer_metadata.total_pieces;
 
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             plot_sizes
@@ -100,7 +98,7 @@ impl LegacyMultiPlotsFarm {
                 .map(|&plot_size| plot_size / PIECE_SIZE as u64)
                 .enumerate()
                 .map(|(plot_index, max_plot_pieces)| {
-                    let base_directory = base_directory.join(format!("plot{plot_index}"));
+                    let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
                     let plot_factory = plot_factory.clone();
                     let listen_on = listen_on.clone();
@@ -108,11 +106,10 @@ impl LegacyMultiPlotsFarm {
                     let first_listen_on = Arc::clone(&first_listen_on);
 
                     SinglePlotFarm::new(SinglePlotFarmOptions {
-                        base_directory,
+                        metadata_directory,
                         plot_index,
                         max_plot_pieces,
-                        max_plot_size,
-                        total_pieces,
+                        farmer_metadata,
                         farming_client,
                         plot_factory,
                         listen_on,
@@ -120,6 +117,7 @@ impl LegacyMultiPlotsFarm {
                         first_listen_on,
                         enable_farming,
                         reward_address,
+                        enable_dsn_archiving,
                         enable_dsn_sync,
                     })
                 })
@@ -129,38 +127,32 @@ impl LegacyMultiPlotsFarm {
         .expect("Not supposed to panic, crash if it does")?;
 
         // Start archiving task
-        let archiving = Archiving::start(
-            farmer_metadata,
-            object_mappings,
-            archiving_client,
-            enable_dsn_archiving.then(|| {
-                single_plot_farms
-                    .get(0)
-                    .expect("There is always at least one farm; qed")
-                    .node()
-                    .clone()
-            }),
-            {
-                let plotters = single_plot_farms
-                    .iter()
-                    .map(|single_plot_farm| single_plot_farm.plotter())
-                    .collect::<Vec<_>>();
+        let archiving = if !enable_dsn_archiving {
+            let archiving_start_fut =
+                Archiving::start(farmer_metadata, object_mappings, archiving_client, {
+                    let plotters = single_plot_farms
+                        .iter()
+                        .map(|single_plot_farm| single_plot_farm.plotter())
+                        .collect::<Vec<_>>();
 
-                move |pieces_to_plot| {
-                    if let Some(Err(error)) = plotters
-                        .par_iter()
-                        .map(|plotter| plotter.plot_pieces(&pieces_to_plot))
-                        .find_first(|result| result.is_err())
-                    {
-                        error!(%error, "Failed to plot pieces");
-                        false
-                    } else {
-                        true
+                    move |pieces_to_plot| {
+                        if let Some(Err(error)) = plotters
+                            .par_iter()
+                            .map(|plotter| plotter.plot_pieces(pieces_to_plot.clone()))
+                            .find_first(|result| result.is_err())
+                        {
+                            error!(%error, "Failed to plot pieces");
+                            false
+                        } else {
+                            true
+                        }
                     }
-                }
-            },
-        )
-        .await?;
+                });
+
+            Some(archiving_start_fut.await?)
+        } else {
+            None
+        };
 
         Ok(Self {
             single_plot_farms,
@@ -185,13 +177,19 @@ impl LegacyMultiPlotsFarm {
             .map(|mut single_plot_farm| async move { single_plot_farm.run().await })
             .collect::<FuturesUnordered<_>>();
 
-        tokio::select! {
-            res = single_plot_farms.select_next_some() => {
-                res?;
-            },
-            res = self.archiving.wait() => {
-                res?;
-            },
+        if let Some(archiving) = self.archiving {
+            tokio::select! {
+                res = single_plot_farms.select_next_some() => {
+                    res?;
+                },
+                res = archiving.wait() => {
+                    res?;
+                },
+            }
+        } else {
+            while let Some(result) = single_plot_farms.next().await {
+                result?;
+            }
         }
 
         Ok(())
