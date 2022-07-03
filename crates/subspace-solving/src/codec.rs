@@ -23,7 +23,7 @@ use sloth256_189::cpu;
 use sloth256_189::opencl::{self, OpenClBatch, OpenClEncoder};
 #[cfg(feature = "opencl")]
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::{crypto, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{crypto, PieceIndex, Sha256Hash, PIECE_SIZE};
 
 /// Number of pieces for GPU to encode in a batch
 #[cfg(feature = "opencl")]
@@ -62,7 +62,7 @@ impl From<opencl::OpenCLEncodeError> for BatchEncodeError {
     }
 }
 
-fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index: u64) {
+fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index: PieceIndex) {
     // XOR `piece_index` (as little-endian bytes) with last bytes of `expanded_iv`
     public_key_hash
         .iter_mut()
@@ -124,7 +124,11 @@ impl SubspaceCodec {
 impl SubspaceCodec {
     /// Create an encoding based on genesis piece using provided encoding key hash, nonce and
     /// desired number of rounds
-    pub fn encode(&self, piece: &mut [u8], piece_index: u64) -> Result<(), cpu::EncodeError> {
+    pub fn encode(
+        &self,
+        piece: &mut [u8],
+        piece_index: PieceIndex,
+    ) -> Result<(), cpu::EncodeError> {
         cpu::encode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
     }
 
@@ -212,11 +216,15 @@ impl SubspaceCodec {
     }
 
     /// Decode piece
-    pub fn decode(&self, piece: &mut [u8], piece_index: u64) -> Result<(), cpu::DecodeError> {
+    pub fn decode(
+        &self,
+        piece: &mut [u8],
+        piece_index: PieceIndex,
+    ) -> Result<(), cpu::DecodeError> {
         cpu::decode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
     }
 
-    fn create_expanded_iv(&self, piece_index: u64) -> Sha256Hash {
+    fn create_expanded_iv(&self, piece_index: PieceIndex) -> Sha256Hash {
         let mut expanded_iv = self.farmer_public_key_hash;
 
         mix_public_key_hash_with_piece_index(&mut expanded_iv, piece_index);

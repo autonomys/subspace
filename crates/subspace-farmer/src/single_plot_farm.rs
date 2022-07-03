@@ -7,13 +7,14 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
+use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError};
 use futures::future::try_join;
 use parking_lot::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, PublicKey};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::{Multiaddr, PeerId};
@@ -25,9 +26,53 @@ use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
+
+#[derive(Debug, Clone)]
+pub struct SinglePlotPieceGetter {
+    codec: SubspaceCodec,
+    plot: Plot,
+}
+
+impl SinglePlotPieceGetter {
+    pub fn new(codec: SubspaceCodec, plot: Plot) -> Self {
+        Self { codec, plot }
+    }
+}
+
+impl PieceGetter for SinglePlotPieceGetter {
+    fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece_index_hash: PieceIndexHash,
+    ) -> Option<Piece> {
+        match self.plot.read_piece(piece_index_hash) {
+            Ok(mut piece) => match self.codec.decode(&mut piece, piece_index) {
+                Ok(()) => {
+                    return Some(piece);
+                }
+                Err(error) => {
+                    trace!(
+                        %error,
+                        "Failed to decode piece with piece index hash {}",
+                        hex::encode(piece_index_hash)
+                    );
+                }
+            },
+            Err(error) => {
+                trace!(
+                    %error,
+                    "Piece with piece index hash {} not found in plot",
+                    hex::encode(piece_index_hash)
+                );
+            }
+        }
+
+        None
+    }
+}
 
 /// Errors that happen during plotting of pieces
 #[derive(Debug, Error)]
@@ -107,10 +152,10 @@ where
 pub struct SinglePlotFarm {
     public_key: PublicKey,
     codec: SubspaceCodec,
-    pub plot: Plot,
+    plot: Plot,
     pub commitments: Commitments,
     farming: Option<Farming>,
-    pub(crate) node: Node,
+    node: Node,
     node_runner: NodeRunner,
     background_task_handles: Vec<JoinHandle<()>>,
 }
@@ -330,8 +375,22 @@ impl SinglePlotFarm {
         &self.public_key
     }
 
-    /// Get plotter for this plot
-    pub fn get_plotter(&self) -> SinglePlotPlotter {
+    /// Access plot instance of the farm
+    pub fn plot(&self) -> &Plot {
+        &self.plot
+    }
+
+    /// Access network node instance of the farm
+    pub fn node(&self) -> &Node {
+        &self.node
+    }
+
+    pub fn piece_getter(&self) -> SinglePlotPieceGetter {
+        SinglePlotPieceGetter::new(self.codec.clone(), self.plot.clone())
+    }
+
+    /// Plotter for this plot
+    pub fn plotter(&self) -> SinglePlotPlotter {
         SinglePlotPlotter::new(
             self.codec.clone(),
             self.plot.clone(),
@@ -367,7 +426,7 @@ impl SinglePlotFarm {
             total_pieces,
         };
 
-        let single_plot_plotter = self.get_plotter();
+        let single_plot_plotter = self.plotter();
 
         dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
             single_plot_plotter

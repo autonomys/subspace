@@ -2,6 +2,7 @@ use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
+use crate::single_disk_farm::SingleDiskFarmPieceGetter;
 use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -133,13 +134,13 @@ impl LegacyMultiPlotsFarm {
                 single_plot_farms
                     .get(0)
                     .expect("There is always at least one farm; qed")
-                    .node
+                    .node()
                     .clone()
             }),
             {
                 let plotters = single_plot_farms
                     .iter()
-                    .map(|single_plot_farm| single_plot_farm.get_plotter())
+                    .map(|single_plot_farm| single_plot_farm.plotter())
                     .collect::<Vec<_>>();
 
                 move |pieces_to_plot| {
@@ -162,6 +163,15 @@ impl LegacyMultiPlotsFarm {
             single_plot_farms,
             archiving,
         })
+    }
+
+    pub fn piece_getter(&self) -> SingleDiskFarmPieceGetter {
+        SingleDiskFarmPieceGetter::new(
+            self.single_plot_farms
+                .iter()
+                .map(|single_plot_farm| single_plot_farm.piece_getter())
+                .collect(),
+        )
     }
 
     /// Waits for farming and plotting completion (or errors)

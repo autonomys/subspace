@@ -225,13 +225,13 @@ async fn test_dsn_sync() {
 
     let (seeder_address_sender, mut seeder_address_receiver) = futures::channel::mpsc::unbounded();
     seeder_multi_farming.single_plot_farms[0]
-        .node
+        .node()
         .on_new_listener(Arc::new(move |address| {
             let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
 
-    let peer_id = seeder_multi_farming.single_plot_farms[0].node.id().into();
+    let peer_id = seeder_multi_farming.single_plot_farms[0].node().id().into();
 
     let (seeder_multi_farming_finished_sender, seeder_multi_farming_finished_receiver) =
         oneshot::channel();
@@ -294,7 +294,7 @@ async fn test_dsn_sync() {
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
-    let plot = syncer_multi_farming.single_plot_farms[0].plot.clone();
+    let plot = syncer_multi_farming.single_plot_farms[0].plot().clone();
     let dsn_sync = syncer_multi_farming.single_plot_farms[0].dsn_sync(
         syncer_max_plot_size,
         seeder_max_plot_size,
