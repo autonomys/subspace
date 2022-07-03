@@ -104,14 +104,14 @@ impl<T: PlotFile> PlotWorker<T> {
             .map(Arc::new)?;
 
         let piece_offset_to_index =
-            PieceOffsetToIndexDb::open(metadata_directory.join("plot-offset-to-index.bin"))
+            PieceOffsetToIndexDb::open(&metadata_directory.join("plot-offset-to-index.bin"))
                 .map_err(PlotError::OffsetDbOpen)?;
 
         // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
         //  here
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
-            metadata_directory.join("plot-index-to-offset"),
+            &metadata_directory.join("plot-index-to-offset"),
             public_key,
         )?;
 

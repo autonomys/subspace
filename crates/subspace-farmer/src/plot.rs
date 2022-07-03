@@ -26,6 +26,39 @@ pub type PieceDistance = U256;
 /// Index of piece on disk
 pub type PieceOffset = u64;
 
+/// Trait for mocking plot behaviour
+pub trait PlotFile {
+    /// Get number of pieces in plot
+    fn piece_count(&mut self) -> io::Result<u64>;
+
+    /// Write pieces sequentially under some offset
+    fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
+    /// Read pieces from disk under some offset
+    fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
+}
+
+impl<T> PlotFile for T
+where
+    T: Read + Write + Seek,
+{
+    fn piece_count(&mut self) -> io::Result<u64> {
+        let plot_file_size = self.seek(SeekFrom::End(0))?;
+
+        Ok(plot_file_size / PIECE_SIZE as u64)
+    }
+
+    /// Write pieces sequentially under some offset
+    fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
+        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+        self.write_all(pieces.as_ref())
+    }
+
+    fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
+        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
+        self.read_exact(buf.as_mut())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum PlotError {
     #[error("Plot open error: {0}")]
@@ -383,38 +416,5 @@ impl Plot {
         callback: Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.inner.handlers.progress_change.add(callback)
-    }
-}
-
-/// Trait for mocking plot behaviour
-pub trait PlotFile {
-    /// Get number of pieces in plot
-    fn piece_count(&mut self) -> io::Result<u64>;
-
-    /// Write pieces sequentially under some offset
-    fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
-    /// Read pieces from disk under some offset
-    fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
-}
-
-impl<T> PlotFile for T
-where
-    T: Read + Write + Seek,
-{
-    fn piece_count(&mut self) -> io::Result<u64> {
-        let plot_file_size = self.seek(SeekFrom::End(0))?;
-
-        Ok(plot_file_size / PIECE_SIZE as u64)
-    }
-
-    /// Write pieces sequentially under some offset
-    fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
-        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.write_all(pieces.as_ref())
-    }
-
-    fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
-        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.read_exact(buf.as_mut())
     }
 }

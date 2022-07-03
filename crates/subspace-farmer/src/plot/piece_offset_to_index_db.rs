@@ -8,7 +8,7 @@ use subspace_core_primitives::PieceIndex;
 pub(super) struct PieceOffsetToIndexDb(File);
 
 impl PieceOffsetToIndexDb {
-    pub(super) fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+    pub(super) fn open(path: &Path) -> io::Result<Self> {
         OpenOptions::new()
             .read(true)
             .write(true)

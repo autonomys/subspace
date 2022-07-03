@@ -52,11 +52,8 @@ impl IndexHashToOffsetDB {
     /// https://github.com/subspace/subspace/pull/449
     const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
 
-    pub(super) fn open_default(
-        path: impl AsRef<Path>,
-        public_key: PublicKey,
-    ) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path.as_ref()).map_err(PlotError::IndexDbOpen)?;
+    pub(super) fn open_default(path: &Path, public_key: PublicKey) -> Result<Self, PlotError> {
+        let inner = DB::open_default(path).map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
             public_key,
@@ -64,65 +61,6 @@ impl IndexHashToOffsetDB {
         };
         me.update_max_distance_cache();
         Ok(me)
-    }
-
-    fn update_max_distance_cache(&mut self) {
-        let mut iter = self.inner.raw_iterator();
-
-        iter.seek_to_first();
-        self.max_distance_cache.extend(
-            std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
-                if piece_index_hash.is_some() {
-                    iter.next();
-                }
-                piece_index_hash
-            })
-            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
-            .map(BidirectionalDistanceSorted::new),
-        );
-
-        iter.seek_to_last();
-        self.max_distance_cache.extend(
-            std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
-                if piece_index_hash.is_some() {
-                    iter.prev();
-                }
-                piece_index_hash
-            })
-            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
-            .map(BidirectionalDistanceSorted::new),
-        );
-        while self.max_distance_cache.len() > Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
-            self.max_distance_cache.pop_first();
-        }
-    }
-
-    fn max_distance_key(&mut self) -> Option<PieceDistance> {
-        if self.max_distance_cache.is_empty() {
-            self.update_max_distance_cache();
-        }
-        self.max_distance_cache
-            .last()
-            .map(|distance| distance.value)
-    }
-
-    fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
-        // We permute distance such that if piece index hash is equal to the `self.public_key` then
-        // it lands to the `PieceDistance::MIDDLE`
-        PieceDistance::from_big_endian(&index_hash.0)
-            .wrapping_sub(&PieceDistance::from_big_endian(self.public_key.as_ref()))
-            .wrapping_add(&PieceDistance::MIDDLE)
-    }
-
-    fn piece_distance_to_hash(&self, distance: PieceDistance) -> PieceIndexHash {
-        let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
-        distance
-            .wrapping_sub(&PieceDistance::MIDDLE)
-            .wrapping_add(&PieceDistance::from_big_endian(self.public_key.as_ref()))
-            .to_big_endian(&mut piece_index_hash.0);
-        piece_index_hash
     }
 
     // TODO: optimize fast path using `max_distance_cache`
@@ -251,5 +189,64 @@ impl IndexHashToOffsetDB {
         }
 
         piece_index_hashes_and_offsets
+    }
+
+    fn update_max_distance_cache(&mut self) {
+        let mut iter = self.inner.raw_iterator();
+
+        iter.seek_to_first();
+        self.max_distance_cache.extend(
+            std::iter::from_fn(|| {
+                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
+                if piece_index_hash.is_some() {
+                    iter.next();
+                }
+                piece_index_hash
+            })
+            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
+            .map(BidirectionalDistanceSorted::new),
+        );
+
+        iter.seek_to_last();
+        self.max_distance_cache.extend(
+            std::iter::from_fn(|| {
+                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
+                if piece_index_hash.is_some() {
+                    iter.prev();
+                }
+                piece_index_hash
+            })
+            .take(Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP)
+            .map(BidirectionalDistanceSorted::new),
+        );
+        while self.max_distance_cache.len() > Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
+            self.max_distance_cache.pop_first();
+        }
+    }
+
+    fn max_distance_key(&mut self) -> Option<PieceDistance> {
+        if self.max_distance_cache.is_empty() {
+            self.update_max_distance_cache();
+        }
+        self.max_distance_cache
+            .last()
+            .map(|distance| distance.value)
+    }
+
+    fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
+        // We permute distance such that if piece index hash is equal to the `self.public_key` then
+        // it lands to the `PieceDistance::MIDDLE`
+        PieceDistance::from_big_endian(&index_hash.0)
+            .wrapping_sub(&PieceDistance::from_big_endian(self.public_key.as_ref()))
+            .wrapping_add(&PieceDistance::MIDDLE)
+    }
+
+    fn piece_distance_to_hash(&self, distance: PieceDistance) -> PieceIndexHash {
+        let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
+        distance
+            .wrapping_sub(&PieceDistance::MIDDLE)
+            .wrapping_add(&PieceDistance::from_big_endian(self.public_key.as_ref()))
+            .to_big_endian(&mut piece_index_hash.0);
+        piece_index_hash
     }
 }
