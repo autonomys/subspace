@@ -56,7 +56,8 @@ impl PieceGetter for SinglePlotPieceGetter {
                 Err(error) => {
                     trace!(
                         %error,
-                        "Piece with piece index {piece_index} not found in plot"
+                        "Failed to decode piece with piece index hash {}",
+                        hex::encode(piece_index_hash)
                     );
                 }
             },

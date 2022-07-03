@@ -10,9 +10,9 @@ pub struct SingleDiskFarmPieceGetter {
 
 impl SingleDiskFarmPieceGetter {
     /// Create new piece getter for many single plot farms
-    pub fn new(single_plot_piece_getter: Vec<SinglePlotPieceGetter>) -> Self {
+    pub fn new(single_plot_piece_getters: Vec<SinglePlotPieceGetter>) -> Self {
         Self {
-            single_plot_piece_getters: single_plot_piece_getter,
+            single_plot_piece_getters,
         }
     }
 }
@@ -25,9 +25,8 @@ impl PieceGetter for SingleDiskFarmPieceGetter {
     ) -> Option<Piece> {
         self.single_plot_piece_getters
             .iter()
-            .filter_map(|single_plot_piece_getter| {
+            .find_map(|single_plot_piece_getter| {
                 single_plot_piece_getter.get_piece(piece_index, piece_index_hash)
             })
-            .next()
     }
 }
