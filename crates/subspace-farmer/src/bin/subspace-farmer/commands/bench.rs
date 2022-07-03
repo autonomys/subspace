@@ -51,10 +51,6 @@ impl PlotFile for BenchPlotMock {
         rand::thread_rng().fill(buf.as_mut());
         Ok(())
     }
-
-    fn sync_all(&mut self) -> io::Result<()> {
-        Ok(())
-    }
 }
 
 struct HumanReadableSize(pub u64);

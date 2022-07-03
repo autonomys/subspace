@@ -720,9 +720,6 @@ pub trait PlotFile {
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
     /// Read pieces from disk under some offset
     fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
-
-    /// Sync all writes to the plot
-    fn sync_all(&mut self) -> io::Result<()>;
 }
 
 impl PlotFile for File {
@@ -739,10 +736,6 @@ impl PlotFile for File {
     fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
         self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
         self.read_exact(buf.as_mut())
-    }
-
-    fn sync_all(&mut self) -> io::Result<()> {
-        File::sync_all(&*self)
     }
 }
 
@@ -1066,14 +1059,6 @@ impl<T: PlotFile> PlotWorker<T> {
 
                 break;
             }
-        }
-
-        if let Err(error) = self.plot.sync_all() {
-            error!(%error, "Failed to sync plot file before exit");
-        }
-
-        if let Err(error) = self.piece_offset_to_index.0.sync_all() {
-            error!(%error, "Failed to sync piece offset to index file before exit");
         }
 
         // Close the rest of databases
