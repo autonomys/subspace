@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use tracing::error;
 
@@ -97,8 +97,9 @@ impl LegacyMultiPlotsFarm {
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             plot_sizes
                 .par_iter()
+                .map(|&plot_size| plot_size / PIECE_SIZE as u64)
                 .enumerate()
-                .map(|(plot_index, &max_plot_pieces)| {
+                .map(|(plot_index, max_plot_pieces)| {
                     let base_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
                     let plot_factory = plot_factory.clone();
