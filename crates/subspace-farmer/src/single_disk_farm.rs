@@ -1,4 +1,5 @@
 use crate::single_plot_farm::SinglePlotPieceGetter;
+use crate::ws_rpc_server::PieceGetter;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 
 /// Abstraction that can get pieces out of internal plots
@@ -14,8 +15,10 @@ impl SingleDiskFarmPieceGetter {
             single_plot_piece_getters: single_plot_piece_getter,
         }
     }
+}
 
-    pub fn get_piece(
+impl PieceGetter for SingleDiskFarmPieceGetter {
+    fn get_piece(
         &self,
         piece_index: PieceIndex,
         piece_index_hash: PieceIndexHash,

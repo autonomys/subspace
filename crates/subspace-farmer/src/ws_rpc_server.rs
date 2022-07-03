@@ -1,5 +1,4 @@
 use crate::object_mappings::ObjectMappings;
-use crate::single_disk_farm::SingleDiskFarmPieceGetter;
 use async_trait::async_trait;
 use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
@@ -7,12 +6,20 @@ use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, Sha256Hash};
 use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
 const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
+
+/// Something that can be used to get decoded pieces by index
+pub trait PieceGetter {
+    /// Get piece
+    fn get_piece(&self, piece_index: PieceIndex, piece_index_hash: PieceIndexHash)
+        -> Option<Piece>;
+}
 
 /// Same as [`Piece`], but serializes/deserialized to/from hex string
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,14 +136,13 @@ pub trait Rpc {
 /// Usage example:
 /// ```rust
 ///  async fn f() -> anyhow::Result<()> {
-/// use std::sync::Arc;
 /// use jsonrpsee::ws_server::WsServerBuilder;
 /// use subspace_farmer::{Identity, ObjectMappings, Plot};
-/// use subspace_farmer::single_disk_farm::SingleDiskFarmPieceGetter;
 /// use subspace_farmer::single_plot_farm::SinglePlotPieceGetter;
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 /// use subspace_solving::SubspaceCodec;
 /// use std::path::PathBuf;
+/// use std::sync::Arc;
 ///
 /// let base_directory = PathBuf::from("/path/to/base/dir");
 /// let ws_server_listen_addr = "127.0.0.1:0";
@@ -149,9 +155,7 @@ pub trait Rpc {
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,
 ///     3480 * 128,
-///     SingleDiskFarmPieceGetter::new(vec![
-///         SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot),
-///     ]),
+///     Arc::new(SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot)),
 ///     object_mappings,
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
@@ -162,7 +166,7 @@ pub trait Rpc {
 pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
-    piece_getter: SingleDiskFarmPieceGetter,
+    piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
     object_mappings: ObjectMappings,
 }
 
@@ -170,7 +174,7 @@ impl RpcServerImpl {
     pub fn new(
         record_size: u32,
         recorded_history_segment_size: u32,
-        piece_getter: SingleDiskFarmPieceGetter,
+        piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
         object_mappings: ObjectMappings,
     ) -> Self {
         Self {

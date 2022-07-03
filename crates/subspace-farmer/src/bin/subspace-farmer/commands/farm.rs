@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use std::path::PathBuf;
+use std::sync::Arc;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
@@ -119,7 +120,7 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        multi_plots_farm.piece_getter(),
+        Arc::new(multi_plots_farm.piece_getter()),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;

@@ -7,6 +7,7 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
+use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError};
 use futures::future::try_join;
 use parking_lot::Mutex;
@@ -39,8 +40,10 @@ impl SinglePlotPieceGetter {
     pub fn new(codec: SubspaceCodec, plot: Plot) -> Self {
         Self { codec, plot }
     }
+}
 
-    pub fn get_piece(
+impl PieceGetter for SinglePlotPieceGetter {
+    fn get_piece(
         &self,
         piece_index: PieceIndex,
         piece_index_hash: PieceIndexHash,
