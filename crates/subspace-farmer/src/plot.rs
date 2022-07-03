@@ -16,7 +16,6 @@ use std::{fmt, io};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
-use subspace_solving::SubspaceCodec;
 use thiserror::Error;
 use tracing::error;
 
@@ -85,7 +84,6 @@ struct Inner {
     handlers: Handlers,
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     piece_count: Arc<AtomicU64>,
-    public_key: PublicKey,
 }
 
 impl Drop for Inner {
@@ -104,34 +102,6 @@ impl Drop for Inner {
             let _ = result_receiver.recv();
         }
     }
-}
-
-/// Retrieves and decodes a single piece from multiple plots
-pub fn retrieve_piece_from_plots(
-    plots: &[Plot],
-    piece_index: PieceIndex,
-) -> io::Result<Option<Piece>> {
-    let piece_index_hash = PieceIndexHash::from_index(piece_index);
-    let mut plots = plots.iter().collect::<Vec<_>>();
-    plots
-        .sort_by_key(|plot| PieceDistance::distance(&piece_index_hash, plot.public_key().as_ref()));
-
-    plots
-        .iter()
-        .take(2)
-        .find_map(|plot| {
-            plot.read_piece(piece_index_hash)
-                .map(|piece| (piece, plot.public_key()))
-                .ok()
-        })
-        .map(|(mut piece, public_key)| {
-            // TODO: Do not recreate codec each time
-            SubspaceCodec::new(&public_key)
-                .decode(&mut piece, piece_index)
-                .map_err(|_| io::Error::other("Failed to decode piece"))
-                .map(move |()| piece)
-        })
-        .transpose()
 }
 
 /// `Plot` is an abstraction for plotted pieces and some mappings.
@@ -195,7 +165,6 @@ impl Plot {
             handlers: Handlers::default(),
             requests_sender,
             piece_count,
-            public_key,
         };
 
         Ok(Plot {
@@ -206,11 +175,6 @@ impl Plot {
     /// How many pieces are there in the plot
     pub fn piece_count(&self) -> PieceOffset {
         self.inner.piece_count.load(Ordering::Acquire)
-    }
-
-    /// Public key for which pieces were plotted
-    fn public_key(&self) -> PublicKey {
-        self.inner.public_key
     }
 
     /// Whether plot doesn't have anything in it
