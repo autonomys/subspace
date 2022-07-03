@@ -5,7 +5,7 @@ use event_listener_primitives::{Bag, HandlerId};
 use num_traits::{WrappingAdd, WrappingSub};
 use rocksdb::DB;
 use std::collections::{BTreeSet, VecDeque};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::RangeInclusive;
 use std::path::Path;
@@ -17,7 +17,7 @@ use subspace_core_primitives::{
 };
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::error;
 
 /// Distance to piece index hash from farmer identity
 pub type PieceDistance = U256;
@@ -466,42 +466,6 @@ impl Plot {
         callback: Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.inner.handlers.progress_change.add(callback)
-    }
-
-    /// Helper function for ignoring the error that given file/directory does not exist.
-    fn try_remove<P: AsRef<Path>>(
-        path: P,
-        remove: impl FnOnce(P) -> io::Result<()>,
-    ) -> io::Result<()> {
-        if path.as_ref().exists() {
-            remove(path)?;
-        }
-        Ok(())
-    }
-
-    // TODO: Remove with the next snapshot (as it is unused by now)
-    /// Erases plot in specific directory
-    pub fn erase(path: impl AsRef<Path>) -> io::Result<()> {
-        info!("Erasing the plot");
-        Self::try_remove(path.as_ref().join("plot.bin"), fs::remove_file)?;
-        info!("Erasing the plot offset to index db");
-        Self::try_remove(
-            path.as_ref().join("plot-offset-to-index.bin"),
-            fs::remove_file,
-        )?;
-        info!("Erasing the plot index to offset db");
-        Self::try_remove(
-            path.as_ref().join("plot-index-to-offset"),
-            fs::remove_dir_all,
-        )?;
-        info!("Erasing plot metadata");
-        Self::try_remove(path.as_ref().join("plot-metadata"), fs::remove_dir_all)?;
-        info!("Erasing plot commitments");
-        Self::try_remove(path.as_ref().join("commitments"), fs::remove_dir_all)?;
-        info!("Erasing object mappings");
-        Self::try_remove(path.as_ref().join("object-mappings"), fs::remove_dir_all)?;
-
-        Ok(())
     }
 }
 
