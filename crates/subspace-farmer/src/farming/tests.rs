@@ -38,7 +38,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let client = MockRpcClient::new();
 
     // start the farming task
-    let farming_instance = Farming::start(
+    let mut farming_instance = Farming::start(
         plot.clone(),
         commitments.clone(),
         client.clone(),

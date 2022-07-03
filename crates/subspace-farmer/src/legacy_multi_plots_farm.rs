@@ -11,7 +11,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::NodeRunner;
 use tracing::error;
 
 fn get_plot_sizes(total_plot_size: u64, max_plot_size: u64) -> Vec<u64> {
@@ -56,7 +55,6 @@ pub struct Options<C> {
 pub struct LegacyMultiPlotsFarm {
     pub single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Archiving,
-    pub(crate) networking_node_runners: Vec<NodeRunner>,
 }
 
 impl LegacyMultiPlotsFarm {
@@ -93,61 +91,51 @@ impl LegacyMultiPlotsFarm {
         let max_plot_size = farmer_metadata.max_plot_size;
         let total_pieces = farmer_metadata.total_pieces;
 
-        let (single_plot_farms, networking_node_runners, node) =
-            tokio::task::spawn_blocking(move || {
-                let mut single_plot_farms = Vec::with_capacity(plot_sizes.len());
-                let mut networking_node_runners = Vec::with_capacity(plot_sizes.len());
-                let mut node = None;
+        let single_plot_farms = tokio::task::spawn_blocking(move || {
+            plot_sizes
+                .par_iter()
+                .enumerate()
+                .map(|(plot_index, &max_plot_pieces)| {
+                    let base_directory = base_directory.join(format!("plot{plot_index}"));
+                    let farming_client = farming_client.clone();
+                    let new_plot = new_plot.clone();
+                    let listen_on = listen_on.clone();
+                    let bootstrap_nodes = bootstrap_nodes.clone();
+                    let first_listen_on = Arc::clone(&first_listen_on);
 
-                let single_plot_farm_instantiations = plot_sizes
-                    .par_iter()
-                    .enumerate()
-                    .map(|(plot_index, &max_plot_pieces)| {
-                        let base_directory = base_directory.join(format!("plot{plot_index}"));
-                        let farming_client = farming_client.clone();
-                        let new_plot = new_plot.clone();
-                        let listen_on = listen_on.clone();
-                        let bootstrap_nodes = bootstrap_nodes.clone();
-                        let first_listen_on = Arc::clone(&first_listen_on);
-
-                        SinglePlotFarm::new(SinglePlotFarmOptions {
-                            base_directory,
-                            plot_index,
-                            max_plot_pieces,
-                            max_plot_size,
-                            total_pieces,
-                            farming_client,
-                            new_plot,
-                            listen_on,
-                            bootstrap_nodes,
-                            first_listen_on,
-                            enable_farming,
-                            reward_address,
-                            enable_dsn_sync,
-                        })
+                    SinglePlotFarm::new(SinglePlotFarmOptions {
+                        base_directory,
+                        plot_index,
+                        max_plot_pieces,
+                        max_plot_size,
+                        total_pieces,
+                        farming_client,
+                        new_plot,
+                        listen_on,
+                        bootstrap_nodes,
+                        first_listen_on,
+                        enable_farming,
+                        reward_address,
+                        enable_dsn_sync,
                     })
-                    .collect::<anyhow::Result<Vec<_>>>()?;
-
-                for (farm, node_runner) in single_plot_farm_instantiations {
-                    if node.is_none() {
-                        node = Some(farm.node.clone());
-                    }
-                    networking_node_runners.push(node_runner);
-                    single_plot_farms.push(farm);
-                }
-
-                Ok::<_, anyhow::Error>((single_plot_farms, networking_node_runners, node))
-            })
-            .await
-            .expect("Not supposed to panic, crash if it does")?;
+                })
+                .collect::<anyhow::Result<Vec<_>>>()
+        })
+        .await
+        .expect("Not supposed to panic, crash if it does")?;
 
         // Start archiving task
         let archiving = Archiving::start(
             farmer_metadata,
             object_mappings,
             archiving_client,
-            enable_dsn_archiving
-                .then(|| node.expect("Always set, as we have at least one networking instance")),
+            enable_dsn_archiving.then(|| {
+                single_plot_farms
+                    .get(0)
+                    .expect("There is always at least one farm; qed")
+                    .node
+                    .clone()
+            }),
             {
                 let plotters = single_plot_farms
                     .iter()
@@ -173,41 +161,21 @@ impl LegacyMultiPlotsFarm {
         Ok(Self {
             single_plot_farms,
             archiving,
-            networking_node_runners,
         })
     }
 
     /// Waits for farming and plotting completion (or errors)
-    pub async fn wait(mut self) -> anyhow::Result<()> {
-        if !self
+    pub async fn wait(self) -> anyhow::Result<()> {
+        let mut single_plot_farms = self
             .single_plot_farms
-            .iter()
-            .any(|single_plot_farm| single_plot_farm.farming.is_some())
-        {
-            return self.archiving.wait().await.map_err(Into::into);
-        }
-
-        // `.iter_mut()` so that we don't drop `SinglePlotFarm` and continue background tasks if
-        // there are any
-        let mut farming = self
-            .single_plot_farms
-            .iter_mut()
-            .filter_map(|single_plot_farm| {
-                let farming = single_plot_farm.farming.take()?;
-                Some(farming.wait())
-            })
-            .collect::<FuturesUnordered<_>>();
-        let mut node_runners = self
-            .networking_node_runners
             .into_iter()
-            .map(NodeRunner::run)
+            .map(|mut single_plot_farm| async move { single_plot_farm.run().await })
             .collect::<FuturesUnordered<_>>();
 
         tokio::select! {
-            res = farming.select_next_some() => {
+            res = single_plot_farms.select_next_some() => {
                 res?;
             },
-            () = node_runners.select_next_some() => {},
             res = self.archiving.wait() => {
                 res?;
             },

@@ -5,6 +5,7 @@ use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
+use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
@@ -18,9 +19,11 @@ use nohash_hasher::IntMap;
 use parity_scale_codec::Encode;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
 enum QueryResultSender {
@@ -49,6 +52,7 @@ pub struct NodeRunner {
     /// Topic subscription senders for logical subscriptions (multiple logical subscriptions can be
     /// present for the same physical subscription).
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
+    random_query_timeout: Pin<Box<Fuse<Sleep>>>,
 }
 
 impl NodeRunner {
@@ -68,19 +72,18 @@ impl NodeRunner {
             query_id_receivers: HashMap::default(),
             next_subscription_id: 0,
             topic_subscription_senders: HashMap::default(),
+            // We'll make the first query right away and continue at the interval.
+            random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
         }
     }
 
-    pub async fn run(mut self) {
-        // We'll make the first query right away and continue at the interval.
-        let mut random_query_timeout = Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse());
-
+    pub async fn run(&mut self) {
         loop {
             futures::select! {
-                _ = random_query_timeout => {
+                _ = &mut self.random_query_timeout => {
                     self.handle_random_query_interval();
                     // Increase interval 2x, but to at most 60 seconds.
-                    random_query_timeout = Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
+                    self.random_query_timeout = Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
                     self.next_random_query_interval = (self.next_random_query_interval * 2).min(Duration::from_secs(60));
                 },
                 swarm_event = self.swarm.next() => {

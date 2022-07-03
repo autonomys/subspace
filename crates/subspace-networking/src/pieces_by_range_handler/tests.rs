@@ -38,7 +38,7 @@ async fn pieces_by_range_protocol_smoke() {
         }),
         ..Config::with_generated_keypair()
     };
-    let (node_1, node_runner_1) = crate::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
 
     let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
     node_1
@@ -64,7 +64,7 @@ async fn pieces_by_range_protocol_smoke() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, node_runner_2) = crate::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
@@ -132,7 +132,7 @@ async fn get_pieces_by_range_smoke() {
         }),
         ..Config::with_generated_keypair()
     };
-    let (node_1, node_runner_1) = crate::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
 
     let (node_1_addresses_sender, mut node_1_addresses_receiver) = mpsc::unbounded();
     node_1
@@ -158,7 +158,7 @@ async fn get_pieces_by_range_smoke() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, node_runner_2) = crate::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
