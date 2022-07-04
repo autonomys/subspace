@@ -173,7 +173,13 @@ impl Drop for SinglePlotFarm {
 
 impl SinglePlotFarm {
     pub(crate) fn new<C, NewPlot>(
-        SinglePlotFarmOptions {
+        options: SinglePlotFarmOptions<C, NewPlot>,
+    ) -> anyhow::Result<Self>
+    where
+        C: RpcClient,
+        NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+    {
+        let SinglePlotFarmOptions {
             metadata_directory,
             plot_index,
             max_plot_pieces,
@@ -187,12 +193,7 @@ impl SinglePlotFarm {
             reward_address,
             enable_dsn_archiving,
             enable_dsn_sync,
-        }: SinglePlotFarmOptions<C, NewPlot>,
-    ) -> anyhow::Result<Self>
-    where
-        C: RpcClient,
-        NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
-    {
+        } = options;
         std::fs::create_dir_all(&metadata_directory)?;
 
         let identity = Identity::open_or_create(&metadata_directory)?;
