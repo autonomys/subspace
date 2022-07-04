@@ -369,25 +369,14 @@ where
 					sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
 				})?;
 
-				// TODO: will be removed once the TODO below is resolved.
-				#[allow(clippy::single_match)]
-				match crate::aux_schema::load_execution_receipt(&*self.client, block_hash)? {
-					Some(receipt) => {
-						self.try_sign_and_send_receipt(primary_hash, receipt)?;
-					},
-					None => {
-						// TODO: In order to solve the problem that the receipt can be pruned by
-						// executor, we need to check if every ER in the primary chain is valid beforehand:
-						// - If ER is invalid, cache it and expect FraudProof within next X blocks.
-						//    - If FraudProof found, remove it from the cache.
-						//    - If FraudProof not found and major sync is done:
-						//        - Generate a FraudProof for the first incorrect ER.
-						//            - FraudProof might need to access the block body, hence all
-						//            the blocks have to be kept in the database. TODO: double check.
-						//        - Start publishing the correct ERs after the above corrected one.
-						// println!("TODO: Cache the invalid receipts without fraud proof");
-					},
-				}
+				let receipt = crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?
+					.ok_or_else(|| {
+						sp_blockchain::Error::Backend(format!(
+							"Execution receipt not found for block {block_hash}"
+						))
+					})?;
+
+				self.try_sign_and_send_receipt(primary_hash, receipt)?;
 
 				to_send += One::one();
 			}
@@ -493,7 +482,6 @@ where
 					if let Some(trace_mismatch_index) =
 						find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
 					{
-						// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
 						crate::aux_schema::write_bad_receipt::<_, PBlock>(
 							&*self.client,
 							signed_receipt.execution_receipt.primary_number,
@@ -507,8 +495,6 @@ where
 				None => {
 					// The receipt of a prior block must exist, otherwise it means the receipt included
 					// on the primary chain points to an invalid secondary block.
-
-					// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
 					crate::aux_schema::write_bad_receipt::<_, PBlock>(
 						&*self.client,
 						signed_receipt.execution_receipt.primary_number,
