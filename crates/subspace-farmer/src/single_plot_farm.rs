@@ -185,7 +185,7 @@ pub struct SinglePlotFarm {
     public_key: PublicKey,
     codec: SubspaceCodec,
     plot: Plot,
-    pub commitments: Commitments,
+    commitments: Commitments,
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
@@ -452,6 +452,11 @@ impl SinglePlotFarm {
     /// Access plot instance of the farm
     pub fn plot(&self) -> &Plot {
         &self.plot
+    }
+
+    /// Access commitments instance of the farm
+    pub fn commitments(&self) -> &Commitments {
+        &self.commitments
     }
 
     /// Access network node instance of the farm
