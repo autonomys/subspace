@@ -2,7 +2,7 @@ use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::{ObjectMappings, Plot};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use rand::Rng;
@@ -144,10 +144,16 @@ async fn test_dsn_sync() {
 
     let seeder_base_directory = TempDir::new().unwrap();
 
-    let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) =
-        futures::channel::mpsc::channel(0);
-    let seeder_client =
-        BenchRpcClient::new(BENCH_FARMER_METADATA, seeder_archived_segments_receiver);
+    let (_seeder_slot_info_sender, seeder_slot_info_receiver) = mpsc::channel(10);
+    let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) = mpsc::channel(0);
+    let (seeder_acknowledge_archived_segment_sender, _seeder_acknowledge_archived_segment_receiver) =
+        mpsc::channel(1);
+    let seeder_client = BenchRpcClient::new(
+        BENCH_FARMER_METADATA,
+        seeder_slot_info_receiver,
+        seeder_archived_segments_receiver,
+        seeder_acknowledge_archived_segment_sender,
+    );
 
     let object_mappings = tokio::task::spawn_blocking({
         let path = seeder_base_directory.as_ref().join("object-mappings");
@@ -159,9 +165,15 @@ async fn test_dsn_sync() {
     .unwrap();
 
     let base_path = seeder_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index, public_key, max_piece_count| {
+    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
+        Plot::open_or_create(
+            plot_index.into(),
+            &base_path,
+            &base_path,
+            public_key,
+            max_piece_count,
+        )
     };
 
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
@@ -228,7 +240,7 @@ async fn test_dsn_sync() {
             .collect::<BTreeMap<_, _>>()
     };
 
-    let (seeder_address_sender, mut seeder_address_receiver) = futures::channel::mpsc::unbounded();
+    let (seeder_address_sender, mut seeder_address_receiver) = mpsc::unbounded();
     seeder_multi_farming.single_plot_farms[0]
         .node()
         .on_new_listener(Arc::new(move |address| {
@@ -257,9 +269,16 @@ async fn test_dsn_sync() {
     drop(seeder_address_receiver);
 
     let syncer_base_directory = TempDir::new().unwrap();
-    let (_sender, syncer_archived_segments_receiver) = futures::channel::mpsc::channel(10);
-    let syncer_client =
-        BenchRpcClient::new(BENCH_FARMER_METADATA, syncer_archived_segments_receiver);
+    let (_syncer_slot_info_sender, syncer_slot_info_receiver) = mpsc::channel(10);
+    let (_syncer_archived_segments_sender, syncer_archived_segments_receiver) = mpsc::channel(10);
+    let (syncer_acknowledge_archived_segment_sender, _syncer_acknowledge_archived_segment_receiver) =
+        mpsc::channel(1);
+    let syncer_client = BenchRpcClient::new(
+        BENCH_FARMER_METADATA,
+        syncer_slot_info_receiver,
+        syncer_archived_segments_receiver,
+        syncer_acknowledge_archived_segment_sender,
+    );
 
     let object_mappings = tokio::task::spawn_blocking({
         let path = syncer_base_directory.as_ref().join("object-mappings");
@@ -271,9 +290,15 @@ async fn test_dsn_sync() {
     .unwrap();
 
     let base_path = syncer_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index, public_key, max_piece_count| {
+    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
+        Plot::open_or_create(
+            plot_index.into(),
+            &base_path,
+            &base_path,
+            public_key,
+            max_piece_count,
+        )
     };
 
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(

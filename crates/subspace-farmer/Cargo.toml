@@ -19,6 +19,7 @@ async-trait = "0.1.53"
 base58 = "0.2.0"
 blake2-rfc = "0.2.18"
 clap = { version = "3.1.18", features = ["color", "derive"] }
+derive_more = "0.99.17"
 dirs = "4.0.0"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
@@ -47,6 +48,7 @@ substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread"] }
+ulid = { version = "0.6.0", features = ["serde"] }
 zeroize = "1.5.5"
 
 # OpenBSD and MSVC are unteested and shouldn't enable jemalloc:
