@@ -34,7 +34,7 @@ use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{error, info, info_span, trace, warn};
+use tracing::{error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
@@ -211,6 +211,7 @@ pub struct SinglePlotFarm {
     node: Node,
     node_runner: NodeRunner,
     single_disk_semaphore: SingleDiskSemaphore,
+    span: Span,
     background_task_handles: Vec<AbortingJoinHandle<()>>,
 }
 
@@ -410,6 +411,7 @@ impl SinglePlotFarm {
             node: node.clone(),
             node_runner,
             single_disk_semaphore,
+            span: span.clone(),
             background_task_handles: vec![],
         };
 
@@ -509,9 +511,10 @@ impl SinglePlotFarm {
 
                 Ok(())
             })
+            .instrument(self.span.clone())
             .await?;
         } else {
-            self.node_runner.run().await;
+            self.node_runner.run().instrument(self.span.clone()).await;
         }
 
         Ok(())
@@ -531,8 +534,11 @@ impl SinglePlotFarm {
         };
 
         let single_plot_plotter = self.plotter();
+        let span = self.span.clone();
 
         dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
+            let _guard = span.enter();
+
             single_plot_plotter
                 .plot_pieces(PiecesToPlot {
                     pieces,

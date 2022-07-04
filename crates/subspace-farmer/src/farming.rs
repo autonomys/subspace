@@ -20,7 +20,7 @@ use subspace_rpc_primitives::{
     RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use thiserror::Error;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -58,35 +58,39 @@ impl Farming {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = async_oneshot::oneshot();
 
+        let span = Span::current();
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let farming_handle = tokio::spawn(async move {
-            match future::select(
-                Box::pin(subscribe_to_slot_info(
-                    single_plot_farm_id,
-                    &client,
-                    &plot,
-                    &commitments,
-                    single_disk_semaphore,
-                    &identity,
-                    reward_address,
-                )),
-                stop_receiver,
-            )
-            .await
-            {
-                Either::Left((farming_result, _)) => {
-                    if let Err(val) = farming_result {
-                        return Err(val);
+        let farming_handle = tokio::spawn(
+            async move {
+                match future::select(
+                    Box::pin(subscribe_to_slot_info(
+                        single_plot_farm_id,
+                        &client,
+                        &plot,
+                        &commitments,
+                        single_disk_semaphore,
+                        &identity,
+                        reward_address,
+                    )),
+                    stop_receiver,
+                )
+                .await
+                {
+                    Either::Left((farming_result, _)) => {
+                        if let Err(val) = farming_result {
+                            return Err(val);
+                        }
+                    }
+                    // either Sender is dropped, or a stop message is received.
+                    // in both cases, we stop the process and return Ok(())
+                    Either::Right((_, _)) => {
+                        info!("Farming stopped!");
                     }
                 }
-                // either Sender is dropped, or a stop message is received.
-                // in both cases, we stop the process and return Ok(())
-                Either::Right((_, _)) => {
-                    info!("Farming stopped!");
-                }
+                Ok(())
             }
-            Ok(())
-        });
+            .instrument(span),
+        );
 
         Farming {
             stop_sender,
@@ -136,6 +140,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .subscribe_reward_signing()
         .await
         .map_err(FarmingError::RpcError)?;
+    let span = Span::current();
 
     let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
         let identity = identity.clone();
@@ -172,6 +177,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 }
             }
         }
+        .instrument(span)
     }));
 
     let mut salts = Salts::default();
@@ -279,6 +285,7 @@ fn update_commitments(
             let plot = plot.clone();
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
+            let span = info_span!("recommit", new_salt = %hex::encode(salt));
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -286,19 +293,16 @@ fn update_commitments(
                     hex::encode(salt)
                 ))
                 .spawn(move || {
-                    let _guard = single_disk_semaphore.acquire();
+                    let _single_disk_semaphore_guard = single_disk_semaphore.acquire();
+                    let _span_guard = span.enter();
 
                     let started = Instant::now();
-                    info!(
-                        new_salt = %hex::encode(salt),
-                        "Salt updated, recommitting in background",
-                    );
+                    info!("Salt updated, recommitting in background");
 
                     if let Err(error) = commitments.create(salt, plot) {
-                        error!(salt = %hex::encode(salt), %error, "Failed to create commitment");
+                        error!(%error, "Failed to create commitment");
                     } else {
                         info!(
-                            salt = %hex::encode(salt),
                             took_seconds = started.elapsed().as_secs_f32(),
                             "Finished recommitment",
                         );
@@ -321,6 +325,7 @@ fn update_commitments(
             let plot = plot.clone();
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
+            let span = info_span!("recommit", next_salt = %hex::encode(new_next_salt));
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -328,7 +333,8 @@ fn update_commitments(
                     hex::encode(new_next_salt)
                 ))
                 .spawn(move || {
-                    let _guard = single_disk_semaphore.acquire();
+                    let _single_disk_semaphore_guard = single_disk_semaphore.acquire();
+                    let _span_guard = span.enter();
 
                     // Wait for current recommitment to finish if it is in progress
                     if let Some(receiver) = current_recommitment_done_receiver {
@@ -337,20 +343,15 @@ fn update_commitments(
                     }
 
                     let started = Instant::now();
-                    info!(
-                        next_salt = %hex::encode(new_next_salt),
-                        "Salt will be updated, recommitting in background",
-                    );
+                    info!("Salt will be updated, recommitting in background");
                     if let Err(error) = commitments.create(new_next_salt, plot) {
                         error!(
-                            next_salt = %hex::encode(new_next_salt),
                             %error,
                             "Recommitting salt in background failed",
                         );
                         return;
                     }
                     info!(
-                        next_salt = %hex::encode(new_next_salt),
                         took_seconds = started.elapsed().as_secs_f32(),
                         "Finished recommitment in background",
                     );
