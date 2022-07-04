@@ -149,6 +149,7 @@ where
 	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 	E: CodeExecutor,
 {
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		primary_chain_client: Arc<PClient>,
 		primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,

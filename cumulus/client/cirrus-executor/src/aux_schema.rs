@@ -299,6 +299,7 @@ mod tests {
 	use super::*;
 	use cirrus_test_service::runtime::Block;
 	use sp_core::hash::H256;
+	use std::collections::HashSet;
 	use subspace_runtime_primitives::{BlockNumber, Hash};
 	use subspace_test_runtime::Block as PBlock;
 
@@ -506,5 +507,88 @@ mod tests {
 			assert!(target_receipt_is_pruned(PRUNING_DEPTH + 3, pruned));
 		});
 		assert_eq!(receipt_start(), Some(4));
+	}
+
+	#[test]
+	fn write_delete_prune_bad_receipt_works() {
+		let client = substrate_test_runtime_client::new();
+
+		let bad_receipts_at = |number: BlockNumber| -> Option<HashSet<Hash>> {
+			let bad_receipt_number_key = (BAD_RECEIPT_BLOCK_NUMBER, number).encode();
+			load_decode(&client, bad_receipt_number_key.as_slice())
+				.unwrap()
+				.map(|v: Vec<Hash>| v.into_iter().collect())
+		};
+
+		let trace_mismatch_index_for = |receipt_hash| -> Option<u32> {
+			load_decode(&client, bad_receipt_mismatch_index_key(receipt_hash).as_slice()).unwrap()
+		};
+
+		let bad_receipt_numbers = || -> Option<Vec<BlockNumber>> {
+			load_decode(&client, BAD_RECEIPT_NUMBERS.encode().as_slice()).unwrap()
+		};
+
+		let bad_receipt_hash1 = Hash::random();
+		let bad_receipt_hash2 = Hash::random();
+		let bad_receipt_hash3 = Hash::random();
+		write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash1, 1).unwrap();
+		assert_eq!(bad_receipt_numbers(), Some(vec![10]));
+		write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash2, 2).unwrap();
+		assert_eq!(bad_receipt_numbers(), Some(vec![10]));
+		write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash3, 3).unwrap();
+		assert_eq!(bad_receipt_numbers(), Some(vec![10]));
+
+		let bad_receipt_hash4 = Hash::random();
+		write_bad_receipt::<_, PBlock>(&client, 20, bad_receipt_hash4, 1).unwrap();
+		assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
+
+		assert_eq!(trace_mismatch_index_for(bad_receipt_hash1).unwrap(), 1);
+		assert_eq!(trace_mismatch_index_for(bad_receipt_hash2).unwrap(), 2);
+		assert_eq!(trace_mismatch_index_for(bad_receipt_hash3).unwrap(), 3);
+
+		assert_eq!(
+			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client, 1).unwrap(),
+			Some((10, bad_receipt_hash1, 1))
+		);
+
+		assert_eq!(
+			bad_receipts_at(10).unwrap(),
+			[bad_receipt_hash1, bad_receipt_hash2, bad_receipt_hash3].into(),
+		);
+		assert_eq!(bad_receipts_at(20).unwrap(), [bad_receipt_hash4].into());
+
+		assert!(delete_bad_receipt(&client, 10, bad_receipt_hash1).is_ok());
+		assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
+		assert!(trace_mismatch_index_for(bad_receipt_hash1).is_none());
+		assert_eq!(bad_receipts_at(10).unwrap(), [bad_receipt_hash2, bad_receipt_hash3].into());
+
+		assert!(delete_bad_receipt(&client, 10, bad_receipt_hash2).is_ok());
+		assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
+		assert!(trace_mismatch_index_for(bad_receipt_hash2).is_none());
+		assert_eq!(bad_receipts_at(10).unwrap(), [bad_receipt_hash3].into());
+
+		assert!(delete_bad_receipt(&client, 10, bad_receipt_hash3).is_ok());
+		assert_eq!(bad_receipt_numbers(), Some(vec![20]));
+		assert!(trace_mismatch_index_for(bad_receipt_hash3).is_none());
+		assert!(bad_receipts_at(10).is_none());
+		assert_eq!(
+			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client, 1).unwrap(),
+			Some((20, bad_receipt_hash4, 1))
+		);
+
+		assert!(delete_bad_receipt(&client, 20, bad_receipt_hash4).is_ok());
+		assert_eq!(
+			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client, 1).unwrap(),
+			None
+		);
+
+		let bad_receipt_hash5 = Hash::random();
+		write_bad_receipt::<_, PBlock>(&client, 30, bad_receipt_hash5, 1).unwrap();
+		assert_eq!(bad_receipt_numbers(), Some(vec![30]));
+		assert_eq!(bad_receipts_at(30).unwrap(), [bad_receipt_hash5].into());
+		// Expired bad receipts will be removed.
+		assert_eq!(load_first_unconfirmed_bad_receipt_info(&client, 31).unwrap(), None);
+		assert_eq!(bad_receipt_numbers(), None);
+		assert!(bad_receipts_at(30).is_none());
 	}
 }
