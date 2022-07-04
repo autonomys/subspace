@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::Formatter;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
@@ -155,18 +155,26 @@ impl SinglePlotPlotter {
     }
 }
 
-pub(crate) struct SinglePlotFarmOptions<C, NewPlot>
-where
-    C: RpcClient,
-    NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
-{
+pub struct PlotFactoryOptions<'a> {
+    pub single_plot_farm_id: &'a SinglePlotFarmId,
+    pub public_key: PublicKey,
+    pub plot_directory: &'a Path,
+    pub metadata_directory: &'a Path,
+    pub max_piece_count: u64,
+}
+
+pub trait PlotFactory =
+    Fn(PlotFactoryOptions<'_>) -> Result<Plot, PlotError> + Send + Sync + 'static;
+
+pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) id: SinglePlotFarmId,
+    pub(crate) plot_directory: PathBuf,
     pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
-    pub(crate) max_plot_pieces: u64,
+    pub(crate) max_piece_count: u64,
     pub(crate) farmer_metadata: FarmerMetadata,
-    pub(crate) farming_client: C,
-    pub(crate) plot_factory: NewPlot,
+    pub(crate) farming_client: RC,
+    pub(crate) plot_factory: &'a PF,
     pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
@@ -193,18 +201,17 @@ pub struct SinglePlotFarm {
 }
 
 impl SinglePlotFarm {
-    pub(crate) fn new<C, NewPlot>(
-        options: SinglePlotFarmOptions<C, NewPlot>,
-    ) -> anyhow::Result<Self>
+    pub(crate) fn new<RC, PF>(options: SinglePlotFarmOptions<'_, RC, PF>) -> anyhow::Result<Self>
     where
-        C: RpcClient,
-        NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+        RC: RpcClient,
+        PF: PlotFactory,
     {
         let SinglePlotFarmOptions {
             id,
+            plot_directory,
             metadata_directory,
             plot_index,
-            max_plot_pieces,
+            max_piece_count,
             farmer_metadata,
             farming_client,
             plot_factory,
@@ -228,7 +235,13 @@ impl SinglePlotFarm {
         // TODO: This doesn't account for the fact that node can
         //  have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = plot_factory(plot_index, public_key, max_plot_pieces)?;
+        let plot = plot_factory(PlotFactoryOptions {
+            single_plot_farm_id: &id,
+            public_key,
+            plot_directory: &plot_directory,
+            metadata_directory: &metadata_directory,
+            max_piece_count,
+        })?;
 
         info!("Opening object mappings");
         let object_mappings =

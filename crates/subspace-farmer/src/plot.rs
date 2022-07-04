@@ -132,7 +132,7 @@ impl fmt::Debug for Plot {
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create(
-        single_plot_farm_id: SinglePlotFarmId,
+        single_plot_farm_id: &SinglePlotFarmId,
         plot_directory: &Path,
         metadata_directory: &Path,
         public_key: PublicKey,
@@ -156,7 +156,7 @@ impl Plot {
 
     /// Creates a new plot from any kind of plot file
     pub fn with_plot_file<P>(
-        single_plot_farm_id: SinglePlotFarmId,
+        single_plot_farm_id: &SinglePlotFarmId,
         plot: P,
         metadata_directory: &Path,
         public_key: PublicKey,

@@ -1,4 +1,11 @@
-#![feature(try_blocks, hash_drain_filter, int_log, io_error_other, map_first_last)]
+#![feature(
+    hash_drain_filter,
+    int_log,
+    io_error_other,
+    map_first_last,
+    trait_alias,
+    try_blocks
+)]
 
 //! # `subspace-farmer` library implementation overview
 //!

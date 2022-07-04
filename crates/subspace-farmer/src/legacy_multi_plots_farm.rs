@@ -1,9 +1,8 @@
 use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
-use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskFarmPieceGetter;
-use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
+use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
@@ -63,8 +62,17 @@ pub struct LegacyMultiPlotsFarm {
 
 impl LegacyMultiPlotsFarm {
     /// Starts multiple farmers with any plot sizes which user gives
-    pub async fn new<C: RpcClient>(
-        Options {
+    pub async fn new<RC, PF>(
+        options: Options<RC>,
+        allocated_space: u64,
+        max_plot_size: u64,
+        plot_factory: PF,
+    ) -> anyhow::Result<Self>
+    where
+        RC: RpcClient,
+        PF: PlotFactory,
+    {
+        let Options {
             base_directory,
             archiving_client,
             farming_client,
@@ -75,15 +83,7 @@ impl LegacyMultiPlotsFarm {
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
-        }: Options<C>,
-        allocated_space: u64,
-        max_plot_size: u64,
-        plot_factory: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    ) -> anyhow::Result<Self> {
+        } = options;
         let plot_sizes = get_plot_sizes(allocated_space, max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
@@ -99,24 +99,25 @@ impl LegacyMultiPlotsFarm {
                 .par_iter()
                 .map(|&plot_size| plot_size / PIECE_SIZE as u64)
                 .enumerate()
-                .map(|(plot_index, max_plot_pieces)| {
+                .map(move |(plot_index, max_piece_count)| {
                     let _guard = handle.enter();
 
+                    let plot_directory = base_directory.join(format!("plot{plot_index}"));
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
-                    let plot_factory = plot_factory.clone();
                     let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
                     let first_listen_on = Arc::clone(&first_listen_on);
 
                     SinglePlotFarm::new(SinglePlotFarmOptions {
                         id: plot_index.into(),
+                        plot_directory,
                         metadata_directory,
                         plot_index,
-                        max_plot_pieces,
+                        max_piece_count,
                         farmer_metadata,
                         farming_client,
-                        plot_factory,
+                        plot_factory: &plot_factory,
                         listen_on,
                         bootstrap_nodes,
                         first_listen_on,

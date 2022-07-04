@@ -15,7 +15,7 @@ async fn main() {
     let pieces = Arc::new(pieces.try_into().unwrap());
 
     let plot = Plot::open_or_create(
-        0usize.into(),
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),

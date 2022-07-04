@@ -1,6 +1,7 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
+use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{ObjectMappings, Plot};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
@@ -164,15 +165,13 @@ async fn test_dsn_sync() {
     .unwrap()
     .unwrap();
 
-    let base_path = seeder_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
+    let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
-            plot_index.into(),
-            &base_path,
-            &base_path,
-            public_key,
-            max_piece_count,
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_piece_count,
         )
     };
 
@@ -289,15 +288,13 @@ async fn test_dsn_sync() {
     .unwrap()
     .unwrap();
 
-    let base_path = syncer_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
+    let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
-            plot_index.into(),
-            &base_path,
-            &base_path,
-            public_key,
-            max_piece_count,
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_piece_count,
         )
     };
 

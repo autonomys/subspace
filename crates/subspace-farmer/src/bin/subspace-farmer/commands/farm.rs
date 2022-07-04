@@ -6,6 +6,7 @@ use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
+use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
 use subspace_rpc_primitives::FarmerMetadata;
@@ -74,7 +75,7 @@ pub(crate) async fn farm(
 
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
-            base_directory: base_directory.clone(),
+            base_directory,
             archiving_client,
             farming_client,
             object_mappings: object_mappings.clone(),
@@ -87,14 +88,13 @@ pub(crate) async fn farm(
         },
         plot_size,
         max_plot_size,
-        move |plot_index, public_key, max_piece_count| {
-            let plot_directory = base_directory.join(format!("plot{plot_index}"));
+        move |options: PlotFactoryOptions<'_>| {
             Plot::open_or_create(
-                plot_index.into(),
-                &plot_directory,
-                &plot_directory,
-                public_key,
-                max_piece_count,
+                options.single_plot_farm_id,
+                options.plot_directory,
+                options.metadata_directory,
+                options.public_key,
+                options.max_piece_count,
             )
         },
     )
