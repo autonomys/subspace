@@ -3,6 +3,7 @@
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
+use sp_core::H256;
 use sp_executor::ExecutionReceipt;
 use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
@@ -10,11 +11,27 @@ use subspace_core_primitives::BlockNumber;
 const EXECUTION_RECEIPT_KEY: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
 const EXECUTION_RECEIPT_BLOCK_NUMBER: &[u8] = b"execution_receipt_block_number";
+
+/// bad_receipt_block_number => all_bad_signed_receipt_hashes_at_this_block
+const BAD_RECEIPT_BLOCK_NUMBER: &[u8] = b"bad_receipt_block_number";
+
+/// bad_signed_receipt_hash => trace_mismatch_index
+const BAD_RECEIPT_MISMATCH_INDEX_KEY: &[u8] = b"bad_receipt_mismatch_index";
+
+/// Set of block numbers at which there is at least one bad receipt detected.
+///
+/// NOTE: Unbounded but the size is not expected to be large.
+const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
+
 /// Prune the execution receipts when they reach this number.
 const PRUNING_DEPTH: BlockNumber = 1000;
 
 fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
 	(EXECUTION_RECEIPT_KEY, block_hash).encode()
+}
+
+fn bad_receipt_mismatch_index_key(signed_receipt_hash: impl Encode) -> Vec<u8> {
+	(BAD_RECEIPT_MISMATCH_INDEX_KEY, signed_receipt_hash).encode()
 }
 
 fn load_decode<Backend: AuxStore, T: Decode>(
@@ -101,6 +118,49 @@ pub(super) fn target_receipt_is_pruned(
 	target_block: BlockNumber,
 ) -> bool {
 	best_execution_chain_number.saturating_sub(target_block) >= PRUNING_DEPTH
+}
+
+/// Writes a bad execution receipt to aux storage.
+///
+/// Use `bad_signed_receipt_hash` instead of the hash of execution receipt as key to
+/// avoid the potential collision that two dishonest executors produced an identical
+/// invalid receipt even it's less likely.
+pub(super) fn write_bad_receipt<Backend, PBlock>(
+	backend: &Backend,
+	bad_receipt_number: NumberFor<PBlock>,
+	bad_signed_receipt_hash: H256,
+	trace_mismatch_index: u32,
+) -> Result<(), ClientError>
+where
+	Backend: AuxStore,
+	PBlock: BlockT,
+{
+	let bad_receipt_number_key = (BAD_RECEIPT_BLOCK_NUMBER, bad_receipt_number).encode();
+	let mut bad_receipt_hashes: Vec<H256> =
+		load_decode(backend, bad_receipt_number_key.as_slice())?.unwrap_or_default();
+	bad_receipt_hashes.push(bad_signed_receipt_hash);
+
+	let mut to_insert = vec![
+		(bad_receipt_number_key, bad_receipt_hashes.encode()),
+		(bad_receipt_mismatch_index_key(bad_signed_receipt_hash), trace_mismatch_index.encode()),
+	];
+
+	let mut bad_receipt_numbers: Vec<NumberFor<PBlock>> =
+		load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
+
+	// The first bad receipt detected at this block number.
+	if !bad_receipt_numbers.contains(&bad_receipt_number) {
+		bad_receipt_numbers.push(bad_receipt_number);
+
+		assert!(bad_receipt_numbers.is_sorted(), "Bad receipt numbers must be sorted");
+
+		to_insert.push((BAD_RECEIPT_NUMBERS.encode(), bad_receipt_numbers.encode()));
+	}
+
+	backend.insert_aux(
+		&to_insert.iter().map(|(k, v)| (&k[..], &v[..])).collect::<Vec<_>>()[..],
+		vec![],
+	)
 }
 
 #[cfg(test)]

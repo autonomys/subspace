@@ -466,10 +466,19 @@ where
 			>(&*self.client, signed_receipt.execution_receipt.secondary_hash)?
 			{
 				Some(local_receipt) => {
-					if crate::find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
-						.is_some()
-					{
+					if let Some(trace_mismatch_index) = crate::find_trace_mismatch(
+						&local_receipt,
+						&signed_receipt.execution_receipt,
+					) {
 						// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
+						crate::aux_schema::write_bad_receipt::<_, PBlock>(
+							&*self.client,
+							signed_receipt.execution_receipt.primary_number,
+							signed_receipt.hash(),
+							trace_mismatch_index
+								.try_into()
+								.expect("Trace mismatch index must fit into u32; qed"),
+						)?;
 					}
 				},
 				None => {
@@ -477,6 +486,12 @@ where
 					// on the primary chain points to an invalid secondary block.
 
 					// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
+					crate::aux_schema::write_bad_receipt::<_, PBlock>(
+						&*self.client,
+						signed_receipt.execution_receipt.primary_number,
+						signed_receipt.hash(),
+						0u32,
+					)?;
 				},
 			}
 		}
