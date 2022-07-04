@@ -231,9 +231,9 @@ pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
 impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
     SignedExecutionReceipt<Number, Hash, SecondaryHash>
 {
-    /// Returns the hash of inner execution receipt.
+    /// Returns the hash of signed execution receipt.
     pub fn hash(&self) -> H256 {
-        self.execution_receipt.hash()
+        BlakeTwo256::hash_of(self)
     }
 }
 
