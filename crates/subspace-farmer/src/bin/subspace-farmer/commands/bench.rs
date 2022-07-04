@@ -145,18 +145,23 @@ pub(crate) async fn bench(
     .await??;
 
     let base_path = base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index, public_key, max_piece_count| {
+    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
         let base_path = base_path.join(format!("plot{plot_index}"));
         match write_to_disk {
             WriteToDisk::Nothing => Plot::with_plot_file(
+                plot_index.into(),
                 BenchPlotMock::new(max_piece_count),
                 &base_path,
                 public_key,
                 max_piece_count,
             ),
-            WriteToDisk::Everything => {
-                Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
-            }
+            WriteToDisk::Everything => Plot::open_or_create(
+                plot_index.into(),
+                &base_path,
+                &base_path,
+                public_key,
+                max_piece_count,
+            ),
         }
     };
 

@@ -11,8 +11,12 @@ use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError, ObjectMappings};
+use derive_more::From;
 use futures::future::try_join;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::fmt::Formatter;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,9 +33,32 @@ use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, info_span, trace, warn};
+use ulid::Ulid;
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
+
+/// An identifier for single plot farm, can be used for in logs, thread names, etc.
+#[derive(
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, From,
+)]
+#[serde(untagged)]
+pub enum SinglePlotFarmId {
+    /// Legacy ID for farm identified by index
+    // TODO: Remove index once legacy multi plots farm is gone
+    Index(usize),
+    /// New farm ID
+    Ulid(Ulid),
+}
+
+impl fmt::Display for SinglePlotFarmId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SinglePlotFarmId::Index(id) => id.fmt(f),
+            SinglePlotFarmId::Ulid(id) => id.fmt(f),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SinglePlotPieceGetter {
@@ -133,6 +160,7 @@ where
     C: RpcClient,
     NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
 {
+    pub(crate) id: SinglePlotFarmId,
     pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
     pub(crate) max_plot_pieces: u64,
@@ -153,6 +181,7 @@ where
 // TODO: Make fields private
 #[must_use = "Farm does not function properly unless run() method is called"]
 pub struct SinglePlotFarm {
+    id: SinglePlotFarmId,
     public_key: PublicKey,
     codec: SubspaceCodec,
     plot: Plot,
@@ -180,6 +209,7 @@ impl SinglePlotFarm {
         NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
     {
         let SinglePlotFarmOptions {
+            id,
             metadata_directory,
             plot_index,
             max_plot_pieces,
@@ -194,13 +224,17 @@ impl SinglePlotFarm {
             enable_dsn_archiving,
             enable_dsn_sync,
         } = options;
+
+        let span = info_span!("single_plot_farm", %id);
+        let _enter = span.enter();
+
         std::fs::create_dir_all(&metadata_directory)?;
 
         let identity = Identity::open_or_create(&metadata_directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
         // TODO: This doesn't account for the fact that node can
-        // have a completely different history to what farmer expects
+        //  have a completely different history to what farmer expects
         info!("Opening plot");
         let plot = plot_factory(plot_index, public_key, max_plot_pieces)?;
 
@@ -336,6 +370,7 @@ impl SinglePlotFarm {
         // Start the farming task
         let farming = enable_farming.then(|| {
             Farming::start(
+                id,
                 plot.clone(),
                 commitments.clone(),
                 farming_client,
@@ -345,6 +380,7 @@ impl SinglePlotFarm {
         });
 
         let mut farm = Self {
+            id,
             public_key,
             codec,
             plot,
@@ -358,6 +394,7 @@ impl SinglePlotFarm {
         // Start DSN archiving
         if enable_dsn_archiving {
             let archiving_fut = start_archiving(
+                id,
                 farmer_metadata.record_size,
                 farmer_metadata.recorded_history_segment_size,
                 object_mappings,
@@ -400,6 +437,11 @@ impl SinglePlotFarm {
         }
 
         Ok(farm)
+    }
+
+    /// ID of this farm
+    pub fn id(&self) -> &SinglePlotFarmId {
+        &self.id
     }
 
     /// Public key associated with this farm

@@ -5,6 +5,7 @@ mod tests;
 mod worker;
 
 use crate::plot::worker::{PlotWorker, Request, RequestPriority, RequestWithPriority, WriteResult};
+use crate::single_plot_farm::SinglePlotFarmId;
 use event_listener_primitives::{Bag, HandlerId};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -12,12 +13,12 @@ use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
-use std::{fmt, io};
+use std::{fmt, io, thread};
 use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, Span};
 
 /// Distance to piece index hash from farmer identity
 pub type PieceDistance = U256;
@@ -68,6 +69,8 @@ pub enum PlotError {
     IndexDbOpen(rocksdb::Error),
     #[error("Offset DB open error: {0}")]
     OffsetDbOpen(io::Error),
+    #[error("Failed to spawn plot worker thread: {0}")]
+    WorkerSpawn(io::Error),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -129,6 +132,7 @@ impl fmt::Debug for Plot {
 impl Plot {
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create(
+        single_plot_farm_id: SinglePlotFarmId,
         plot_directory: &Path,
         metadata_directory: &Path,
         public_key: PublicKey,
@@ -141,11 +145,18 @@ impl Plot {
             .open(plot_directory.join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
 
-        Self::with_plot_file(plot, metadata_directory, public_key, max_piece_count)
+        Self::with_plot_file(
+            single_plot_farm_id,
+            plot,
+            metadata_directory,
+            public_key,
+            max_piece_count,
+        )
     }
 
     /// Creates a new plot from any kind of plot file
     pub fn with_plot_file<P>(
+        single_plot_farm_id: SinglePlotFarmId,
         plot: P,
         metadata_directory: &Path,
         public_key: PublicKey,
@@ -159,7 +170,16 @@ impl Plot {
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
         let piece_count = Arc::clone(plot_worker.piece_count());
-        tokio::task::spawn_blocking(move || plot_worker.run(requests_receiver));
+
+        let span = Span::current();
+        thread::Builder::new()
+            .name(format!("plot-worker-{single_plot_farm_id}"))
+            .spawn(move || {
+                let _guard = span.enter();
+
+                plot_worker.run(requests_receiver);
+            })
+            .map_err(PlotError::WorkerSpawn)?;
 
         let inner = Inner {
             handlers: Handlers::default(),

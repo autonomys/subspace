@@ -36,6 +36,7 @@ async fn plotting_happy_path() {
 
     let public_key = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(
+        0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -124,6 +125,7 @@ async fn plotting_piece_eviction() {
     let public_key = identity.public_key().to_bytes().into();
     let salt = Salt::default();
     let plot = Plot::open_or_create(
+        0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,

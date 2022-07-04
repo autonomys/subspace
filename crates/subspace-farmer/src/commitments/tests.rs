@@ -21,6 +21,7 @@ async fn create() {
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
     let plot = Plot::open_or_create(
+        0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -47,6 +48,7 @@ async fn find_by_tag() {
     let salt: Salt = [1u8; 8];
 
     let plot = Plot::open_or_create(
+        0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -135,6 +137,7 @@ async fn remove_commitments() {
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
     let plot = Plot::open_or_create(
+        0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),

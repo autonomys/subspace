@@ -106,6 +106,7 @@ impl LegacyMultiPlotsFarm {
                     let first_listen_on = Arc::clone(&first_listen_on);
 
                     SinglePlotFarm::new(SinglePlotFarmOptions {
+                        id: plot_index.into(),
                         metadata_directory,
                         plot_index,
                         max_plot_pieces,

@@ -1,23 +1,36 @@
 use crate::object_mappings::ObjectMappings;
-use crate::single_plot_farm::SinglePlotPlotter;
+use crate::single_plot_farm::{SinglePlotFarmId, SinglePlotPlotter};
 use futures::StreamExt;
 use parity_scale_codec::Decode;
+use std::{io, thread};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_networking::{Node, PiecesToPlot, SubscribeError};
+use thiserror::Error;
 use tokio::sync::oneshot;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Span};
+
+#[derive(Debug, Error)]
+pub(super) enum StartDsnArchivingError {
+    /// Failed to subscribe for archived segments
+    #[error("Failed to subscribe for archived segments from DSN: {0}")]
+    DsnSubscribe(#[from] SubscribeError),
+    /// Failed to spawn archiving thread
+    #[error("Failed to spawn archiving thread: {0}")]
+    ArchivingThread(io::Error),
+}
 
 // TODO: No verification whatsoever for now, must be added soon
 /// `on_pieces_to_plot` must return `true` unless archiving is no longer necessary
 pub(super) async fn start_archiving(
+    single_plot_farm_id: SinglePlotFarmId,
     record_size: u32,
     recorded_history_segment_size: u32,
     object_mappings: ObjectMappings,
     node: Node,
     plotter: SinglePlotPlotter,
-) -> Result<(), SubscribeError> {
+) -> Result<(), StartDsnArchivingError> {
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
@@ -25,50 +38,56 @@ pub(super) async fn start_archiving(
         std::sync::mpsc::sync_channel::<(ArchivedSegment, oneshot::Sender<()>)>(5);
 
     // TODO: This must be sequentialized across single disk plot
-    // Erasure coding in archiver and piece encoding are CPU-intensive operations.
-    tokio::task::spawn_blocking({
-        move || {
-            let mut last_archived_segment_index = None;
-            while let Ok((archived_segment, acknowledgement_sender)) =
-                archived_segments_sync_receiver.recv()
-            {
-                let ArchivedSegment {
-                    root_block,
-                    pieces,
-                    object_mapping,
-                } = archived_segment;
-                let segment_index = root_block.segment_index();
-                if last_archived_segment_index == Some(segment_index) {
-                    continue;
-                }
-                last_archived_segment_index.replace(segment_index);
+    let span = Span::current();
+    // Piece encoding are CPU-intensive operations.
+    thread::Builder::new()
+        .name(format!("dsn-archiving-{single_plot_farm_id}"))
+        .spawn({
+            move || {
+                let _guard = span.enter();
 
-                let piece_index_offset = merkle_num_leaves * segment_index;
+                let mut last_archived_segment_index = None;
+                while let Ok((archived_segment, acknowledgement_sender)) =
+                    archived_segments_sync_receiver.recv()
+                {
+                    let ArchivedSegment {
+                        root_block,
+                        pieces,
+                        object_mapping,
+                    } = archived_segment;
+                    let segment_index = root_block.segment_index();
+                    if last_archived_segment_index == Some(segment_index) {
+                        continue;
+                    }
+                    last_archived_segment_index.replace(segment_index);
 
-                let pieces_to_plot = PiecesToPlot {
-                    piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
-                    pieces,
-                };
-                if let Err(error) = plotter.plot_pieces(pieces_to_plot) {
-                    error!(%error, "Failed to plot pieces from DSN");
-                    break;
-                }
+                    let piece_index_offset = merkle_num_leaves * segment_index;
 
-                let object_mapping =
-                    create_global_object_mapping(piece_index_offset, object_mapping);
+                    let pieces_to_plot = PiecesToPlot {
+                        piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
+                        pieces,
+                    };
+                    if let Err(error) = plotter.plot_pieces(pieces_to_plot) {
+                        error!(%error, "Failed to plot pieces from DSN");
+                        break;
+                    }
 
-                if let Err(error) = object_mappings.store(&object_mapping) {
-                    error!(%error, "Failed to store object mappings for pieces");
-                }
+                    let object_mapping =
+                        create_global_object_mapping(piece_index_offset, object_mapping);
 
-                info!(segment_index, "Plotted segment");
+                    if let Err(error) = object_mappings.store(&object_mapping) {
+                        error!(%error, "Failed to store object mappings for pieces");
+                    }
 
-                if let Err(()) = acknowledgement_sender.send(()) {
-                    error!("Failed to send archived segment acknowledgement");
+                    info!(segment_index, "Plotted segment");
+
+                    if let Err(()) = acknowledgement_sender.send(()) {
+                        error!("Failed to send archived segment acknowledgement");
+                    }
                 }
             }
-        }
-    });
+        })
+        .map_err(StartDsnArchivingError::ArchivingThread)?;
 
     info!("Subscribing to pubsub archiving...");
     let mut archived_segments = node

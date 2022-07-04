@@ -90,6 +90,7 @@ pub(crate) async fn farm(
         move |plot_index, public_key, max_piece_count| {
             let plot_directory = base_directory.join(format!("plot{plot_index}"));
             Plot::open_or_create(
+                plot_index.into(),
                 &plot_directory,
                 &plot_directory,
                 public_key,

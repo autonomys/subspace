@@ -28,6 +28,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let public_key = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(
+        0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -45,6 +46,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     // start the farming task
     let mut farming_instance = Farming::start(
+        0usize.into(),
         plot.clone(),
         commitments.clone(),
         client.clone(),
