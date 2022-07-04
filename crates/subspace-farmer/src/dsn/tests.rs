@@ -405,9 +405,9 @@ async fn test_dsn_sync() {
         ),
     };
 
-    syncer_client.stop().await;
+    drop(syncer_client);
 
     drop(seeder_archived_segments_sender);
-    seeder_client.stop().await;
+    drop(seeder_client);
     seeder_multi_farming_finished_receiver.await.unwrap();
 }

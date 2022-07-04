@@ -9,6 +9,7 @@ use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
+use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError, ObjectMappings};
 use derive_more::From;
@@ -32,7 +33,6 @@ use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::task::JoinHandle;
 use tracing::{error, info, info_span, trace, warn};
 use ulid::Ulid;
 
@@ -189,15 +189,7 @@ pub struct SinglePlotFarm {
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
-    background_task_handles: Vec<JoinHandle<()>>,
-}
-
-impl Drop for SinglePlotFarm {
-    fn drop(&mut self) {
-        for handle in &self.background_task_handles {
-            handle.abort();
-        }
-    }
+    background_task_handles: Vec<AbortingJoinHandle<()>>,
 }
 
 impl SinglePlotFarm {
@@ -409,7 +401,8 @@ impl SinglePlotFarm {
                 }
             });
 
-            farm.background_task_handles.push(dsn_archiving_handle);
+            farm.background_task_handles
+                .push(AbortingJoinHandle::new(dsn_archiving_handle));
         }
 
         // Start DSN syncing
@@ -433,7 +426,8 @@ impl SinglePlotFarm {
                 }
             });
 
-            farm.background_task_handles.push(dsn_sync_handle);
+            farm.background_task_handles
+                .push(AbortingJoinHandle::new(dsn_sync_handle));
         }
 
         Ok(farm)

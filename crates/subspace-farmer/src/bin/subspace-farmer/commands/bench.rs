@@ -254,6 +254,7 @@ pub(crate) async fn bench(
             break;
         }
     }
+    drop(archived_segments_sender);
 
     let took = start.elapsed();
 
@@ -314,7 +315,7 @@ pub(crate) async fn bench(
         );
     }
 
-    client.stop().await;
+    drop(client);
     multi_farming.wait().await?;
 
     Ok(())

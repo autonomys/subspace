@@ -8,6 +8,7 @@ use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::SinglePlotFarmId;
+use crate::utils::AbortingJoinHandle;
 use futures::future::{Either, Fuse, FusedFuture};
 use futures::{future, FutureExt, StreamExt};
 use std::sync::mpsc;
@@ -18,7 +19,6 @@ use subspace_rpc_primitives::{
     RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use thiserror::Error;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug, Error)]
@@ -39,7 +39,7 @@ pub enum FarmingError {
 /// in its `Commitments` database.
 pub struct Farming {
     stop_sender: async_oneshot::Sender<()>,
-    handle: Fuse<JoinHandle<Result<(), FarmingError>>>,
+    handle: Fuse<AbortingJoinHandle<Result<(), FarmingError>>>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
@@ -87,7 +87,7 @@ impl Farming {
 
         Farming {
             stop_sender,
-            handle: farming_handle.fuse(),
+            handle: AbortingJoinHandle::new(farming_handle).fuse(),
         }
     }
 
@@ -113,14 +113,6 @@ struct Salts {
     next: Option<Salt>,
 }
 
-struct AbortOnDrop<T>(JoinHandle<T>);
-
-impl<T> Drop for AbortOnDrop<T> {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
 /// Subscribes to slots, and tries to find a solution for them
 async fn subscribe_to_slot_info<T: RpcClient>(
     single_plot_farm_id: SinglePlotFarmId,
@@ -141,7 +133,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .await
         .map_err(FarmingError::RpcError)?;
 
-    let _reward_signing_task = AbortOnDrop(tokio::spawn({
+    let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
         let identity = identity.clone();
         let client = client.clone();
 
