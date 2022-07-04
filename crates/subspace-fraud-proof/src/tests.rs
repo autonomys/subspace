@@ -224,6 +224,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let parent_number_alice = ferdie.client.info().best_number;
 
     let fraud_proof = FraudProof {
+        bad_signed_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: *parent_header.state_root(),
@@ -280,6 +281,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         );
 
         let fraud_proof = FraudProof {
+            bad_signed_receipt_hash: Hash::random(),
             parent_number: parent_number_alice,
             parent_hash: parent_hash_alice,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
@@ -325,6 +327,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     assert_eq!(post_execution_root, *header.state_root());
 
     let fraud_proof = FraudProof {
+        bad_signed_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: intermediate_roots.last().unwrap().into(),
@@ -486,6 +489,7 @@ async fn invalid_execution_proof_should_not_work() {
     let parent_number_alice = ferdie.client.info().best_number;
 
     let fraud_proof = FraudProof {
+        bad_signed_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
@@ -496,6 +500,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let fraud_proof = FraudProof {
+        bad_signed_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
@@ -506,6 +511,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let fraud_proof = FraudProof {
+        bad_signed_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,

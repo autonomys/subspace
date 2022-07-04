@@ -79,6 +79,7 @@ where
 		&self,
 		local_trace_index: usize,
 		local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+		bad_signed_receipt_hash: H256,
 	) -> Result<FraudProof, FraudProofError> {
 		let block_hash = local_receipt.secondary_hash;
 		let block_number: BlockNumber = local_receipt
@@ -129,6 +130,7 @@ where
 			)?;
 
 			FraudProof {
+				bad_signed_receipt_hash,
 				parent_number,
 				parent_hash: as_h256(&parent_header.hash())?,
 				pre_state_root,
@@ -163,6 +165,7 @@ where
 			)?;
 
 			FraudProof {
+				bad_signed_receipt_hash,
 				parent_number,
 				parent_hash: as_h256(&parent_header.hash())?,
 				pre_state_root,
@@ -184,6 +187,7 @@ where
 
 			// TODO: proof should be a CompactProof.
 			FraudProof {
+				bad_signed_receipt_hash,
 				parent_number,
 				parent_hash: as_h256(&parent_header.hash())?,
 				pre_state_root,

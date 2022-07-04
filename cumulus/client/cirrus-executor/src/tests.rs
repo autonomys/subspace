@@ -118,6 +118,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 	let parent_number_ferdie = *header_ferdie.number();
 
 	let valid_fraud_proof = FraudProof {
+		bad_signed_receipt_hash: Hash::random(),
 		parent_number: parent_number_ferdie,
 		parent_hash: parent_hash_ferdie,
 		pre_state_root: *parent_header.state_root(),

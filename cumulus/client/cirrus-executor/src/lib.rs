@@ -616,6 +616,8 @@ where
 		&self,
 		signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
 	) -> Result<Action, Self::Error> {
+		let signed_receipt_hash = signed_execution_receipt.hash();
+
 		let SignedExecutionReceipt { execution_receipt, signature, signer } =
 			signed_execution_receipt;
 
@@ -693,9 +695,11 @@ where
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
 		if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-			let fraud_proof = self
-				.fraud_proof_generator
-				.generate_proof::<PBlock>(trace_mismatch_index, &local_receipt)?;
+			let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
+				trace_mismatch_index,
+				&local_receipt,
+				signed_receipt_hash,
+			)?;
 
 			self.submit_fraud_proof(fraud_proof);
 
