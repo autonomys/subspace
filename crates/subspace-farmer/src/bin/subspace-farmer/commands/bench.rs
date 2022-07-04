@@ -257,7 +257,7 @@ pub(crate) async fn bench(
 
     let space_allocated = get_size(base_directory)?;
     let actual_space_pledged = multi_farming
-        .single_plot_farms
+        .single_plot_farms()
         .iter()
         .map(|single_plot_farm| single_plot_farm.plot().piece_count())
         .sum::<u64>()
@@ -289,7 +289,7 @@ pub(crate) async fn bench(
         let start = Instant::now();
 
         let mut tasks = multi_farming
-            .single_plot_farms
+            .single_plot_farms()
             .iter()
             .map(|single_plot_farm| {
                 (

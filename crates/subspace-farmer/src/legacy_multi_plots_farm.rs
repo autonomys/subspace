@@ -56,7 +56,7 @@ pub struct Options<C> {
 /// It is needed because of the limit of a single plot size from the consensus
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct LegacyMultiPlotsFarm {
-    pub single_plot_farms: Vec<SinglePlotFarm>,
+    single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Option<Archiving>,
 }
 
@@ -164,6 +164,10 @@ impl LegacyMultiPlotsFarm {
             single_plot_farms,
             archiving,
         })
+    }
+
+    pub fn single_plot_farms(&self) -> &'_ [SinglePlotFarm] {
+        &self.single_plot_farms
     }
 
     pub fn piece_getter(&self) -> SingleDiskFarmPieceGetter {

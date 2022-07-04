@@ -240,14 +240,17 @@ async fn test_dsn_sync() {
     };
 
     let (seeder_address_sender, mut seeder_address_receiver) = mpsc::unbounded();
-    seeder_multi_farming.single_plot_farms[0]
+    seeder_multi_farming.single_plot_farms()[0]
         .node()
         .on_new_listener(Arc::new(move |address| {
             let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
 
-    let peer_id = seeder_multi_farming.single_plot_farms[0].node().id().into();
+    let peer_id = seeder_multi_farming.single_plot_farms()[0]
+        .node()
+        .id()
+        .into();
 
     let (seeder_multi_farming_finished_sender, seeder_multi_farming_finished_receiver) =
         oneshot::channel();
@@ -321,14 +324,14 @@ async fn test_dsn_sync() {
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
-    let plot = syncer_multi_farming.single_plot_farms[0].plot().clone();
-    let dsn_sync = syncer_multi_farming.single_plot_farms[0].dsn_sync(
+    let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
+    let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync(
         syncer_max_plot_size,
         seeder_max_plot_size,
         range_size,
     );
     let public_key = U256::from_big_endian(
-        syncer_multi_farming.single_plot_farms[0]
+        syncer_multi_farming.single_plot_farms()[0]
             .public_key()
             .as_ref(),
     );
