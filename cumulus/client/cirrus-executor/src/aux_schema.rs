@@ -163,6 +163,51 @@ where
 	)
 }
 
+pub(super) fn delete_bad_receipt<Backend: AuxStore>(
+	backend: &Backend,
+	block_number: BlockNumber,
+	signed_receipt_hash: H256,
+) -> Result<(), ClientError> {
+	let block_number_key = (BAD_RECEIPT_BLOCK_NUMBER, block_number).encode();
+	let mut hashes_at_block_number: Vec<H256> =
+		load_decode(backend, block_number_key.as_slice())?.unwrap_or_default();
+
+	if let Some(index) = hashes_at_block_number.iter().position(|&x| x == signed_receipt_hash) {
+		hashes_at_block_number.swap_remove(index);
+	} else {
+		return Err(ClientError::Backend(format!(
+			"Deleting an inexistent bad receipt {signed_receipt_hash:?}, available: {hashes_at_block_number:?}"
+		)))
+	}
+
+	let mut keys_to_delete = vec![bad_receipt_mismatch_index_key(signed_receipt_hash)];
+
+	let to_insert = if hashes_at_block_number.is_empty() {
+		keys_to_delete.push(block_number_key);
+
+		let mut bad_receipt_numbers: Vec<BlockNumber> =
+			load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.ok_or_else(|| {
+				ClientError::Backend("Stored bad receipt numbers must exist".into())
+			})?;
+		bad_receipt_numbers.retain(|x| *x != block_number);
+
+		if bad_receipt_numbers.is_empty() {
+			keys_to_delete.push(BAD_RECEIPT_NUMBERS.encode());
+
+			vec![]
+		} else {
+			vec![(BAD_RECEIPT_NUMBERS.encode(), bad_receipt_numbers.encode())]
+		}
+	} else {
+		vec![(block_number_key, hashes_at_block_number.encode())]
+	};
+
+	backend.insert_aux(
+		&to_insert.iter().map(|(k, v)| (&k[..], &v[..])).collect::<Vec<_>>()[..],
+		&keys_to_delete.iter().map(|k| &k[..]).collect::<Vec<_>>()[..],
+	)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
