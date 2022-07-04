@@ -1,7 +1,7 @@
 use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
-use crate::single_disk_farm::SingleDiskFarmPieceGetter;
+use crate::single_disk_farm::{SingleDiskFarmPieceGetter, SingleDiskSemaphore};
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
 use crate::utils::get_plot_sizes;
 use anyhow::anyhow;
@@ -74,6 +74,10 @@ impl LegacyMultiPlotsFarm {
             .await
             .map_err(|error| anyhow!(error))?;
 
+        // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
+        // unbounded.
+        let single_disk_semaphore = SingleDiskSemaphore::new(16);
+
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
             plot_sizes
@@ -89,6 +93,7 @@ impl LegacyMultiPlotsFarm {
                     let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
                     let first_listen_on = Arc::clone(&first_listen_on);
+                    let single_disk_semaphore = single_disk_semaphore.clone();
 
                     SinglePlotFarm::new(SinglePlotFarmOptions {
                         id: plot_index.into(),
@@ -102,6 +107,7 @@ impl LegacyMultiPlotsFarm {
                         listen_on,
                         bootstrap_nodes,
                         first_listen_on,
+                        single_disk_semaphore,
                         enable_farming,
                         reward_address,
                         enable_dsn_archiving,

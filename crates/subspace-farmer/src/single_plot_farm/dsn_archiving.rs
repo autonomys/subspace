@@ -37,7 +37,6 @@ pub(super) async fn start_archiving(
     let (archived_segments_sync_sender, archived_segments_sync_receiver) =
         std::sync::mpsc::sync_channel::<(ArchivedSegment, oneshot::Sender<()>)>(5);
 
-    // TODO: This must be sequentialized across single disk plot
     let span = Span::current();
     // Piece encoding are CPU-intensive operations.
     thread::Builder::new()

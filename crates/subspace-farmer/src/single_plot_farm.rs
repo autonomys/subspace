@@ -8,6 +8,7 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
@@ -123,14 +124,21 @@ pub struct SinglePlotPlotter {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
+    single_disk_semaphore: SingleDiskSemaphore,
 }
 
 impl SinglePlotPlotter {
-    fn new(codec: SubspaceCodec, weak_plot: Plot, commitments: Commitments) -> Self {
+    fn new(
+        codec: SubspaceCodec,
+        weak_plot: Plot,
+        commitments: Commitments,
+        single_disk_semaphore: SingleDiskSemaphore,
+    ) -> Self {
         Self {
             codec,
             plot: weak_plot,
             commitments,
+            single_disk_semaphore,
         }
     }
 
@@ -144,7 +152,10 @@ impl SinglePlotPlotter {
 
         let pieces = Arc::new(pieces);
 
-        let write_result = self.plot.write_many(Arc::clone(&pieces), piece_indexes)?;
+        // Limit concurrent updates on the same disk
+        let _guard = self.single_disk_semaphore.acquire();
+
+        let write_result = self.plot.write_many(pieces, piece_indexes)?;
 
         self.commitments
             .remove_pieces(write_result.evicted_pieces())?;
@@ -177,7 +188,9 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) plot_factory: &'a PF,
     pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
+    // TODO: Remove this field once we can use circuit relay with networking
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
+    pub(crate) single_disk_semaphore: SingleDiskSemaphore,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
     pub(crate) enable_dsn_archiving: bool,
@@ -197,6 +210,7 @@ pub struct SinglePlotFarm {
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
+    single_disk_semaphore: SingleDiskSemaphore,
     background_task_handles: Vec<AbortingJoinHandle<()>>,
 }
 
@@ -218,6 +232,7 @@ impl SinglePlotFarm {
             mut listen_on,
             mut bootstrap_nodes,
             first_listen_on,
+            single_disk_semaphore,
             enable_farming,
             reward_address,
             enable_dsn_archiving,
@@ -379,6 +394,7 @@ impl SinglePlotFarm {
                 plot.clone(),
                 commitments.clone(),
                 farming_client,
+                single_disk_semaphore.clone(),
                 identity,
                 reward_address,
             )
@@ -393,6 +409,7 @@ impl SinglePlotFarm {
             farming,
             node: node.clone(),
             node_runner,
+            single_disk_semaphore,
             background_task_handles: vec![],
         };
 
@@ -481,6 +498,7 @@ impl SinglePlotFarm {
             self.codec.clone(),
             self.plot.clone(),
             self.commitments.clone(),
+            self.single_disk_semaphore.clone(),
         )
     }
 

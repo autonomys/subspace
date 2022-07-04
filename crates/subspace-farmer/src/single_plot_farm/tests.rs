@@ -4,6 +4,7 @@ use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotPlotter;
 use crate::Archiving;
 use rand::prelude::*;
@@ -77,7 +78,12 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
-    let single_plot_plotter = SinglePlotPlotter::new(subspace_codec, plot.clone(), commitments);
+    let single_plot_plotter = SinglePlotPlotter::new(
+        subspace_codec,
+        plot.clone(),
+        commitments,
+        SingleDiskSemaphore::new(1),
+    );
 
     // Start archiving task
     let archiving_instance = Archiving::start(
@@ -178,8 +184,12 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
-    let single_plot_plotter =
-        SinglePlotPlotter::new(subspace_codec.clone(), plot.clone(), commitments.clone());
+    let single_plot_plotter = SinglePlotPlotter::new(
+        subspace_codec.clone(),
+        plot.clone(),
+        commitments.clone(),
+        SingleDiskSemaphore::new(1),
+    );
 
     // Start archiving task
     let archiving_instance = Archiving::start(

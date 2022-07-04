@@ -7,6 +7,7 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotFarmId;
 use crate::utils::AbortingJoinHandle;
 use futures::future::{Either, Fuse, FusedFuture};
@@ -50,6 +51,7 @@ impl Farming {
         plot: Plot,
         commitments: Commitments,
         client: T,
+        single_disk_semaphore: SingleDiskSemaphore,
         identity: Identity,
         reward_address: PublicKey,
     ) -> Self {
@@ -64,6 +66,7 @@ impl Farming {
                     &client,
                     &plot,
                     &commitments,
+                    single_disk_semaphore,
                     &identity,
                     reward_address,
                 )),
@@ -119,6 +122,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     client: &T,
     plot: &Plot,
     commitments: &Commitments,
+    single_disk_semaphore: SingleDiskSemaphore,
     identity: &Identity,
     reward_address: PublicKey,
 ) -> Result<(), FarmingError> {
@@ -181,6 +185,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             commitments,
             &mut salts,
             &slot_info,
+            &single_disk_semaphore,
         );
 
         let maybe_solution_handle = tokio::task::spawn_blocking({
@@ -256,6 +261,7 @@ fn update_commitments(
     commitments: &Commitments,
     salts: &mut Salts,
     slot_info: &SlotInfo,
+    single_disk_semaphore: &SingleDiskSemaphore,
 ) {
     let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
@@ -269,16 +275,19 @@ fn update_commitments(
 
             current_recommitment_done_receiver.replace(receiver);
 
-            // TODO: This must be sequentialized across single disk plot
             let salt = slot_info.salt;
             let plot = plot.clone();
             let commitments = commitments.clone();
+            let single_disk_semaphore = single_disk_semaphore.clone();
+
             let result = thread::Builder::new()
                 .name(format!(
                     "recommit-{}-{single_plot_farm_id}",
                     hex::encode(salt)
                 ))
                 .spawn(move || {
+                    let _guard = single_disk_semaphore.acquire();
+
                     let started = Instant::now();
                     info!(
                         new_salt = %hex::encode(salt),
@@ -311,14 +320,16 @@ fn update_commitments(
 
             let plot = plot.clone();
             let commitments = commitments.clone();
+            let single_disk_semaphore = single_disk_semaphore.clone();
 
-            // TODO: This must be sequentialized across single disk plot
             let result = thread::Builder::new()
                 .name(format!(
                     "recommit-{}-{single_plot_farm_id}",
                     hex::encode(new_next_salt)
                 ))
                 .spawn(move || {
+                    let _guard = single_disk_semaphore.acquire();
+
                     // Wait for current recommitment to finish if it is in progress
                     if let Some(receiver) = current_recommitment_done_receiver {
                         // Do not care about result here either
