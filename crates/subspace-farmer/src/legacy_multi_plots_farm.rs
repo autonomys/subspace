@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
+use tokio::runtime::Handle;
 use tracing::error;
 
 fn get_plot_sizes(allocated_space: u64, max_plot_size: u64) -> Vec<u64> {
@@ -93,11 +94,14 @@ impl LegacyMultiPlotsFarm {
             .map_err(|error| anyhow!(error))?;
 
         let single_plot_farms = tokio::task::spawn_blocking(move || {
+            let handle = Handle::current();
             plot_sizes
                 .par_iter()
                 .map(|&plot_size| plot_size / PIECE_SIZE as u64)
                 .enumerate()
                 .map(|(plot_index, max_plot_pieces)| {
+                    let _guard = handle.enter();
+
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
                     let plot_factory = plot_factory.clone();
