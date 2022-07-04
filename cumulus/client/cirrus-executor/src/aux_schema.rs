@@ -208,6 +208,92 @@ pub(super) fn delete_bad_receipt<Backend: AuxStore>(
 	)
 }
 
+fn delete_expired_bad_receipt_info_at<Backend: AuxStore, Number: Encode>(
+	backend: &Backend,
+	block_number: Number,
+) -> Result<(), sp_blockchain::Error> {
+	let block_number_key = (BAD_RECEIPT_BLOCK_NUMBER, block_number).encode();
+
+	let bad_receipt_hashes: Vec<H256> =
+		load_decode(backend, block_number_key.as_slice())?.unwrap_or_default();
+
+	let keys_to_delete = bad_receipt_hashes
+		.into_iter()
+		.map(bad_receipt_mismatch_index_key)
+		.chain(std::iter::once(block_number_key))
+		.collect::<Vec<_>>();
+
+	backend.insert_aux([], &keys_to_delete.iter().map(|k| &k[..]).collect::<Vec<_>>()[..])
+}
+
+/// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
+///
+/// Bad receipts which are older than `oldest_receipt_number` are expired and will be pruned.
+pub(super) fn load_first_unconfirmed_bad_receipt_info<
+	Backend: AuxStore,
+	Number: Copy + Decode + Encode + PartialOrd + std::fmt::Debug,
+>(
+	backend: &Backend,
+	oldest_receipt_number: Number,
+) -> Result<Option<(Number, H256, u32)>, ClientError> {
+	let mut bad_receipt_numbers: Vec<Number> =
+		load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
+
+	let expired_receipt_numbers = bad_receipt_numbers
+		.drain_filter(|number| *number < oldest_receipt_number)
+		.collect::<Vec<_>>();
+
+	if !expired_receipt_numbers.is_empty() {
+		// The bad receipt had been pruned on primary chain, i.e., _finalized_.
+		tracing::error!(
+			target: crate::LOG_TARGET,
+			?oldest_receipt_number,
+			?expired_receipt_numbers,
+			"Bad receipt(s) had been pruned on primary chain"
+		);
+
+		for expired_receipt_number in expired_receipt_numbers {
+			if let Err(e) = delete_expired_bad_receipt_info_at(backend, expired_receipt_number) {
+				tracing::error!(target: crate::LOG_TARGET, error = ?e, "Failed to remove the expired bad receipt");
+			}
+		}
+
+		if bad_receipt_numbers.is_empty() {
+			backend.insert_aux(&[], &[BAD_RECEIPT_NUMBERS.encode().as_slice()])?;
+		} else {
+			backend.insert_aux(
+				&[(
+					BAD_RECEIPT_NUMBERS.encode().as_slice(),
+					bad_receipt_numbers.encode().as_slice(),
+				)],
+				&[],
+			)?;
+		}
+	}
+
+	if let Some(bad_receipt_number) = bad_receipt_numbers.get(0).copied() {
+		let block_number_key = (BAD_RECEIPT_BLOCK_NUMBER, bad_receipt_number).encode();
+		let bad_signed_receipt_hashes: Vec<H256> =
+			load_decode(backend, block_number_key.as_slice())?.unwrap_or_default();
+
+		let first_bad_signed_receipt_hash = bad_signed_receipt_hashes[0];
+
+		let trace_mismatch_index = load_decode(
+			backend,
+			bad_receipt_mismatch_index_key(first_bad_signed_receipt_hash).as_slice(),
+		)?
+		.ok_or_else(|| {
+			ClientError::Backend(format!(
+						"Trace mismatch index not found, `bad_signed_receipt_hash`: {first_bad_signed_receipt_hash:?}"
+					))
+		})?;
+
+		Ok(Some((bad_receipt_number, first_bad_signed_receipt_hash, trace_mismatch_index)))
+	} else {
+		Ok(None)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

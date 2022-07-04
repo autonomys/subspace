@@ -58,6 +58,7 @@
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
 
 #![feature(is_sorted)]
+#![feature(drain_filter)]
 
 mod aux_schema;
 mod bundle_processor;

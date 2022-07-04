@@ -319,7 +319,12 @@ where
 			return Ok(())
 		}
 
-		// TODO: Generate FraudProof for the first incorrect ER which is still not _confirmed_.
+		// Submit fraud proof for the first unconfirmed incorrent ER.
+		let oldest_receipt_number = self
+			.primary_chain_client
+			.runtime_api()
+			.oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+		self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(oldest_receipt_number)?;
 
 		// Ideally, the receipt of current block will be included in the next block, i.e., no
 		// missing receipts.
@@ -508,6 +513,42 @@ where
 				bad_receipt_number,
 				fraud_proof.bad_signed_receipt_hash,
 			)?;
+		}
+
+		Ok(())
+	}
+
+	fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
+		&self,
+		oldest_receipt_number: NumberFor<PBlock>,
+	) -> Result<(), sp_blockchain::Error> {
+		if let Some((bad_receipt_number, _bad_signed_receipt_hash, _trace_mismatch_index)) =
+			crate::aux_schema::load_first_unconfirmed_bad_receipt_info::<_, NumberFor<PBlock>>(
+				&*self.client,
+				oldest_receipt_number,
+			)? {
+			let block_number: BlockNumber = bad_receipt_number
+				.try_into()
+				.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+			let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
+				sp_blockchain::Error::Backend(format!(
+					"Header hash not found for number {block_number}"
+				))
+			})?;
+			let _local_receipt = crate::aux_schema::load_execution_receipt::<
+				_,
+				Block::Hash,
+				NumberFor<PBlock>,
+				PBlock::Hash,
+			>(&*self.client, block_hash)?
+			.ok_or_else(|| {
+				sp_blockchain::Error::Backend(format!(
+					"Execution receipt not found for {block_hash:?}",
+				))
+			})?;
+
+			// TODO: generate_proof(trace_mismatch_index, local_receipt, bad_signed_receipt_hash)
+			// and submit
 		}
 
 		Ok(())
