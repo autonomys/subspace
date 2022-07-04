@@ -341,6 +341,7 @@ mod pallet {
 
     /// Number of the block that the oldest execution receipt points to.
     #[pallet::storage]
+    #[pallet::getter(fn oldest_receipt_number)]
     pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
 
     #[pallet::hooks]

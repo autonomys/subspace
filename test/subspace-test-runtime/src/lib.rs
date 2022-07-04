@@ -1146,6 +1146,10 @@ impl_runtime_apis! {
             Executor::best_execution_chain_number()
         }
 
+        fn oldest_receipt_number() -> NumberFor<Block> {
+            Executor::oldest_receipt_number()
+        }
+
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
         }

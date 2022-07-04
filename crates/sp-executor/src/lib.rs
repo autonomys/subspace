@@ -466,6 +466,9 @@ sp_api::decl_runtime_apis! {
         /// Returns the best execution chain number.
         fn best_execution_chain_number() -> NumberFor<Block>;
 
+        /// Returns the block number of oldest execution receipt.
+        fn oldest_receipt_number() -> NumberFor<Block>;
+
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;
     }
