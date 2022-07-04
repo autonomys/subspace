@@ -77,7 +77,7 @@ impl BenchRpcClient {
 #[async_trait]
 impl RpcClient for BenchRpcClient {
     async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error> {
-        Ok(self.inner.metadata.clone())
+        Ok(self.inner.metadata)
     }
 
     async fn subscribe_slot_info(
