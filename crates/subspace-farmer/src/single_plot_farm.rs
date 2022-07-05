@@ -18,7 +18,6 @@ use futures::future::try_join;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::fmt::Formatter;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -53,7 +52,7 @@ pub enum SinglePlotFarmId {
 }
 
 impl fmt::Display for SinglePlotFarmId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SinglePlotFarmId::Index(id) => id.fmt(f),
             SinglePlotFarmId::Ulid(id) => id.fmt(f),

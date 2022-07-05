@@ -15,7 +15,6 @@
 
 //! Primitives for Subspace RPC.
 
-use hex_buffer_serde::{Hex, HexForm};
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::{
     PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
@@ -71,10 +70,10 @@ pub struct SolutionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct RewardSigningInfo {
     /// Hash to be signed.
-    #[serde(with = "HexForm")]
+    #[serde(with = "hex::serde")]
     pub hash: [u8; 32],
     /// Public key of the plot identity that should create signature.
-    #[serde(with = "HexForm")]
+    #[serde(with = "hex::serde")]
     pub public_key: [u8; 32],
 }
 
@@ -83,7 +82,7 @@ pub struct RewardSigningInfo {
 #[serde(rename_all = "camelCase")]
 pub struct RewardSignatureResponse {
     /// Hash that was signed.
-    #[serde(with = "HexForm")]
+    #[serde(with = "hex::serde")]
     pub hash: [u8; 32],
     /// Pre-header or vote hash signature.
     pub signature: Option<RewardSignature>,
