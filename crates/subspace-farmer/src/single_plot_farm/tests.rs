@@ -12,7 +12,7 @@ use rand::Rng;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 use tracing::error;
@@ -51,7 +51,7 @@ async fn plotting_happy_path() {
     let client = MockRpcClient::new();
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
-    let farmer_metadata = FarmerMetadata {
+    let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
@@ -59,12 +59,12 @@ async fn plotting_happy_path() {
         total_pieces: 0,
     };
 
-    client.send_metadata(farmer_metadata).await;
+    client.send_farmer_protocol_info(farmer_protocol_info).await;
 
-    let farmer_metadata = client
-        .farmer_metadata()
+    let farmer_protocol_info = client
+        .farmer_protocol_info()
         .await
-        .expect("Could not retrieve farmer_metadata");
+        .expect("Could not retrieve farmer_protocol_info");
 
     let encoded_block0 = vec![0u8; SEGMENT_SIZE / 2];
     let encoded_block1 = vec![1u8; SEGMENT_SIZE / 2];
@@ -88,7 +88,7 @@ async fn plotting_happy_path() {
 
     // Start archiving task
     let archiving_instance = Archiving::start(
-        farmer_metadata,
+        farmer_protocol_info,
         object_mappings,
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
@@ -150,7 +150,7 @@ async fn plotting_piece_eviction() {
     let client = MockRpcClient::new();
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
-    let farmer_metadata = FarmerMetadata {
+    let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
@@ -158,12 +158,12 @@ async fn plotting_piece_eviction() {
         total_pieces: 0,
     };
 
-    client.send_metadata(farmer_metadata).await;
+    client.send_farmer_protocol_info(farmer_protocol_info).await;
 
-    let farmer_metadata = client
-        .farmer_metadata()
+    let farmer_protocol_info = client
+        .farmer_protocol_info()
         .await
-        .expect("Could not retrieve farmer_metadata");
+        .expect("Could not retrieve farmer_protocol_info");
 
     let encoded_block0 = {
         let mut block = vec![0u8; SEGMENT_SIZE];
@@ -195,7 +195,7 @@ async fn plotting_piece_eviction() {
 
     // Start archiving task
     let archiving_instance = Archiving::start(
-        farmer_metadata,
+        farmer_protocol_info,
         object_mappings,
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {

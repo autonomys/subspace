@@ -20,10 +20,10 @@ use subspace_core_primitives::{
     PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
 };
 
-/// Metadata necessary for farmer operation
+/// Information about the protocol necessary for farmer operation
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FarmerMetadata {
+pub struct FarmerProtocolInfo {
     /// Genesis hash of the chain
     #[serde(with = "hex::serde")]
     pub genesis_hash: [u8; 32],

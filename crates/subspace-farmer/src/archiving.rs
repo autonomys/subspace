@@ -6,7 +6,7 @@ use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_networking::PiecesToPlot;
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tracing::{debug, error, info};
@@ -39,7 +39,7 @@ impl Archiving {
     //  don't want eventually
     /// `on_pieces_to_plot` must return `true` unless archiving is no longer necessary
     pub async fn start<Client, OPTP>(
-        farmer_metadata: FarmerMetadata,
+        farmer_protocol_info: FarmerProtocolInfo,
         object_mappings: ObjectMappings,
         client: Client,
         mut on_pieces_to_plot: OPTP,
@@ -48,11 +48,11 @@ impl Archiving {
         Client: RpcClient + Clone + Send + Sync + 'static,
         OPTP: FnMut(PiecesToPlot) -> bool + Send + 'static,
     {
-        let FarmerMetadata {
+        let FarmerProtocolInfo {
             record_size,
             recorded_history_segment_size,
             ..
-        } = farmer_metadata;
+        } = farmer_protocol_info;
 
         // TODO: This assumes fixed size segments, which might not be the case
         let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);

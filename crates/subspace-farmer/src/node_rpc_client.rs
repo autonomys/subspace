@@ -9,7 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// `WsClient` wrapper.
@@ -28,10 +28,10 @@ impl NodeRpcClient {
 
 #[async_trait]
 impl RpcClient for NodeRpcClient {
-    async fn farmer_metadata(&self) -> Result<FarmerMetadata, RpcError> {
+    async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, RpcError> {
         Ok(self
             .client
-            .request("subspace_getFarmerMetadata", rpc_params![])
+            .request("subspace_getFarmerProtocolInfo", rpc_params![])
             .await?)
     }
 

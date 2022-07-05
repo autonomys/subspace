@@ -29,7 +29,7 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
     libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -182,7 +182,7 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
     pub(crate) max_piece_count: u64,
-    pub(crate) farmer_metadata: FarmerMetadata,
+    pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) farming_client: RC,
     pub(crate) plot_factory: &'a PF,
     pub(crate) listen_on: Vec<Multiaddr>,
@@ -226,7 +226,7 @@ impl SinglePlotFarm {
             metadata_directory,
             plot_index,
             max_piece_count,
-            farmer_metadata,
+            farmer_protocol_info,
             farming_client,
             plot_factory,
             mut listen_on,
@@ -418,8 +418,8 @@ impl SinglePlotFarm {
         if enable_dsn_archiving {
             let archiving_fut = start_archiving(
                 id,
-                farmer_metadata.record_size,
-                farmer_metadata.recorded_history_segment_size,
+                farmer_protocol_info.record_size,
+                farmer_protocol_info.recorded_history_segment_size,
                 object_mappings,
                 node,
                 farm.plotter(),
@@ -439,10 +439,11 @@ impl SinglePlotFarm {
         // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = PieceIndexHashNumber::MAX / farmer_metadata.total_pieces * 1024; // 4M per stream
+            let sync_range_size =
+                PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
             let dsn_sync_fut = farm.dsn_sync(
-                farmer_metadata.max_plot_size,
-                farmer_metadata.total_pieces,
+                farmer_protocol_info.max_plot_size,
+                farmer_protocol_info.total_pieces,
                 sync_range_size,
             );
 

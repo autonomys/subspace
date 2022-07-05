@@ -50,7 +50,7 @@ use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::Solution;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -60,8 +60,8 @@ const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 #[rpc(client, server)]
 pub trait SubspaceRpcApi {
     /// Ger metadata necessary for farmer operation
-    #[method(name = "subspace_getFarmerMetadata")]
-    fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata>;
+    #[method(name = "subspace_getFarmerProtocolInfo")]
+    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo>;
 
     #[method(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
@@ -184,7 +184,7 @@ where
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
-    fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata> {
+    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
         let runtime_api = self.client.runtime_api();
 
@@ -199,8 +199,8 @@ where
                 JsonRpseeError::Custom("Internal error".to_string())
             })?;
 
-        let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
-            FarmerMetadata {
+        let farmer_protocol_info: Result<FarmerProtocolInfo, ApiError> = try {
+            FarmerProtocolInfo {
                 genesis_hash,
                 record_size: runtime_api.record_size(&best_block_id)?,
                 recorded_history_segment_size: runtime_api
@@ -210,7 +210,7 @@ where
             }
         };
 
-        farmer_metadata.map_err(|error| {
+        farmer_protocol_info.map_err(|error| {
             error!("Failed to get data from runtime API: {}", error);
             JsonRpseeError::Custom("Internal error".to_string())
         })

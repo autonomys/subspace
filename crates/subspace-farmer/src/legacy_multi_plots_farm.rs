@@ -42,7 +42,7 @@ pub struct LegacyMultiPlotsFarm {
 }
 
 impl LegacyMultiPlotsFarm {
-    /// Starts multiple farmers with any plot sizes which user gives
+    /// Creates multiple single plot farms with user-provided total plot size
     pub async fn new<RC, PF>(
         options: Options<RC>,
         allocated_space: u64,
@@ -69,8 +69,8 @@ impl LegacyMultiPlotsFarm {
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
-        let farmer_metadata = farming_client
-            .farmer_metadata()
+        let farmer_protocol_info = farming_client
+            .farmer_protocol_info()
             .await
             .map_err(|error| anyhow!(error))?;
 
@@ -101,7 +101,7 @@ impl LegacyMultiPlotsFarm {
                         metadata_directory,
                         plot_index,
                         max_piece_count,
-                        farmer_metadata,
+                        farmer_protocol_info,
                         farming_client,
                         plot_factory: &plot_factory,
                         listen_on,
@@ -122,7 +122,7 @@ impl LegacyMultiPlotsFarm {
         // Start archiving task
         let archiving = if !enable_dsn_archiving {
             let archiving_start_fut =
-                Archiving::start(farmer_metadata, object_mappings, archiving_client, {
+                Archiving::start(farmer_protocol_info, object_mappings, archiving_client, {
                     let plotters = single_plot_farms
                         .iter()
                         .map(|single_plot_farm| single_plot_farm.plotter())
