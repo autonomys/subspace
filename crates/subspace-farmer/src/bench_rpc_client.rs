@@ -29,6 +29,7 @@ pub struct Inner {
 
 /// Default farmer metadata for benchmarking
 pub const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
+    genesis_hash: [0; 32],
     record_size: 3840,                     // PIECE_SIZE - WITNESS_SIZE
     recorded_history_segment_size: 491520, // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
     max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G

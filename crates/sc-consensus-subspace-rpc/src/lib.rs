@@ -188,8 +188,20 @@ where
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
         let runtime_api = self.client.runtime_api();
 
+        let genesis_hash = self
+            .client
+            .info()
+            .genesis_hash
+            .as_ref()
+            .try_into()
+            .map_err(|error| {
+                error!("Failed to convert genesis hash: {error}");
+                JsonRpseeError::Custom("Internal error".to_string())
+            })?;
+
         let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
             FarmerMetadata {
+                genesis_hash,
                 record_size: runtime_api.record_size(&best_block_id)?,
                 recorded_history_segment_size: runtime_api
                     .recorded_history_segment_size(&best_block_id)?,

@@ -52,6 +52,7 @@ async fn plotting_happy_path() {
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     let farmer_metadata = FarmerMetadata {
+        genesis_hash: [0; 32],
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
@@ -150,6 +151,7 @@ async fn plotting_piece_eviction() {
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     let farmer_metadata = FarmerMetadata {
+        genesis_hash: [0; 32],
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,

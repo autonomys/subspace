@@ -24,6 +24,9 @@ use subspace_core_primitives::{
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FarmerMetadata {
+    /// Genesis hash of the chain
+    #[serde(with = "hex::serde")]
+    pub genesis_hash: [u8; 32],
     /// The size of data in one piece (in bytes).
     pub record_size: u32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
