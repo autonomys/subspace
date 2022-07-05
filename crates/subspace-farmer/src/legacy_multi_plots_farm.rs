@@ -3,7 +3,7 @@ use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::{SingleDiskFarmPieceGetter, SingleDiskSemaphore};
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
-use crate::utils::get_plot_sizes;
+use crate::utils::{get_plot_sizes, get_usable_plot_space};
 use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
@@ -65,7 +65,8 @@ impl LegacyMultiPlotsFarm {
             enable_dsn_sync,
             enable_farming,
         } = options;
-        let plot_sizes = get_plot_sizes(allocated_space, max_plot_size);
+        let usable_space = get_usable_plot_space(allocated_space);
+        let plot_sizes = get_plot_sizes(usable_space, max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
@@ -121,8 +122,11 @@ impl LegacyMultiPlotsFarm {
 
         // Start archiving task
         let archiving = if !enable_dsn_archiving {
-            let archiving_start_fut =
-                Archiving::start(farmer_protocol_info, object_mappings, archiving_client, {
+            let archiving_start_fut = Archiving::start(
+                farmer_protocol_info,
+                vec![object_mappings],
+                archiving_client,
+                {
                     let plotters = single_plot_farms
                         .iter()
                         .map(|single_plot_farm| single_plot_farm.plotter())
@@ -140,7 +144,8 @@ impl LegacyMultiPlotsFarm {
                             true
                         }
                     }
-                });
+                },
+            );
 
             Some(archiving_start_fut.await?)
         } else {

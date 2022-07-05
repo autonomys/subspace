@@ -40,7 +40,7 @@ impl Archiving {
     /// `on_pieces_to_plot` must return `true` unless archiving is no longer necessary
     pub async fn start<Client, OPTP>(
         farmer_protocol_info: FarmerProtocolInfo,
-        object_mappings: ObjectMappings,
+        object_mappings: Vec<ObjectMappings>,
         client: Client,
         mut on_pieces_to_plot: OPTP,
     ) -> Result<Archiving, ArchivingError>
@@ -92,8 +92,10 @@ impl Archiving {
                     let object_mapping =
                         create_global_object_mapping(piece_index_offset, object_mapping);
 
-                    if let Err(error) = object_mappings.store(&object_mapping) {
-                        error!(%error, "Failed to store object mappings for pieces");
+                    for object_mappings in &object_mappings {
+                        if let Err(error) = object_mappings.store(&object_mapping) {
+                            error!(%error, "Failed to store object mappings for pieces");
+                        }
                     }
 
                     info!(segment_index, "Plotted segment");

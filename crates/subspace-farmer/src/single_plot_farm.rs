@@ -60,6 +60,14 @@ impl fmt::Display for SinglePlotFarmId {
     }
 }
 
+#[allow(clippy::new_without_default)]
+impl SinglePlotFarmId {
+    /// Creates new ID
+    pub fn new() -> Self {
+        Self::Ulid(Ulid::new())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SinglePlotPieceGetter {
     codec: SubspaceCodec,
@@ -206,6 +214,7 @@ pub struct SinglePlotFarm {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
+    object_mappings: ObjectMappings,
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
@@ -406,6 +415,7 @@ impl SinglePlotFarm {
             codec,
             plot,
             commitments,
+            object_mappings,
             farming,
             node: node.clone(),
             node_runner,
@@ -420,7 +430,7 @@ impl SinglePlotFarm {
                 id,
                 farmer_protocol_info.record_size,
                 farmer_protocol_info.recorded_history_segment_size,
-                object_mappings,
+                farm.object_mappings().clone(),
                 node,
                 farm.plotter(),
             );
@@ -483,6 +493,11 @@ impl SinglePlotFarm {
     /// Access commitments instance of the farm
     pub fn commitments(&self) -> &Commitments {
         &self.commitments
+    }
+
+    /// Access object mappings instance of the farm
+    pub fn object_mappings(&self) -> &ObjectMappings {
+        &self.object_mappings
     }
 
     /// Access network node instance of the farm
