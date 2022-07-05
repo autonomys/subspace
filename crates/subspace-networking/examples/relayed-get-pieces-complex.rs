@@ -23,7 +23,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (relay_node, relay_node_runner) = subspace_networking::create(config_1).await.unwrap();
+    let (relay_node, mut relay_node_runner) = subspace_networking::create(config_1).await.unwrap();
 
     println!("Relay Node ID is {}", relay_node.id());
 
@@ -71,7 +71,7 @@ async fn main() {
                 .expect("Server should be configured."),
             ..Config::with_generated_keypair()
         };
-        let (node, node_runner) = subspace_networking::create(config).await.unwrap();
+        let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
         println!("Node {} ID is {}", i, node.id());
 
@@ -105,7 +105,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node, node_runner) = subspace_networking::create(config).await.unwrap();
+    let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
     println!("Source Node ID is {}", node.id());
     println!("Expected Peer ID:{}", expected_node_id);

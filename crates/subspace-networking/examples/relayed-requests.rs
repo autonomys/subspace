@@ -22,7 +22,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_1, node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     println!("Node 1 (relay) ID is {}", node_1.id());
 
@@ -54,7 +54,7 @@ async fn main() {
             .expect("Relay Server should be configured."),
         ..Config::with_generated_keypair()
     };
-    let (node_2, node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
 
     println!("Node 2 (server) ID is {}", node_2.id());
 
@@ -75,7 +75,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_3, node_runner_3) = subspace_networking::create(config_3).await.unwrap();
+    let (node_3, mut node_runner_3) = subspace_networking::create(config_3).await.unwrap();
 
     println!("Node 3 (requester) ID is {}", node_3.id());
 
