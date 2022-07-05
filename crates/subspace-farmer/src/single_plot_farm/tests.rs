@@ -4,7 +4,8 @@ use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use crate::{plotting, Archiving};
+use crate::single_plot_farm::SinglePlotPlotter;
+use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
 use subspace_archiving::archiver::Archiver;
@@ -13,6 +14,7 @@ use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZ
 use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
+use tracing::error;
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
 const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
@@ -32,8 +34,15 @@ async fn plotting_happy_path() {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let address = identity.public_key().to_bytes().into();
-    let plot = Plot::open_or_create(&base_directory, address, u64::MAX).unwrap();
+    let public_key = identity.public_key().to_bytes().into();
+    let plot = Plot::open_or_create(
+        0usize.into(),
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        public_key,
+        u64::MAX,
+    )
+    .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings =
         ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
@@ -68,12 +77,20 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
+    let single_plot_plotter = SinglePlotPlotter::new(subspace_codec, plot.clone(), commitments);
+
     // Start archiving task
     let archiving_instance = Archiving::start(
         farmer_metadata,
         object_mappings,
         client.clone(),
-        plotting::plot_pieces(subspace_codec, &plot, commitments),
+        move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%error, "Failed to plot pieces");
+                false
+            }
+        },
     )
     .await
     .unwrap();
@@ -105,9 +122,16 @@ async fn plotting_piece_eviction() {
         .expect("Could not open/create identity!");
     let mut rng = StdRng::seed_from_u64(0);
 
-    let address = identity.public_key().to_bytes().into();
+    let public_key = identity.public_key().to_bytes().into();
     let salt = Salt::default();
-    let plot = Plot::open_or_create(&base_directory, address, 5).unwrap();
+    let plot = Plot::open_or_create(
+        0usize.into(),
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        public_key,
+        5,
+    )
+    .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings =
         ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
@@ -154,12 +178,21 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
+    let single_plot_plotter =
+        SinglePlotPlotter::new(subspace_codec.clone(), plot.clone(), commitments.clone());
+
     // Start archiving task
     let archiving_instance = Archiving::start(
         farmer_metadata,
         object_mappings,
         client.clone(),
-        plotting::plot_pieces(subspace_codec.clone(), &plot, commitments.clone()),
+        move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%error, "Failed to plot pieces");
+                false
+            }
+        },
     )
     .await
     .unwrap();
@@ -195,7 +228,7 @@ async fn plotting_piece_eviction() {
                         .is_some());
 
                     assert!(
-                        read_piece.as_slice() == piece,
+                        read_piece.as_ref() == piece,
                         "Read incorrect piece for piece index {}",
                         piece_index
                     );

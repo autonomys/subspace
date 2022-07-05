@@ -25,12 +25,20 @@ pub enum ArchivingError {
     JoinTask(tokio::task::JoinError),
     #[error("Archiver instantiation error: {0}")]
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
+    #[error("Failed to subscribe to new segments: {0}")]
+    Subscribe(#[from] subspace_networking::SubscribeError),
 }
 
 /// Abstraction around archiving blocks and updating global object map
 pub struct Archiving {
     stop_sender: Option<oneshot::Sender<()>>,
     archiving_handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for Archiving {
+    fn drop(&mut self) {
+        let _ = self.stop_sender.take().unwrap().send(());
+    }
 }
 
 impl Archiving {
@@ -74,7 +82,6 @@ impl Archiving {
                         pieces,
                         object_mapping,
                     } = archived_segment;
-
                     let segment_index = root_block.segment_index();
                     if last_archived_segment_index == Some(segment_index) {
                         continue;
@@ -162,12 +169,6 @@ impl Archiving {
             .unwrap()
             .await
             .map_err(ArchivingError::JoinTask)
-    }
-}
-
-impl Drop for Archiving {
-    fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
     }
 }
 

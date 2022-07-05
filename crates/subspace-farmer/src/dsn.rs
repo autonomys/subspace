@@ -2,7 +2,7 @@ use futures::{Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, U256,
+    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::PiecesToPlot;
 
@@ -13,7 +13,7 @@ pub type PieceIndexHashNumber = U256;
 
 /// Options for syncing
 pub struct SyncOptions {
-    /// Max plot size from node (in pieces)
+    /// Max plot size from node (in bytes)
     pub max_plot_size: u64,
     /// Total number of pieces in the network
     pub total_pieces: u64,
@@ -84,10 +84,10 @@ where
     } = options;
     let public_key = PieceIndexHashNumber::from(Sha256Hash::from(public_key));
 
-    let sync_sector_size = if total_pieces < max_plot_size {
+    let sync_sector_size = if total_pieces < max_plot_size / PIECE_SIZE as u64 {
         PieceIndexHashNumber::MAX
     } else {
-        PieceIndexHashNumber::MAX / total_pieces * max_plot_size
+        PieceIndexHashNumber::MAX / total_pieces * max_plot_size / PIECE_SIZE as u64
     };
     let from = public_key.wrapping_sub(&(sync_sector_size / 2));
 
@@ -121,27 +121,42 @@ where
 
         if sub_sector_start > sub_sector_end {
             [
-                Some((PieceIndexHashNumber::zero(), sub_sector_end)),
                 Some((sub_sector_start, PieceIndexHashNumber::MAX)),
+                Some((PieceIndexHashNumber::zero(), sub_sector_end)),
             ]
         } else {
             [Some((sub_sector_start, sub_sector_end)), None]
         }
     })
-    .flatten()
-    .map(|(start, end)| Range {
-        start: start.into(),
-        end: end.into(),
-    });
+    .flatten();
 
-    for range in sync_ranges {
-        let mut stream = dsn.get_pieces(range).await?;
+    for (start, end) in sync_ranges {
+        let mut stream = dsn.get_pieces(start.into()..end.into()).await?;
 
         while let Some(PiecesToPlot {
             piece_indexes,
             pieces,
         }) = stream.next().await
         {
+            // Filter out pieces which are not in our range
+            let (piece_indexes, pieces) = piece_indexes
+                .into_iter()
+                .zip(pieces.as_pieces())
+                .filter(|(index, _)| {
+                    (start..end).contains(&PieceIndexHashNumber::from_big_endian(
+                        &PieceIndexHash::from_index(*index).0,
+                    ))
+                })
+                .map(|(index, piece)| {
+                    (
+                        index,
+                        piece
+                            .try_into()
+                            .expect("`as_pieces` always returns a piece"),
+                    )
+                })
+                .unzip();
+
             // Writing pieces is usually synchronous, therefore might take some time
             on_pieces = tokio::task::spawn_blocking(move || {
                 on_pieces(pieces, piece_indexes).map(|()| on_pieces)

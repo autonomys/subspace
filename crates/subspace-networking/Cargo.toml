@@ -27,6 +27,7 @@ nohash-hasher = "0.2.0"
 once_cell = "1.12.0"
 parity-scale-codec = "3.1.2"
 parking_lot = "0.12.0"
+pin-project = "1.0.10"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }

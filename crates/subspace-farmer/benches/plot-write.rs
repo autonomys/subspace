@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use rand::prelude::*;
+use std::sync::Arc;
 use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::Plot;
 use tempfile::TempDir;
@@ -12,10 +11,17 @@ async fn main() {
     let base_directory = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
 
     let mut pieces = vec![0u8; batch_size as usize * PIECE_SIZE];
-    rand::thread_rng().fill(&mut pieces[..]);
+    thread_rng().fill(&mut pieces[..]);
     let pieces = Arc::new(pieces.try_into().unwrap());
 
-    let plot = Plot::open_or_create(&base_directory, [0; 32].into(), piece_count).unwrap();
+    let plot = Plot::open_or_create(
+        0usize.into(),
+        base_directory.as_ref(),
+        base_directory.as_ref(),
+        [0; 32].into(),
+        piece_count,
+    )
+    .unwrap();
 
     let start = std::time::Instant::now();
 

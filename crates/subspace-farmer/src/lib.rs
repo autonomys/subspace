@@ -22,18 +22,19 @@
 //! 64-bit unsigned integers.
 
 pub(crate) mod archiving;
+pub mod bench_rpc_client;
 pub(crate) mod commitments;
 pub(crate) mod dsn;
 pub(crate) mod farming;
 pub(crate) mod identity;
+pub mod legacy_multi_plots_farm;
 #[cfg(test)]
 mod mock_rpc_client;
-pub mod multi_farming;
 pub(crate) mod node_rpc_client;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
-pub(crate) mod plotting;
 pub(crate) mod rpc_client;
+pub mod single_disk_farm;
 pub mod single_plot_farm;
 pub mod ws_rpc_server;
 
@@ -44,6 +45,5 @@ pub use identity::Identity;
 pub use jsonrpsee;
 pub use node_rpc_client::NodeRpcClient;
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
-pub use plot::{retrieve_piece_from_plots, PieceOffset, Plot, PlotError, PlotFile};
-pub use plotting::plot_pieces;
+pub use plot::{PieceOffset, Plot, PlotError, PlotFile};
 pub use rpc_client::{Error as RpcClientError, RpcClient};

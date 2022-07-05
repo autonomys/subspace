@@ -23,3 +23,15 @@ sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate",
 sp-state-machine = { version = "0.12.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-trie = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 tracing = "0.1.34"
+
+[dev-dependencies]
+cirrus-block-builder = { version = "0.1.0", path = "../../cumulus/client/block-builder" }
+cirrus-primitives = { version = "0.1.0", path = "../../cumulus/primitives" }
+cirrus-test-service = { version = "0.1.0", path = "../../cumulus/test/service" }
+futures = "0.3.21"
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
+sp-keyring = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+tokio = "1.18.2"

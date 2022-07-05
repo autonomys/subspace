@@ -36,31 +36,30 @@ COPY test /code/test
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
-ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
+ENV RUSTFLAGS="${RUSTFLAGS} -C linker=aarch64-linux-gnu-gcc"
+
+# Dependencies necessary for successful cross-compilation
+RUN \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        g++-aarch64-linux-gnu \
+        gcc-aarch64-linux-gnu \
+        libc6-dev-arm64-cross
+
+# TODO: Following package is not necessary on Ubuntu 22.04, but RocksDb compilation fails otherwise on Ubuntu 20.04
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++-9-multilib
 
 RUN \
     /root/.cargo/bin/cargo build \
         -Z build-std \
         --profile $PROFILE \
-        --bin subspace-node \
-        --target x86_64-unknown-linux-gnu && \
-    mv target/*/*/subspace-node subspace-node && \
+        --bin subspace-farmer \
+        --target aarch64-unknown-linux-gnu && \
+    mv target/*/*/subspace-farmer subspace-farmer && \
     rm -rf target
 
-FROM ubuntu:20.04
+FROM arm64v8/ubuntu:20.04
 
-RUN \
-    apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-HEALTHCHECK CMD curl \
-                  -H "Content-Type: application/json" \
-                  -d '{ "id": 1, "jsonrpc": "2.0", "method": "system_health", "params": [] }' \
-                  -f "http://localhost:9933"
-
-COPY --from=0 /code/subspace-node /subspace-node
+COPY --from=0 /code/subspace-farmer /subspace-farmer
 
 RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
 
@@ -68,4 +67,4 @@ VOLUME /var/subspace
 
 USER nobody:nogroup
 
-ENTRYPOINT ["/subspace-node"]
+ENTRYPOINT ["/subspace-farmer"]

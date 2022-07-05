@@ -3,13 +3,15 @@ use jsonrpsee::ws_server::WsServerBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::PIECE_SIZE;
-use subspace_farmer::multi_farming::{MultiFarming, Options as MultiFarmingOptions};
+use subspace_farmer::legacy_multi_plots_farm::{
+    LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
+};
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
 use subspace_rpc_primitives::FarmerMetadata;
 use tracing::{info, warn};
 
-use crate::{utils, FarmingArgs};
+use crate::{utils, ArchivingFrom, FarmingArgs};
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -23,8 +25,9 @@ pub(crate) async fn farm(
         reward_address,
         plot_size,
         max_plot_size,
-        enable_dsn_archiving,
         dsn_sync,
+        archiving,
+        disable_farming,
     }: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
     utils::raise_fd_limit();
@@ -44,13 +47,15 @@ pub(crate) async fn farm(
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let max_plot_size = match max_plot_size.map(|max_plot_size| max_plot_size / PIECE_SIZE as u64) {
-        Some(max_plot_size) if max_plot_size > metadata.max_plot_size => {
+    // TODO: `max_plot_size` in the protocol must change to bytes as well
+    let consensus_max_plot_size = metadata.max_plot_size * PIECE_SIZE as u64;
+    let max_plot_size = match max_plot_size {
+        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
             warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
-            metadata.max_plot_size
+            consensus_max_plot_size
         }
         Some(max_plot_size) => max_plot_size,
-        None => metadata.max_plot_size,
+        None => consensus_max_plot_size,
     };
 
     let FarmerMetadata {
@@ -67,7 +72,7 @@ pub(crate) async fn farm(
     })
     .await??;
 
-    let multi_farming = MultiFarming::new(
+    let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.clone(),
             archiving_client,
@@ -76,19 +81,22 @@ pub(crate) async fn farm(
             reward_address,
             bootstrap_nodes,
             listen_on,
-            enable_dsn_archiving,
-            dsn_sync,
+            enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
+            enable_dsn_sync: dsn_sync,
+            enable_farming: !disable_farming,
         },
         plot_size,
         max_plot_size,
         move |plot_index, public_key, max_piece_count| {
+            let plot_directory = base_directory.join(format!("plot{plot_index}"));
             Plot::open_or_create(
-                base_directory.join(format!("plot{plot_index}")),
+                plot_index.into(),
+                &plot_directory,
+                &plot_directory,
                 public_key,
                 max_piece_count,
             )
         },
-        true,
     )
     .await?;
 
@@ -117,18 +125,12 @@ pub(crate) async fn farm(
     let rpc_server = RpcServerImpl::new(
         record_size,
         recorded_history_segment_size,
-        Arc::new(
-            multi_farming
-                .single_plot_farms
-                .iter()
-                .map(|single_plot_farm| single_plot_farm.plot.clone())
-                .collect(),
-        ),
+        Arc::new(multi_plots_farm.piece_getter()),
         object_mappings.clone(),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
     info!("WS RPC server listening on {ws_server_addr}");
 
-    multi_farming.wait().await
+    multi_plots_farm.wait().await
 }

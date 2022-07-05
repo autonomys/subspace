@@ -22,7 +22,7 @@ use subspace_core_primitives::{
 };
 
 /// Metadata necessary for farmer operation
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FarmerMetadata {
     /// The size of data in one piece (in bytes).

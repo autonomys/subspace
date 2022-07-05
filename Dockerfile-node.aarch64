@@ -36,18 +36,27 @@ COPY test /code/test
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
-ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
+ENV RUSTFLAGS="${RUSTFLAGS} -C linker=aarch64-linux-gnu-gcc"
+
+# Dependencies necessary for successful cross-compilation
+RUN \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        g++-aarch64-linux-gnu \
+        gcc-aarch64-linux-gnu \
+        libc6-dev-arm64-cross
 
 RUN \
     /root/.cargo/bin/cargo build \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-node \
-        --target x86_64-unknown-linux-gnu && \
+        --target aarch64-unknown-linux-gnu && \
     mv target/*/*/subspace-node subspace-node && \
     rm -rf target
 
-FROM ubuntu:20.04
+ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
+
+FROM arm64v8/ubuntu:20.04
 
 RUN \
     apt-get update && \

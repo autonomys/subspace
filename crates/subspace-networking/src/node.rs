@@ -4,7 +4,7 @@ use crate::RelayConfiguration;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt;
+use futures::{SinkExt, Stream};
 use libp2p::core::multihash::{Code, Multihash};
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
@@ -12,7 +12,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
-use std::ops::{Deref, DerefMut, Div};
+use std::ops::Div;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, U256};
 use thiserror::Error;
@@ -22,29 +22,31 @@ const PIECES_CHANNEL_BUFFER_SIZE: usize = 20;
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
+#[pin_project::pin_project(PinnedDrop)]
 pub struct TopicSubscription {
     topic: Option<Sha256Topic>,
     subscription_id: usize,
     command_sender: Option<mpsc::Sender<Command>>,
+    #[pin]
     receiver: mpsc::UnboundedReceiver<Bytes>,
 }
 
-impl Deref for TopicSubscription {
-    type Target = mpsc::UnboundedReceiver<Bytes>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.receiver
+impl Stream for TopicSubscription {
+    type Item = Bytes;
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.project().receiver.poll_next(cx)
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.receiver.size_hint()
     }
 }
 
-impl DerefMut for TopicSubscription {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.receiver
-    }
-}
-
-impl Drop for TopicSubscription {
-    fn drop(&mut self) {
+#[pin_project::pinned_drop]
+impl PinnedDrop for TopicSubscription {
+    fn drop(mut self: std::pin::Pin<&mut Self>) {
         let topic = self
             .topic
             .take()
@@ -340,15 +342,19 @@ impl Node {
 
                 // send the result to the stream and exit on any error
                 match response {
-                    Ok(response) => {
+                    Ok(PiecesByRangeResponse {
+                        pieces,
+                        next_piece_index_hash,
+                    }) => {
                         // send last response data stream to the result stream
-                        if tx.send(response.pieces).await.is_err() {
+                        if !pieces.piece_indexes.is_empty() && tx.send(pieces).await.is_err() {
                             warn!("Piece-by-range request channel was closed.");
                             break;
                         }
 
                         // prepare the next starting point for data
-                        if let Some(next_piece_index_hash) = response.next_piece_index_hash {
+                        if let Some(next_piece_index_hash) = next_piece_index_hash {
+                            debug_assert_ne!(starting_index_hash, next_piece_index_hash);
                             starting_index_hash = next_piece_index_hash;
                         } else {
                             // exit loop if the last response showed no remaining data

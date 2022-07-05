@@ -55,19 +55,23 @@
 //! - Secondary chain, execution layer.
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
+//! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
 
 mod aux_schema;
 mod bundle_processor;
 mod bundle_producer;
+mod fraud_proof;
 mod merkle_tree;
 #[cfg(test)]
 mod tests;
 mod worker;
 
 use crate::{
-	bundle_processor::BundleProcessor, bundle_producer::BundleProducer, worker::BlockInfo,
+	bundle_processor::BundleProcessor,
+	bundle_producer::BundleProducer,
+	fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator},
+	worker::BlockInfo,
 };
-use cirrus_block_builder::{BlockBuilder, RecordProof};
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -79,13 +83,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
-use sp_core::{
-	traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed},
-	H256,
-};
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionPhase, ExecutionReceipt, ExecutorApi, ExecutorId,
-	FraudProof, InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
+	Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId, FraudProof,
+	InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
@@ -93,7 +94,6 @@ use sp_runtime::{
 	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
 	RuntimeAppPublic,
 };
-use sp_trie::StorageProof;
 use std::{borrow::Cow, sync::Arc};
 use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 
@@ -112,7 +112,7 @@ where
 	spawner: Box<dyn SpawnNamed + Send + Sync>,
 	transaction_pool: Arc<TransactionPool>,
 	backend: Arc<Backend>,
-	code_executor: Arc<E>,
+	fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
 	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
 }
 
@@ -129,7 +129,7 @@ where
 			spawner: self.spawner.clone(),
 			transaction_pool: self.transaction_pool.clone(),
 			backend: self.backend.clone(),
-			code_executor: self.code_executor.clone(),
+			fraud_proof_generator: self.fraud_proof_generator.clone(),
 			bundle_processor: self.bundle_processor.clone(),
 		}
 	}
@@ -214,6 +214,13 @@ where
 			keystore.clone(),
 		);
 
+		let fraud_proof_generator = FraudProofGenerator::new(
+			client.clone(),
+			spawner.clone(),
+			backend.clone(),
+			code_executor,
+		);
+
 		let bundle_processor = BundleProcessor::new(
 			primary_chain_client.clone(),
 			primary_network,
@@ -245,7 +252,7 @@ where
 			spawner,
 			transaction_pool,
 			backend,
-			code_executor,
+			fraud_proof_generator,
 			bundle_processor,
 		})
 	}
@@ -393,59 +400,6 @@ where
 		);
 	}
 
-	fn header(&self, at: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
-		self.client
-			.header(BlockId::Hash(at))?
-			.ok_or_else(|| sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
-	}
-
-	fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-		self.client.block_body(&BlockId::Hash(at))?.ok_or_else(|| {
-			sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at))
-		})
-	}
-
-	fn create_extrinsic_execution_proof(
-		&self,
-		extrinsic_index: usize,
-		parent_header: &Block::Header,
-		current_hash: Block::Hash,
-		prover: &subspace_fraud_proof::ExecutionProver<Block, Backend, E>,
-	) -> Result<(StorageProof, ExecutionPhase), GossipMessageError> {
-		let extrinsics = self.block_body(current_hash)?;
-
-		let encoded_extrinsic = extrinsics
-			.get(extrinsic_index)
-			.ok_or(GossipMessageError::InvalidExtrinsicIndex {
-				index: extrinsic_index,
-				max: extrinsics.len() - 1,
-			})?
-			.encode();
-
-		let execution_phase = ExecutionPhase::ApplyExtrinsic { call_data: encoded_extrinsic };
-
-		let block_builder = BlockBuilder::new(
-			&*self.client,
-			parent_header.hash(),
-			*parent_header.number(),
-			RecordProof::No,
-			Default::default(),
-			&*self.backend,
-			extrinsics,
-		)?;
-		let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
-
-		let delta = storage_changes.transaction;
-		let post_delta_root = storage_changes.transaction_storage_root;
-		let execution_proof = prover.prove_execution(
-			BlockId::Hash(parent_header.hash()),
-			&execution_phase,
-			Some((delta, post_delta_root)),
-		)?;
-
-		Ok((execution_proof, execution_phase))
-	}
-
 	/// The background is that a receipt received from the network points to a future block
 	/// from the local view, so we need to wait for the receipt for the block at the same
 	/// height to be produced locally in order to check the validity of the external receipt.
@@ -524,10 +478,8 @@ where
 pub enum GossipMessageError {
 	#[error("Bundle equivocation error")]
 	BundleEquivocation,
-	#[error("State root not using H256")]
-	InvalidStateRootType,
-	#[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
-	InvalidExtrinsicIndex { index: usize, max: usize },
+	#[error(transparent)]
+	FraudProof(#[from] FraudProofError),
 	#[error(transparent)]
 	Client(Box<sp_blockchain::Error>),
 	#[error(transparent)]
@@ -738,123 +690,10 @@ where
 		// TODO: What happens for this obvious error?
 		if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-		if let Some((local_trace_idx, local_root)) = local_receipt
-			.trace
-			.iter()
-			.enumerate()
-			.zip(execution_receipt.trace.iter().enumerate())
-			.find_map(|((local_idx, local_root), (_, external_root))| {
-				if local_root != external_root {
-					Some((local_idx, local_root))
-				} else {
-					None
-				}
-			}) {
-			let header = self.header(execution_receipt.secondary_hash)?;
-			let parent_header = self.header(*header.parent_hash())?;
-
-			// TODO: avoid the encode & decode?
-			let as_h256 = |state_root: &Block::Hash| {
-				H256::decode(&mut state_root.encode().as_slice())
-					.map_err(|_| Self::Error::InvalidStateRootType)
-			};
-
-			let prover = subspace_fraud_proof::ExecutionProver::new(
-				self.backend.clone(),
-				self.code_executor.clone(),
-				self.spawner.clone() as Box<dyn SpawnNamed>,
-			);
-
-			let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
-				.unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
-
-			// TODO: abstract the execution proof impl to be reusable in the test.
-			let fraud_proof = if local_trace_idx == 0 {
-				// `initialize_block` execution proof.
-				let pre_state_root = as_h256(parent_header.state_root())?;
-				let post_state_root = as_h256(local_root)?;
-
-				let new_header = Block::Header::new(
-					block_number,
-					Default::default(),
-					Default::default(),
-					parent_header.hash(),
-					Default::default(),
-				);
-				let execution_phase =
-					ExecutionPhase::InitializeBlock { call_data: new_header.encode() };
-
-				let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
-					BlockId::Hash(parent_header.hash()),
-					&execution_phase,
-					None,
-				)?;
-
-				FraudProof {
-					parent_number,
-					parent_hash: as_h256(&parent_header.hash())?,
-					pre_state_root,
-					post_state_root,
-					proof,
-					execution_phase,
-				}
-			} else if local_trace_idx == local_receipt.trace.len() - 1 {
-				// `finalize_block` execution proof.
-				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
-				let post_state_root = as_h256(local_root)?;
-				let execution_phase = ExecutionPhase::FinalizeBlock;
-
-				let block_builder = BlockBuilder::new(
-					&*self.client,
-					parent_header.hash(),
-					*parent_header.number(),
-					RecordProof::No,
-					Default::default(),
-					&*self.backend,
-					self.block_body(execution_receipt.secondary_hash)?,
-				)?;
-				let storage_changes =
-					block_builder.prepare_storage_changes_before_finalize_block()?;
-
-				let delta = storage_changes.transaction;
-				let post_delta_root = storage_changes.transaction_storage_root;
-
-				let proof = prover.prove_execution(
-					BlockId::Hash(parent_header.hash()),
-					&execution_phase,
-					Some((delta, post_delta_root)),
-				)?;
-
-				FraudProof {
-					parent_number,
-					parent_hash: as_h256(&parent_header.hash())?,
-					pre_state_root,
-					post_state_root,
-					proof,
-					execution_phase,
-				}
-			} else {
-				// Regular extrinsic execution proof.
-				let pre_state_root = as_h256(&execution_receipt.trace[local_trace_idx - 1])?;
-				let post_state_root = as_h256(local_root)?;
-
-				let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-					local_trace_idx - 1,
-					&parent_header,
-					execution_receipt.secondary_hash,
-					&prover,
-				)?;
-
-				// TODO: proof should be a CompactProof.
-				FraudProof {
-					parent_number,
-					parent_hash: as_h256(&parent_header.hash())?,
-					pre_state_root,
-					post_state_root,
-					proof,
-					execution_phase,
-				}
-			};
+		if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
+			let fraud_proof = self
+				.fraud_proof_generator
+				.generate_proof::<PBlock>(trace_mismatch_index, &local_receipt)?;
 
 			self.submit_fraud_proof(fraud_proof);
 
