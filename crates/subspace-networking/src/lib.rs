@@ -29,10 +29,7 @@ mod utils;
 
 pub use crate::node::{GetPiecesByRangeError, Node, TopicSubscription};
 pub use crate::node_runner::NodeRunner;
-pub use create::{
-    create, Config, CreationError, RelayConfiguration, RelayLimitSettings,
-    DEFAULT_RELAY_SERVER_ADDRESS,
-};
+pub use create::{create, Config, CreationError, RelayConfiguration, RelayLimitSettings};
 pub use libp2p;
 use libp2p::gossipsub::Sha256Topic;
 use once_cell::sync::Lazy;

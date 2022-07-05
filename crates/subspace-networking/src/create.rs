@@ -20,14 +20,12 @@ use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
-use libp2p::relay::v2::relay::{rate_limiter, Config as RelayConfig};
+use libp2p::relay::v2::relay::Config as RelayConfig;
 use libp2p::swarm::{AddressScore, SwarmBuilder};
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
-use once_cell::sync::Lazy;
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -38,11 +36,6 @@ use tracing::info;
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
 
-/// Provides the default relay server multi-address. It's memory based and can be used in both
-/// development and in-memory relay scenarios.
-pub static DEFAULT_RELAY_SERVER_ADDRESS: Lazy<Multiaddr> =
-    Lazy::new(|| Multiaddr::empty().with(Protocol::Memory(1_000_000_000)));
-
 /// A helper structure for working with libp2p `relay::Config`. The original structure is not Clone,
 /// Send and Sync which is not convenient. `RelayLimitSettings` implements a conversion method to the
 /// original `relay::Config` and the default method with the original recommended settings.
@@ -51,14 +44,10 @@ pub struct RelayLimitSettings {
     pub max_reservations: usize,
     pub max_reservations_per_peer: usize,
     pub reservation_duration: Duration,
-    pub reservation_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig,
-    pub reservation_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig,
     pub max_circuits: usize,
     pub max_circuits_per_peer: usize,
     pub max_circuit_duration: Duration,
     pub max_circuit_bytes: u64,
-    pub circuit_src_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig,
-    pub circuit_src_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig,
 }
 
 impl Default for RelayLimitSettings {
@@ -73,28 +62,6 @@ impl Default for RelayLimitSettings {
             max_circuits_per_peer: default_relay_config.max_circuits_per_peer,
             max_circuit_duration: default_relay_config.max_circuit_duration,
             max_circuit_bytes: default_relay_config.max_circuit_bytes,
-
-            // Copied from the  RelayConfig::default() implementation:
-            // For each peer ID one reservation every 2 minutes with up to 30 reservations per hour.
-            reservation_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig {
-                limit: NonZeroU32::new(30).expect("30 > 0"),
-                interval: Duration::from_secs(60 * 2),
-            },
-            // For each IP address one reservation every minute with up to 60 reservations per hour.
-            reservation_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig {
-                limit: NonZeroU32::new(60).expect("60 > 0"),
-                interval: Duration::from_secs(60),
-            },
-            // For each source peer ID one circuit every 2 minute with up to 30 circuits per hour.
-            circuit_src_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig {
-                limit: NonZeroU32::new(30).expect("30 > 0"),
-                interval: Duration::from_secs(60 * 2),
-            },
-            // For each source IP address one circuit every minute with up to 60 circuits per hour.
-            circuit_src_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig {
-                limit: NonZeroU32::new(60).expect("60 > 0"),
-                interval: Duration::from_secs(60),
-            },
         }
     }
 }
@@ -102,26 +69,16 @@ impl Default for RelayLimitSettings {
 impl RelayLimitSettings {
     /// Converts `RelayLimitSettings` to libp2p `relay::Config`.
     pub fn to_relay_config(self) -> RelayConfig {
-        let reservation_rate_limiters = vec![
-            rate_limiter::new_per_peer(self.reservation_rate_limit_per_peer),
-            rate_limiter::new_per_ip(self.circuit_src_rate_limit_per_ip),
-        ];
-
-        let circuit_src_rate_limiters = vec![
-            rate_limiter::new_per_peer(self.circuit_src_rate_limit_per_peer),
-            rate_limiter::new_per_ip(self.circuit_src_rate_limit_per_ip),
-        ];
-
         RelayConfig {
             max_reservations: self.max_reservations,
             max_reservations_per_peer: self.max_circuits_per_peer,
             reservation_duration: self.reservation_duration,
-            reservation_rate_limiters,
+            reservation_rate_limiters: Vec::new(),
             max_circuits: self.max_circuits,
             max_circuits_per_peer: self.max_circuits_per_peer,
             max_circuit_duration: self.max_circuit_duration,
             max_circuit_bytes: self.max_circuit_bytes,
-            circuit_src_rate_limiters,
+            circuit_src_rate_limiters: Vec::new(),
         }
     }
 }
@@ -136,13 +93,13 @@ pub enum RelayConfiguration {
     /// This option will toggle the relay behaviour (relay server).
     Server(Multiaddr, RelayLimitSettings),
 
-    /// Relay-client configuration in accepting mode (server behind NAT). It will enable listening
+    /// Relay-client configuration in accepting mode (eg.: client behind NAT). It will enable listening
     /// on the provided Multiaddr with registering a circuit reservation.
     /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000/p2p/<server_peer_id>/p2p-circuit
     /// This option will toggle the relay-client behaviour.
     ClientAcceptor(Multiaddr),
 
-    /// Relay-client configuration in requesting mode (a client for a server behind NAT).
+    /// Relay-client configuration in requesting mode (a request for a client behind NAT).
     /// It will enable creating a relay circuit.
     /// This option will toggle the relay-client behaviour.
     ClientInitiator,
@@ -159,12 +116,6 @@ impl Default for RelayConfiguration {
 }
 
 impl RelayConfiguration {
-    /// Creates the default relay server configuration with the default memory based multi-address
-    /// and the default relay limit settings.
-    pub fn default_server_configuration() -> Self {
-        Self::Server(DEFAULT_RELAY_SERVER_ADDRESS.clone(), Default::default())
-    }
-
     /// Defines whether `self` is configured as a relay client in either ClientInitiator or
     /// ClientAcceptor modes.
     pub fn is_client_enabled(&self) -> bool {
@@ -440,16 +391,15 @@ async fn build_transport(
 
     if let Some(relay_transport) = relay_transport {
         let transport = OrTransport::new(relay_transport, transport);
-
         Ok(upgrade_transport(
-            transport.boxed(),
+            transport,
             &keypair,
             timeout,
             yamux_config,
         ))
     } else {
         Ok(upgrade_transport(
-            transport.boxed(),
+            transport,
             &keypair,
             timeout,
             yamux_config,
@@ -458,14 +408,25 @@ async fn build_transport(
 }
 
 // Upgrades a provided transport with a multiplexer and a Noise authenticator.
-fn upgrade_transport<StreamSink>(
-    transport: Boxed<StreamSink>,
+fn upgrade_transport<Output, Error, Listener, ListenerUpgrade, Dial>(
+    transport: impl Transport<
+            Output = Output,
+            Error = Error,
+            Listener = Listener,
+            ListenerUpgrade = ListenerUpgrade,
+            Dial = Dial,
+        > + Send
+        + 'static,
     keypair: &identity::Keypair,
     timeout: Duration,
     yamux_config: YamuxConfig,
 ) -> Boxed<(PeerId, StreamMuxerBox)>
 where
-    StreamSink: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    Output: Unpin + Send + AsyncWrite + AsyncRead + 'static,
+    Error: Sync + Send + 'static,
+    Listener: Send + 'static,
+    ListenerUpgrade: Send + 'static,
+    Dial: Send + 'static,
 {
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
         .into_authentic(keypair)

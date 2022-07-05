@@ -7,6 +7,7 @@ use crate::request_responses::{
 };
 use crate::shared::IdendityHash;
 use custom_record_store::CustomRecordStore;
+use derive_more::From;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
@@ -97,7 +98,7 @@ impl Behavior {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub(crate) enum Event {
     Identify(IdentifyEvent),
     Kademlia(KademliaEvent),
@@ -106,46 +107,4 @@ pub(crate) enum Event {
     RequestResponse(RequestResponseEvent),
     Relay(RelayEvent),
     RelayClient(RelayClientEvent),
-}
-
-impl From<IdentifyEvent> for Event {
-    fn from(event: IdentifyEvent) -> Self {
-        Event::Identify(event)
-    }
-}
-
-impl From<KademliaEvent> for Event {
-    fn from(event: KademliaEvent) -> Self {
-        Event::Kademlia(event)
-    }
-}
-
-impl From<GossipsubEvent> for Event {
-    fn from(event: GossipsubEvent) -> Self {
-        Event::Gossipsub(event)
-    }
-}
-
-impl From<PingEvent> for Event {
-    fn from(event: PingEvent) -> Self {
-        Event::Ping(event)
-    }
-}
-
-impl From<RequestResponseEvent> for Event {
-    fn from(event: RequestResponseEvent) -> Self {
-        Event::RequestResponse(event)
-    }
-}
-
-impl From<RelayEvent> for Event {
-    fn from(event: RelayEvent) -> Self {
-        Event::Relay(event)
-    }
-}
-
-impl From<RelayClientEvent> for Event {
-    fn from(event: RelayClientEvent) -> Self {
-        Event::RelayClient(event)
-    }
 }

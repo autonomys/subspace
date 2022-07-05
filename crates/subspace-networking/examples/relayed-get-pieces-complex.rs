@@ -1,29 +1,25 @@
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
-use libp2p::relay::v2::relay::rate_limiter;
 use libp2p::{identity, Multiaddr, PeerId};
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
     Config, PiecesByRangeResponse, PiecesToPlot, RelayConfiguration, RelayLimitSettings,
-    DEFAULT_RELAY_SERVER_ADDRESS,
 };
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let relay_server_address = Multiaddr::empty().with(Protocol::Memory(1_000_000_000));
+
     // Relay node
     let relay_node_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
     let config_1 = Config {
         listen_on: vec![relay_node_addr.clone()],
         allow_non_globals_in_dht: true,
-        relay_config: RelayConfiguration::Server(
-            DEFAULT_RELAY_SERVER_ADDRESS.clone(),
-            relay_config(),
-        ),
+        relay_config: RelayConfiguration::Server(relay_server_address.clone(), relay_config()),
         ..Config::with_generated_keypair()
     };
 
@@ -160,25 +156,9 @@ fn relay_config() -> RelayLimitSettings {
         max_reservations: 128000,
         max_reservations_per_peer: 128000,
         reservation_duration: Duration::from_secs(60 * 60),
-        reservation_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig {
-            limit: NonZeroU32::new(300000).expect("30 > 0"),
-            interval: Duration::from_millis(1),
-        },
-        reservation_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig {
-            limit: NonZeroU32::new(600000).expect("60 > 0"),
-            interval: Duration::from_millis(1),
-        },
         max_circuits: 128000,
         max_circuits_per_peer: 128000,
         max_circuit_duration: Duration::from_secs(2 * 60),
-        max_circuit_bytes: 1 << 27, // 128 kibibyte
-        circuit_src_rate_limit_per_ip: rate_limiter::GenericRateLimiterConfig {
-            limit: NonZeroU32::new(300000).expect("30 > 0"),
-            interval: Duration::from_millis(1),
-        },
-        circuit_src_rate_limit_per_peer: rate_limiter::GenericRateLimiterConfig {
-            limit: NonZeroU32::new(600000).expect("60 > 0"),
-            interval: Duration::from_millis(1),
-        },
+        max_circuit_bytes: 1 << 27,
     }
 }
