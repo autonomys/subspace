@@ -276,7 +276,12 @@ pub(super) fn load_first_unconfirmed_bad_receipt_info<
 		let bad_signed_receipt_hashes: Vec<H256> =
 			load_decode(backend, bad_signed_receipt_hashes_key.as_slice())?.unwrap_or_default();
 
-		let first_bad_signed_receipt_hash = bad_signed_receipt_hashes[0];
+		let first_bad_signed_receipt_hash =
+			bad_signed_receipt_hashes.get(0).copied().ok_or_else(|| {
+				ClientError::Backend(format!(
+					"No bad signed receipt hashes found for block {bad_receipt_number:?}"
+				))
+			})?;
 
 		let trace_mismatch_index = load_decode(
 			backend,
