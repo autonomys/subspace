@@ -153,7 +153,7 @@ impl LegacyMultiPlotsFarm {
         })
     }
 
-    pub fn single_plot_farms(&self) -> &'_ [SinglePlotFarm] {
+    pub fn single_plot_farms(&self) -> &[SinglePlotFarm] {
         &self.single_plot_farms
     }
 

@@ -20,7 +20,7 @@ use subspace_rpc_primitives::{
     RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use thiserror::Error;
-use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -58,7 +58,6 @@ impl Farming {
         // Oneshot channels, that will be used for interrupt/stop the process
         let (stop_sender, stop_receiver) = async_oneshot::oneshot();
 
-        let span = Span::current();
         // Get a handle for the background task, so that we can wait on it later if we want to
         let farming_handle = tokio::spawn(
             async move {
@@ -89,7 +88,7 @@ impl Farming {
                 }
                 Ok(())
             }
-            .instrument(span),
+            .in_current_span(),
         );
 
         Farming {
@@ -140,7 +139,6 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .subscribe_reward_signing()
         .await
         .map_err(FarmingError::RpcError)?;
-    let span = Span::current();
 
     let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
         let identity = identity.clone();
@@ -177,7 +175,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 }
             }
         }
-        .instrument(span)
+        .in_current_span()
     }));
 
     let mut salts = Salts::default();
