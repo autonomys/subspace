@@ -122,7 +122,11 @@ impl LegacyMultiPlotsFarm {
         let archiving = if !enable_dsn_archiving {
             let archiving_start_fut = Archiving::start(
                 farmer_protocol_info,
-                vec![object_mappings],
+                single_plot_farms
+                    .iter()
+                    .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
+                    .chain([object_mappings])
+                    .collect(),
                 archiving_client,
                 {
                     let plotters = single_plot_farms
