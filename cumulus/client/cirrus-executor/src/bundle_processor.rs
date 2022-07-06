@@ -513,7 +513,7 @@ where
 					// on the primary chain points to an invalid secondary block.
 					crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
 						&*self.client,
-						block_number.into(),
+						signed_receipt.execution_receipt.primary_number,
 						signed_receipt.hash(),
 						(0u32, block_hash),
 					)?;

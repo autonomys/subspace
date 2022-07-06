@@ -19,7 +19,7 @@ const EXECUTION_RECEIPT_BLOCK_NUMBER: &[u8] = b"execution_receipt_block_number";
 const BAD_SIGNED_RECEIPT_HASHES: &[u8] = b"bad_signed_receipt_hashes";
 
 /// bad_signed_receipt_hash => (trace_mismatch_index, associated_local_block_hash)
-const BAD_RECEIPT_MISMATCH_INDEX: &[u8] = b"bad_receipt_mismatch_index";
+const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 
 /// Set of block numbers at which there is at least one bad receipt detected.
 ///
@@ -33,8 +33,8 @@ fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
 	(EXECUTION_RECEIPT, block_hash).encode()
 }
 
-fn bad_receipt_mismatch_index_key(signed_receipt_hash: impl Encode) -> Vec<u8> {
-	(BAD_RECEIPT_MISMATCH_INDEX, signed_receipt_hash).encode()
+fn bad_receipt_mismatch_info_key(signed_receipt_hash: impl Encode) -> Vec<u8> {
+	(BAD_RECEIPT_MISMATCH_INFO, signed_receipt_hash).encode()
 }
 
 fn load_decode<Backend: AuxStore, T: Decode>(
@@ -145,7 +145,7 @@ where
 
 	let mut to_insert = vec![
 		(bad_signed_receipt_hashes_key, bad_signed_receipt_hashes.encode()),
-		(bad_receipt_mismatch_index_key(bad_signed_receipt_hash), trace_mismatch_info.encode()),
+		(bad_receipt_mismatch_info_key(bad_signed_receipt_hash), trace_mismatch_info.encode()),
 	];
 
 	let mut bad_receipt_numbers: Vec<NumberFor<PBlock>> =
@@ -181,7 +181,7 @@ pub(super) fn delete_bad_receipt<Backend: AuxStore>(
 		)))
 	}
 
-	let mut keys_to_delete = vec![bad_receipt_mismatch_index_key(signed_receipt_hash)];
+	let mut keys_to_delete = vec![bad_receipt_mismatch_info_key(signed_receipt_hash)];
 
 	let to_insert = if hashes_at_block_number.is_empty() {
 		keys_to_delete.push(bad_signed_receipt_hashes_key);
@@ -220,7 +220,7 @@ fn delete_expired_bad_receipt_info_at<Backend: AuxStore, Number: Encode>(
 
 	let keys_to_delete = bad_receipt_hashes
 		.into_iter()
-		.map(bad_receipt_mismatch_index_key)
+		.map(bad_receipt_mismatch_info_key)
 		.chain(std::iter::once(bad_signed_receipt_hashes_key))
 		.collect::<Vec<_>>();
 
@@ -275,15 +275,15 @@ where
 }
 
 /// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
-pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, Number>(
+pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, PNumber>(
 	backend: &Backend,
 ) -> Result<Option<(H256, u32, Block::Hash)>, ClientError>
 where
 	Backend: AuxStore + HeaderBackend<Block>,
 	Block: BlockT,
-	Number: Encode + Decode + Copy + std::fmt::Debug,
+	PNumber: Encode + Decode + Copy + std::fmt::Debug,
 {
-	let bad_receipt_numbers: Vec<Number> =
+	let bad_receipt_numbers: Vec<PNumber> =
 		load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
 	for bad_receipt_number in bad_receipt_numbers {
@@ -296,7 +296,7 @@ where
 		for bad_signed_receipt_hash in bad_signed_receipt_hashes.iter() {
 			let (trace_mismatch_index, block_hash): (u32, Block::Hash) = load_decode(
 				backend,
-				bad_receipt_mismatch_index_key(bad_signed_receipt_hash).as_slice(),
+				bad_receipt_mismatch_info_key(bad_signed_receipt_hash).as_slice(),
 			)?
 			.ok_or_else(|| {
 				ClientError::Backend(
@@ -586,8 +586,8 @@ mod tests {
 				.map(|v: Vec<Hash>| v.into_iter().collect())
 		};
 
-		let trace_mismatch_index_for = |receipt_hash| -> Option<(u32, Hash)> {
-			load_decode(&client, bad_receipt_mismatch_index_key(receipt_hash).as_slice()).unwrap()
+		let trace_mismatch_info_for = |receipt_hash| -> Option<(u32, Hash)> {
+			load_decode(&client, bad_receipt_mismatch_info_key(receipt_hash).as_slice()).unwrap()
 		};
 
 		let bad_receipt_numbers = || -> Option<Vec<BlockNumber>> {
@@ -624,9 +624,9 @@ mod tests {
 			.unwrap();
 		assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
 
-		assert_eq!(trace_mismatch_index_for(bad_receipt_hash1).unwrap(), (1, block_hash1));
-		assert_eq!(trace_mismatch_index_for(bad_receipt_hash2).unwrap(), (2, block_hash2));
-		assert_eq!(trace_mismatch_index_for(bad_receipt_hash3).unwrap(), (3, block_hash3));
+		assert_eq!(trace_mismatch_info_for(bad_receipt_hash1).unwrap(), (1, block_hash1));
+		assert_eq!(trace_mismatch_info_for(bad_receipt_hash2).unwrap(), (2, block_hash2));
+		assert_eq!(trace_mismatch_info_for(bad_receipt_hash3).unwrap(), (3, block_hash3));
 		assert_eq!(
 			first_unconfirmed_bad_receipt_info(1),
 			Some((bad_receipt_hash1, 1, block_hash1))
@@ -640,17 +640,17 @@ mod tests {
 
 		assert!(delete_bad_receipt(&client, 10, bad_receipt_hash1).is_ok());
 		assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
-		assert!(trace_mismatch_index_for(bad_receipt_hash1).is_none());
+		assert!(trace_mismatch_info_for(bad_receipt_hash1).is_none());
 		assert_eq!(bad_receipts_at(10).unwrap(), [bad_receipt_hash2, bad_receipt_hash3].into());
 
 		assert!(delete_bad_receipt(&client, 10, bad_receipt_hash2).is_ok());
 		assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
-		assert!(trace_mismatch_index_for(bad_receipt_hash2).is_none());
+		assert!(trace_mismatch_info_for(bad_receipt_hash2).is_none());
 		assert_eq!(bad_receipts_at(10).unwrap(), [bad_receipt_hash3].into());
 
 		assert!(delete_bad_receipt(&client, 10, bad_receipt_hash3).is_ok());
 		assert_eq!(bad_receipt_numbers(), Some(vec![20]));
-		assert!(trace_mismatch_index_for(bad_receipt_hash3).is_none());
+		assert!(trace_mismatch_info_for(bad_receipt_hash3).is_none());
 		assert!(bad_receipts_at(10).is_none());
 		assert_eq!(
 			first_unconfirmed_bad_receipt_info(1),
