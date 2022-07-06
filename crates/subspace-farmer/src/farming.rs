@@ -10,8 +10,8 @@ use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotFarmId;
 use crate::utils::AbortingJoinHandle;
-use futures::future::{Either, Fuse, FusedFuture};
-use futures::{future, FutureExt, StreamExt};
+use futures::future::{Fuse, FusedFuture};
+use futures::{FutureExt, StreamExt};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -39,14 +39,13 @@ pub enum FarmingError {
 /// At high level it receives a new challenge from the consensus and tries to find solution for it
 /// in its `Commitments` database.
 pub struct Farming {
-    stop_sender: async_oneshot::Sender<()>,
     handle: Fuse<AbortingJoinHandle<Result<(), FarmingError>>>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
 impl Farming {
     /// Returns an instance of farming, and also starts a concurrent background farming task
-    pub fn start<T: RpcClient + Sync + Send + 'static>(
+    pub async fn start<T: RpcClient + Sync + Send + 'static>(
         single_plot_farm_id: SinglePlotFarmId,
         plot: Plot,
         commitments: Commitments,
@@ -55,44 +54,30 @@ impl Farming {
         identity: Identity,
         reward_address: PublicKey,
     ) -> Self {
-        // Oneshot channels, that will be used for interrupt/stop the process
-        let (stop_sender, stop_receiver) = async_oneshot::oneshot();
+        let (initialized_sender, initialized_receiver) = async_oneshot::oneshot();
 
         // Get a handle for the background task, so that we can wait on it later if we want to
         let farming_handle = tokio::spawn(
             async move {
-                match future::select(
-                    Box::pin(subscribe_to_slot_info(
-                        single_plot_farm_id,
-                        &client,
-                        &plot,
-                        &commitments,
-                        single_disk_semaphore,
-                        &identity,
-                        reward_address,
-                    )),
-                    stop_receiver,
+                subscribe_to_slot_info(
+                    single_plot_farm_id,
+                    initialized_sender,
+                    &client,
+                    &plot,
+                    &commitments,
+                    single_disk_semaphore,
+                    &identity,
+                    reward_address,
                 )
                 .await
-                {
-                    Either::Left((farming_result, _)) => {
-                        if let Err(val) = farming_result {
-                            return Err(val);
-                        }
-                    }
-                    // either Sender is dropped, or a stop message is received.
-                    // in both cases, we stop the process and return Ok(())
-                    Either::Right((_, _)) => {
-                        info!("Farming stopped!");
-                    }
-                }
-                Ok(())
             }
             .in_current_span(),
         );
 
+        // Wait for initialization to finish, result doesn't matter here
+        let _ = initialized_receiver.await;
+
         Farming {
-            stop_sender,
             handle: AbortingJoinHandle::new(farming_handle).fuse(),
         }
     }
@@ -106,12 +91,6 @@ impl Farming {
     }
 }
 
-impl Drop for Farming {
-    fn drop(&mut self) {
-        let _ = self.stop_sender.send(());
-    }
-}
-
 /// Salts will change, this struct allows to keep track of them
 #[derive(Default)]
 struct Salts {
@@ -120,8 +99,10 @@ struct Salts {
 }
 
 /// Subscribes to slots, and tries to find a solution for them
+#[allow(clippy::too_many_arguments)]
 async fn subscribe_to_slot_info<T: RpcClient>(
     single_plot_farm_id: SinglePlotFarmId,
+    mut initialized_sender: async_oneshot::Sender<()>,
     client: &T,
     plot: &Plot,
     commitments: &Commitments,
@@ -139,6 +120,10 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .subscribe_reward_signing()
         .await
         .map_err(FarmingError::RpcError)?;
+
+    if let Err(_closed) = initialized_sender.send(()) {
+        return Ok(());
+    }
 
     let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
         let identity = identity.clone();

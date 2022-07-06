@@ -390,7 +390,7 @@ impl SinglePlotFarm {
 
         // Start the farming task
         let farming = enable_farming.then(|| {
-            Farming::start(
+            Handle::current().block_on(Farming::start(
                 id,
                 plot.clone(),
                 commitments.clone(),
@@ -398,7 +398,7 @@ impl SinglePlotFarm {
                 single_disk_semaphore.clone(),
                 identity,
                 reward_address,
-            )
+            ))
         });
 
         let mut farm = Self {
