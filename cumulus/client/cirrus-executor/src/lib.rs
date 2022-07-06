@@ -57,7 +57,6 @@
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
 
-#![feature(is_sorted)]
 #![feature(drain_filter)]
 
 mod aux_schema;

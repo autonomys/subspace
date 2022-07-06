@@ -150,9 +150,7 @@ where
 	// The first bad receipt detected at this block number.
 	if !bad_receipt_numbers.contains(&bad_receipt_number) {
 		bad_receipt_numbers.push(bad_receipt_number);
-
-		assert!(bad_receipt_numbers.is_sorted(), "Bad receipt numbers must be sorted");
-
+		bad_receipt_numbers.sort_unstable();
 		to_insert.push((BAD_RECEIPT_NUMBERS.encode(), bad_receipt_numbers.encode()));
 	}
 
