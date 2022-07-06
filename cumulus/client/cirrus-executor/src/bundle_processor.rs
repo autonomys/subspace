@@ -512,11 +512,24 @@ where
 
 		for fraud_proof in fraud_proofs {
 			let bad_receipt_number = fraud_proof.parent_number + 1;
-			crate::aux_schema::delete_bad_receipt(
+			// TODO: There is a chance that the fraud proof and the bad receipt are included
+			// in the same block, especially when multiple receipts are included in one block,
+			// which means it's possible we're deleting a receipt which was just inserted above,
+			// so it's more efficient we collect all the write&delete changes before operating
+			// the database.
+			if let Err(e) = crate::aux_schema::delete_bad_receipt(
 				&*self.client,
 				bad_receipt_number,
 				fraud_proof.bad_signed_receipt_hash,
-			)?;
+			) {
+				tracing::error!(
+					target: LOG_TARGET,
+					error = ?e,
+					?bad_receipt_number,
+					bad_signed_receipt_hash = ?fraud_proof.bad_signed_receipt_hash,
+					"Failed to delete bad receipt",
+				);
+			}
 		}
 
 		Ok(())
