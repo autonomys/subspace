@@ -17,6 +17,7 @@ use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
+use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
@@ -153,25 +154,21 @@ pub(crate) async fn bench(
     })
     .await??;
 
-    let base_path = base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
-        match write_to_disk {
-            WriteToDisk::Nothing => Plot::with_plot_file(
-                plot_index.into(),
-                BenchPlotMock::new(max_piece_count),
-                &base_path,
-                public_key,
-                max_piece_count,
-            ),
-            WriteToDisk::Everything => Plot::open_or_create(
-                plot_index.into(),
-                &base_path,
-                &base_path,
-                public_key,
-                max_piece_count,
-            ),
-        }
+    let plot_factory = move |options: PlotFactoryOptions<'_>| match write_to_disk {
+        WriteToDisk::Nothing => Plot::with_plot_file(
+            options.single_plot_farm_id,
+            BenchPlotMock::new(options.max_piece_count),
+            options.metadata_directory,
+            options.public_key,
+            options.max_piece_count,
+        ),
+        WriteToDisk::Everything => Plot::open_or_create(
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_piece_count,
+        ),
     };
 
     let multi_farming = LegacyMultiPlotsFarm::new(
@@ -254,12 +251,13 @@ pub(crate) async fn bench(
             break;
         }
     }
+    drop(archived_segments_sender);
 
     let took = start.elapsed();
 
     let space_allocated = get_size(base_directory)?;
     let actual_space_pledged = multi_farming
-        .single_plot_farms
+        .single_plot_farms()
         .iter()
         .map(|single_plot_farm| single_plot_farm.plot().piece_count())
         .sum::<u64>()
@@ -291,7 +289,7 @@ pub(crate) async fn bench(
         let start = Instant::now();
 
         let mut tasks = multi_farming
-            .single_plot_farms
+            .single_plot_farms()
             .iter()
             .map(|single_plot_farm| {
                 (
@@ -314,7 +312,7 @@ pub(crate) async fn bench(
         );
     }
 
-    client.stop().await;
+    drop(client);
     multi_farming.wait().await?;
 
     Ok(())

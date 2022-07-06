@@ -1,6 +1,7 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
+use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{ObjectMappings, Plot};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
@@ -164,15 +165,13 @@ async fn test_dsn_sync() {
     .unwrap()
     .unwrap();
 
-    let base_path = seeder_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
+    let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
-            plot_index.into(),
-            &base_path,
-            &base_path,
-            public_key,
-            max_piece_count,
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_piece_count,
         )
     };
 
@@ -241,14 +240,17 @@ async fn test_dsn_sync() {
     };
 
     let (seeder_address_sender, mut seeder_address_receiver) = mpsc::unbounded();
-    seeder_multi_farming.single_plot_farms[0]
+    seeder_multi_farming.single_plot_farms()[0]
         .node()
         .on_new_listener(Arc::new(move |address| {
             let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
 
-    let peer_id = seeder_multi_farming.single_plot_farms[0].node().id().into();
+    let peer_id = seeder_multi_farming.single_plot_farms()[0]
+        .node()
+        .id()
+        .into();
 
     let (seeder_multi_farming_finished_sender, seeder_multi_farming_finished_receiver) =
         oneshot::channel();
@@ -289,15 +291,13 @@ async fn test_dsn_sync() {
     .unwrap()
     .unwrap();
 
-    let base_path = syncer_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index: usize, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
+    let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
-            plot_index.into(),
-            &base_path,
-            &base_path,
-            public_key,
-            max_piece_count,
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_piece_count,
         )
     };
 
@@ -324,14 +324,14 @@ async fn test_dsn_sync() {
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
-    let plot = syncer_multi_farming.single_plot_farms[0].plot().clone();
-    let dsn_sync = syncer_multi_farming.single_plot_farms[0].dsn_sync(
+    let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
+    let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync(
         syncer_max_plot_size,
         seeder_max_plot_size,
         range_size,
     );
     let public_key = U256::from_big_endian(
-        syncer_multi_farming.single_plot_farms[0]
+        syncer_multi_farming.single_plot_farms()[0]
             .public_key()
             .as_ref(),
     );
@@ -405,9 +405,9 @@ async fn test_dsn_sync() {
         ),
     };
 
-    syncer_client.stop().await;
+    drop(syncer_client);
 
     drop(seeder_archived_segments_sender);
-    seeder_client.stop().await;
+    drop(seeder_client);
     seeder_multi_farming_finished_receiver.await.unwrap();
 }

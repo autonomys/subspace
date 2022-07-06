@@ -8,7 +8,9 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
+use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError, ObjectMappings};
 use derive_more::From;
@@ -18,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::Formatter;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
@@ -32,8 +34,7 @@ use subspace_rpc_primitives::FarmerMetadata;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::task::JoinHandle;
-use tracing::{error, info, info_span, trace, warn};
+use tracing::{error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
@@ -123,14 +124,21 @@ pub struct SinglePlotPlotter {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
+    single_disk_semaphore: SingleDiskSemaphore,
 }
 
 impl SinglePlotPlotter {
-    fn new(codec: SubspaceCodec, weak_plot: Plot, commitments: Commitments) -> Self {
+    fn new(
+        codec: SubspaceCodec,
+        weak_plot: Plot,
+        commitments: Commitments,
+        single_disk_semaphore: SingleDiskSemaphore,
+    ) -> Self {
         Self {
             codec,
             plot: weak_plot,
             commitments,
+            single_disk_semaphore,
         }
     }
 
@@ -144,7 +152,10 @@ impl SinglePlotPlotter {
 
         let pieces = Arc::new(pieces);
 
-        let write_result = self.plot.write_many(Arc::clone(&pieces), piece_indexes)?;
+        // Limit concurrent updates on the same disk
+        let _guard = self.single_disk_semaphore.acquire();
+
+        let write_result = self.plot.write_many(pieces, piece_indexes)?;
 
         self.commitments
             .remove_pieces(write_result.evicted_pieces())?;
@@ -155,21 +166,31 @@ impl SinglePlotPlotter {
     }
 }
 
-pub(crate) struct SinglePlotFarmOptions<C, NewPlot>
-where
-    C: RpcClient,
-    NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
-{
+pub struct PlotFactoryOptions<'a> {
+    pub single_plot_farm_id: &'a SinglePlotFarmId,
+    pub public_key: PublicKey,
+    pub plot_directory: &'a Path,
+    pub metadata_directory: &'a Path,
+    pub max_piece_count: u64,
+}
+
+pub trait PlotFactory =
+    Fn(PlotFactoryOptions<'_>) -> Result<Plot, PlotError> + Send + Sync + 'static;
+
+pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) id: SinglePlotFarmId,
+    pub(crate) plot_directory: PathBuf,
     pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
-    pub(crate) max_plot_pieces: u64,
+    pub(crate) max_piece_count: u64,
     pub(crate) farmer_metadata: FarmerMetadata,
-    pub(crate) farming_client: C,
-    pub(crate) plot_factory: NewPlot,
+    pub(crate) farming_client: RC,
+    pub(crate) plot_factory: &'a PF,
     pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
+    // TODO: Remove this field once we can use circuit relay with networking
     pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
+    pub(crate) single_disk_semaphore: SingleDiskSemaphore,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
     pub(crate) enable_dsn_archiving: bool,
@@ -189,36 +210,30 @@ pub struct SinglePlotFarm {
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
-    background_task_handles: Vec<JoinHandle<()>>,
-}
-
-impl Drop for SinglePlotFarm {
-    fn drop(&mut self) {
-        for handle in &self.background_task_handles {
-            handle.abort();
-        }
-    }
+    single_disk_semaphore: SingleDiskSemaphore,
+    span: Span,
+    background_task_handles: Vec<AbortingJoinHandle<()>>,
 }
 
 impl SinglePlotFarm {
-    pub(crate) fn new<C, NewPlot>(
-        options: SinglePlotFarmOptions<C, NewPlot>,
-    ) -> anyhow::Result<Self>
+    pub(crate) fn new<RC, PF>(options: SinglePlotFarmOptions<'_, RC, PF>) -> anyhow::Result<Self>
     where
-        C: RpcClient,
-        NewPlot: Fn(usize, PublicKey, u64) -> Result<Plot, PlotError> + Clone + Send + 'static,
+        RC: RpcClient,
+        PF: PlotFactory,
     {
         let SinglePlotFarmOptions {
             id,
+            plot_directory,
             metadata_directory,
             plot_index,
-            max_plot_pieces,
+            max_piece_count,
             farmer_metadata,
             farming_client,
             plot_factory,
             mut listen_on,
             mut bootstrap_nodes,
             first_listen_on,
+            single_disk_semaphore,
             enable_farming,
             reward_address,
             enable_dsn_archiving,
@@ -236,7 +251,13 @@ impl SinglePlotFarm {
         // TODO: This doesn't account for the fact that node can
         //  have a completely different history to what farmer expects
         info!("Opening plot");
-        let plot = plot_factory(plot_index, public_key, max_plot_pieces)?;
+        let plot = plot_factory(PlotFactoryOptions {
+            single_plot_farm_id: &id,
+            public_key,
+            plot_directory: &plot_directory,
+            metadata_directory: &metadata_directory,
+            max_piece_count,
+        })?;
 
         info!("Opening object mappings");
         let object_mappings =
@@ -374,6 +395,7 @@ impl SinglePlotFarm {
                 plot.clone(),
                 commitments.clone(),
                 farming_client,
+                single_disk_semaphore.clone(),
                 identity,
                 reward_address,
             )
@@ -388,6 +410,8 @@ impl SinglePlotFarm {
             farming,
             node: node.clone(),
             node_runner,
+            single_disk_semaphore,
+            span: span.clone(),
             background_task_handles: vec![],
         };
 
@@ -409,7 +433,8 @@ impl SinglePlotFarm {
                 }
             });
 
-            farm.background_task_handles.push(dsn_archiving_handle);
+            farm.background_task_handles
+                .push(AbortingJoinHandle::new(dsn_archiving_handle));
         }
 
         // Start DSN syncing
@@ -433,7 +458,8 @@ impl SinglePlotFarm {
                 }
             });
 
-            farm.background_task_handles.push(dsn_sync_handle);
+            farm.background_task_handles
+                .push(AbortingJoinHandle::new(dsn_sync_handle));
         }
 
         Ok(farm)
@@ -474,6 +500,7 @@ impl SinglePlotFarm {
             self.codec.clone(),
             self.plot.clone(),
             self.commitments.clone(),
+            self.single_disk_semaphore.clone(),
         )
     }
 
@@ -484,9 +511,10 @@ impl SinglePlotFarm {
 
                 Ok(())
             })
+            .instrument(self.span.clone())
             .await?;
         } else {
-            self.node_runner.run().await;
+            self.node_runner.run().instrument(self.span.clone()).await;
         }
 
         Ok(())
@@ -506,8 +534,11 @@ impl SinglePlotFarm {
         };
 
         let single_plot_plotter = self.plotter();
+        let span = self.span.clone();
 
         dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
+            let _guard = span.enter();
+
             single_plot_plotter
                 .plot_pieces(PiecesToPlot {
                     pieces,
