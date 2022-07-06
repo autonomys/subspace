@@ -1,7 +1,7 @@
 use crate::archiving::Archiving;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{
-    PlotFactory, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions, SinglePlotPieceGetter,
+    PlotFactory, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions,
 };
 use crate::utils::get_plot_sizes;
 use crate::ws_rpc_server::PieceGetter;
@@ -13,45 +13,17 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fmt, fs, io};
 use std_semaphore::{Semaphore, SemaphoreGuard};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
+use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
-use tracing::{error, info_span};
+use tracing::{error, info, info_span};
 use ulid::Ulid;
-
-/// Abstraction that can get pieces out of internal plots
-#[derive(Debug, Clone)]
-pub struct SingleDiskFarmPieceGetter {
-    single_plot_piece_getters: Vec<SinglePlotPieceGetter>,
-}
-
-impl SingleDiskFarmPieceGetter {
-    /// Create new piece getter for many single plot farms
-    pub fn new(single_plot_piece_getters: Vec<SinglePlotPieceGetter>) -> Self {
-        Self {
-            single_plot_piece_getters,
-        }
-    }
-}
-
-impl PieceGetter for SingleDiskFarmPieceGetter {
-    fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-        piece_index_hash: PieceIndexHash,
-    ) -> Option<Piece> {
-        self.single_plot_piece_getters
-            .iter()
-            .find_map(|single_plot_piece_getter| {
-                single_plot_piece_getter.get_piece(piece_index, piece_index_hash)
-            })
-    }
-}
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -69,9 +41,9 @@ impl fmt::Debug for SingleDiskSemaphore {
 impl SingleDiskSemaphore {
     /// Create new semaphore for limiting concurrency of the major processes working with the same
     /// disk
-    pub fn new(concurrency: u16) -> Self {
+    pub fn new(concurrency: NonZeroU16) -> Self {
         Self {
-            inner: Arc::new(Semaphore::new(concurrency as isize)),
+            inner: Arc::new(Semaphore::new(concurrency.get() as isize)),
         }
     }
 
@@ -96,11 +68,11 @@ impl SingleDiskFarmId {
     }
 }
 
-/// Metadata for `SingleDiskFarm`, stores important information about the contents of the farm
+/// Important information about the contents of the `SingleDiskFarm`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SingleDiskFarmMetadata {
-    /// V0 of the metadata
+pub enum SingleDiskFarmInfo {
+    /// V0 of the info
     #[serde(rename_all = "camelCase")]
     V0 {
         /// ID of the farm
@@ -115,7 +87,7 @@ pub enum SingleDiskFarmMetadata {
     },
 }
 
-impl SingleDiskFarmMetadata {
+impl SingleDiskFarmInfo {
     const FILE_NAME: &'static str = "single_disk_farm.json";
 
     pub fn new(
@@ -131,8 +103,8 @@ impl SingleDiskFarmMetadata {
         }
     }
 
-    /// Load `SingleDiskFarm` metadata from path where metadata is supposed to be stored, `None`
-    /// means no metadata was found, happens during first start.
+    /// Load `SingleDiskFarm` from path, `None` means no info file was found, happens during first
+    /// start.
     pub fn load_from(metadata_directory: &Path) -> io::Result<Option<Self>> {
         let bytes = match fs::read(metadata_directory.join(Self::FILE_NAME)) {
             Ok(bytes) => bytes,
@@ -150,12 +122,11 @@ impl SingleDiskFarmMetadata {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
-    /// Store `SingleDiskFarm` metadata to path where metadata is supposed to be stored so it can be
-    /// loaded again upon restart.
+    /// Store `SingleDiskFarm` info to path so it can be loaded again upon restart.
     pub fn store_to(&self, metadata_directory: &Path) -> io::Result<()> {
         fs::write(
             metadata_directory.join(Self::FILE_NAME),
-            serde_json::to_vec(self).expect("Metadata serialization never fails; qed"),
+            serde_json::to_vec(self).expect("Info serialization never fails; qed"),
         )
     }
 
@@ -197,7 +168,10 @@ pub struct SingleDiskFarmOptions<RC, PF> {
     pub metadata_directory: PathBuf,
     /// How much space in bytes can farm use for plots (metadata space is not included)
     pub allocated_plotting_space: u64,
+    /// Information about protocol necessary for farmer
     pub farmer_protocol_info: FarmerProtocolInfo,
+    /// Number of major concurrent operations to allow for disk
+    pub disk_concurrency: NonZeroU16,
     /// Client used for archiving subscriptions
     pub archiving_client: RC,
     /// Independent client used for farming, such that it is not blocked by archiving
@@ -237,6 +211,7 @@ impl SingleDiskFarm {
             metadata_directory,
             allocated_plotting_space,
             farmer_protocol_info,
+            disk_concurrency,
             plot_factory,
             archiving_client,
             farming_client,
@@ -251,65 +226,60 @@ impl SingleDiskFarm {
         let plot_sizes =
             get_plot_sizes(allocated_plotting_space, farmer_protocol_info.max_plot_size);
 
-        let single_disk_farm_metadata =
-            match SingleDiskFarmMetadata::load_from(&metadata_directory)? {
-                Some(single_disk_farm_metadata) => {
-                    if allocated_plotting_space
-                        != single_disk_farm_metadata.allocated_plotting_space()
-                    {
-                        error!(
-                            id = %single_disk_farm_metadata.id(),
-                            plot_directory = %plot_directory.display(),
-                            metadata_directory = %metadata_directory.display(),
-                            "Usable plotting space {} is different from {} when farm was created, \
-                            resizing isn't supported yet",
-                            allocated_plotting_space,
-                            single_disk_farm_metadata.allocated_plotting_space(),
-                        );
-
-                        return Err(anyhow!("Can't resize farm after creation"));
-                    }
-
-                    if &farmer_protocol_info.genesis_hash
-                        != single_disk_farm_metadata.genesis_hash()
-                    {
-                        error!(
-                            id = %single_disk_farm_metadata.id(),
-                            "Genesis hash {} is different from {} when farm was created, is is not \
-                            possible to use farm on a different chain",
-                            hex::encode(farmer_protocol_info.genesis_hash),
-                            hex::encode(single_disk_farm_metadata.genesis_hash()),
-                        );
-
-                        return Err(anyhow!("Wrong chain (genesis hash)"));
-                    }
-                    single_disk_farm_metadata
-                }
-                None => {
-                    let single_disk_farm_metadata = SingleDiskFarmMetadata::new(
-                        farmer_protocol_info.genesis_hash,
+        // Store in plot directory so that metadata directory (typically SSD) can be shared by
+        // multiple single disk farms
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&plot_directory)? {
+            Some(single_disk_farm_info) => {
+                if allocated_plotting_space != single_disk_farm_info.allocated_plotting_space() {
+                    error!(
+                        id = %single_disk_farm_info.id(),
+                        plot_directory = %plot_directory.display(),
+                        metadata_directory = %metadata_directory.display(),
+                        "Usable plotting space {} is different from {} when farm was created, \
+                        resizing isn't supported yet",
                         allocated_plotting_space,
-                        plot_sizes
-                            .iter()
-                            .map(|_plot_size| SinglePlotFarmId::new())
-                            .collect(),
+                        single_disk_farm_info.allocated_plotting_space(),
                     );
 
-                    single_disk_farm_metadata.store_to(&metadata_directory)?;
-
-                    single_disk_farm_metadata
+                    return Err(anyhow!("Can't resize farm after creation"));
                 }
-            };
+
+                if &farmer_protocol_info.genesis_hash != single_disk_farm_info.genesis_hash() {
+                    error!(
+                        id = %single_disk_farm_info.id(),
+                        "Genesis hash {} is different from {} when farm was created, is is not \
+                        possible to use farm on a different chain",
+                        hex::encode(farmer_protocol_info.genesis_hash),
+                        hex::encode(single_disk_farm_info.genesis_hash()),
+                    );
+
+                    return Err(anyhow!("Wrong chain (genesis hash)"));
+                }
+                single_disk_farm_info
+            }
+            None => {
+                let single_disk_farm_info = SingleDiskFarmInfo::new(
+                    farmer_protocol_info.genesis_hash,
+                    allocated_plotting_space,
+                    plot_sizes
+                        .iter()
+                        .map(|_plot_size| SinglePlotFarmId::new())
+                        .collect(),
+                );
+
+                single_disk_farm_info.store_to(&plot_directory)?;
+
+                single_disk_farm_info
+            }
+        };
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
-        // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
-        // unbounded.
-        let single_disk_semaphore = SingleDiskSemaphore::new(16);
+        let single_disk_semaphore = SingleDiskSemaphore::new(disk_concurrency);
 
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
-            single_disk_farm_metadata
+            single_disk_farm_info
                 .single_plot_farms()
                 .into_par_iter()
                 .zip(plot_sizes)
@@ -400,13 +370,11 @@ impl SingleDiskFarm {
         &self.single_plot_farms
     }
 
-    pub fn piece_getter(&self) -> SingleDiskFarmPieceGetter {
-        SingleDiskFarmPieceGetter::new(
-            self.single_plot_farms
-                .iter()
-                .map(|single_plot_farm| single_plot_farm.piece_getter())
-                .collect(),
-        )
+    pub fn piece_getter(&self) -> impl PieceGetter {
+        self.single_plot_farms
+            .iter()
+            .map(|single_plot_farm| single_plot_farm.piece_getter())
+            .collect::<Vec<_>>()
     }
 
     /// Waits for farming and plotting completion (or errors)
@@ -440,5 +408,50 @@ impl SingleDiskFarm {
         }
 
         Ok(())
+    }
+
+    /// Wipe everything that belongs to this single disk farm
+    pub fn wipe(plot_directory: &Path, metadata_directory: &Path) -> io::Result<()> {
+        let single_disk_farm_info_path = plot_directory.join(SingleDiskFarmInfo::FILE_NAME);
+        let single_disk_farm_info =
+            SingleDiskFarmInfo::load_from(plot_directory)?.ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "Single disk plot info not found at {}",
+                        single_disk_farm_info_path.display()
+                    ),
+                )
+            })?;
+
+        info!("Found single disk farm {}", single_disk_farm_info.id());
+
+        for single_farm_plot_id in single_disk_farm_info.single_plot_farms() {
+            info!("Deleting single plot farm {}", single_farm_plot_id);
+            let plot_directory = plot_directory.join(single_farm_plot_id.to_string());
+            let metadata_directory = metadata_directory.join(single_farm_plot_id.to_string());
+
+            if plot_directory.exists() {
+                info!(
+                    "Found plot directory {}, deleting",
+                    plot_directory.display()
+                );
+                fs::remove_dir_all(plot_directory)?;
+            }
+
+            if metadata_directory.exists() {
+                info!(
+                    "Found metadata directory {}, deleting",
+                    metadata_directory.display()
+                );
+                fs::remove_dir_all(metadata_directory)?;
+            }
+        }
+
+        info!(
+            "Deleting single disk farm info at {}",
+            single_disk_farm_info_path.display()
+        );
+        fs::remove_file(single_disk_farm_info_path)
     }
 }

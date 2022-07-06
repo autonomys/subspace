@@ -7,8 +7,11 @@ use clap::{ArgEnum, Parser, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
+use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
+use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
@@ -16,6 +19,7 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
+use utils::parse_human_readable_size;
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
 enum ArchivingFrom {
@@ -59,9 +63,12 @@ struct FarmingArgs {
     ///
     /// Only `G` and `T` endings are supported.
     ///
-    /// Only a developer testing flag, as it might be needed for testing.
+    /// Only a developer testing flag, not helpful for normal users.
     #[clap(long, parse(try_from_str = parse_human_readable_size))]
     max_plot_size: Option<u64>,
+    /// Number of major concurrent operations to allow for disk
+    #[clap(long, default_value = "2")]
+    disk_concurrency: NonZeroU16,
     /// Archive data from
     #[clap(arg_enum, long, default_value_t)]
     archiving: ArchivingFrom,
@@ -120,33 +127,118 @@ enum Subcommand {
     },
 }
 
+#[derive(Debug)]
+struct DiskFarm {
+    /// Path to directory where plots are stored, typically HDD.
+    plot_directory: PathBuf,
+    /// Path to directory for storing metadata, typically SSD.
+    metadata_directory: PathBuf,
+    /// How much space in bytes can farm use for plots (metadata space is not included)
+    allocated_plotting_space: u64,
+}
+
+impl FromStr for DiskFarm {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts = s.split(',').collect::<Vec<_>>();
+        if parts.len() != 3 {
+            return Err("Must contain 3 coma-separated components".to_string());
+        }
+
+        let mut plot_directory = None;
+        let mut metadata_directory = None;
+        let mut allocated_plotting_space = None;
+
+        for part in parts {
+            let part = part.splitn(2, '=').collect::<Vec<_>>();
+            if part.len() != 2 {
+                return Err("Each component must contain = separating key from value".to_string());
+            }
+
+            let key = *part.get(0).expect("Length checked above; qed");
+            let value = *part.get(1).expect("Length checked above; qed");
+
+            match key {
+                "hdd" => {
+                    plot_directory.replace(
+                        PathBuf::try_from(value).map_err(|error| {
+                            format!("Failed to parse `hdd` \"{value}\": {error}")
+                        })?,
+                    );
+                }
+                "ssd" => {
+                    metadata_directory.replace(
+                        PathBuf::try_from(value).map_err(|error| {
+                            format!("Failed to parse `ssd` \"{value}\": {error}")
+                        })?,
+                    );
+                }
+                "size" => {
+                    allocated_plotting_space.replace(
+                        parse_human_readable_size(value).map_err(|error| {
+                            format!("Failed to parse `size` \"{value}\": {error}")
+                        })?,
+                    );
+                }
+                key => {
+                    return Err(format!(
+                        "Key \"{key}\" is not supported, only `hdd`, `ssd` or `size`"
+                    ));
+                }
+            }
+        }
+
+        Ok(DiskFarm {
+            plot_directory: plot_directory.ok_or({
+                "`hdd` key is required with path to directory where plots will be stored"
+            })?,
+            metadata_directory: metadata_directory.ok_or({
+                "`ssd` key is required with path to directory where metadata will be stored"
+            })?,
+            allocated_plotting_space: allocated_plotting_space.ok_or({
+                "`size` key is required with path to directory where plots will be stored"
+            })?,
+        })
+    }
+}
+
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 struct Command {
     #[clap(subcommand)]
     subcommand: Subcommand,
     /// Base path for data storage instead of platform-specific default
-    #[clap(long, default_value_os_t = utils::default_base_path(), value_hint = ValueHint::FilePath)]
+    #[clap(
+        long,
+        default_value_os_t = utils::default_base_path(),
+        value_hint = ValueHint::FilePath,
+        conflicts_with = "farm",
+        conflicts_with = "tmp"
+    )]
     base_path: PathBuf,
+    /// Specify single disk farm consisting (typically) from HDD (used for storing plot) and SSD
+    /// (used for storing various metadata with frequent random access), can be specified multiple
+    /// times to use multiple disks.
+    ///
+    /// Format is coma-separated string like this:
+    ///
+    ///   hdd=/path/to/plot-directory,ssd=/path/to/metadata-directory,size=5T
+    ///
+    /// `size` is max plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+    /// Note that `size` is how much data will be plotted, you also need to account for metadata,
+    /// which right now occupies up to 8% of the disk space.
+    ///
+    /// The same path can be specified for both `hdd` and `ssd` if you want, the same `ssd` path can
+    /// be shared by multiple `hdd`s as well:
+    ///
+    ///   --farm hdd=/hdd1,ssd=/ssd,size=5T --farm hdd=/hdd2,ssd=/ssd,size=5T
+    #[clap(long, conflicts_with = "base-path", conflicts_with = "tmp")]
+    farm: Vec<DiskFarm>,
     /// Run temporary farmer, this will create a temporary directory for storing farmer data that
     /// will be delete at the end of the process
-    #[clap(long, conflicts_with = "base-path")]
+    #[clap(long, conflicts_with = "base-path", conflicts_with = "farm")]
     tmp: bool,
-}
-
-fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
-    const SUFFIXES: &[(&str, u64)] = &[
-        ("G", 10u64.pow(9)),
-        ("GB", 10u64.pow(9)),
-        ("T", 10u64.pow(12)),
-        ("TB", 10u64.pow(12)),
-    ];
-
-    SUFFIXES
-        .iter()
-        .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
-        .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
-        .unwrap_or_else(|| s.parse::<u64>())
 }
 
 // TODO: Add graceful shutdown handling, without it temporary directory may be left not deleted
@@ -173,20 +265,45 @@ async fn main() -> Result<()> {
 
     match command.subcommand {
         Subcommand::Wipe => {
-            commands::wipe(&base_path)?;
+            if command.farm.is_empty() {
+                commands::wipe(&base_path)?;
+            } else {
+                for farm in &command.farm {
+                    SingleDiskFarm::wipe(&farm.plot_directory, &farm.metadata_directory)?;
+                }
+            }
+
             info!("Done");
         }
         Subcommand::Farm(farming_args) => {
-            if !base_path.exists() {
-                fs::create_dir_all(&base_path).unwrap_or_else(|error| {
-                    panic!(
-                        "Failed to create data directory {:?}: {:?}",
-                        base_path, error
-                    )
-                });
-            }
+            if command.farm.is_empty() {
+                if !base_path.exists() {
+                    fs::create_dir_all(&base_path).unwrap_or_else(|error| {
+                        panic!(
+                            "Failed to create data directory {:?}: {:?}",
+                            base_path, error
+                        )
+                    });
+                }
 
-            commands::farm(base_path, farming_args).await?;
+                commands::farm_legacy(base_path, farming_args).await?;
+            } else {
+                for farm in &command.farm {
+                    if !farm.plot_directory.exists() {
+                        panic!(
+                            "Plot directory {} doesn't exist",
+                            farm.plot_directory.display()
+                        );
+                    }
+                    if !farm.metadata_directory.exists() {
+                        panic!(
+                            "Metadata directory {} doesn't exist",
+                            farm.metadata_directory.display()
+                        );
+                    }
+                }
+                commands::farm_multi_disk(command.farm, farming_args).await?;
+            }
         }
         Subcommand::Bench {
             plot_size,
@@ -195,24 +312,28 @@ async fn main() -> Result<()> {
             write_pieces_size,
             no_recommitments,
         } => {
-            if !base_path.exists() {
-                fs::create_dir_all(&base_path).unwrap_or_else(|error| {
-                    panic!(
-                        "Failed to create data directory {:?}: {:?}",
-                        base_path, error
-                    )
-                });
-            }
+            if command.farm.is_empty() {
+                if !base_path.exists() {
+                    fs::create_dir_all(&base_path).unwrap_or_else(|error| {
+                        panic!(
+                            "Failed to create data directory {:?}: {:?}",
+                            base_path, error
+                        )
+                    });
+                }
 
-            commands::bench(
-                base_path,
-                plot_size,
-                max_plot_size,
-                write_to_disk,
-                write_pieces_size,
-                !no_recommitments,
-            )
-            .await?
+                commands::bench(
+                    base_path,
+                    plot_size,
+                    max_plot_size,
+                    write_to_disk,
+                    write_pieces_size,
+                    !no_recommitments,
+                )
+                .await?
+            } else {
+                unimplemented!()
+            }
         }
     }
     Ok(())

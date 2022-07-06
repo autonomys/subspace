@@ -1,12 +1,14 @@
 use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
-use crate::single_disk_farm::{SingleDiskFarmPieceGetter, SingleDiskSemaphore};
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
 use crate::utils::{get_plot_sizes, get_usable_plot_space};
+use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use rayon::prelude::*;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::PublicKey;
@@ -73,7 +75,8 @@ impl LegacyMultiPlotsFarm {
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.
-        let single_disk_semaphore = SingleDiskSemaphore::new(16);
+        let single_disk_semaphore =
+            SingleDiskSemaphore::new(NonZeroU16::try_from(16).expect("Non zero; qed"));
 
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
@@ -164,13 +167,11 @@ impl LegacyMultiPlotsFarm {
         &self.single_plot_farms
     }
 
-    pub fn piece_getter(&self) -> SingleDiskFarmPieceGetter {
-        SingleDiskFarmPieceGetter::new(
-            self.single_plot_farms
-                .iter()
-                .map(|single_plot_farm| single_plot_farm.piece_getter())
-                .collect(),
-        )
+    pub fn piece_getter(&self) -> impl PieceGetter {
+        self.single_plot_farms
+            .iter()
+            .map(|single_plot_farm| single_plot_farm.piece_getter())
+            .collect::<Vec<_>>()
     }
 
     /// Waits for farming and plotting completion (or errors)
