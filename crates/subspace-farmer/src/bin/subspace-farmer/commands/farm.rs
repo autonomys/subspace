@@ -42,20 +42,18 @@ pub(crate) async fn farm(
     let archiving_client = NodeRpcClient::new(&node_rpc_url).await?;
     let farming_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-    let farmer_protocol_info = farming_client
+    let mut farmer_protocol_info = farming_client
         .farmer_protocol_info()
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let consensus_max_plot_size = farmer_protocol_info.max_plot_size;
-    let max_plot_size = match max_plot_size {
-        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
+    if let Some(max_plot_size) = max_plot_size {
+        if max_plot_size > farmer_protocol_info.max_plot_size {
             warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
-            consensus_max_plot_size
+        } else {
+            farmer_protocol_info.max_plot_size = max_plot_size;
         }
-        Some(max_plot_size) => max_plot_size,
-        None => consensus_max_plot_size,
-    };
+    }
 
     let FarmerProtocolInfo {
         record_size,
@@ -74,6 +72,7 @@ pub(crate) async fn farm(
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory,
+            farmer_protocol_info,
             archiving_client,
             farming_client,
             object_mappings: object_mappings.clone(),
@@ -85,7 +84,6 @@ pub(crate) async fn farm(
             enable_farming: !disable_farming,
         },
         plot_size,
-        max_plot_size,
         move |options: PlotFactoryOptions<'_>| {
             Plot::open_or_create(
                 options.single_plot_farm_id,

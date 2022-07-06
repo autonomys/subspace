@@ -13,7 +13,7 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
     PIECE_SIZE,
 };
-use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
+use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
@@ -22,7 +22,7 @@ use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
-use tracing::info;
+use tracing::{info, warn};
 
 pub struct BenchPlotMock {
     piece_count: u64,
@@ -120,7 +120,7 @@ pub(crate) async fn bench(
     let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
         mpsc::channel(1);
     let client = BenchRpcClient::new(
-        BENCH_FARMER_METADATA,
+        BENCH_FARMER_PROTOCOL_INFO,
         slot_info_receiver,
         archived_segments_receiver,
         acknowledge_archived_segment_sender,
@@ -128,22 +128,18 @@ pub(crate) async fn bench(
 
     let base_directory = TempDir::new_in(base_directory)?;
 
-    let farmer_protocol_info = client
+    let mut farmer_protocol_info = client
         .farmer_protocol_info()
         .await
         .map_err(|error| anyhow!(error))?;
 
-    let consensus_max_plot_size = farmer_protocol_info.max_plot_size;
-    let max_plot_size = match max_plot_size {
-        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
-            tracing::warn!(
-                "Passed `max_plot_size` is too big. Fallback to the one from consensus."
-            );
-            consensus_max_plot_size
+    if let Some(max_plot_size) = max_plot_size {
+        if max_plot_size > farmer_protocol_info.max_plot_size {
+            warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+        } else {
+            farmer_protocol_info.max_plot_size = max_plot_size;
         }
-        Some(max_plot_size) => max_plot_size,
-        None => consensus_max_plot_size,
-    };
+    }
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
@@ -173,6 +169,7 @@ pub(crate) async fn bench(
     let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
+            farmer_protocol_info,
             archiving_client: client.clone(),
             farming_client: client.clone(),
             object_mappings: object_mappings.clone(),
@@ -184,7 +181,6 @@ pub(crate) async fn bench(
             enable_farming: true,
         },
         plot_size,
-        max_plot_size,
         plot_factory,
     )
     .await?;

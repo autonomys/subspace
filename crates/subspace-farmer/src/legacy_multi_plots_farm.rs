@@ -4,7 +4,6 @@ use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::{SingleDiskFarmPieceGetter, SingleDiskSemaphore};
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
 use crate::utils::{get_plot_sizes, get_usable_plot_space};
-use anyhow::anyhow;
 use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use rayon::prelude::*;
@@ -12,12 +11,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::Multiaddr;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
 use tracing::error;
 
 /// Options for `MultiFarming` creation
 pub struct Options<C> {
     pub base_directory: PathBuf,
+    pub farmer_protocol_info: FarmerProtocolInfo,
     /// Client used for archiving subscriptions
     pub archiving_client: C,
     /// Independent client used for farming, such that it is not blocked by archiving
@@ -46,7 +47,6 @@ impl LegacyMultiPlotsFarm {
     pub async fn new<RC, PF>(
         options: Options<RC>,
         allocated_space: u64,
-        max_plot_size: u64,
         plot_factory: PF,
     ) -> anyhow::Result<Self>
     where
@@ -55,6 +55,7 @@ impl LegacyMultiPlotsFarm {
     {
         let Options {
             base_directory,
+            farmer_protocol_info,
             archiving_client,
             farming_client,
             object_mappings,
@@ -66,14 +67,9 @@ impl LegacyMultiPlotsFarm {
             enable_farming,
         } = options;
         let usable_space = get_usable_plot_space(allocated_space);
-        let plot_sizes = get_plot_sizes(usable_space, max_plot_size);
+        let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
-
-        let farmer_protocol_info = farming_client
-            .farmer_protocol_info()
-            .await
-            .map_err(|error| anyhow!(error))?;
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.
