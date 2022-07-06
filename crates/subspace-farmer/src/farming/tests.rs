@@ -54,7 +54,8 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         SingleDiskSemaphore::new(1),
         identity.clone(),
         public_key,
-    );
+    )
+    .await;
 
     let mut counter = 0;
     let mut latest_salt = slots.first().unwrap().salt;
