@@ -1,4 +1,5 @@
 use crate::object_mappings::ObjectMappings;
+use crate::ObjectMappingError;
 use async_trait::async_trait;
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
@@ -7,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
+use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, Sha256Hash};
 use tracing::{debug, error};
 
@@ -18,6 +20,20 @@ pub trait PieceGetter {
     /// Get piece
     fn get_piece(&self, piece_index: PieceIndex, piece_index_hash: PieceIndexHash)
         -> Option<Piece>;
+}
+
+impl<PG> PieceGetter for Vec<PG>
+where
+    PG: PieceGetter,
+{
+    fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece_index_hash: PieceIndexHash,
+    ) -> Option<Piece> {
+        self.iter()
+            .find_map(|piece_getter| piece_getter.get_piece(piece_index, piece_index_hash))
+    }
 }
 
 /// Same as [`Piece`], but serializes/deserialized to/from hex string
@@ -161,7 +177,7 @@ pub trait Rpc {
 ///     3840,
 ///     3480 * 128,
 ///     Arc::new(SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot)),
-///     object_mappings,
+///     Arc::new(vec![object_mappings]),
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -172,7 +188,7 @@ pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
     piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
-    object_mappings: ObjectMappings,
+    object_mappings: Arc<Vec<ObjectMappings>>,
 }
 
 impl RpcServerImpl {
@@ -180,7 +196,7 @@ impl RpcServerImpl {
         record_size: u32,
         recorded_history_segment_size: u32,
         piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
-        object_mappings: ObjectMappings,
+        object_mappings: Arc<Vec<ObjectMappings>>,
     ) -> Self {
         Self {
             record_size,
@@ -468,9 +484,19 @@ impl RpcServer for RpcServerImpl {
     /// Find object by its ID
     async fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error> {
         let global_object_handle = tokio::task::spawn_blocking({
-            let object_mappings = self.object_mappings.clone();
+            let object_mappings = Arc::clone(&self.object_mappings);
 
-            move || object_mappings.retrieve(&object_id.into())
+            move || -> Result<Option<GlobalObject>, ObjectMappingError> {
+                for object_mappings in object_mappings.as_ref() {
+                    let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
+
+                    if let Some(global_object) = maybe_global_object {
+                        return Ok(Some(global_object));
+                    }
+                }
+
+                Ok(None)
+            }
         });
 
         let object_id_string = hex::encode(object_id);

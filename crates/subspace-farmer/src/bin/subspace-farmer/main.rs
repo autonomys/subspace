@@ -7,6 +7,7 @@ use clap::{ArgEnum, Parser, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::net::SocketAddr;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
@@ -64,6 +65,9 @@ struct FarmingArgs {
     /// Only a developer testing flag, not helpful for normal users.
     #[clap(long, parse(try_from_str = parse_human_readable_size))]
     max_plot_size: Option<u64>,
+    /// Number of major concurrent operations to allow for disk
+    #[clap(long, default_value = "2")]
+    disk_concurrency: NonZeroU16,
     /// Archive data from
     #[clap(arg_enum, long, default_value_t)]
     archiving: ArchivingFrom,
@@ -279,9 +283,23 @@ async fn main() -> Result<()> {
                     });
                 }
 
-                commands::farm(base_path, farming_args).await?;
+                commands::farm_legacy(base_path, farming_args).await?;
             } else {
-                unimplemented!()
+                for farm in &command.farm {
+                    if !farm.plot_directory.exists() {
+                        panic!(
+                            "Plot directory {} doesn't exist",
+                            farm.plot_directory.display()
+                        );
+                    }
+                    if !farm.metadata_directory.exists() {
+                        panic!(
+                            "Metadata directory {} doesn't exist",
+                            farm.metadata_directory.display()
+                        );
+                    }
+                }
+                commands::farm_multi_disk(command.farm, farming_args).await?;
             }
         }
         Subcommand::Bench {

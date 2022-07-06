@@ -6,6 +6,7 @@ use crate::plot::Plot;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
+use std::num::NonZeroU16;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
@@ -51,7 +52,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         plot.clone(),
         commitments.clone(),
         client.clone(),
-        SingleDiskSemaphore::new(1),
+        SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
         identity.clone(),
         public_key,
     );

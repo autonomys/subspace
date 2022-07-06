@@ -618,7 +618,7 @@ impl SinglePlotFarm {
         &self.node
     }
 
-    pub fn piece_getter(&self) -> SinglePlotPieceGetter {
+    pub fn piece_getter(&self) -> impl PieceGetter {
         SinglePlotPieceGetter::new(self.codec.clone(), self.plot.clone())
     }
 

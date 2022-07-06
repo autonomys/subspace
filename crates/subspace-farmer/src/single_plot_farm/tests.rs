@@ -9,6 +9,7 @@ use crate::single_plot_farm::SinglePlotPlotter;
 use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
+use std::num::NonZeroU16;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
@@ -83,7 +84,7 @@ async fn plotting_happy_path() {
         subspace_codec,
         plot.clone(),
         commitments,
-        SingleDiskSemaphore::new(1),
+        SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
     );
 
     // Start archiving task
@@ -190,7 +191,7 @@ async fn plotting_piece_eviction() {
         subspace_codec.clone(),
         plot.clone(),
         commitments.clone(),
-        SingleDiskSemaphore::new(1),
+        SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
     );
 
     // Start archiving task
