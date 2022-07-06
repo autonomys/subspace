@@ -7887,6 +7887,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-consensus-primitives"
+version = "0.1.0"
+dependencies = [
+ "schnorrkel",
+ "sp-std",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-solving",
+ "thiserror",
+]
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [

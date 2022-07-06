@@ -80,6 +80,9 @@ const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
 
+/// Context used in the randomness derivation
+pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
+
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
     Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
