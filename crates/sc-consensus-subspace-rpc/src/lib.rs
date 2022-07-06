@@ -48,7 +48,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::Solution;
+use subspace_core_primitives::{Solution, PIECE_SIZE};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -205,7 +205,8 @@ where
                 record_size: runtime_api.record_size(&best_block_id)?,
                 recorded_history_segment_size: runtime_api
                     .recorded_history_segment_size(&best_block_id)?,
-                max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
+                // TODO: `max_plot_size` in the protocol must change to bytes as well
+                max_plot_size: runtime_api.max_plot_size(&best_block_id)? * PIECE_SIZE as u64,
                 total_pieces: runtime_api.total_pieces(&best_block_id)?,
             }
         };

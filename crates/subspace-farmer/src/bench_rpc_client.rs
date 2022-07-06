@@ -6,7 +6,6 @@ use futures::{stream, SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::PIECE_SIZE;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -30,9 +29,9 @@ pub struct Inner {
 /// Default farmer metadata for benchmarking
 pub const BENCH_FARMER_METADATA: FarmerProtocolInfo = FarmerProtocolInfo {
     genesis_hash: [0; 32],
-    record_size: 3840,                     // PIECE_SIZE - WITNESS_SIZE
-    recorded_history_segment_size: 491520, // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
-    max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+    record_size: 3840,                       // PIECE_SIZE - WITNESS_SIZE
+    recorded_history_segment_size: 491520,   // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
+    max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,
 };

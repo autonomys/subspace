@@ -133,8 +133,7 @@ pub(crate) async fn bench(
         .await
         .map_err(|error| anyhow!(error))?;
 
-    // TODO: `max_plot_size` in the protocol must change to bytes as well
-    let consensus_max_plot_size = farmer_protocol_info.max_plot_size * PIECE_SIZE as u64;
+    let consensus_max_plot_size = farmer_protocol_info.max_plot_size;
     let max_plot_size = match max_plot_size {
         Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
             tracing::warn!(
