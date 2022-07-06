@@ -16,6 +16,7 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
+use utils::parse_human_readable_size;
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
 enum ArchivingFrom {
@@ -132,21 +133,6 @@ struct Command {
     /// will be delete at the end of the process
     #[clap(long, conflicts_with = "base-path")]
     tmp: bool,
-}
-
-fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
-    const SUFFIXES: &[(&str, u64)] = &[
-        ("G", 10u64.pow(9)),
-        ("GB", 10u64.pow(9)),
-        ("T", 10u64.pow(12)),
-        ("TB", 10u64.pow(12)),
-    ];
-
-    SUFFIXES
-        .iter()
-        .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
-        .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
-        .unwrap_or_else(|| s.parse::<u64>())
 }
 
 // TODO: Add graceful shutdown handling, without it temporary directory may be left not deleted
