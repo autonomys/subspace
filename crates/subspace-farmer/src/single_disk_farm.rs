@@ -22,7 +22,7 @@ use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
-use tracing::{error, info_span};
+use tracing::{error, info, info_span};
 use ulid::Ulid;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
@@ -414,5 +414,50 @@ impl SingleDiskFarm {
         }
 
         Ok(())
+    }
+
+    /// Wipe everything that belongs to this single disk farm
+    pub fn wipe(plot_directory: &Path, metadata_directory: &Path) -> io::Result<()> {
+        let single_disk_farm_info_path = plot_directory.join(SingleDiskFarmInfo::FILE_NAME);
+        let single_disk_farm_info =
+            SingleDiskFarmInfo::load_from(plot_directory)?.ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "Single disk plot info not found at {}",
+                        single_disk_farm_info_path.display()
+                    ),
+                )
+            })?;
+
+        info!("Found single disk farm {}", single_disk_farm_info.id());
+
+        for single_farm_plot_id in single_disk_farm_info.single_plot_farms() {
+            info!("Deleting single plot farm {}", single_farm_plot_id);
+            let plot_directory = plot_directory.join(single_farm_plot_id.to_string());
+            let metadata_directory = metadata_directory.join(single_farm_plot_id.to_string());
+
+            if plot_directory.exists() {
+                info!(
+                    "Found plot directory {}, deleting",
+                    plot_directory.display()
+                );
+                fs::remove_dir_all(plot_directory)?;
+            }
+
+            if metadata_directory.exists() {
+                info!(
+                    "Found metadata directory {}, deleting",
+                    metadata_directory.display()
+                );
+                fs::remove_dir_all(metadata_directory)?;
+            }
+        }
+
+        info!(
+            "Deleting single disk farm info at {}",
+            single_disk_farm_info_path.display()
+        );
+        fs::remove_file(single_disk_farm_info_path)
     }
 }

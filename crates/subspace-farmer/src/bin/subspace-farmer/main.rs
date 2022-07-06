@@ -11,6 +11,7 @@ use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
+use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
@@ -267,7 +268,9 @@ async fn main() -> Result<()> {
             if command.farm.is_empty() {
                 commands::wipe(&base_path)?;
             } else {
-                unimplemented!()
+                for farm in &command.farm {
+                    SingleDiskFarm::wipe(&farm.plot_directory, &farm.metadata_directory)?;
+                }
             }
 
             info!("Done");
