@@ -1,4 +1,5 @@
 use crate::archiving::Archiving;
+use crate::dsn;
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
@@ -6,11 +7,9 @@ use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions
 use crate::utils::{get_plot_sizes, get_usable_plot_space};
 use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
-use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::num::NonZeroU16;
 use std::path::PathBuf;
-use std::sync::Arc;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::FarmerProtocolInfo;
@@ -71,7 +70,7 @@ impl LegacyMultiPlotsFarm {
         let usable_space = get_usable_plot_space(allocated_space);
         let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
 
-        let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
+        let relay_config = dsn::configure_relay_server(listen_on).await;
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.
@@ -89,9 +88,7 @@ impl LegacyMultiPlotsFarm {
                     let plot_directory = base_directory.join(format!("plot{plot_index}"));
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
-                    let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
-                    let first_listen_on = Arc::clone(&first_listen_on);
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
                     let span = info_span!("single_plot_farm", %plot_index);
@@ -101,14 +98,12 @@ impl LegacyMultiPlotsFarm {
                         id: plot_index.into(),
                         plot_directory,
                         metadata_directory,
-                        plot_index,
                         allocated_plotting_space,
                         farmer_protocol_info,
                         farming_client,
                         plot_factory: &plot_factory,
-                        listen_on,
                         bootstrap_nodes,
-                        first_listen_on,
+                        relay_config: relay_config.clone(),
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,

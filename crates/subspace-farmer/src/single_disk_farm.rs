@@ -1,4 +1,5 @@
 use crate::archiving::Archiving;
+use crate::dsn;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{
     PlotFactory, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions,
@@ -10,7 +11,6 @@ use derive_more::{Display, From};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use parking_lot::Mutex;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU16;
@@ -273,7 +273,7 @@ impl SingleDiskFarm {
             }
         };
 
-        let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
+        let relay_config = dsn::configure_relay_server(listen_on).await;
 
         let single_disk_semaphore = SingleDiskSemaphore::new(disk_concurrency);
 
@@ -283,43 +283,36 @@ impl SingleDiskFarm {
                 .single_plot_farms()
                 .into_par_iter()
                 .zip(plot_sizes)
-                .enumerate()
-                .map(
-                    move |(plot_index, (single_farm_plot_id, allocated_plotting_space))| {
-                        let _guard = handle.enter();
+                .map(move |(single_farm_plot_id, allocated_plotting_space)| {
+                    let _guard = handle.enter();
 
-                        let plot_directory = plot_directory.join(single_farm_plot_id.to_string());
-                        let metadata_directory =
-                            metadata_directory.join(single_farm_plot_id.to_string());
-                        let farming_client = farming_client.clone();
-                        let listen_on = listen_on.clone();
-                        let bootstrap_nodes = bootstrap_nodes.clone();
-                        let first_listen_on = Arc::clone(&first_listen_on);
-                        let single_disk_semaphore = single_disk_semaphore.clone();
+                    let plot_directory = plot_directory.join(single_farm_plot_id.to_string());
+                    let metadata_directory =
+                        metadata_directory.join(single_farm_plot_id.to_string());
+                    let farming_client = farming_client.clone();
+                    let bootstrap_nodes = bootstrap_nodes.clone();
+                    let single_disk_semaphore = single_disk_semaphore.clone();
 
-                        let span = info_span!("single_plot_farm", %single_farm_plot_id);
-                        let _enter = span.enter();
+                    let span = info_span!("single_plot_farm", %single_farm_plot_id);
+                    let _enter = span.enter();
 
-                        SinglePlotFarm::new(SinglePlotFarmOptions {
-                            id: *single_farm_plot_id,
-                            plot_directory,
-                            metadata_directory,
-                            plot_index,
-                            allocated_plotting_space,
-                            farmer_protocol_info,
-                            farming_client,
-                            plot_factory: &plot_factory,
-                            listen_on,
-                            bootstrap_nodes,
-                            first_listen_on,
-                            single_disk_semaphore,
-                            enable_farming,
-                            reward_address,
-                            enable_dsn_archiving,
-                            enable_dsn_sync,
-                        })
-                    },
-                )
+                    SinglePlotFarm::new(SinglePlotFarmOptions {
+                        id: *single_farm_plot_id,
+                        plot_directory,
+                        metadata_directory,
+                        allocated_plotting_space,
+                        farmer_protocol_info,
+                        farming_client,
+                        plot_factory: &plot_factory,
+                        bootstrap_nodes,
+                        relay_config: relay_config.clone(),
+                        single_disk_semaphore,
+                        enable_farming,
+                        reward_address,
+                        enable_dsn_archiving,
+                        enable_dsn_sync,
+                    })
+                })
                 .collect::<anyhow::Result<Vec<_>>>()
         })
         .await

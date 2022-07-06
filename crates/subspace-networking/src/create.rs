@@ -83,6 +83,22 @@ impl RelayLimitSettings {
             circuit_src_rate_limiters: Vec::new(),
         }
     }
+
+    /// Creates a configuration with maximized allowed parameters.
+    pub fn unlimited() -> Self {
+        // Duration::MAX causes runtime overflows and u32::MAX was recommended in the runtime error!
+        let very_long_duration = Duration::from_secs(u32::MAX.into());
+
+        Self {
+            max_reservations: usize::MAX,
+            max_reservations_per_peer: usize::MAX,
+            reservation_duration: very_long_duration,
+            max_circuits: usize::MAX,
+            max_circuits_per_peer: usize::MAX,
+            max_circuit_duration: very_long_duration,
+            max_circuit_bytes: u64::MAX,
+        }
+    }
 }
 
 /// Defines relay circuits configuration for the networking.

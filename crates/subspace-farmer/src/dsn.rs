@@ -4,10 +4,17 @@ use std::ops::Range;
 use subspace_core_primitives::{
     FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, PIECE_SIZE, U256,
 };
-use subspace_networking::PiecesToPlot;
+use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::{Config, PiecesToPlot, RelayConfiguration, RelayLimitSettings};
+use tracing::trace;
 
 #[cfg(test)]
 mod tests;
+
+// Default artificial memory port for the libp2p memory transport.
+// It's intented for the relay configuration.
+const DEFAULT_RELAY_MEMORY_PORT: u64 = 1_000_000_000;
 
 pub type PieceIndexHashNumber = U256;
 
@@ -167,4 +174,35 @@ where
     }
 
     Ok(())
+}
+
+/// Starts the relaying node and configure the client relay configuration.
+pub async fn configure_relay_server(listen_on: Vec<Multiaddr>) -> RelayConfiguration {
+    let internal_relay_node_address: Multiaddr =
+        Multiaddr::empty().with(Protocol::Memory(DEFAULT_RELAY_MEMORY_PORT));
+
+    let relay_settings = RelayLimitSettings::unlimited();
+
+    let config = Config {
+        listen_on,
+        allow_non_globals_in_dht: true,
+        relay_config: RelayConfiguration::Server(
+            internal_relay_node_address.clone(),
+            relay_settings,
+        ),
+        ..Config::with_generated_keypair()
+    };
+
+    let (node, mut node_runner) = subspace_networking::create(config)
+        .await
+        .expect("Relay node must be created");
+
+    trace!(node_id = %node.id(), "Relay Node started");
+
+    tokio::spawn(async move {
+        node_runner.run().await;
+    });
+
+    node.configure_relay_client()
+        .expect("We should have a valid relay client configuration here.")
 }

@@ -16,7 +16,6 @@ use crate::{dsn, CommitmentError, ObjectMappings};
 use anyhow::anyhow;
 use derive_more::{Display, From};
 use futures::future::try_join;
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -25,10 +24,11 @@ use std::{fs, io, mem};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::{Multiaddr, PeerId};
+use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+    RelayConfiguration,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
@@ -257,15 +257,12 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) id: SinglePlotFarmId,
     pub(crate) plot_directory: PathBuf,
     pub(crate) metadata_directory: PathBuf,
-    pub(crate) plot_index: usize,
     pub(crate) allocated_plotting_space: u64,
     pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) farming_client: RC,
     pub(crate) plot_factory: &'a PF,
-    pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
-    // TODO: Remove this field once we can use circuit relay with networking
-    pub(crate) first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>>,
+    pub(crate) relay_config: RelayConfiguration,
     pub(crate) single_disk_semaphore: SingleDiskSemaphore,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
@@ -302,14 +299,12 @@ impl SinglePlotFarm {
             id,
             plot_directory,
             metadata_directory,
-            plot_index,
             allocated_plotting_space,
             farmer_protocol_info,
             farming_client,
             plot_factory,
-            mut listen_on,
-            mut bootstrap_nodes,
-            first_listen_on,
+            bootstrap_nodes,
+            relay_config,
             single_disk_semaphore,
             enable_farming,
             reward_address,
@@ -379,38 +374,9 @@ impl SinglePlotFarm {
         info!("Opening commitments");
         let commitments = Commitments::new(metadata_directory.join("commitments"))?;
 
-        for multiaddr in &mut listen_on {
-            if let Some(Protocol::Tcp(starting_port)) = multiaddr.pop() {
-                multiaddr.push(Protocol::Tcp(starting_port + plot_index as u16));
-            } else {
-                return Err(anyhow::anyhow!("Unknown protocol {}", multiaddr));
-            }
-        }
-        {
-            let mut first_listen_on = first_listen_on.lock();
-            // Only add the first instance to bootstrap nodes of others
-            match first_listen_on.as_ref() {
-                Some(first_listen_on) => {
-                    bootstrap_nodes.extend_from_slice(first_listen_on);
-                }
-                None => {
-                    let public_key = sr25519::PublicKey::from(*identity.public_key());
-                    let public_key = libp2p::identity::PublicKey::Sr25519(public_key);
-                    let peer_id = PeerId::from(public_key);
-
-                    first_listen_on.replace(
-                        listen_on
-                            .clone()
-                            .into_iter()
-                            .map(|listen_on| listen_on.with(Protocol::P2p(peer_id.into())))
-                            .collect(),
-                    );
-                }
-            }
-        }
-
         let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
         let create_networking_fut = subspace_networking::create(Config {
+            relay_config,
             bootstrap_nodes,
             // TODO: Do we still need it?
             value_getter: Arc::new({
@@ -479,7 +445,6 @@ impl SinglePlotFarm {
                 }
             }),
             allow_non_globals_in_dht: true,
-            listen_on,
             ..Config::with_keypair(sr25519::Keypair::from(
                 sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
                     .expect("Always valid"),
