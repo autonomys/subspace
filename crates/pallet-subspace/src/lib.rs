@@ -42,17 +42,12 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-use sp_consensus_subspace::verification::{
-    PieceCheckParams, VerificationError, VerifySolutionParams,
-};
 use sp_consensus_subspace::{
     derive_randomness, verification, EquivocationProof, FarmerPublicKey, FarmerSignature,
     SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{
-    BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
-};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -60,6 +55,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
+use subspace_consensus_primitives::ConsensusError;
 use subspace_core_primitives::{
     crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
@@ -1270,10 +1266,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum CheckVoteError<Header>
-where
-    Header: HeaderT,
-{
+enum CheckVoteError {
     BlockListed,
     UnexpectedBeforeHeightTwo,
     HeightInTheFuture,
@@ -1283,16 +1276,13 @@ where
     SlotInThePast,
     BadRewardSignature(SignatureError),
     UnknownRecordsRoot,
-    InvalidSolution(VerificationError<Header>),
+    InvalidSolution(ConsensusError),
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
 
-impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
-where
-    Header: HeaderT,
-{
-    fn from(error: CheckVoteError<Header>) -> Self {
+impl From<CheckVoteError> for TransactionValidityError {
+    fn from(error: CheckVoteError) -> Self {
         TransactionValidityError::Invalid(match error {
             CheckVoteError::BlockListed => InvalidTransaction::BadSigner,
             CheckVoteError::UnexpectedBeforeHeightTwo => InvalidTransaction::Call,
@@ -1313,7 +1303,7 @@ where
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
-) -> Result<(), CheckVoteError<T::Header>> {
+) -> Result<(), CheckVoteError> {
     let Vote::V0 {
         height,
         parent_hash,
@@ -1448,14 +1438,13 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
-    if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
+    if let Err(error) = subspace_consensus_primitives::verify_solution(
         solution,
-        slot,
-        VerifySolutionParams {
+        subspace_consensus_primitives::VerifySolutionParams {
             global_randomness: &vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
             salt: vote_verification_data.salt,
-            piece_check_params: Some(PieceCheckParams {
+            piece_check_params: Some(subspace_consensus_primitives::PieceCheckParams {
                 records_root,
                 position,
                 record_size: vote_verification_data.record_size,
@@ -1463,6 +1452,7 @@ fn check_vote<T: Config>(
                 total_pieces: vote_verification_data.total_pieces,
             }),
         },
+        slot,
     ) {
         debug!(
             target: "runtime::subspace",

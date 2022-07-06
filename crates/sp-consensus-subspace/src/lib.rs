@@ -34,7 +34,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
 use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{PublicKey, SignatureResult};
+use schnorrkel::{PublicKey, Signature, SignatureError, SignatureResult};
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
@@ -64,6 +64,32 @@ pub type FarmerSignature = app::Signature;
 /// A Subspace farmer identifier. Necessarily equivalent to the schnorrkel public key used in
 /// the main Subspace module. If that ever changes, then this must, too.
 pub type FarmerPublicKey = app::Public;
+
+impl TryFrom<&FarmerPublicKey> for PublicKey {
+    type Error = SignatureError;
+
+    fn try_from(pubkey: &FarmerPublicKey) -> Result<Self, Self::Error> {
+        PublicKey::from_bytes(pubkey.as_ref())
+    }
+}
+
+impl TryFrom<&FarmerSignature> for Signature {
+    type Error = SignatureError;
+
+    fn try_from(signature: &FarmerSignature) -> Result<Self, Self::Error> {
+        Signature::from_bytes(signature.as_ref())
+    }
+}
+
+/// Public key and signature into schnorrkel types.
+pub fn into_schnorrkel_pair(
+    pubkey: &FarmerPublicKey,
+    signature: &FarmerSignature,
+) -> Result<(PublicKey, Signature), SignatureError> {
+    let pubkey = pubkey.try_into()?;
+    let signature = signature.try_into()?;
+    Ok((pubkey, signature))
+}
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";

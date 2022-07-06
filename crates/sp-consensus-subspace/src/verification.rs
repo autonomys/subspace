@@ -25,13 +25,9 @@ use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
-use subspace_core_primitives::{
-    PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, U256,
-};
-use subspace_solving::{
-    derive_global_challenge, derive_target, is_tag_valid, verify_local_challenge,
-    verify_tag_signature, SubspaceCodec,
-};
+use subspace_consensus_primitives::ConsensusError;
+use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution, Tag};
+use subspace_solving::SubspaceCodec;
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, Eq, PartialEq)]
@@ -79,6 +75,9 @@ pub enum VerificationError<Header: HeaderT> {
     /// Invalid tag for salt
     #[cfg_attr(feature = "thiserror", error("Invalid tag for salt for slot {0}"))]
     InvalidTag(Slot),
+    /// Consensus error
+    #[cfg_attr(feature = "thiserror", error("Consensus error {1:?} at slot {0:?}"))]
+    ConsensusError(Slot, ConsensusError),
 }
 
 /// A header which has been checked
@@ -103,7 +102,7 @@ where
     /// The slot number of the current time.
     pub slot_now: Slot,
     /// Parameters for solution verification
-    pub verify_solution_params: VerifySolutionParams<'a>,
+    pub verify_solution_params: subspace_consensus_primitives::VerifySolutionParams<'a>,
     /// Signing context for reward signature
     pub reward_signing_context: &'a SigningContext,
 }
@@ -179,7 +178,12 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(&pre_digest.solution, slot, verify_solution_params)?;
+    subspace_consensus_primitives::verify_solution(
+        &pre_digest.solution,
+        verify_solution_params,
+        slot,
+    )
+    .map_err(|err| VerificationError::ConsensusError(slot, err))?;
 
     Ok(CheckedHeader::Checked(
         header,
@@ -197,22 +201,6 @@ pub fn check_reward_signature(
     let public_key = PublicKey::from_bytes(public_key.as_ref())?;
     let signature = Signature::from_bytes(signature)?;
     public_key.verify(reward_signing_context.bytes(hash), &signature)
-}
-
-/// Check if the tag of a solution's piece is valid.
-fn check_piece_tag<Header, RewardAddress>(
-    slot: Slot,
-    salt: Salt,
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
-) -> Result<(), VerificationError<Header>>
-where
-    Header: HeaderT,
-{
-    if !is_tag_valid(&solution.encoding, salt, solution.tag) {
-        return Err(VerificationError::InvalidTag(slot));
-    }
-
-    Ok(())
 }
 
 /// Check piece validity.
@@ -256,21 +244,6 @@ pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> b
     subspace_core_primitives::bidirectional_distance(&target, &tag) <= solution_range / 2
 }
 
-/// Returns true if piece index is within farmer sector
-fn is_within_max_plot(
-    piece_index: PieceIndex,
-    key: &FarmerPublicKey,
-    total_pieces: u64,
-    max_plot_size: u64,
-) -> bool {
-    if total_pieces < max_plot_size {
-        return true;
-    }
-    let max_distance_one_direction = U256::MAX / total_pieces * max_plot_size / 2;
-    U256::distance(&PieceIndexHash::from_index(piece_index), key.as_ref())
-        <= max_distance_one_direction
-}
-
 /// Parameters for checking piece validity
 pub struct PieceCheckParams {
     /// Records root of segment to which piece belongs
@@ -297,76 +270,4 @@ pub struct VerifySolutionParams<'a> {
     ///
     /// If `None`, piece validity check will be skipped.
     pub piece_check_params: Option<PieceCheckParams>,
-}
-
-/// Solution verification
-pub fn verify_solution<Header, RewardAddress>(
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
-    slot: Slot,
-    params: VerifySolutionParams,
-) -> Result<(), VerificationError<Header>>
-where
-    Header: HeaderT,
-{
-    let VerifySolutionParams {
-        global_randomness,
-        solution_range,
-        salt,
-        piece_check_params,
-    } = params;
-
-    let public_key =
-        PublicKey::from_bytes(solution.public_key.as_ref()).expect("Always correct length; qed");
-
-    if let Err(error) = verify_local_challenge(
-        &public_key,
-        derive_global_challenge(global_randomness, slot.into()),
-        &solution.local_challenge,
-    ) {
-        return Err(VerificationError::BadLocalChallenge(slot, error));
-    }
-
-    // Verification of the local challenge was done above
-    let target = match derive_target(
-        &public_key,
-        derive_global_challenge(global_randomness, slot.into()),
-        &solution.local_challenge,
-    ) {
-        Ok(target) => target,
-        Err(error) => {
-            return Err(VerificationError::BadLocalChallenge(slot, error));
-        }
-    };
-
-    if !is_within_solution_range(solution.tag, target, solution_range) {
-        return Err(VerificationError::OutsideOfSolutionRange(slot));
-    }
-
-    if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &public_key) {
-        return Err(VerificationError::BadSolutionSignature(slot, error));
-    }
-
-    check_piece_tag(slot, salt, solution)?;
-
-    if let Some(PieceCheckParams {
-        records_root,
-        position,
-        record_size,
-        max_plot_size,
-        total_pieces,
-    }) = piece_check_params
-    {
-        if !is_within_max_plot(
-            solution.piece_index,
-            &solution.public_key,
-            total_pieces,
-            max_plot_size,
-        ) {
-            return Err(VerificationError::OutsideOfMaxPlot(slot));
-        }
-
-        check_piece(slot, records_root, position, record_size, solution)?;
-    }
-
-    Ok(())
 }

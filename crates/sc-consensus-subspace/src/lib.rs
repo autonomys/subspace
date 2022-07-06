@@ -30,7 +30,7 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
-use crate::verification::{VerificationParams, VerifySolutionParams};
+use crate::verification::VerificationParams;
 pub use archiver::start_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -58,7 +58,7 @@ use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, Tr
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
+    BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as SpConsensusError, Proposer,
     SelectChain, SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
@@ -80,6 +80,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_consensus_primitives::ConsensusError;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 
@@ -279,6 +280,17 @@ where
             VerificationError::OutsideOfMaxPlot(slot) => Error::OutsideOfMaxPlot(slot),
             VerificationError::InvalidEncoding(slot) => Error::InvalidEncoding(slot),
             VerificationError::InvalidTag(slot) => Error::InvalidTag(slot),
+            VerificationError::ConsensusError(slot, cerr) => match cerr {
+                ConsensusError::InvalidTag => Error::InvalidTag(slot),
+                ConsensusError::InvalidPieceEncoding => Error::InvalidEncoding(slot),
+                ConsensusError::InvalidPiece => Error::InvalidEncoding(slot),
+                ConsensusError::InvalidLocalChallenge(err) => Error::BadLocalChallenge(slot, err),
+                ConsensusError::OutsideSolutionRange => Error::OutsideOfSolutionRange(slot),
+                ConsensusError::InvalidSolutionSignature(err) => {
+                    Error::BadSolutionSignature(slot, err)
+                }
+                ConsensusError::OutsideMaxPlot => Error::OutsideOfMaxPlot(slot),
+            },
         }
     }
 }
@@ -417,7 +429,7 @@ where
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
     E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
-    I: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
+    I: BlockImport<Block, Error = SpConsensusError, Transaction = TransactionFor<Client, Block>>
         + Send
         + Sync
         + 'static,
@@ -427,7 +439,7 @@ where
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
-    Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    Error: std::error::Error + Send + From<SpConsensusError> + From<I::Error> + 'static,
 {
     let worker = SubspaceSlotWorker {
         client,
@@ -832,7 +844,7 @@ where
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
-                    verify_solution_params: VerifySolutionParams {
+                    verify_solution_params: subspace_consensus_primitives::VerifySolutionParams {
                         global_randomness: &global_randomness,
                         solution_range,
                         salt,
@@ -1141,10 +1153,10 @@ impl<Block, Client, Inner, CAW, CIDP> BlockImport<Block>
     for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP>
 where
     Block: BlockT,
-    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
+    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = SpConsensusError>
         + Send
         + Sync,
-    Inner::Error: Into<ConsensusError>,
+    Inner::Error: Into<SpConsensusError>,
     Client: HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + AuxStore
@@ -1155,7 +1167,7 @@ where
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
-    type Error = ConsensusError;
+    type Error = SpConsensusError;
     type Transaction = TransactionFor<Client, Block>;
 
     async fn import_block(
@@ -1177,11 +1189,11 @@ where
                     .map_err(Into::into);
             }
             Ok(sp_blockchain::BlockStatus::Unknown) => {}
-            Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
+            Err(error) => return Err(SpConsensusError::ClientImport(error.to_string())),
         }
 
         let pre_digest = find_pre_digest::<Block::Header>(&block.header)
-            .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+            .map_err(|error| SpConsensusError::ClientImport(error.to_string()))?;
 
         self.block_import_verification(
             block_hash,
@@ -1191,15 +1203,15 @@ where
             &pre_digest,
         )
         .await
-        .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+        .map_err(|error| SpConsensusError::ClientImport(error.to_string()))?;
 
         let parent_weight = if block_number.is_one() {
             0
         } else {
             aux_schema::load_block_weight(&*self.client, block.header.parent_hash())
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                .map_err(|e| SpConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
-                    ConsensusError::ClientImport(
+                    SpConsensusError::ClientImport(
                         Error::<Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
                             .to_string(),
                     )
@@ -1249,9 +1261,9 @@ where
                 parent_weight
             } else {
                 aux_schema::load_block_weight(&*self.client, last_best)
-                    .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
+                    .map_err(|e| SpConsensusError::ChainLookup(e.to_string()))?
                     .ok_or_else(|| {
-                        ConsensusError::ChainLookup(
+                        SpConsensusError::ChainLookup(
                             "No block weight for parent header.".to_string(),
                         )
                     })?
@@ -1388,7 +1400,7 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
     is_authoring_blocks: bool,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
-    Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
+    Inner: BlockImport<Block, Error = SpConsensusError, Transaction = TransactionFor<Client, Block>>
         + Send
         + Sync
         + 'static,
