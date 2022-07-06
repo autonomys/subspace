@@ -14,14 +14,14 @@ use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError, ObjectMappings};
 use anyhow::anyhow;
-use derive_more::From;
+use derive_more::{Display, From};
 use futures::future::try_join;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{fmt, fs, io, mem};
+use std::{fs, io, mem};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -41,7 +41,7 @@ const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
 /// An identifier for single plot farm, can be used for in logs, thread names, etc.
 #[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, From,
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
 )]
 #[serde(untagged)]
 pub enum SinglePlotFarmId {
@@ -50,15 +50,6 @@ pub enum SinglePlotFarmId {
     Index(usize),
     /// New farm ID
     Ulid(Ulid),
-}
-
-impl fmt::Display for SinglePlotFarmId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SinglePlotFarmId::Index(id) => id.fmt(f),
-            SinglePlotFarmId::Ulid(id) => id.fmt(f),
-        }
-    }
 }
 
 #[allow(clippy::new_without_default)]

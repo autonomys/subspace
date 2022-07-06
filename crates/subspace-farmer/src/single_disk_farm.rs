@@ -6,7 +6,7 @@ use crate::single_plot_farm::{
 use crate::utils::get_plot_sizes;
 use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
-use derive_more::From;
+use derive_more::{Display, From};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -84,15 +84,9 @@ impl SingleDiskSemaphore {
 
 /// An identifier for single plot farm, can be used for in logs, thread names, etc.
 #[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, From,
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
 )]
 pub struct SingleDiskFarmId(Ulid);
-
-impl fmt::Display for SingleDiskFarmId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
 
 #[allow(clippy::new_without_default)]
 impl SingleDiskFarmId {
