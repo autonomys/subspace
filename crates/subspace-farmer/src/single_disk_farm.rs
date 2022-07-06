@@ -17,11 +17,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fmt, fs, io};
 use std_semaphore::{Semaphore, SemaphoreGuard};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
-use tracing::error;
+use tracing::{error, info_span};
 use ulid::Ulid;
 
 /// Abstraction that can get pieces out of internal plots
@@ -115,7 +115,7 @@ pub enum SingleDiskFarmMetadata {
         #[serde(with = "hex::serde")]
         genesis_hash: [u8; 32],
         /// How much space in bytes can farm use for plots (metadata space is not included)
-        usable_plotting_space: u64,
+        allocated_plotting_space: u64,
         /// IDs of single plot farms contained within
         single_plot_farms: Vec<SinglePlotFarmId>,
     },
@@ -126,13 +126,13 @@ impl SingleDiskFarmMetadata {
 
     pub fn new(
         genesis_hash: [u8; 32],
-        usable_plotting_space: u64,
+        allocated_plotting_space: u64,
         single_plot_farms: Vec<SinglePlotFarmId>,
     ) -> Self {
         Self::V0 {
             id: SingleDiskFarmId::new(),
             genesis_hash,
-            usable_plotting_space,
+            allocated_plotting_space,
             single_plot_farms,
         }
     }
@@ -178,12 +178,12 @@ impl SingleDiskFarmMetadata {
     }
 
     // How much space in bytes can farm use for plots (metadata space is not included)
-    pub fn usable_plotting_space(&self) -> u64 {
+    pub fn allocated_plotting_space(&self) -> u64 {
         let Self::V0 {
-            usable_plotting_space,
+            allocated_plotting_space,
             ..
         } = self;
-        *usable_plotting_space
+        *allocated_plotting_space
     }
 
     // IDs of single plot farms contained within
@@ -202,7 +202,7 @@ pub struct SingleDiskFarmOptions<RC, PF> {
     /// Path to directory for storing metadata, typically SSD.
     pub metadata_directory: PathBuf,
     /// How much space in bytes can farm use for plots (metadata space is not included)
-    pub usable_plotting_space: u64,
+    pub allocated_plotting_space: u64,
     pub farmer_protocol_info: FarmerProtocolInfo,
     /// Client used for archiving subscriptions
     pub archiving_client: RC,
@@ -241,7 +241,7 @@ impl SingleDiskFarm {
         let SingleDiskFarmOptions {
             plot_directory,
             metadata_directory,
-            usable_plotting_space,
+            allocated_plotting_space,
             farmer_protocol_info,
             plot_factory,
             archiving_client,
@@ -254,20 +254,23 @@ impl SingleDiskFarm {
             enable_farming,
         } = options;
 
-        let plot_sizes = get_plot_sizes(usable_plotting_space, farmer_protocol_info.max_plot_size);
+        let plot_sizes =
+            get_plot_sizes(allocated_plotting_space, farmer_protocol_info.max_plot_size);
 
         let single_disk_farm_metadata =
             match SingleDiskFarmMetadata::load_from(&metadata_directory)? {
                 Some(single_disk_farm_metadata) => {
-                    if usable_plotting_space != single_disk_farm_metadata.usable_plotting_space() {
+                    if allocated_plotting_space
+                        != single_disk_farm_metadata.allocated_plotting_space()
+                    {
                         error!(
                             id = %single_disk_farm_metadata.id(),
                             plot_directory = %plot_directory.display(),
                             metadata_directory = %metadata_directory.display(),
                             "Usable plotting space {} is different from {} when farm was created, \
                             resizing isn't supported yet",
-                            usable_plotting_space,
-                            single_disk_farm_metadata.usable_plotting_space(),
+                            allocated_plotting_space,
+                            single_disk_farm_metadata.allocated_plotting_space(),
                         );
 
                         return Err(anyhow!("Can't resize farm after creation"));
@@ -291,7 +294,7 @@ impl SingleDiskFarm {
                 None => {
                     let single_disk_farm_metadata = SingleDiskFarmMetadata::new(
                         farmer_protocol_info.genesis_hash,
-                        usable_plotting_space,
+                        allocated_plotting_space,
                         plot_sizes
                             .iter()
                             .map(|_plot_size| SinglePlotFarmId::new())
@@ -315,14 +318,10 @@ impl SingleDiskFarm {
             single_disk_farm_metadata
                 .single_plot_farms()
                 .into_par_iter()
-                .zip(
-                    plot_sizes
-                        .par_iter()
-                        .map(|&plot_size| plot_size / PIECE_SIZE as u64),
-                )
+                .zip(plot_sizes)
                 .enumerate()
                 .map(
-                    move |(plot_index, (single_farm_plot_id, max_piece_count))| {
+                    move |(plot_index, (single_farm_plot_id, allocated_plotting_space))| {
                         let _guard = handle.enter();
 
                         let plot_directory = plot_directory.join(single_farm_plot_id.to_string());
@@ -334,12 +333,15 @@ impl SingleDiskFarm {
                         let first_listen_on = Arc::clone(&first_listen_on);
                         let single_disk_semaphore = single_disk_semaphore.clone();
 
+                        let span = info_span!("single_plot_farm", %single_farm_plot_id);
+                        let _enter = span.enter();
+
                         SinglePlotFarm::new(SinglePlotFarmOptions {
                             id: *single_farm_plot_id,
                             plot_directory,
                             metadata_directory,
                             plot_index,
-                            max_piece_count,
+                            allocated_plotting_space,
                             farmer_protocol_info,
                             farming_client,
                             plot_factory: &plot_factory,

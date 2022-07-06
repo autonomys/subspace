@@ -9,11 +9,11 @@ use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
-use tracing::error;
+use tracing::{error, info_span};
 
 /// Options for `MultiFarming` creation
 pub struct Options<C> {
@@ -78,10 +78,9 @@ impl LegacyMultiPlotsFarm {
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
             plot_sizes
-                .par_iter()
-                .map(|&plot_size| plot_size / PIECE_SIZE as u64)
+                .into_par_iter()
                 .enumerate()
-                .map(move |(plot_index, max_piece_count)| {
+                .map(move |(plot_index, allocated_plotting_space)| {
                     let _guard = handle.enter();
 
                     let plot_directory = base_directory.join(format!("plot{plot_index}"));
@@ -92,12 +91,15 @@ impl LegacyMultiPlotsFarm {
                     let first_listen_on = Arc::clone(&first_listen_on);
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
+                    let span = info_span!("single_plot_farm", %plot_index);
+                    let _enter = span.enter();
+
                     SinglePlotFarm::new(SinglePlotFarmOptions {
                         id: plot_index.into(),
                         plot_directory,
                         metadata_directory,
                         plot_index,
-                        max_piece_count,
+                        allocated_plotting_space,
                         farmer_protocol_info,
                         farming_client,
                         plot_factory: &plot_factory,
