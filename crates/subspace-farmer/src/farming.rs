@@ -331,14 +331,14 @@ fn update_commitments(
                     hex::encode(new_next_salt)
                 ))
                 .spawn(move || {
-                    let _single_disk_semaphore_guard = single_disk_semaphore.acquire();
-                    let _span_guard = span.enter();
-
                     // Wait for current recommitment to finish if it is in progress
                     if let Some(receiver) = current_recommitment_done_receiver {
                         // Do not care about result here either
                         let _ = receiver.recv();
                     }
+
+                    let _single_disk_semaphore_guard = single_disk_semaphore.acquire();
+                    let _span_guard = span.enter();
 
                     let started = Instant::now();
                     info!("Salt will be updated, recommitting in background");
