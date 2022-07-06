@@ -472,35 +472,50 @@ where
 			.extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
 		for signed_receipt in signed_receipts.iter() {
+			let secondary_hash = signed_receipt.execution_receipt.secondary_hash;
 			match crate::aux_schema::load_execution_receipt::<
 				_,
 				Block::Hash,
 				NumberFor<PBlock>,
 				PBlock::Hash,
-			>(&*self.client, signed_receipt.execution_receipt.secondary_hash)?
+			>(&*self.client, secondary_hash)?
 			{
 				Some(local_receipt) => {
 					if let Some(trace_mismatch_index) =
 						find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
 					{
-						crate::aux_schema::write_bad_receipt::<_, PBlock>(
+						let trace_mismatch_index = trace_mismatch_index
+							.try_into()
+							.expect("Trace mismatch index must fit into u32; qed");
+
+						crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
 							&*self.client,
 							signed_receipt.execution_receipt.primary_number,
 							signed_receipt.hash(),
-							trace_mismatch_index
-								.try_into()
-								.expect("Trace mismatch index must fit into u32; qed"),
+							(trace_mismatch_index, secondary_hash),
 						)?;
 					}
 				},
 				None => {
+					let block_number: BlockNumber = signed_receipt
+						.execution_receipt
+						.primary_number
+						.try_into()
+						.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+					let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
+						sp_blockchain::Error::Backend(format!(
+							"Header hash not found for number {block_number}"
+						))
+					})?;
+
 					// The receipt of a prior block must exist, otherwise it means the receipt included
 					// on the primary chain points to an invalid secondary block.
-					crate::aux_schema::write_bad_receipt::<_, PBlock>(
+					crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
 						&*self.client,
-						signed_receipt.execution_receipt.primary_number,
+						block_number.into(),
 						signed_receipt.hash(),
-						0u32,
+						(0u32, block_hash),
 					)?;
 				},
 			}
@@ -539,29 +554,18 @@ where
 	fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
 		&self,
 	) -> Result<(), sp_blockchain::Error> {
-		if let Some((bad_receipt_number, bad_signed_receipt_hash, trace_mismatch_index)) =
-			crate::aux_schema::load_first_unconfirmed_bad_receipt_info::<_, NumberFor<PBlock>>(
+		if let Some((bad_signed_receipt_hash, trace_mismatch_index, block_hash)) =
+			crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
 				&*self.client,
 			)? {
-			let block_number: BlockNumber = bad_receipt_number
-				.try_into()
-				.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-			let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
-				sp_blockchain::Error::Backend(format!(
-					"Header hash not found for number {block_number}"
-				))
-			})?;
-			let local_receipt = crate::aux_schema::load_execution_receipt::<
-				_,
-				Block::Hash,
-				NumberFor<PBlock>,
-				PBlock::Hash,
-			>(&*self.client, block_hash)?
-			.ok_or_else(|| {
-				sp_blockchain::Error::Backend(format!(
-					"Execution receipt not found for {block_hash:?}",
-				))
-			})?;
+			let local_receipt =
+				crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?.ok_or_else(
+					|| {
+						sp_blockchain::Error::Backend(format!(
+							"Execution receipt not found for {block_hash:?}"
+						))
+					},
+				)?;
 
 			let fraud_proof = self
 				.fraud_proof_generator
