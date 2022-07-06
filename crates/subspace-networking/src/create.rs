@@ -67,6 +67,8 @@ impl Default for RelayLimitSettings {
 }
 
 impl RelayLimitSettings {
+    // TODO: Probably, reservation_rate_limiters and circuit_src_rate_limiters should be filled
+    // for some use-cases.
     /// Converts `RelayLimitSettings` to libp2p `relay::Config`.
     pub fn to_relay_config(self) -> RelayConfig {
         RelayConfig {
@@ -408,8 +410,14 @@ async fn build_transport(
 }
 
 // Upgrades a provided transport with a multiplexer and a Noise authenticator.
-fn upgrade_transport<Output, Error, Listener, ListenerUpgrade, Dial>(
-    transport: impl Transport<
+fn upgrade_transport<T, Output, Error, Listener, ListenerUpgrade, Dial>(
+    transport: T,
+    keypair: &identity::Keypair,
+    timeout: Duration,
+    yamux_config: YamuxConfig,
+) -> Boxed<(PeerId, StreamMuxerBox)>
+where
+    T: Transport<
             Output = Output,
             Error = Error,
             Listener = Listener,
@@ -417,11 +425,6 @@ fn upgrade_transport<Output, Error, Listener, ListenerUpgrade, Dial>(
             Dial = Dial,
         > + Send
         + 'static,
-    keypair: &identity::Keypair,
-    timeout: Duration,
-    yamux_config: YamuxConfig,
-) -> Boxed<(PeerId, StreamMuxerBox)>
-where
     Output: Unpin + Send + AsyncWrite + AsyncRead + 'static,
     Error: Sync + Send + 'static,
     Listener: Send + 'static,
