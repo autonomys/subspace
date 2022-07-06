@@ -85,7 +85,9 @@ const VRF_PROOF_LENGTH: usize = 64;
     Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
 )]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct PublicKey([u8; PUBLIC_KEY_LENGTH]);
+pub struct PublicKey(
+    #[cfg_attr(feature = "std", serde(with = "hex::serde"))] [u8; PUBLIC_KEY_LENGTH],
+);
 
 impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
     fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {

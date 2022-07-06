@@ -6,9 +6,8 @@ use futures::{stream, SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::PIECE_SIZE;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
 
@@ -20,7 +19,7 @@ pub struct BenchRpcClient {
 
 #[derive(Debug)]
 pub struct Inner {
-    metadata: FarmerMetadata,
+    metadata: FarmerProtocolInfo,
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
@@ -28,10 +27,11 @@ pub struct Inner {
 }
 
 /// Default farmer metadata for benchmarking
-pub const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
-    record_size: 3840,                     // PIECE_SIZE - WITNESS_SIZE
-    recorded_history_segment_size: 491520, // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
-    max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64, // 100G
+pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
+    genesis_hash: [0; 32],
+    record_size: 3840,                       // PIECE_SIZE - WITNESS_SIZE
+    recorded_history_segment_size: 491520,   // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
+    max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,
 };
@@ -39,7 +39,7 @@ pub const BENCH_FARMER_METADATA: FarmerMetadata = FarmerMetadata {
 impl BenchRpcClient {
     /// Create a new instance of [`BenchRpcClient`].
     pub fn new(
-        metadata: FarmerMetadata,
+        metadata: FarmerProtocolInfo,
         slot_info_receiver: mpsc::Receiver<SlotInfo>,
         mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
         acknowledge_archived_segment_sender: mpsc::Sender<u64>,
@@ -71,7 +71,7 @@ impl BenchRpcClient {
 
 #[async_trait]
 impl RpcClient for BenchRpcClient {
-    async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error> {
+    async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, Error> {
         Ok(self.inner.metadata)
     }
 

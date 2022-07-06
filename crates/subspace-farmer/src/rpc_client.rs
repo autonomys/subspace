@@ -3,7 +3,7 @@ use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// To become error type agnostic
@@ -13,7 +13,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 #[async_trait]
 pub trait RpcClient: Clone + Send + Sync + 'static {
     /// Get farmer metadata
-    async fn farmer_metadata(&self) -> Result<FarmerMetadata, Error>;
+    async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, Error>;
 
     /// Subscribe to slot
     async fn subscribe_slot_info(

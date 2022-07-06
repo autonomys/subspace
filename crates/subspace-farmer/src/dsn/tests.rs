@@ -1,8 +1,8 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
-use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
+use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::{ObjectMappings, Plot};
+use crate::{ObjectMappings, Plot, RpcClient};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -150,7 +150,7 @@ async fn test_dsn_sync() {
     let (seeder_acknowledge_archived_segment_sender, _seeder_acknowledge_archived_segment_receiver) =
         mpsc::channel(1);
     let seeder_client = BenchRpcClient::new(
-        BENCH_FARMER_METADATA,
+        BENCH_FARMER_PROTOCOL_INFO,
         seeder_slot_info_receiver,
         seeder_archived_segments_receiver,
         seeder_acknowledge_archived_segment_sender,
@@ -178,6 +178,7 @@ async fn test_dsn_sync() {
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
+            farmer_protocol_info: seeder_client.farmer_protocol_info().await.unwrap(),
             archiving_client: seeder_client.clone(),
             farming_client: seeder_client.clone(),
             object_mappings: object_mappings.clone(),
@@ -189,7 +190,6 @@ async fn test_dsn_sync() {
             enable_farming: false,
         },
         u64::MAX / 100,
-        u64::MAX,
         plot_factory,
     )
     .await
@@ -276,7 +276,7 @@ async fn test_dsn_sync() {
     let (syncer_acknowledge_archived_segment_sender, _syncer_acknowledge_archived_segment_receiver) =
         mpsc::channel(1);
     let syncer_client = BenchRpcClient::new(
-        BENCH_FARMER_METADATA,
+        BENCH_FARMER_PROTOCOL_INFO,
         syncer_slot_info_receiver,
         syncer_archived_segments_receiver,
         syncer_acknowledge_archived_segment_sender,
@@ -304,6 +304,11 @@ async fn test_dsn_sync() {
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: syncer_base_directory.as_ref().to_owned(),
+            farmer_protocol_info: {
+                let mut farmer_protocol_info = syncer_client.farmer_protocol_info().await.unwrap();
+                farmer_protocol_info.max_plot_size = syncer_max_plot_size;
+                farmer_protocol_info
+            },
             archiving_client: syncer_client.clone(),
             farming_client: syncer_client.clone(),
             object_mappings: object_mappings.clone(),
@@ -315,7 +320,6 @@ async fn test_dsn_sync() {
             enable_farming: false,
         },
         syncer_max_plot_size * PIECE_SIZE as u64,
-        syncer_max_plot_size,
         plot_factory,
     )
     .await

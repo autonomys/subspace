@@ -2,14 +2,13 @@ use anyhow::{anyhow, Result};
 use jsonrpsee::ws_server::WsServerBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::PIECE_SIZE;
 use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, warn};
 
 use crate::{utils, ArchivingFrom, FarmingArgs};
@@ -43,27 +42,24 @@ pub(crate) async fn farm(
     let archiving_client = NodeRpcClient::new(&node_rpc_url).await?;
     let farming_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-    let metadata = farming_client
-        .farmer_metadata()
+    let mut farmer_protocol_info = farming_client
+        .farmer_protocol_info()
         .await
         .map_err(|error| anyhow!(error))?;
 
-    // TODO: `max_plot_size` in the protocol must change to bytes as well
-    let consensus_max_plot_size = metadata.max_plot_size * PIECE_SIZE as u64;
-    let max_plot_size = match max_plot_size {
-        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
+    if let Some(max_plot_size) = max_plot_size {
+        if max_plot_size > farmer_protocol_info.max_plot_size {
             warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
-            consensus_max_plot_size
+        } else {
+            farmer_protocol_info.max_plot_size = max_plot_size;
         }
-        Some(max_plot_size) => max_plot_size,
-        None => consensus_max_plot_size,
-    };
+    }
 
-    let FarmerMetadata {
+    let FarmerProtocolInfo {
         record_size,
         recorded_history_segment_size,
         ..
-    } = metadata;
+    } = farmer_protocol_info;
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
@@ -76,6 +72,7 @@ pub(crate) async fn farm(
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory,
+            farmer_protocol_info,
             archiving_client,
             farming_client,
             object_mappings: object_mappings.clone(),
@@ -87,7 +84,6 @@ pub(crate) async fn farm(
             enable_farming: !disable_farming,
         },
         plot_size,
-        max_plot_size,
         move |options: PlotFactoryOptions<'_>| {
             Plot::open_or_create(
                 options.single_plot_farm_id,

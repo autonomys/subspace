@@ -3,21 +3,22 @@ use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::{SingleDiskFarmPieceGetter, SingleDiskSemaphore};
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
-use crate::utils::get_plot_sizes;
-use anyhow::anyhow;
+use crate::utils::{get_plot_sizes, get_usable_plot_space};
 use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
-use tracing::error;
+use tracing::{error, info_span};
 
 /// Options for `MultiFarming` creation
 pub struct Options<C> {
     pub base_directory: PathBuf,
+    pub farmer_protocol_info: FarmerProtocolInfo,
     /// Client used for archiving subscriptions
     pub archiving_client: C,
     /// Independent client used for farming, such that it is not blocked by archiving
@@ -42,11 +43,10 @@ pub struct LegacyMultiPlotsFarm {
 }
 
 impl LegacyMultiPlotsFarm {
-    /// Starts multiple farmers with any plot sizes which user gives
+    /// Creates multiple single plot farms with user-provided total plot size
     pub async fn new<RC, PF>(
         options: Options<RC>,
         allocated_space: u64,
-        max_plot_size: u64,
         plot_factory: PF,
     ) -> anyhow::Result<Self>
     where
@@ -55,6 +55,7 @@ impl LegacyMultiPlotsFarm {
     {
         let Options {
             base_directory,
+            farmer_protocol_info,
             archiving_client,
             farming_client,
             object_mappings,
@@ -65,14 +66,10 @@ impl LegacyMultiPlotsFarm {
             enable_dsn_sync,
             enable_farming,
         } = options;
-        let plot_sizes = get_plot_sizes(allocated_space, max_plot_size);
+        let usable_space = get_usable_plot_space(allocated_space);
+        let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
-
-        let farmer_metadata = farming_client
-            .farmer_metadata()
-            .await
-            .map_err(|error| anyhow!(error))?;
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.
@@ -81,10 +78,9 @@ impl LegacyMultiPlotsFarm {
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
             plot_sizes
-                .par_iter()
-                .map(|&plot_size| plot_size / PIECE_SIZE as u64)
+                .into_par_iter()
                 .enumerate()
-                .map(move |(plot_index, max_piece_count)| {
+                .map(move |(plot_index, allocated_plotting_space)| {
                     let _guard = handle.enter();
 
                     let plot_directory = base_directory.join(format!("plot{plot_index}"));
@@ -95,13 +91,16 @@ impl LegacyMultiPlotsFarm {
                     let first_listen_on = Arc::clone(&first_listen_on);
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
+                    let span = info_span!("single_plot_farm", %plot_index);
+                    let _enter = span.enter();
+
                     SinglePlotFarm::new(SinglePlotFarmOptions {
                         id: plot_index.into(),
                         plot_directory,
                         metadata_directory,
                         plot_index,
-                        max_piece_count,
-                        farmer_metadata,
+                        allocated_plotting_space,
+                        farmer_protocol_info,
                         farming_client,
                         plot_factory: &plot_factory,
                         listen_on,
@@ -121,8 +120,15 @@ impl LegacyMultiPlotsFarm {
 
         // Start archiving task
         let archiving = if !enable_dsn_archiving {
-            let archiving_start_fut =
-                Archiving::start(farmer_metadata, object_mappings, archiving_client, {
+            let archiving_start_fut = Archiving::start(
+                farmer_protocol_info,
+                single_plot_farms
+                    .iter()
+                    .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
+                    .chain([object_mappings])
+                    .collect(),
+                archiving_client,
+                {
                     let plotters = single_plot_farms
                         .iter()
                         .map(|single_plot_farm| single_plot_farm.plotter())
@@ -140,7 +146,8 @@ impl LegacyMultiPlotsFarm {
                             true
                         }
                     }
-                });
+                },
+            );
 
             Some(archiving_start_fut.await?)
         } else {

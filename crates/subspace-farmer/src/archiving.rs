@@ -6,7 +6,7 @@ use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
 use subspace_networking::PiecesToPlot;
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tracing::{debug, error, info};
@@ -39,8 +39,8 @@ impl Archiving {
     //  don't want eventually
     /// `on_pieces_to_plot` must return `true` unless archiving is no longer necessary
     pub async fn start<Client, OPTP>(
-        farmer_metadata: FarmerMetadata,
-        object_mappings: ObjectMappings,
+        farmer_protocol_info: FarmerProtocolInfo,
+        object_mappings: Vec<ObjectMappings>,
         client: Client,
         mut on_pieces_to_plot: OPTP,
     ) -> Result<Archiving, ArchivingError>
@@ -48,11 +48,11 @@ impl Archiving {
         Client: RpcClient + Clone + Send + Sync + 'static,
         OPTP: FnMut(PiecesToPlot) -> bool + Send + 'static,
     {
-        let FarmerMetadata {
+        let FarmerProtocolInfo {
             record_size,
             recorded_history_segment_size,
             ..
-        } = farmer_metadata;
+        } = farmer_protocol_info;
 
         // TODO: This assumes fixed size segments, which might not be the case
         let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
@@ -92,8 +92,10 @@ impl Archiving {
                     let object_mapping =
                         create_global_object_mapping(piece_index_offset, object_mapping);
 
-                    if let Err(error) = object_mappings.store(&object_mapping) {
-                        error!(%error, "Failed to store object mappings for pieces");
+                    for object_mappings in &object_mappings {
+                        if let Err(error) = object_mappings.store(&object_mapping) {
+                            error!(%error, "Failed to store object mappings for pieces");
+                        }
                     }
 
                     info!(segment_index, "Plotted segment");

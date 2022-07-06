@@ -13,16 +13,16 @@ use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
 use crate::{dsn, CommitmentError, ObjectMappings};
-use derive_more::From;
+use anyhow::anyhow;
+use derive_more::{Display, From};
 use futures::future::try_join;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::fmt::Formatter;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
+use std::{fs, io, mem};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::{Multiaddr, PeerId};
@@ -30,18 +30,18 @@ use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
     libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{error, info, info_span, trace, warn, Instrument, Span};
+use tracing::{error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
 
 /// An identifier for single plot farm, can be used for in logs, thread names, etc.
 #[derive(
-    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, From,
+    Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
 )]
 #[serde(untagged)]
 pub enum SinglePlotFarmId {
@@ -52,12 +52,89 @@ pub enum SinglePlotFarmId {
     Ulid(Ulid),
 }
 
-impl fmt::Display for SinglePlotFarmId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            SinglePlotFarmId::Index(id) => id.fmt(f),
-            SinglePlotFarmId::Ulid(id) => id.fmt(f),
+#[allow(clippy::new_without_default)]
+impl SinglePlotFarmId {
+    /// Creates new ID
+    pub fn new() -> Self {
+        Self::Ulid(Ulid::new())
+    }
+}
+
+/// Metadata for `SinglePlotFarm`, stores important information about the contents of the farm
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SinglePlotFarmMetadata {
+    /// V0 of the metadata
+    #[serde(rename_all = "camelCase")]
+    V0 {
+        /// ID of the farm
+        id: SinglePlotFarmId,
+        // Public key of identity used for farm creation
+        public_key: PublicKey,
+        // How much space in bytes is allocated for plot in this farm (metadata space is not
+        // included)
+        allocated_plotting_space: u64,
+    },
+}
+
+impl SinglePlotFarmMetadata {
+    const FILE_NAME: &'static str = "single_plot_farm.json";
+
+    pub fn new(id: SinglePlotFarmId, public_key: PublicKey, allocated_plotting_space: u64) -> Self {
+        Self::V0 {
+            id,
+            public_key,
+            allocated_plotting_space,
         }
+    }
+
+    /// Load `SinglePlotFarm` metadata from path where metadata is supposed to be stored, `None`
+    /// means no metadata was found, happens during first start.
+    pub fn load_from(metadata_directory: &Path) -> io::Result<Option<Self>> {
+        let bytes = match fs::read(metadata_directory.join(Self::FILE_NAME)) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return if error.kind() == io::ErrorKind::NotFound {
+                    Ok(None)
+                } else {
+                    Err(error)
+                };
+            }
+        };
+
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    }
+
+    /// Store `SinglePlotFarm` metadata to path where metadata is supposed to be stored so it can be
+    /// loaded again upon restart.
+    pub fn store_to(&self, metadata_directory: &Path) -> io::Result<()> {
+        fs::write(
+            metadata_directory.join(Self::FILE_NAME),
+            serde_json::to_vec(self).expect("Metadata serialization never fails; qed"),
+        )
+    }
+
+    // ID of the farm
+    pub fn id(&self) -> &SinglePlotFarmId {
+        let Self::V0 { id, .. } = self;
+        id
+    }
+
+    // Public key of identity used for farm creation
+    pub fn public_key(&self) -> &PublicKey {
+        let Self::V0 { public_key, .. } = self;
+        public_key
+    }
+
+    // How much space in bytes is allocated for plot in this farm (metadata space is not included)
+    pub fn allocated_plotting_space(&self) -> u64 {
+        let Self::V0 {
+            allocated_plotting_space,
+            ..
+        } = self;
+        *allocated_plotting_space
     }
 }
 
@@ -113,7 +190,7 @@ pub enum SinglePlotPlotterError {
     Encode(#[from] BatchEncodeError),
     /// Plot error
     #[error("Plot error: {0}")]
-    Plot(#[from] std::io::Error),
+    Plot(#[from] io::Error),
     /// Commitments error
     #[error("Commitment error: {0}")]
     Commitment(#[from] CommitmentError),
@@ -182,8 +259,8 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) plot_directory: PathBuf,
     pub(crate) metadata_directory: PathBuf,
     pub(crate) plot_index: usize,
-    pub(crate) max_piece_count: u64,
-    pub(crate) farmer_metadata: FarmerMetadata,
+    pub(crate) allocated_plotting_space: u64,
+    pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) farming_client: RC,
     pub(crate) plot_factory: &'a PF,
     pub(crate) listen_on: Vec<Multiaddr>,
@@ -207,6 +284,7 @@ pub struct SinglePlotFarm {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
+    object_mappings: ObjectMappings,
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
@@ -226,8 +304,8 @@ impl SinglePlotFarm {
             plot_directory,
             metadata_directory,
             plot_index,
-            max_piece_count,
-            farmer_metadata,
+            allocated_plotting_space,
+            farmer_protocol_info,
             farming_client,
             plot_factory,
             mut listen_on,
@@ -240,23 +318,62 @@ impl SinglePlotFarm {
             enable_dsn_sync,
         } = options;
 
-        let span = info_span!("single_plot_farm", %id);
-        let _enter = span.enter();
-
-        std::fs::create_dir_all(&metadata_directory)?;
+        fs::create_dir_all(&metadata_directory)?;
 
         let identity = Identity::open_or_create(&metadata_directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
-        // TODO: This doesn't account for the fact that node can
-        //  have a completely different history to what farmer expects
+        let single_plot_farm_metadata =
+            match SinglePlotFarmMetadata::load_from(&metadata_directory)? {
+                Some(single_plot_farm_metadata) => {
+                    if allocated_plotting_space
+                        != single_plot_farm_metadata.allocated_plotting_space()
+                    {
+                        error!(
+                            id = %single_plot_farm_metadata.id(),
+                            plot_directory = %plot_directory.display(),
+                            metadata_directory = %metadata_directory.display(),
+                            "Usable plotting space {} is different from {} when farm was created, \
+                            resizing isn't supported yet",
+                            allocated_plotting_space,
+                            single_plot_farm_metadata.allocated_plotting_space(),
+                        );
+
+                        return Err(anyhow!("Can't resize farm after creation"));
+                    }
+
+                    if &public_key != single_plot_farm_metadata.public_key() {
+                        error!(
+                            id = %single_plot_farm_metadata.id(),
+                            "Public key {} is different from {} when farm was created, something \
+                            went wrong, likely due to manual edits",
+                            hex::encode(&public_key),
+                            hex::encode(single_plot_farm_metadata.public_key()),
+                        );
+
+                        return Err(anyhow!("Public key in identity doesn't match metadata"));
+                    }
+
+                    single_plot_farm_metadata
+                }
+                None => {
+                    let single_plot_farm_metadata =
+                        SinglePlotFarmMetadata::new(id, public_key, allocated_plotting_space);
+
+                    single_plot_farm_metadata.store_to(&metadata_directory)?;
+
+                    single_plot_farm_metadata
+                }
+            };
+
         info!("Opening plot");
         let plot = plot_factory(PlotFactoryOptions {
             single_plot_farm_id: &id,
             public_key,
             plot_directory: &plot_directory,
             metadata_directory: &metadata_directory,
-            max_piece_count,
+            max_piece_count: single_plot_farm_metadata.allocated_plotting_space()
+                / PIECE_SIZE as u64,
         })?;
 
         info!("Opening object mappings");
@@ -312,9 +429,8 @@ impl SinglePlotFarm {
                         return None;
                     }
 
-                    let piece_index = u64::from_le_bytes(
-                        key.digest()[..std::mem::size_of::<u64>()].try_into().ok()?,
-                    );
+                    let piece_index =
+                        u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
                     plot.read_piece(PieceIndexHash::from_index(piece_index))
                         .ok()
                         .and_then(|mut piece| {
@@ -407,11 +523,12 @@ impl SinglePlotFarm {
             codec,
             plot,
             commitments,
+            object_mappings,
             farming,
             node: node.clone(),
             node_runner,
             single_disk_semaphore,
-            span: span.clone(),
+            span: Span::current(),
             background_task_handles: vec![],
         };
 
@@ -419,9 +536,9 @@ impl SinglePlotFarm {
         if enable_dsn_archiving {
             let archiving_fut = start_archiving(
                 id,
-                farmer_metadata.record_size,
-                farmer_metadata.recorded_history_segment_size,
-                object_mappings,
+                farmer_protocol_info.record_size,
+                farmer_protocol_info.recorded_history_segment_size,
+                farm.object_mappings().clone(),
                 node,
                 farm.plotter(),
             );
@@ -440,10 +557,11 @@ impl SinglePlotFarm {
         // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = PieceIndexHashNumber::MAX / farmer_metadata.total_pieces * 1024; // 4M per stream
+            let sync_range_size =
+                PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
             let dsn_sync_fut = farm.dsn_sync(
-                farmer_metadata.max_plot_size,
-                farmer_metadata.total_pieces,
+                farmer_protocol_info.max_plot_size,
+                farmer_protocol_info.total_pieces,
                 sync_range_size,
             );
 
@@ -483,6 +601,11 @@ impl SinglePlotFarm {
     /// Access commitments instance of the farm
     pub fn commitments(&self) -> &Commitments {
         &self.commitments
+    }
+
+    /// Access object mappings instance of the farm
+    pub fn object_mappings(&self) -> &ObjectMappings {
+        &self.object_mappings
     }
 
     /// Access network node instance of the farm

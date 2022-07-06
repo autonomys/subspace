@@ -1,6 +1,5 @@
 use crate::object_mappings::ObjectMappings;
 use async_trait::async_trait;
-use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
@@ -23,7 +22,7 @@ pub trait PieceGetter {
 
 /// Same as [`Piece`], but serializes/deserialized to/from hex string
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HexPiece(#[serde(with = "HexForm")] Vec<u8>);
+pub struct HexPiece(#[serde(with = "hex::serde")] Vec<u8>);
 
 impl From<Piece> for HexPiece {
     fn from(piece: Piece) -> Self {
@@ -68,7 +67,7 @@ impl AsMut<[u8]> for HexPiece {
 
 /// Similar to [`Sha256Hash`], but serializes/deserialized to/from hex string
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct HexSha256Hash(#[serde(with = "HexForm")] Sha256Hash);
+pub struct HexSha256Hash(#[serde(with = "hex::serde")] Sha256Hash);
 
 impl From<Sha256Hash> for HexSha256Hash {
     fn from(hash: Sha256Hash) -> Self {
@@ -116,7 +115,7 @@ pub struct Object {
     /// Offset of the object
     offset: u16,
     /// The data object contains for convenience
-    #[serde(with = "HexForm")]
+    #[serde(with = "hex::serde")]
     data: Vec<u8>,
 }
 

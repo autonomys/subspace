@@ -2612,14 +2612,7 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "hex-buffer-serde"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f52012c160668b4494727f3588045aa00429849fcae51de70d68fa98228039"
 dependencies = [
- "hex",
  "serde",
 ]
 
@@ -7897,6 +7890,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "hmac 0.12.1",
  "num-traits",
  "parity-scale-codec",
@@ -7924,7 +7918,6 @@ dependencies = [
  "fdlimit",
  "futures 0.3.21",
  "hex",
- "hex-buffer-serde",
  "jsonrpsee",
  "lru",
  "num-traits",
@@ -8052,7 +8045,7 @@ dependencies = [
 name = "subspace-rpc-primitives"
 version = "0.1.0"
 dependencies = [
- "hex-buffer-serde",
+ "hex",
  "serde",
  "subspace-core-primitives",
 ]

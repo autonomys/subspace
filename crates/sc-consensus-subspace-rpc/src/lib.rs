@@ -48,9 +48,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::Solution;
+use subspace_core_primitives::{Solution, PIECE_SIZE};
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -60,8 +60,8 @@ const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 #[rpc(client, server)]
 pub trait SubspaceRpcApi {
     /// Ger metadata necessary for farmer operation
-    #[method(name = "subspace_getFarmerMetadata")]
-    fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata>;
+    #[method(name = "subspace_getFarmerProtocolInfo")]
+    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo>;
 
     #[method(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
@@ -184,21 +184,34 @@ where
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
-    fn get_farmer_metadata(&self) -> RpcResult<FarmerMetadata> {
+    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
         let runtime_api = self.client.runtime_api();
 
-        let farmer_metadata: Result<FarmerMetadata, ApiError> = try {
-            FarmerMetadata {
+        let genesis_hash = self
+            .client
+            .info()
+            .genesis_hash
+            .as_ref()
+            .try_into()
+            .map_err(|error| {
+                error!("Failed to convert genesis hash: {error}");
+                JsonRpseeError::Custom("Internal error".to_string())
+            })?;
+
+        let farmer_protocol_info: Result<FarmerProtocolInfo, ApiError> = try {
+            FarmerProtocolInfo {
+                genesis_hash,
                 record_size: runtime_api.record_size(&best_block_id)?,
                 recorded_history_segment_size: runtime_api
                     .recorded_history_segment_size(&best_block_id)?,
-                max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
+                // TODO: `max_plot_size` in the protocol must change to bytes as well
+                max_plot_size: runtime_api.max_plot_size(&best_block_id)? * PIECE_SIZE as u64,
                 total_pieces: runtime_api.total_pieces(&best_block_id)?,
             }
         };
 
-        farmer_metadata.map_err(|error| {
+        farmer_protocol_info.map_err(|error| {
             error!("Failed to get data from runtime API: {}", error);
             JsonRpseeError::Custom("Internal error".to_string())
         })
