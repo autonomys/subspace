@@ -18,6 +18,7 @@ include = [
 [dependencies]
 async-trait = "0.1.53"
 bytes = "1.1.0"
+derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 futures = "0.3.21"
 generic-array = "0.14.5"
@@ -44,11 +45,12 @@ features = [
     "kad",
     "noise",
     "ping",
+    "relay",
     "request-response",
     "sr25519",
     "tcp-tokio",
     "websocket",
-    "yamux"
+    "yamux",
 ]
 
 [dev-dependencies]

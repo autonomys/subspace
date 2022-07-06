@@ -7988,6 +7988,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "clap 3.1.18",
+ "derive_more",
  "env_logger",
  "event-listener-primitives",
  "futures 0.3.21",
