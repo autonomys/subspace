@@ -46,6 +46,8 @@ pub(crate) async fn farm_multi_disk(
     let mut record_size = None;
     let mut recorded_history_segment_size = None;
 
+    // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
+    //  fail later (note that multiple farms can use the same location for metadata)
     for disk_farm in disk_farms {
         if plot_size < 1024 * 1024 {
             return Err(anyhow::anyhow!(
