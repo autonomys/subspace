@@ -69,11 +69,11 @@ impl SinglePlotFarmId {
     }
 }
 
-/// Metadata for `SinglePlotFarm`, stores important information about the contents of the farm
+/// Important information about the contents of the `SinglePlotFarm`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SinglePlotFarmMetadata {
-    /// V0 of the metadata
+pub enum SinglePlotFarmInfo {
+    /// V0 of the info
     #[serde(rename_all = "camelCase")]
     V0 {
         /// ID of the farm
@@ -86,7 +86,7 @@ pub enum SinglePlotFarmMetadata {
     },
 }
 
-impl SinglePlotFarmMetadata {
+impl SinglePlotFarmInfo {
     const FILE_NAME: &'static str = "single_plot_farm.json";
 
     pub fn new(id: SinglePlotFarmId, public_key: PublicKey, allocated_plotting_space: u64) -> Self {
@@ -97,10 +97,10 @@ impl SinglePlotFarmMetadata {
         }
     }
 
-    /// Load `SinglePlotFarm` metadata from path where metadata is supposed to be stored, `None`
-    /// means no metadata was found, happens during first start.
-    pub fn load_from(metadata_directory: &Path) -> io::Result<Option<Self>> {
-        let bytes = match fs::read(metadata_directory.join(Self::FILE_NAME)) {
+    /// Load `SinglePlotFarm` from path is supposed to be stored, `None` means no info file was
+    /// found, happens during first start.
+    pub fn load_from(path: &Path) -> io::Result<Option<Self>> {
+        let bytes = match fs::read(path.join(Self::FILE_NAME)) {
             Ok(bytes) => bytes,
             Err(error) => {
                 return if error.kind() == io::ErrorKind::NotFound {
@@ -116,12 +116,11 @@ impl SinglePlotFarmMetadata {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
-    /// Store `SinglePlotFarm` metadata to path where metadata is supposed to be stored so it can be
-    /// loaded again upon restart.
+    /// Store `SinglePlotFarm` info to path so it can be loaded again upon restart.
     pub fn store_to(&self, metadata_directory: &Path) -> io::Result<()> {
         fs::write(
             metadata_directory.join(Self::FILE_NAME),
-            serde_json::to_vec(self).expect("Metadata serialization never fails; qed"),
+            serde_json::to_vec(self).expect("Info serialization never fails; qed"),
         )
     }
 
@@ -327,53 +326,51 @@ impl SinglePlotFarm {
             enable_dsn_sync,
         } = options;
 
+        fs::create_dir_all(&plot_directory)?;
         fs::create_dir_all(&metadata_directory)?;
 
         let identity = Identity::open_or_create(&metadata_directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
-        let single_plot_farm_metadata =
-            match SinglePlotFarmMetadata::load_from(&metadata_directory)? {
-                Some(single_plot_farm_metadata) => {
-                    if allocated_plotting_space
-                        != single_plot_farm_metadata.allocated_plotting_space()
-                    {
-                        error!(
-                            id = %single_plot_farm_metadata.id(),
-                            plot_directory = %plot_directory.display(),
-                            metadata_directory = %metadata_directory.display(),
-                            "Usable plotting space {} is different from {} when farm was created, \
-                            resizing isn't supported yet",
-                            allocated_plotting_space,
-                            single_plot_farm_metadata.allocated_plotting_space(),
-                        );
+        let single_plot_farm_info = match SinglePlotFarmInfo::load_from(&metadata_directory)? {
+            Some(single_plot_farm_info) => {
+                if allocated_plotting_space != single_plot_farm_info.allocated_plotting_space() {
+                    error!(
+                        id = %single_plot_farm_info.id(),
+                        plot_directory = %plot_directory.display(),
+                        metadata_directory = %metadata_directory.display(),
+                        "Usable plotting space {} is different from {} when farm was created, \
+                        resizing isn't supported yet",
+                        allocated_plotting_space,
+                        single_plot_farm_info.allocated_plotting_space(),
+                    );
 
-                        return Err(anyhow!("Can't resize farm after creation"));
-                    }
-
-                    if &public_key != single_plot_farm_metadata.public_key() {
-                        error!(
-                            id = %single_plot_farm_metadata.id(),
-                            "Public key {} is different from {} when farm was created, something \
-                            went wrong, likely due to manual edits",
-                            hex::encode(&public_key),
-                            hex::encode(single_plot_farm_metadata.public_key()),
-                        );
-
-                        return Err(anyhow!("Public key in identity doesn't match metadata"));
-                    }
-
-                    single_plot_farm_metadata
+                    return Err(anyhow!("Can't resize farm after creation"));
                 }
-                None => {
-                    let single_plot_farm_metadata =
-                        SinglePlotFarmMetadata::new(id, public_key, allocated_plotting_space);
 
-                    single_plot_farm_metadata.store_to(&metadata_directory)?;
+                if &public_key != single_plot_farm_info.public_key() {
+                    error!(
+                        id = %single_plot_farm_info.id(),
+                        "Public key {} is different from {} when farm was created, something \
+                        went wrong, likely due to manual edits",
+                        hex::encode(&public_key),
+                        hex::encode(single_plot_farm_info.public_key()),
+                    );
 
-                    single_plot_farm_metadata
+                    return Err(anyhow!("Public key in identity doesn't match metadata"));
                 }
-            };
+
+                single_plot_farm_info
+            }
+            None => {
+                let single_plot_farm_info =
+                    SinglePlotFarmInfo::new(id, public_key, allocated_plotting_space);
+
+                single_plot_farm_info.store_to(&metadata_directory)?;
+
+                single_plot_farm_info
+            }
+        };
 
         info!("Opening plot");
         let plot = plot_factory(PlotFactoryOptions {
@@ -381,8 +378,7 @@ impl SinglePlotFarm {
             public_key,
             plot_directory: &plot_directory,
             metadata_directory: &metadata_directory,
-            max_piece_count: single_plot_farm_metadata.allocated_plotting_space()
-                / PIECE_SIZE as u64,
+            max_piece_count: single_plot_farm_info.allocated_plotting_space() / PIECE_SIZE as u64,
         })?;
 
         info!("Opening object mappings");
