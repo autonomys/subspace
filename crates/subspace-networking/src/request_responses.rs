@@ -32,7 +32,7 @@
 //! - If provided, a ["requests processing"](ProtocolConfig::inbound_queue) channel
 //! is used to handle incoming requests.
 
-//! Original file commit: https://github.com/paritytech/substrate/commit/c2fc4b3ca0d7a15cc3f9cb1e5f441d99ec8d6e0b
+//! Original file commit: <https://github.com/paritytech/substrate/commit/c2fc4b3ca0d7a15cc3f9cb1e5f441d99ec8d6e0b>
 
 #[cfg(test)]
 mod tests;

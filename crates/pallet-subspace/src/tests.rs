@@ -33,7 +33,6 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::verification::VerificationError;
 use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
 };
@@ -45,6 +44,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use subspace_consensus_primitives::ConsensusError;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 
@@ -1070,7 +1070,7 @@ fn vote_outside_of_solution_range() {
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::OutsideOfSolutionRange(_)
+                ConsensusError::OutsideSolutionRange
             ))
         );
     });
@@ -1123,7 +1123,7 @@ fn vote_invalid_solution_signature() {
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::BadSolutionSignature(_, _)
+                ConsensusError::InvalidSolutionSignature(_)
             ))
         );
     });
