@@ -3,6 +3,7 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::mock_rpc_client::MockRpcClient;
 use crate::plot::Plot;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
@@ -28,7 +29,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let public_key = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(
-        0usize.into(),
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -50,6 +51,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         plot.clone(),
         commitments.clone(),
         client.clone(),
+        SingleDiskSemaphore::new(1),
         identity.clone(),
         public_key,
     );

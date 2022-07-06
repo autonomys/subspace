@@ -1,4 +1,5 @@
 use crate::rpc_client::{Error, RpcClient};
+use crate::utils::AbortingJoinHandle;
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
@@ -10,7 +11,6 @@ use subspace_rpc_primitives::{
     FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 
 /// Client mock for benching purpose
 #[derive(Clone, Debug)]
@@ -24,7 +24,7 @@ pub struct Inner {
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
-    segment_producer_handle: Mutex<JoinHandle<()>>,
+    _segment_producer_handle: AbortingJoinHandle<()>,
 }
 
 /// Default farmer metadata for benchmarking
@@ -63,13 +63,9 @@ impl BenchRpcClient {
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 archived_segments_receiver: Arc::new(Mutex::new(inner_archived_segments_receiver)),
                 acknowledge_archived_segment_sender,
-                segment_producer_handle: Mutex::new(segment_producer_handle),
+                _segment_producer_handle: AbortingJoinHandle::new(segment_producer_handle),
             }),
         }
-    }
-
-    pub async fn stop(self) {
-        self.inner.segment_producer_handle.lock().await.abort();
     }
 }
 

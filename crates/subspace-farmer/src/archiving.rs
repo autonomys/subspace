@@ -1,5 +1,6 @@
 use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
+use crate::utils::AbortingJoinHandle;
 use futures::StreamExt;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
@@ -8,7 +9,6 @@ use subspace_networking::PiecesToPlot;
 use subspace_rpc_primitives::FarmerMetadata;
 use thiserror::Error;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 #[derive(Debug, Error)]
@@ -31,14 +31,7 @@ pub enum ArchivingError {
 
 /// Abstraction around archiving blocks and updating global object map
 pub struct Archiving {
-    stop_sender: Option<oneshot::Sender<()>>,
-    archiving_handle: Option<JoinHandle<()>>,
-}
-
-impl Drop for Archiving {
-    fn drop(&mut self) {
-        let _ = self.stop_sender.take().unwrap().send(());
-    }
+    archiving_handle: Option<AbortingJoinHandle<()>>,
 }
 
 impl Archiving {
@@ -55,9 +48,6 @@ impl Archiving {
         Client: RpcClient + Clone + Send + Sync + 'static,
         OPTP: FnMut(PiecesToPlot) -> bool + Send + 'static,
     {
-        // Oneshot channels, that will be used for interrupt/stop the process
-        let (stop_sender, mut stop_receiver) = oneshot::channel();
-
         let FarmerMetadata {
             record_size,
             recorded_history_segment_size,
@@ -123,42 +113,29 @@ impl Archiving {
 
         let archiving_handle = tokio::spawn(async move {
             // Listen for new blocks produced on the network
-            loop {
-                tokio::select! {
-                    _ = &mut stop_receiver => {
-                        info!("Plotting stopped!");
-                        break;
-                    }
-                    result = archived_segments.next() => {
-                        match result {
-                            Some(archived_segment) => {
-                                let segment_index = archived_segment.root_block.segment_index();
-                                let (acknowledge_sender, acknowledge_receiver) = oneshot::channel();
-                                // Acknowledge immediately to allow node to continue sync quickly,
-                                // but this will miss some segments in case farmer crashed in the
-                                // meantime. Ideally we'd acknowledge after, but it makes node wait
-                                // for it and the whole process very sequential.
-                                if let Err(error) = client.acknowledge_archived_segment(segment_index).await {
-                                    error!(%error, "Failed to send archived segment acknowledgement");
-                                }
-                                if let Err(error) = archived_segments_sync_sender.send((archived_segment, acknowledge_sender)) {
-                                    error!(%error, "Failed to send archived segment for plotting");
-                                }
-                                let _ = acknowledge_receiver.await;
-                            },
-                            None => {
-                                debug!("Subscription has forcefully closed from node side!");
-                                break;
-                            }
-                        }
-                    }
+            while let Some(archived_segment) = archived_segments.next().await {
+                let segment_index = archived_segment.root_block.segment_index();
+                let (acknowledge_sender, acknowledge_receiver) = oneshot::channel();
+                // Acknowledge immediately to allow node to continue sync quickly,
+                // but this will miss some segments in case farmer crashed in the
+                // meantime. Ideally we'd acknowledge after, but it makes node wait
+                // for it and the whole process very sequential.
+                if let Err(error) = client.acknowledge_archived_segment(segment_index).await {
+                    error!(%error, "Failed to send archived segment acknowledgement");
                 }
+                if let Err(error) =
+                    archived_segments_sync_sender.send((archived_segment, acknowledge_sender))
+                {
+                    error!(%error, "Failed to send archived segment for plotting");
+                }
+                let _ = acknowledge_receiver.await;
             }
+
+            debug!("Subscription has forcefully closed from node side!");
         });
 
         Ok(Self {
-            stop_sender: Some(stop_sender),
-            archiving_handle: Some(archiving_handle),
+            archiving_handle: Some(AbortingJoinHandle::new(archiving_handle)),
         })
     }
 
