@@ -225,16 +225,15 @@ fn delete_expired_bad_receipt_info_at<Backend: AuxStore, Number: Encode>(
 	backend.insert_aux([], &keys_to_delete.iter().map(|k| &k[..]).collect::<Vec<_>>()[..])
 }
 
-/// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
-///
 /// Bad receipts which are older than `oldest_receipt_number` are expired and will be pruned.
-pub(super) fn load_first_unconfirmed_bad_receipt_info<
-	Backend: AuxStore,
-	Number: Copy + Decode + Encode + PartialOrd + std::fmt::Debug,
->(
+pub(super) fn prune_expired_bad_receipts<Backend, Number>(
 	backend: &Backend,
 	oldest_receipt_number: Number,
-) -> Result<Option<(Number, H256, u32)>, ClientError> {
+) -> Result<(), ClientError>
+where
+	Backend: AuxStore,
+	Number: Encode + Decode + Copy + std::fmt::Debug + Copy + PartialOrd,
+{
 	let mut bad_receipt_numbers: Vec<Number> =
 		load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
@@ -269,6 +268,20 @@ pub(super) fn load_first_unconfirmed_bad_receipt_info<
 			)?;
 		}
 	}
+
+	Ok(())
+}
+
+/// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
+pub(super) fn load_first_unconfirmed_bad_receipt_info<Backend, Number>(
+	backend: &Backend,
+) -> Result<Option<(Number, H256, u32)>, ClientError>
+where
+	Backend: AuxStore,
+	Number: Encode + Decode + Copy + std::fmt::Debug,
+{
+	let bad_receipt_numbers: Vec<Number> =
+		load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
 	if let Some(bad_receipt_number) = bad_receipt_numbers.get(0).copied() {
 		let bad_signed_receipt_hashes_key =
@@ -533,6 +546,12 @@ mod tests {
 			load_decode(&client, BAD_RECEIPT_NUMBERS.encode().as_slice()).unwrap()
 		};
 
+		let first_unconfirmed_bad_receipt_info = |oldest_receipt_number: BlockNumber| {
+			// Always check and prune the expired bad receipts before loading the first unconfirmed one.
+			prune_expired_bad_receipts(&client, oldest_receipt_number).unwrap();
+			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client)
+		};
+
 		let bad_receipt_hash1 = Hash::random();
 		let bad_receipt_hash2 = Hash::random();
 		let bad_receipt_hash3 = Hash::random();
@@ -550,9 +569,8 @@ mod tests {
 		assert_eq!(trace_mismatch_index_for(bad_receipt_hash1).unwrap(), 1);
 		assert_eq!(trace_mismatch_index_for(bad_receipt_hash2).unwrap(), 2);
 		assert_eq!(trace_mismatch_index_for(bad_receipt_hash3).unwrap(), 3);
-
 		assert_eq!(
-			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client, 1).unwrap(),
+			first_unconfirmed_bad_receipt_info(1).unwrap(),
 			Some((10, bad_receipt_hash1, 1))
 		);
 
@@ -577,22 +595,19 @@ mod tests {
 		assert!(trace_mismatch_index_for(bad_receipt_hash3).is_none());
 		assert!(bad_receipts_at(10).is_none());
 		assert_eq!(
-			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client, 1).unwrap(),
+			first_unconfirmed_bad_receipt_info(1).unwrap(),
 			Some((20, bad_receipt_hash4, 1))
 		);
 
 		assert!(delete_bad_receipt(&client, 20, bad_receipt_hash4).is_ok());
-		assert_eq!(
-			load_first_unconfirmed_bad_receipt_info::<_, BlockNumber>(&client, 1).unwrap(),
-			None
-		);
+		assert_eq!(first_unconfirmed_bad_receipt_info(20).unwrap(), None);
 
 		let bad_receipt_hash5 = Hash::random();
 		write_bad_receipt::<_, PBlock>(&client, 30, bad_receipt_hash5, 1).unwrap();
 		assert_eq!(bad_receipt_numbers(), Some(vec![30]));
 		assert_eq!(bad_receipts_at(30).unwrap(), [bad_receipt_hash5].into());
 		// Expired bad receipts will be removed.
-		assert_eq!(load_first_unconfirmed_bad_receipt_info(&client, 31).unwrap(), None);
+		assert_eq!(first_unconfirmed_bad_receipt_info(31).unwrap(), None);
 		assert_eq!(bad_receipt_numbers(), None);
 		assert!(bad_receipts_at(30).is_none());
 	}
