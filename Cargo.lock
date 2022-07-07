@@ -7893,6 +7893,7 @@ dependencies = [
 name = "subspace-consensus-primitives"
 version = "0.1.0"
 dependencies = [
+ "merlin",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
@@ -7952,6 +7953,7 @@ dependencies = [
  "ss58-registry",
  "std-semaphore",
  "subspace-archiving",
+ "subspace-consensus-primitives",
  "subspace-core-primitives",
  "subspace-networking",
  "subspace-rpc-primitives",
@@ -8223,6 +8225,7 @@ dependencies = [
  "sp-executor",
  "sp-runtime",
  "subspace-archiving",
+ "subspace-consensus-primitives",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-service",

@@ -19,12 +19,11 @@
 use crate::digests::{CompatibleDigestItem, PreDigest};
 use crate::{find_pre_digest, FarmerPublicKey};
 use codec::Decode;
-use schnorrkel::context::SigningContext;
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_runtime::DigestItem;
 use subspace_consensus_primitives::{
-    verify_signature, verify_solution, ConsensusError, VerifySolutionParams,
+    verify_reward_signature, verify_solution, ConsensusError, VerifySolutionParams,
 };
 
 /// Errors encountered by the Subspace authorship task.
@@ -71,8 +70,6 @@ where
     pub slot_now: Slot,
     /// Parameters for solution verification
     pub verify_solution_params: VerifySolutionParams<'a>,
-    /// Signing context for reward signature
-    pub reward_signing_context: &'a SigningContext,
 }
 
 /// Information from verified header
@@ -106,7 +103,6 @@ where
         mut header,
         slot_now,
         verify_solution_params,
-        reward_signing_context,
     } = params;
 
     let pre_digest = match pre_digest {
@@ -134,13 +130,7 @@ where
     }
 
     // Verify that block is signed properly
-    if verify_signature(
-        &signature,
-        &pre_digest.solution.public_key,
-        reward_signing_context.bytes(pre_hash.as_ref()),
-    )
-    .is_err()
-    {
+    if verify_reward_signature(&pre_hash, &signature, &pre_digest.solution.public_key).is_err() {
         return Err(VerificationError::BadRewardSignature(pre_hash));
     }
 

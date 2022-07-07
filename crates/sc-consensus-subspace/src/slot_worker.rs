@@ -27,7 +27,6 @@ use sc_consensus_slots::{
 };
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
-use schnorrkel::context::SigningContext;
 use schnorrkel::PublicKey;
 use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
@@ -44,11 +43,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_consensus_primitives::{
-    is_within_solution_range, verify_signature, verify_solution, PieceCheckParams,
-    VerifySolutionParams,
+    derive_global_challenge, derive_target, is_within_solution_range, verify_reward_signature,
+    verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 use subspace_core_primitives::{Randomness, Salt, Solution};
-use subspace_solving::{derive_global_challenge, derive_target};
 
 pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) client: Arc<Client>,
@@ -59,7 +57,6 @@ pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) force_authoring: bool,
     pub(super) backoff_authoring_blocks: Option<BS>,
     pub(super) subspace_link: SubspaceLink<Block>,
-    pub(super) reward_signing_context: SigningContext,
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
@@ -455,13 +452,7 @@ where
             });
 
         while let Some(signature) = signature_receiver.next().await {
-            if verify_signature(
-                &signature,
-                &public_key,
-                self.reward_signing_context.bytes(hash.as_ref()),
-            )
-            .is_err()
-            {
+            if verify_reward_signature(&hash, &signature, &public_key).is_err() {
                 warn!(
                     target: "subspace",
                     "Received invalid signature for reward hash {hash:?}"

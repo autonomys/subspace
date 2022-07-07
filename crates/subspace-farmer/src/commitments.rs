@@ -13,8 +13,8 @@ use rocksdb::DB;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subspace_consensus_primitives::create_tag;
 use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
-use subspace_solving::create_tag;
 use thiserror::Error;
 use tracing::trace;
 

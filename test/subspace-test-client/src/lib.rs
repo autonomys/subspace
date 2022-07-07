@@ -30,13 +30,14 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{Decode, Encode};
 use std::sync::Arc;
+use subspace_consensus_primitives::{
+    create_tag, create_tag_signature, derive_local_challenge, REWARD_SIGNING_CONTEXT,
+};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
-use subspace_solving::{
-    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::SubspaceCodec;
 use zeroize::Zeroizing;
 
 /// Subspace native executor instance.

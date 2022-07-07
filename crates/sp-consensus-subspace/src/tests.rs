@@ -7,8 +7,8 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
+use subspace_consensus_primitives::REWARD_SIGNING_CONTEXT;
 use subspace_core_primitives::{LocalChallenge, Solution, TagSignature};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 type PreDigest = crate::PreDigest<FarmerPublicKey, ()>;

@@ -55,10 +55,10 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_consensus_primitives::{
     derive_next_salt_from_randomness, derive_next_solution_range, derive_randomness,
-    verify_signature, verify_solution, ConsensusError, PieceCheckParams, VerifySolutionParams,
+    verify_reward_signature, verify_solution, ConsensusError, PieceCheckParams,
+    VerifySolutionParams,
 };
 use subspace_core_primitives::{Randomness, RootBlock, Salt, PIECE_SIZE};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 pub trait WeightInfo {
     fn report_equivocation() -> Weight;
@@ -1358,11 +1358,10 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::SlotInThePast);
     }
 
-    if let Err(error) = verify_signature(
+    if let Err(error) = verify_reward_signature(
+        &signed_vote.vote.hash(),
         &signed_vote.signature,
         &solution.public_key,
-        schnorrkel::signing_context(REWARD_SIGNING_CONTEXT)
-            .bytes(signed_vote.vote.hash().as_bytes()),
     ) {
         debug!(
             target: "runtime::subspace",

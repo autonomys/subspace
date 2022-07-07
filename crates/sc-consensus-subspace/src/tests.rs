@@ -69,11 +69,12 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
+use subspace_consensus_primitives::{
+    create_tag, create_tag_signature, derive_local_challenge, REWARD_SIGNING_CONTEXT,
+};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature};
-use subspace_solving::{
-    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -408,9 +409,6 @@ impl TestNetFactory for SubspaceTestNet {
                     Slot::from_timestamp(*timestamp, SlotDuration::from_millis(6000))
                 }),
                 telemetry: None,
-                reward_signing_context: schnorrkel::context::signing_context(
-                    REWARD_SIGNING_CONTEXT,
-                ),
                 is_authoring_blocks: true,
                 block: PhantomData::default(),
             },

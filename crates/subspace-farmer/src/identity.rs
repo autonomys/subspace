@@ -4,10 +4,10 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::path::Path;
-use subspace_core_primitives::{LocalChallenge, Sha256Hash, Tag, TagSignature};
-use subspace_solving::{
+use subspace_consensus_primitives::{
     create_tag_signature, derive_local_challenge_and_target, REWARD_SIGNING_CONTEXT,
 };
+use subspace_core_primitives::{LocalChallenge, Sha256Hash, Tag, TagSignature};
 use substrate_bip39::mini_secret_from_entropy;
 use tracing::debug;
 use zeroize::Zeroizing;

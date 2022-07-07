@@ -40,10 +40,11 @@ serde_json = "1.0.81"
 std-semaphore = "0.1.0"
 ss58-registry = "1.18.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
+subspace-consensus-primitives = { version = "0.1.0", path = "../subspace-consensus-primitives" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"

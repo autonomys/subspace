@@ -40,9 +40,10 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::ConsensusEngineId;
 use sp_std::vec::Vec;
-use subspace_consensus_primitives::{verify_signature, GlobalRandomnesses, Salts, SolutionRanges};
+use subspace_consensus_primitives::{
+    verify_reward_signature, GlobalRandomnesses, Salts, SolutionRanges,
+};
 use subspace_core_primitives::{RootBlock, Sha256Hash, Solution};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -159,12 +160,7 @@ where
     };
     let pre_hash = header.hash();
 
-    verify_signature(
-        &seal,
-        offender,
-        schnorrkel::signing_context(REWARD_SIGNING_CONTEXT).bytes(pre_hash.as_ref()),
-    )
-    .is_ok()
+    verify_reward_signature(&pre_hash, &seal, offender).is_ok()
 }
 
 /// Verifies the equivocation proof by making sure that: both headers have

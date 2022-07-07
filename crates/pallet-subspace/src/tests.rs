@@ -42,9 +42,10 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
-use subspace_consensus_primitives::{ConsensusError, GlobalRandomnesses, Salts, SolutionRanges};
+use subspace_consensus_primitives::{
+    ConsensusError, GlobalRandomnesses, Salts, SolutionRanges, REWARD_SIGNING_CONTEXT,
+};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 #[test]
 fn genesis_slot_is_correct() {

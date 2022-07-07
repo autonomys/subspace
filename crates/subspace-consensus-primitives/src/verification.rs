@@ -1,29 +1,84 @@
-use crate::{ConsensusError, PieceCheckParams, VerifySolutionParams};
-use schnorrkel::context::SigningTranscript;
-use schnorrkel::SignatureError;
+// Copyright (C) 2021 Subspace Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// 	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::{
+    create_local_challenge_transcript, create_tag, create_tag_signature_transcript,
+    derive_global_challenge, derive_target, ConsensusError, PieceCheckParams, VerifySolutionParams,
+    REWARD_SIGNING_CONTEXT,
+};
+use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
+use schnorrkel::{PublicKey, SignatureError, SignatureResult};
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    Piece, PieceIndex, PieceIndexHash, Salt, Sha256Hash, Solution, Tag, U256,
+    LocalChallenge, Piece, PieceIndex, PieceIndexHash, Salt, Sha256Hash, Solution, Tag,
+    TagSignature, U256,
 };
-use subspace_solving::{
-    derive_global_challenge, derive_target, is_tag_valid, verify_local_challenge,
-    verify_tag_signature, SubspaceCodec,
-};
+use subspace_solving::SubspaceCodec;
+
+/// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
+/// Proof-of-Replication
+pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
+    create_tag(piece, salt) == tag
+}
+
+/// Verify local challenge for farmer's public key that was derived from the global challenge.
+pub fn verify_local_challenge(
+    public_key: &PublicKey,
+    global_challenge: Sha256Hash,
+    local_challenge: &LocalChallenge,
+) -> SignatureResult<VRFInOut> {
+    public_key
+        .vrf_verify(
+            create_local_challenge_transcript(&global_challenge),
+            &VRFOutput(local_challenge.output),
+            &VRFProof::from_bytes(&local_challenge.proof)?,
+        )
+        .map(|(in_out, _)| in_out)
+}
+
+/// Verify that tag signature was created correctly.
+pub fn verify_tag_signature(
+    tag: Tag,
+    tag_signature: &TagSignature,
+    public_key: &PublicKey,
+) -> SignatureResult<VRFInOut> {
+    public_key
+        .vrf_verify(
+            create_tag_signature_transcript(tag),
+            &VRFOutput(tag_signature.output),
+            &VRFProof::from_bytes(&tag_signature.proof)?,
+        )
+        .map(|(in_out, _)| in_out)
+}
 
 /// Checks the signature validity.
-pub fn verify_signature<PublicKey, Signature, ST>(
+pub fn verify_reward_signature<PublicKey, Signature, Message>(
+    message: &Message,
     signature: &Signature,
     public_key: &PublicKey,
-    signing_transcript: ST,
 ) -> Result<(), SignatureError>
 where
     PublicKey: AsRef<[u8]>,
     Signature: AsRef<[u8]>,
-    ST: SigningTranscript,
+    Message: AsRef<[u8]>,
 {
     let public_key = &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?;
     let signature = &schnorrkel::Signature::from_bytes(signature.as_ref())?;
-    public_key.verify::<ST>(signing_transcript, signature)
+    let signing_transcript =
+        schnorrkel::signing_context(REWARD_SIGNING_CONTEXT).bytes(message.as_ref());
+    public_key.verify(signing_transcript, signature)
 }
 
 /// Checks if the target range is within the solution range

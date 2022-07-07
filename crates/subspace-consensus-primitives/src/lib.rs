@@ -13,10 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Subspace consensus primitives
+//! Set of consensus primitives useful for solving and verifying solutions in
+//! [Subspace Network Blockchain](https://subspace.network).
 
 #![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, missing_docs)]
+#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use schnorrkel::SignatureError;

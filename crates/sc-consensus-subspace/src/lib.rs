@@ -52,7 +52,6 @@ use sc_consensus_slots::{
 };
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
-use schnorrkel::context::SigningContext;
 use schnorrkel::PublicKey;
 use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -80,9 +79,10 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_consensus_primitives::{verify_piece, ConsensusError, VerifySolutionParams};
+use subspace_consensus_primitives::{
+    derive_global_challenge, derive_target, verify_piece, ConsensusError, VerifySolutionParams,
+};
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
-use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 
 // TODO: Hack for Gemini 1b launch.
 const GEMINI_1B_GENESIS_HASH: &[u8] = &[
@@ -440,7 +440,6 @@ where
         force_authoring,
         backoff_authoring_blocks,
         subspace_link: subspace_link.clone(),
-        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
@@ -642,7 +641,6 @@ pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
     select_chain: SelectChain,
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
-    reward_signing_context: SigningContext,
     is_authoring_blocks: bool,
     block: PhantomData<Block>,
 }
@@ -840,7 +838,6 @@ where
                         salt,
                         piece_check_params: None,
                     },
-                    reward_signing_context: &self.reward_signing_context,
                 },
                 Some(pre_digest),
             )
@@ -1412,7 +1409,6 @@ where
         slot_now,
         telemetry,
         client,
-        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         is_authoring_blocks,
         block: PhantomData::default(),
     };
