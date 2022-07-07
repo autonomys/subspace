@@ -35,6 +35,7 @@ use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_codec::SubspaceCodec;
 use subspace_consensus_primitives::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
     REWARD_SIGNING_CONTEXT,
@@ -43,7 +44,6 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
     Sha256Hash, Solution, Tag, PIECE_SIZE,
 };
-use subspace_solving::SubspaceCodec;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;

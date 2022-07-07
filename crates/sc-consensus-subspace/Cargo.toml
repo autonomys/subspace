@@ -44,9 +44,9 @@ sp-objects = { version = "0.1.0", path = "../sp-objects" }
 sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-version = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-codec = { version = "0.1.0", path = "../subspace-codec" }
 subspace-consensus-primitives = { version = "0.1.0", path = "../subspace-consensus-primitives" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 thiserror = "1.0.31"
 
 [dev-dependencies]

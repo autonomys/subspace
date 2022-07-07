@@ -11,11 +11,11 @@ use rand::prelude::*;
 use rand::Rng;
 use std::num::NonZeroU16;
 use subspace_archiving::archiver::Archiver;
+use subspace_codec::SubspaceCodec;
 use subspace_consensus_primitives::create_tag;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::FarmerProtocolInfo;
-use subspace_solving::SubspaceCodec;
 use tempfile::TempDir;
 use tracing::error;
 

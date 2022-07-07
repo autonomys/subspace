@@ -21,11 +21,11 @@ use crate::{
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{PublicKey, SignatureError, SignatureResult};
 use subspace_archiving::archiver;
+use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::{
     LocalChallenge, Piece, PieceIndex, PieceIndexHash, Salt, Sha256Hash, Solution, Tag,
     TagSignature, U256,
 };
-use subspace_solving::SubspaceCodec;
 
 /// Check whether commitment tag of a piece is valid for a particular salt, which is used as a
 /// Proof-of-Replication

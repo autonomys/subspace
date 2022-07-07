@@ -1,6 +1,6 @@
 use std::iter;
+use subspace_codec::SubspaceCodec;
 use subspace_core_primitives::{FlatPieces, PIECE_SIZE};
-use subspace_solving::SubspaceCodec;
 
 #[test]
 fn single_piece() {

@@ -155,7 +155,7 @@ pub trait Rpc {
 /// use subspace_farmer::{Identity, ObjectMappings, Plot};
 /// use subspace_farmer::single_plot_farm::SinglePlotPieceGetter;
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-/// use subspace_solving::SubspaceCodec;
+/// use subspace_codec::SubspaceCodec;
 /// use std::path::PathBuf;
 /// use std::sync::Arc;
 ///

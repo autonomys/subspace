@@ -16,6 +16,10 @@
 //! Codec for the [Subspace Network Blockchain](https://subspace.network) based on the
 //! [SLOTH permutation](https://eprint.iacr.org/2015/366).
 
+#![forbid(unsafe_code)]
+#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+#![cfg_attr(not(feature = "std"), no_std)]
+
 #[cfg(feature = "std")]
 use rayon::prelude::*;
 use sloth256_189::cpu;

@@ -22,6 +22,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io, mem};
+use subspace_codec::{BatchEncodeError, SubspaceCodec};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -31,7 +32,6 @@ use subspace_networking::{
     libp2p, Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
-use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tracing::{error, info, trace, warn, Instrument, Span};

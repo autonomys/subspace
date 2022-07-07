@@ -69,12 +69,12 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
+use subspace_codec::SubspaceCodec;
 use subspace_consensus_primitives::{
     create_tag, create_tag_signature, derive_local_challenge, REWARD_SIGNING_CONTEXT,
 };
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature};
-use subspace_solving::SubspaceCodec;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<

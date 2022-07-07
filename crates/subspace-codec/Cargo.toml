@@ -1,5 +1,5 @@
 [package]
-name = "subspace-solving"
+name = "subspace-codec"
 description = "Encoder for the Subspace Network Blockchain based on the SLOTH permutation"
 license = "Apache-2.0"
 version = "0.1.0"

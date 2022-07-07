@@ -4619,10 +4619,10 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-consensus-primitives",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-solving",
 ]
 
 [[package]]
@@ -6042,9 +6042,9 @@ dependencies = [
  "sp-tracing",
  "sp-version",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-consensus-primitives",
  "subspace-core-primitives",
- "subspace-solving",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -7266,9 +7266,9 @@ dependencies = [
  "sp-std",
  "sp-timestamp",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-consensus-primitives",
  "subspace-core-primitives",
- "subspace-solving",
  "thiserror",
 ]
 
@@ -7890,6 +7890,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-codec"
+version = "0.1.0"
+dependencies = [
+ "merlin",
+ "num-traits",
+ "num_cpus",
+ "rand 0.8.5",
+ "rayon",
+ "schnorrkel",
+ "sloth256-189",
+ "subspace-core-primitives",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-consensus-primitives"
 version = "0.1.0"
 dependencies = [
@@ -7900,8 +7916,8 @@ dependencies = [
  "sp-arithmetic",
  "sp-std",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-core-primitives",
- "subspace-solving",
  "thiserror",
 ]
 
@@ -7953,11 +7969,11 @@ dependencies = [
  "ss58-registry",
  "std-semaphore",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-consensus-primitives",
  "subspace-core-primitives",
  "subspace-networking",
  "subspace-rpc-primitives",
- "subspace-solving",
  "substrate-bip39",
  "tempfile",
  "thiserror",
@@ -8192,22 +8208,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-solving"
-version = "0.1.0"
-dependencies = [
- "merlin",
- "num-traits",
- "num_cpus",
- "rand 0.8.5",
- "rayon",
- "schnorrkel",
- "sloth256-189",
- "subspace-core-primitives",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
@@ -8225,11 +8225,11 @@ dependencies = [
  "sp-executor",
  "sp-runtime",
  "subspace-archiving",
+ "subspace-codec",
  "subspace-consensus-primitives",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-service",
- "subspace-solving",
  "subspace-test-runtime",
  "zeroize",
 ]
