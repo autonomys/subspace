@@ -163,32 +163,15 @@ impl IndexHashToOffsetDB {
             .unwrap_or(true)
     }
 
-    fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance_key() {
-            Some(max_distance) => max_distance,
-            None => return Ok(None),
-        };
-
-        let result = self
-            .inner
-            .get(&max_distance.to_bytes())
-            .map_err(io::Error::other)?
-            .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
-            .map(PieceOffset::from_le_bytes);
-        self.inner
-            .delete(&max_distance.to_bytes())
-            .map_err(io::Error::other)?;
-        self.max_distance_cache
-            .remove(&BidirectionalDistanceSorted::new(max_distance));
-
-        Ok(result)
-    }
-
-    fn batch_put<'a, I>(&'a mut self, index_hashes: I, offset: PieceOffset) -> io::Result<()>
+    fn batch_put<'a, I>(
+        &'a mut self,
+        mut batch: WriteBatch,
+        index_hashes: I,
+        offset: PieceOffset,
+    ) -> io::Result<()>
     where
         I: Iterator<Item = &'a PieceIndexHash>,
     {
-        let mut batch = WriteBatch::default();
         for (index_hash, offset) in index_hashes.zip(offset..) {
             let key = self.piece_hash_to_distance(index_hash);
             batch.put(key.to_bytes(), offset.to_le_bytes());
@@ -220,20 +203,19 @@ impl IndexHashToOffsetDB {
         index_hashes: &[PieceIndexHash],
         offset: PieceOffset,
     ) -> io::Result<()> {
-        self.batch_put(index_hashes.iter(), offset)?;
-
         let count = index_hashes.len() as u64;
-
         let piece_count = self.piece_count.fetch_add(count, Ordering::SeqCst) + count;
-        self.inner
-            .put_cf(
-                self.inner
-                    .cf_handle(Self::METADATA_COLUMN_FAMILY)
-                    .expect("Column name opened in constructor; qed"),
-                Self::PIECE_COUNT_KEY,
-                piece_count.to_le_bytes(),
-            )
-            .map_err(io::Error::other)?;
+
+        let mut batch = WriteBatch::default();
+        batch.put_cf(
+            self.inner
+                .cf_handle(Self::METADATA_COLUMN_FAMILY)
+                .expect("Column name opened in constructor; qed"),
+            Self::PIECE_COUNT_KEY,
+            piece_count.to_le_bytes(),
+        );
+
+        self.batch_put(batch, index_hashes.iter(), offset)?;
 
         Ok(())
     }
@@ -242,14 +224,39 @@ impl IndexHashToOffsetDB {
         &mut self,
         index_hash: &PieceIndexHash,
     ) -> io::Result<PieceOffset> {
-        let piece_offset = self.remove_furthest()?.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "Database is empty, no furthest piece found",
-            )
-        })?;
+        let mut batch = WriteBatch::default();
+        let piece_offset = {
+            let max_distance = match self.max_distance_key() {
+                Some(max_distance) => max_distance,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Database is empty, no furthest piece found",
+                    ));
+                }
+            };
 
-        self.batch_put(iter::once(index_hash), piece_offset)?;
+            let piece_offset = self
+                .inner
+                .get(&max_distance.to_bytes())
+                .map_err(io::Error::other)?
+                .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
+                .map(PieceOffset::from_le_bytes)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Database is empty, no furthest piece found",
+                    )
+                })?;
+
+            batch.delete(&max_distance.to_bytes());
+            self.max_distance_cache
+                .remove(&BidirectionalDistanceSorted::new(max_distance));
+
+            piece_offset
+        };
+
+        self.batch_put(batch, iter::once(index_hash), piece_offset)?;
 
         Ok(piece_offset)
     }

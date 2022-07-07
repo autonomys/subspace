@@ -195,10 +195,12 @@ impl Commitments {
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
+                let mut batch = WriteBatch::default();
                 for piece in pieces {
                     let tag = create_tag(piece, salt);
-                    db.delete(tag).map_err(CommitmentError::CommitmentDb)?;
+                    batch.delete(tag);
                 }
+                db.write(batch).map_err(CommitmentError::CommitmentDb)?;
             }
         }
 
