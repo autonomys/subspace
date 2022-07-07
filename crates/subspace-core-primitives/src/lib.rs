@@ -67,6 +67,9 @@ pub const SALT_SIZE: usize = 8;
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; SALT_SIZE];
 
+/// Tag prefix
+pub const SALT_HASHING_PREFIX: &[u8] = b"salt";
+
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
 

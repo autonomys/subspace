@@ -27,7 +27,6 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::traits::{Get, OnTimestampSet};
@@ -55,16 +54,11 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_consensus_primitives::{
-    derive_randomness, verify_signature, verify_solution, ConsensusError, PieceCheckParams,
-    VerifySolutionParams,
+    derive_next_salt_from_randomness, derive_next_solution_range, derive_randomness,
+    verify_signature, verify_solution, ConsensusError, PieceCheckParams, VerifySolutionParams,
 };
-use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
-};
+use subspace_core_primitives::{Randomness, RootBlock, Salt, PIECE_SIZE};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-
-const SALT_HASHING_PREFIX: &[u8] = b"salt";
-const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
 
 pub trait WeightInfo {
     fn report_equivocation() -> Weight;
@@ -714,38 +708,15 @@ impl<T: Config> Pallet<T> {
                 next_solution_range = solution_range_override.solution_range;
                 next_voting_solution_range = solution_range_override.voting_solution_range;
             } else {
-                // If Era start slot is not found it means we have just finished the first era
-                let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-                let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
-
-                // Now we need to re-calculate solution range. The idea here is to keep block production at
-                // the same pace while space pledged on the network changes. For this we adjust previous
-                // solution range according to actual and expected number of blocks per era.
-                let era_duration: u64 = T::EraDuration::get()
-                    .try_into()
-                    .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-
-                // Below is code analogous to the following, but without using floats:
-                // ```rust
-                // let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-                // let expected_slots_per_block =
-                //     slot_probability.1 as f64 / slot_probability.0 as f64;
-                // let adjustment_factor =
-                //     (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
-                //
-                // next_solution_range =
-                //     (solution_ranges.current as f64 * adjustment_factor).round() as u64;
-                // ```
-                next_solution_range = u64::saturated_from(
-                    u128::from(solution_ranges.current)
-                        .saturating_mul(u128::from(era_slot_count))
-                        .saturating_mul(u128::from(slot_probability.0))
-                        / u128::from(era_duration)
-                        / u128::from(slot_probability.1),
-                )
-                .clamp(
-                    solution_ranges.current / 4,
-                    solution_ranges.current.saturating_mul(4),
+                next_solution_range = derive_next_solution_range(
+                    // If Era start slot is not found it means we have just finished the first era
+                    u64::from(EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get)),
+                    u64::from(current_slot),
+                    slot_probability,
+                    solution_ranges.current,
+                    T::EraDuration::get()
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
                 );
 
                 next_voting_solution_range = next_solution_range
@@ -943,10 +914,9 @@ impl<T: Config> Pallet<T> {
                         eon_index,
                         *current_slot
                     );
-                    salts.next.replace(Self::derive_next_salt_from_randomness(
-                        eon_index,
-                        &por_randomness,
-                    ));
+                    salts
+                        .next
+                        .replace(derive_next_salt_from_randomness(eon_index, &por_randomness));
                 }
             });
         }
@@ -1069,19 +1039,6 @@ impl<T: Config> Pallet<T> {
         EnableRewards::<T>::put(height.unwrap_or(next_block_number).max(next_block_number));
 
         Ok(())
-    }
-
-    fn derive_next_salt_from_randomness(eon_index: u64, randomness: &Randomness) -> Salt {
-        let mut input = [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
-        input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
-        input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
-            .copy_from_slice(randomness);
-        input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
-            .copy_from_slice(&eon_index.to_le_bytes());
-
-        crypto::sha256_hash(&input)[..SALT_SIZE]
-            .try_into()
-            .expect("Slice has exactly the size needed; qed")
     }
 
     /// Submits an extrinsic to report an equivocation. This method will create an unsigned

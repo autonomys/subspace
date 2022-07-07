@@ -7896,6 +7896,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
+ "sp-arithmetic",
  "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",

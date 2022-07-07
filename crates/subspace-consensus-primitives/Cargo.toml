@@ -15,6 +15,7 @@ readme = "README.md"
 codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
+sp-arithmetic = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
@@ -27,6 +28,7 @@ std = [
     "codec/std",
     "scale-info/std",
     "schnorrkel/std",
+    "sp-arithmetic/std",
     "sp-std/std",
     "subspace-archiving/std",
     "subspace-core-primitives/std",
