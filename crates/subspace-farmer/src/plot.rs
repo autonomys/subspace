@@ -9,7 +9,6 @@ use crate::plot::worker::{PlotWorker, Request, RequestPriority, RequestWithPrior
 use crate::single_plot_farm::SinglePlotFarmId;
 use event_listener_primitives::{Bag, HandlerId};
 use std::fs::{File, OpenOptions};
-use std::io::{Seek, SeekFrom};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,9 +28,6 @@ pub type PieceOffset = u64;
 
 /// Trait for mocking plot behaviour
 pub trait PlotFile {
-    /// Get number of pieces in plot
-    fn piece_count(&mut self) -> io::Result<u64>;
-
     /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
     /// Read pieces from disk under some offset
@@ -39,12 +35,6 @@ pub trait PlotFile {
 }
 
 impl PlotFile for File {
-    fn piece_count(&mut self) -> io::Result<u64> {
-        let plot_file_size = self.seek(SeekFrom::End(0))?;
-
-        Ok(plot_file_size / PIECE_SIZE as u64)
-    }
-
     /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
         self.write_all_at(pieces.as_ref(), offset * PIECE_SIZE as u64)
@@ -63,6 +53,8 @@ pub enum PlotError {
     MetadataDbOpen(rocksdb::Error),
     #[error("Index DB open error: {0}")]
     IndexDbOpen(rocksdb::Error),
+    #[error("Failed to read piece count: {0}")]
+    PieceCountReadError(Box<dyn std::error::Error + Send + Sync + 'static>),
     #[error("Offset DB open error: {0}")]
     OffsetDbOpen(io::Error),
     #[error("Failed to spawn plot worker thread: {0}")]
@@ -247,7 +239,8 @@ impl Plot {
         })?
     }
 
-    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
+    /// Writes a piece/s to the plot by index, will overwrite some parts of the plot if necessary
+    // TODO: Doesn't handle duplicates in any way
     pub fn write_many(
         &self,
         encodings: Arc<FlatPieces>,

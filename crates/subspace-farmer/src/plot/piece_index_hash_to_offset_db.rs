@@ -1,10 +1,12 @@
 use crate::plot::{PieceDistance, PieceOffset, PlotError};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::DB;
+use rocksdb::{Options, DB};
 use std::collections::BTreeSet;
 use std::io;
 use std::ops::RangeInclusive;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +45,7 @@ pub(super) struct IndexHashToOffsetDB {
     inner: DB,
     public_key: PublicKey,
     max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
+    piece_count: Arc<AtomicU64>,
 }
 
 impl IndexHashToOffsetDB {
@@ -51,16 +54,67 @@ impl IndexHashToOffsetDB {
     /// You can find discussion of derivation of this number here:
     /// https://github.com/subspace/subspace/pull/449
     const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
+    const METADATA_COLUMN_FAMILY: &'static str = "metadata";
+    const PIECE_COUNT_KEY: &'static str = "piece_count";
 
     pub(super) fn open_default(path: &Path, public_key: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path).map_err(PlotError::IndexDbOpen)?;
+        let mut options = Options::default();
+        options.create_if_missing(true);
+        options.create_missing_column_families(true);
+        let inner = DB::open_cf(&options, path, &["default", Self::METADATA_COLUMN_FAMILY])
+            .map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
             public_key,
             max_distance_cache: BTreeSet::new(),
+            piece_count: Arc::new(AtomicU64::new(0)),
         };
         me.update_max_distance_cache();
+
+        let mut piece_count = 0;
+        let cf = me
+            .inner
+            .cf_handle(Self::METADATA_COLUMN_FAMILY)
+            .expect("Column name opened in constructor; qed");
+        match me
+            .inner
+            .get_cf(&cf, Self::PIECE_COUNT_KEY)
+            .map_err(Into::into)
+            .map_err(PlotError::PieceCountReadError)?
+        {
+            Some(piece_count_bytes) => {
+                piece_count = u64::from_le_bytes(
+                    piece_count_bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(Into::into)
+                        .map_err(PlotError::PieceCountReadError)?,
+                );
+            }
+            None => {
+                if me.max_distance_cache.len() < Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
+                    piece_count = me.max_distance_cache.len() as u64;
+                } else {
+                    let mut iter = me.inner.raw_iterator();
+                    while iter.key().is_some() {
+                        piece_count += 1;
+                        iter.next();
+                    }
+                }
+            }
+        }
+
+        me.piece_count.store(piece_count, Ordering::SeqCst);
+        me.inner
+            .put_cf(&cf, Self::PIECE_COUNT_KEY, piece_count.to_le_bytes())
+            .map_err(Into::into)
+            .map_err(PlotError::PieceCountReadError)?;
+
         Ok(me)
+    }
+
+    pub(super) fn piece_count(&self) -> &Arc<AtomicU64> {
+        &self.piece_count
     }
 
     // TODO: optimize fast path using `max_distance_cache`
@@ -150,12 +204,26 @@ impl IndexHashToOffsetDB {
         Ok(())
     }
 
+    // TODO: Batch insert
     pub(super) fn insert(
         &mut self,
         index_hash: &PieceIndexHash,
         offset: PieceOffset,
     ) -> io::Result<()> {
-        self.put(index_hash, offset)
+        self.put(index_hash, offset)?;
+
+        let piece_count = self.piece_count.fetch_add(1, Ordering::SeqCst) + 1;
+        self.inner
+            .put_cf(
+                self.inner
+                    .cf_handle(Self::METADATA_COLUMN_FAMILY)
+                    .expect("Column name opened in constructor; qed"),
+                Self::PIECE_COUNT_KEY,
+                piece_count.to_le_bytes(),
+            )
+            .map_err(io::Error::other)?;
+
+        Ok(())
     }
 
     pub(super) fn replace_furthest(

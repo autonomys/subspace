@@ -39,10 +39,6 @@ impl BenchPlotMock {
 }
 
 impl PlotFile for BenchPlotMock {
-    fn piece_count(&mut self) -> io::Result<u64> {
-        Ok(self.piece_count)
-    }
-
     fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
         self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
             .max(self.max_piece_count);

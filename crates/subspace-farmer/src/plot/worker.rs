@@ -86,46 +86,38 @@ pub(super) struct PlotWorker<T> {
     plot: T,
     piece_index_hash_to_offset_db: IndexHashToOffsetDB,
     piece_offset_to_index: PieceOffsetToIndexDb,
-    piece_count: Arc<AtomicU64>,
     max_piece_count: u64,
 }
 
 impl<T: PlotFile> PlotWorker<T> {
     pub(super) fn new(
-        mut plot: T,
+        plot: T,
         metadata_directory: &Path,
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
-        let piece_count = plot
-            .piece_count()
-            .map_err(PlotError::PlotOpen)
-            .map(AtomicU64::new)
-            .map(Arc::new)?;
-
         let piece_offset_to_index =
             PieceOffsetToIndexDb::open(&metadata_directory.join("plot-offset-to-index.bin"))
                 .map_err(PlotError::OffsetDbOpen)?;
-
-        // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
-        //  here
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             &metadata_directory.join("plot-index-to-offset"),
             public_key,
         )?;
 
+        // TODO: handle `piece_count.load() > max_piece_count`, we should discard some of the pieces
+        //  here
+
         Ok(Self {
             plot,
             piece_index_hash_to_offset_db,
             piece_offset_to_index,
-            piece_count,
             max_piece_count,
         })
     }
 
     pub(super) fn piece_count(&self) -> &Arc<AtomicU64> {
-        &self.piece_count
+        self.piece_index_hash_to_offset_db.piece_count()
     }
 
     pub(super) fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
@@ -247,7 +239,7 @@ impl<T: PlotFile> PlotWorker<T> {
         pieces: Arc<FlatPieces>,
         piece_indexes: Vec<PieceIndex>,
     ) -> io::Result<WriteResult> {
-        let current_piece_count = self.piece_count.load(Ordering::SeqCst);
+        let current_piece_count = self.piece_count().load(Ordering::SeqCst);
         let pieces_left_until_full_plot =
             (self.max_piece_count - current_piece_count).min(pieces.count() as u64);
 
@@ -276,9 +268,6 @@ impl<T: PlotFile> PlotWorker<T> {
 
             self.piece_offset_to_index
                 .put_piece_indexes(current_piece_count, sequential_piece_indexes)?;
-
-            self.piece_count
-                .fetch_add(pieces_left_until_full_plot, Ordering::AcqRel);
         }
 
         let mut piece_offsets = Vec::<Option<PieceOffset>>::with_capacity(pieces.count());
