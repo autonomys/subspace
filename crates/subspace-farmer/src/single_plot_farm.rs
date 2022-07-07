@@ -22,7 +22,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io, mem};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::{Multiaddr, PeerId};
@@ -247,7 +247,7 @@ pub struct PlotFactoryOptions<'a> {
     pub public_key: PublicKey,
     pub plot_directory: &'a Path,
     pub metadata_directory: &'a Path,
-    pub max_piece_count: u64,
+    pub max_plot_size: u64,
 }
 
 pub trait PlotFactory =
@@ -369,7 +369,7 @@ impl SinglePlotFarm {
             public_key,
             plot_directory: &plot_directory,
             metadata_directory: &metadata_directory,
-            max_piece_count: single_plot_farm_info.allocated_plotting_space() / PIECE_SIZE as u64,
+            max_plot_size: single_plot_farm_info.allocated_plotting_space(),
         })?;
 
         info!("Opening object mappings");

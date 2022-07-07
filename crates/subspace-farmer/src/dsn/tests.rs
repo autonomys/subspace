@@ -171,7 +171,7 @@ async fn test_dsn_sync() {
             options.plot_directory,
             options.metadata_directory,
             options.public_key,
-            options.max_piece_count,
+            options.max_plot_size,
         )
     };
 
@@ -297,7 +297,7 @@ async fn test_dsn_sync() {
             options.plot_directory,
             options.metadata_directory,
             options.public_key,
-            options.max_piece_count,
+            options.max_plot_size,
         )
     };
 

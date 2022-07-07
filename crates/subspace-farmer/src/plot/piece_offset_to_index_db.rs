@@ -4,6 +4,7 @@ use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
 use subspace_core_primitives::PieceIndex;
+use tracing::warn;
 
 pub(super) struct PieceOffsetToIndexDb(File);
 
@@ -17,7 +18,9 @@ impl PieceOffsetToIndexDb {
             .create(true)
             .open(path)?;
 
-        file.preallocate(max_piece_count * PIECE_INDEX_SIZE)?;
+        if let Err(error) = file.preallocate(max_piece_count * PIECE_INDEX_SIZE) {
+            warn!(%error, %max_piece_count, "Failed to pre-allocate plot file");
+        }
         file.advise_random_access()?;
 
         Ok(Self(file))

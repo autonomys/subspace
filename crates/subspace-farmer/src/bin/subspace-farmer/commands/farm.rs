@@ -97,7 +97,7 @@ pub(crate) async fn farm_multi_disk(
                     options.plot_directory,
                     options.metadata_directory,
                     options.public_key,
-                    options.max_piece_count,
+                    options.max_plot_size,
                 )
             },
         })
@@ -251,7 +251,7 @@ pub(crate) async fn farm_legacy(
                 options.plot_directory,
                 options.metadata_directory,
                 options.public_key,
-                options.max_piece_count,
+                options.max_plot_size,
             )
         },
     )

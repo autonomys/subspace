@@ -18,7 +18,7 @@ use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use thiserror::Error;
-use tracing::{error, Span};
+use tracing::{error, warn, Span};
 
 /// Distance to piece index hash from farmer identity
 pub type PieceDistance = U256;
@@ -124,7 +124,7 @@ impl Plot {
         plot_directory: &Path,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_plot_size: u64,
     ) -> Result<Plot, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -133,8 +133,9 @@ impl Plot {
             .open(plot_directory.join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
 
-        plot.preallocate(max_piece_count * PIECE_SIZE as u64)
-            .map_err(PlotError::PlotOpen)?;
+        if let Err(error) = plot.preallocate(max_plot_size) {
+            warn!(%error, %max_plot_size, "Failed to pre-allocate plot file");
+        }
         plot.advise_random_access().map_err(PlotError::PlotOpen)?;
 
         Self::with_plot_file(
@@ -142,7 +143,7 @@ impl Plot {
             plot,
             metadata_directory,
             public_key,
-            max_piece_count,
+            max_plot_size,
         )
     }
 
@@ -152,12 +153,17 @@ impl Plot {
         plot: P,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_plot_size: u64,
     ) -> Result<Plot, PlotError>
     where
         P: PlotFile + Send + 'static,
     {
-        let plot_worker = PlotWorker::new(plot, metadata_directory, public_key, max_piece_count)?;
+        let plot_worker = PlotWorker::new(
+            plot,
+            metadata_directory,
+            public_key,
+            max_plot_size / PIECE_SIZE as u64,
+        )?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
