@@ -42,6 +42,7 @@ parity-util-mem = { version = "0.11.0", default-features = false, features = ["p
 sc-service = { version = "0.10.0-dev", default-features = false, optional = true, features = ["test-helpers"], git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-state-machine = { version = "0.12.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-externalities = { version = "0.12.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+subspace-consensus-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-consensus-primitives" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-core-primitives" }
 
 # 3rd party
@@ -95,6 +96,7 @@ std = [
 	"sp-trie/std",
 	"sp-transaction-pool/std",
 	"trie-db/std",
+	"subspace-consensus-primitives/std",
 	"subspace-core-primitives/std",
 ]
 # Special feature to disable logging

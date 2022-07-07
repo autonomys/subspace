@@ -42,17 +42,11 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-use sp_consensus_subspace::verification::{
-    PieceCheckParams, VerificationError, VerifySolutionParams,
-};
 use sp_consensus_subspace::{
-    derive_randomness, verification, EquivocationProof, FarmerPublicKey, FarmerSignature,
-    SignedVote, Vote,
+    EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{
-    BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
-};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -60,6 +54,10 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
+use subspace_consensus_primitives::{
+    derive_randomness, verify_signature, verify_solution, ConsensusError, PieceCheckParams,
+    VerifySolutionParams,
+};
 use subspace_core_primitives::{
     crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
 };
@@ -162,9 +160,9 @@ mod pallet {
         _config: T,
     }
 
-    impl<T: Config> Get<sp_consensus_subspace::SolutionRanges> for InitialSolutionRanges<T> {
-        fn get() -> sp_consensus_subspace::SolutionRanges {
-            sp_consensus_subspace::SolutionRanges {
+    impl<T: Config> Get<subspace_consensus_primitives::SolutionRanges> for InitialSolutionRanges<T> {
+        fn get() -> subspace_consensus_primitives::SolutionRanges {
+            subspace_consensus_primitives::SolutionRanges {
                 current: T::InitialSolutionRange::get(),
                 next: None,
                 voting_current: if T::ShouldAdjustSolutionRange::get() {
@@ -373,14 +371,14 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn global_randomnesses)]
     pub(super) type GlobalRandomnesses<T> =
-        StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
+        StorageValue<_, subspace_consensus_primitives::GlobalRandomnesses, ValueQuery>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
     #[pallet::getter(fn solution_ranges)]
     pub(super) type SolutionRanges<T: Config> = StorageValue<
         _,
-        sp_consensus_subspace::SolutionRanges,
+        subspace_consensus_primitives::SolutionRanges,
         ValueQuery,
         InitialSolutionRanges<T>,
     >;
@@ -397,7 +395,7 @@ mod pallet {
     /// Salts used for challenges.
     #[pallet::storage]
     #[pallet::getter(fn salts)]
-    pub type Salts<T> = StorageValue<_, sp_consensus_subspace::Salts, ValueQuery>;
+    pub type Salts<T> = StorageValue<_, subspace_consensus_primitives::Salts, ValueQuery>;
 
     /// Slot at which current era started.
     #[pallet::storage]
@@ -868,20 +866,20 @@ impl<T: Config> Pallet<T> {
 
         // If global randomness was updated in previous block, set it as current.
         if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
-            GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
+            GlobalRandomnesses::<T>::put(subspace_consensus_primitives::GlobalRandomnesses {
                 current: next_randomness,
                 next: None,
             });
         }
 
         // If solution range was updated in previous block, set it as current.
-        if let sp_consensus_subspace::SolutionRanges {
+        if let subspace_consensus_primitives::SolutionRanges {
             next: Some(next),
             voting_next: Some(voting_next),
             ..
         } = SolutionRanges::<T>::get()
         {
-            SolutionRanges::<T>::put(sp_consensus_subspace::SolutionRanges {
+            SolutionRanges::<T>::put(subspace_consensus_primitives::SolutionRanges {
                 current: next,
                 next: None,
                 voting_current: voting_next,
@@ -894,7 +892,7 @@ impl<T: Config> Pallet<T> {
             let salts = Salts::<T>::get();
             if salts.switch_next_block {
                 if let Some(next_salt) = salts.next {
-                    Salts::<T>::put(sp_consensus_subspace::Salts {
+                    Salts::<T>::put(subspace_consensus_primitives::Salts {
                         current: next_salt,
                         next: None,
                         switch_next_block: false,
@@ -1073,10 +1071,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn derive_next_salt_from_randomness(
-        eon_index: u64,
-        randomness: &Randomness,
-    ) -> subspace_core_primitives::Salt {
+    fn derive_next_salt_from_randomness(eon_index: u64, randomness: &Randomness) -> Salt {
         let mut input = [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
         input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
         input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
@@ -1270,10 +1265,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum CheckVoteError<Header>
-where
-    Header: HeaderT,
-{
+enum CheckVoteError {
     BlockListed,
     UnexpectedBeforeHeightTwo,
     HeightInTheFuture,
@@ -1283,16 +1275,13 @@ where
     SlotInThePast,
     BadRewardSignature(SignatureError),
     UnknownRecordsRoot,
-    InvalidSolution(VerificationError<Header>),
+    InvalidSolution(ConsensusError),
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
 
-impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
-where
-    Header: HeaderT,
-{
-    fn from(error: CheckVoteError<Header>) -> Self {
+impl From<CheckVoteError> for TransactionValidityError {
+    fn from(error: CheckVoteError) -> Self {
         TransactionValidityError::Invalid(match error {
             CheckVoteError::BlockListed => InvalidTransaction::BadSigner,
             CheckVoteError::UnexpectedBeforeHeightTwo => InvalidTransaction::Call,
@@ -1313,7 +1302,7 @@ where
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
-) -> Result<(), CheckVoteError<T::Header>> {
+) -> Result<(), CheckVoteError> {
     let Vote::V0 {
         height,
         parent_hash,
@@ -1412,11 +1401,11 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::SlotInThePast);
     }
 
-    if let Err(error) = verification::check_reward_signature(
-        signed_vote.vote.hash().as_bytes(),
+    if let Err(error) = verify_signature(
         &signed_vote.signature,
         &solution.public_key,
-        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
+        schnorrkel::signing_context(REWARD_SIGNING_CONTEXT)
+            .bytes(signed_vote.vote.hash().as_bytes()),
     ) {
         debug!(
             target: "runtime::subspace",
@@ -1448,7 +1437,7 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
-    if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
+    if let Err(error) = verify_solution(
         solution,
         slot,
         VerifySolutionParams {

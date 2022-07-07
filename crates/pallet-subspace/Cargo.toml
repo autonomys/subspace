@@ -25,6 +25,7 @@ sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "
 sp-io = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+subspace-consensus-primitives = { version = "0.1.0", default-features = false, path = "../subspace-consensus-primitives" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-solving = { version = "0.1.0", default-features = false, path = "../subspace-solving" }
@@ -52,6 +53,7 @@ std = [
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",
+	"subspace-consensus-primitives/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
 	"subspace-solving/std"

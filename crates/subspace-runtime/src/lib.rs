@@ -46,10 +46,7 @@ use frame_system::EnsureNever;
 use pallet_feeds::feed_processor::FeedProcessor;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
-use sp_consensus_subspace::{
-    derive_randomness, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote,
-    SolutionRanges, Vote,
-};
+use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, SignedVote, Vote};
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
 use sp_executor::{
@@ -64,6 +61,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use subspace_consensus_primitives::{derive_randomness, GlobalRandomnesses, Salts, SolutionRanges};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{

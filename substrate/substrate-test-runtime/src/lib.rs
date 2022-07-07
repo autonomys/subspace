@@ -25,11 +25,9 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
-use frame_support::{
-    parameter_types,
-    traits::{ConstU32, ConstU64, CrateVersion, Get},
-    weights::RuntimeDbWeight,
-};
+use frame_support::parameter_types;
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get};
+use frame_support::weights::RuntimeDbWeight;
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
@@ -37,21 +35,19 @@ use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
 use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
-use sp_runtime::traits::NumberFor;
-use sp_runtime::{
-    create_runtime_str, impl_opaque_keys,
-    traits::{
-        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
-        GetRuntimeBlockType, Header as HeaderT, IdentityLookup, Verify,
-    },
-    transaction_validity::{
-        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-        ValidTransaction,
-    },
-    ApplyExtrinsicResult, Perbill,
+use sp_runtime::traits::{
+    BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
+    GetRuntimeBlockType, Header as HeaderT, IdentityLookup, NumberFor, Verify,
 };
-use sp_std::{marker::PhantomData, prelude::*};
-use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
+};
+use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
+use sp_std::marker::PhantomData;
+use sp_std::prelude::*;
+use sp_trie::trie_types::TrieDB;
+use sp_trie::{PrefixedMemoryDB, StorageProof};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -865,15 +861,15 @@ cfg_if! {
                     )
                 }
 
-                fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
+                fn global_randomnesses() -> subspace_consensus_primitives::GlobalRandomnesses {
                     <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
                 }
 
-                fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
+                fn solution_ranges() -> subspace_consensus_primitives::SolutionRanges {
                     <pallet_subspace::Pallet<Runtime>>::solution_ranges()
                 }
 
-                fn salts() -> sp_consensus_subspace::Salts {
+                fn salts() -> subspace_consensus_primitives::Salts {
                     <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
@@ -1125,15 +1121,15 @@ cfg_if! {
                     )
                 }
 
-                fn global_randomnesses() -> sp_consensus_subspace::GlobalRandomnesses {
+                fn global_randomnesses() -> subspace_consensus_primitives::GlobalRandomnesses {
                     <pallet_subspace::Pallet<Runtime>>::global_randomnesses()
                 }
 
-                fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
+                fn solution_ranges() -> subspace_consensus_primitives::SolutionRanges {
                     <pallet_subspace::Pallet<Runtime>>::solution_ranges()
                 }
 
-                fn salts() -> sp_consensus_subspace::Salts {
+                fn salts() -> subspace_consensus_primitives::Salts {
                     <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
@@ -1315,9 +1311,9 @@ mod tests {
     use sp_core::storage::well_known_keys::HEAP_PAGES;
     use sp_runtime::generic::BlockId;
     use sp_state_machine::ExecutionStrategy;
-    use substrate_test_runtime_client::{
-        prelude::*, runtime::TestAPI, DefaultTestClientBuilderExt, TestClientBuilder,
-    };
+    use substrate_test_runtime_client::prelude::*;
+    use substrate_test_runtime_client::runtime::TestAPI;
+    use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilder};
 
     #[test]
     fn heap_pages_is_respected() {

@@ -30,11 +30,9 @@ use crate::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, Encode};
 use core::time::Duration;
 use scale_info::TypeInfo;
-use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{PublicKey, SignatureResult};
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
@@ -42,10 +40,9 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::ConsensusEngineId;
 use sp_std::vec::Vec;
-use subspace_core_primitives::{
-    Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
-};
-use subspace_solving::{create_tag_signature_transcript, REWARD_SIGNING_CONTEXT};
+use subspace_consensus_primitives::{verify_signature, GlobalRandomnesses, Salts, SolutionRanges};
+use subspace_core_primitives::{RootBlock, Sha256Hash, Solution};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -67,8 +64,6 @@ pub type FarmerPublicKey = app::Public;
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
-
-const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
@@ -164,11 +159,10 @@ where
     };
     let pre_hash = header.hash();
 
-    verification::check_reward_signature(
-        pre_hash.as_ref(),
+    verify_signature(
         &seal,
         offender,
-        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
+        schnorrkel::signing_context(REWARD_SIGNING_CONTEXT).bytes(pre_hash.as_ref()),
     )
     .is_ok()
 }
@@ -214,69 +208,6 @@ where
     // that the signature is valid.
     is_seal_signature_valid(proof.first_header, &proof.offender)
         && is_seal_signature_valid(proof.second_header, &proof.offender)
-}
-
-/// Subspace global randomnesses used for deriving global challenges.
-#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
-pub struct GlobalRandomnesses {
-    /// Global randomness used for deriving global challenge in current block/interval.
-    pub current: Randomness,
-    /// Global randomness that will be used for deriving global challenge in the next
-    /// block/interval.
-    pub next: Option<Randomness>,
-}
-
-/// Subspace solution ranges used for challenges.
-#[derive(Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
-pub struct SolutionRanges {
-    /// Solution range in current block/era.
-    pub current: u64,
-    /// Solution range that will be used in the next block/era.
-    pub next: Option<u64>,
-    /// Voting solution range in current block/era.
-    pub voting_current: u64,
-    /// Voting solution range that will be used in the next block/era.
-    pub voting_next: Option<u64>,
-}
-
-impl Default for SolutionRanges {
-    fn default() -> Self {
-        Self {
-            current: u64::MAX,
-            next: None,
-            voting_current: u64::MAX,
-            voting_next: None,
-        }
-    }
-}
-
-/// Derive on-chain randomness from tag signature.
-///
-/// NOTE: If you are not the signer then you must verify the local challenge before calling this
-/// function.
-pub fn derive_randomness(
-    public_key: &FarmerPublicKey,
-    tag: Tag,
-    tag_signature: &TagSignature,
-) -> SignatureResult<Randomness> {
-    let in_out = VRFOutput(tag_signature.output).attach_input_hash(
-        &PublicKey::from_bytes(public_key.as_ref())?,
-        create_tag_signature_transcript(tag),
-    )?;
-
-    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
-}
-
-/// Subspace salts used for challenges.
-#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
-pub struct Salts {
-    /// Salt used for challenges in current block/eon.
-    pub current: Salt,
-    /// Salt used for challenges after `salt` in the next eon.
-    pub next: Option<Salt>,
-    /// Whether salt should be updated in the next block (next salt is known upfront for some time
-    /// and is not necessarily switching in the very next block).
-    pub switch_next_block: bool,
 }
 
 sp_api::decl_runtime_apis! {
