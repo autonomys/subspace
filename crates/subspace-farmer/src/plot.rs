@@ -133,6 +133,8 @@ impl Plot {
             .open(plot_directory.join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
 
+        plot.preallocate(max_piece_count * PIECE_SIZE as u64)
+            .map_err(PlotError::PlotOpen)?;
         plot.advise_random_access().map_err(PlotError::PlotOpen)?;
 
         Self::with_plot_file(

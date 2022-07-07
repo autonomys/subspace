@@ -7916,6 +7916,7 @@ dependencies = [
  "dirs",
  "event-listener-primitives",
  "fdlimit",
+ "fs2",
  "futures 0.3.21",
  "hex",
  "jsonrpsee",

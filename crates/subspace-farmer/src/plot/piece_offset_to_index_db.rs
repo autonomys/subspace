@@ -10,13 +10,14 @@ pub(super) struct PieceOffsetToIndexDb(File);
 const PIECE_INDEX_SIZE: u64 = std::mem::size_of::<PieceIndex>() as u64;
 
 impl PieceOffsetToIndexDb {
-    pub(super) fn open(path: &Path) -> io::Result<Self> {
+    pub(super) fn open(path: &Path, max_piece_count: u64) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(path)?;
 
+        file.preallocate(max_piece_count * PIECE_INDEX_SIZE)?;
         file.advise_random_access()?;
 
         Ok(Self(file))

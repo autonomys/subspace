@@ -96,9 +96,11 @@ impl<T: PlotFile> PlotWorker<T> {
         public_key: PublicKey,
         max_piece_count: u64,
     ) -> Result<Self, PlotError> {
-        let piece_offset_to_index =
-            PieceOffsetToIndexDb::open(&metadata_directory.join("plot-offset-to-index.bin"))
-                .map_err(PlotError::OffsetDbOpen)?;
+        let piece_offset_to_index = PieceOffsetToIndexDb::open(
+            &metadata_directory.join("plot-offset-to-index.bin"),
+            max_piece_count,
+        )
+        .map_err(PlotError::OffsetDbOpen)?;
 
         let piece_index_hash_to_offset_db = IndexHashToOffsetDB::open_default(
             &metadata_directory.join("plot-index-to-offset"),

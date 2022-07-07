@@ -2,6 +2,9 @@ use std::fs::File;
 use std::io::Result;
 
 pub(crate) trait FileExt {
+    /// Make sure file has specified number of bytes allocated for it
+    fn preallocate(&self, len: u64) -> Result<()>;
+
     /// Advise OS/file system that file will use random access and read-ahead behavior is
     /// undesirable
     fn advise_random_access(&self) -> Result<()>;
@@ -14,6 +17,10 @@ pub(crate) trait FileExt {
 }
 
 impl FileExt for File {
+    fn preallocate(&self, len: u64) -> Result<()> {
+        fs2::FileExt::allocate(self, len)
+    }
+
     #[cfg(target_os = "linux")]
     fn advise_random_access(&self) -> Result<()> {
         use std::os::unix::io::AsRawFd;
