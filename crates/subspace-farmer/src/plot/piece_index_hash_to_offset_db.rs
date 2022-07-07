@@ -109,7 +109,7 @@ impl IndexHashToOffsetDB {
             .unwrap_or(true)
     }
 
-    pub(super) fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
+    fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
         let max_distance = match self.max_distance_key() {
             Some(max_distance) => max_distance,
             None => return Ok(None),
@@ -130,11 +130,8 @@ impl IndexHashToOffsetDB {
         Ok(result)
     }
 
-    pub(super) fn put(
-        &mut self,
-        index_hash: &PieceIndexHash,
-        offset: PieceOffset,
-    ) -> io::Result<()> {
+    /// Returns `true` if element didn't exist there before
+    fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
         let key = self.piece_hash_to_distance(index_hash);
         self.inner
             .put(&key.to_bytes(), offset.to_le_bytes())
@@ -151,6 +148,30 @@ impl IndexHashToOffsetDB {
         }
 
         Ok(())
+    }
+
+    pub(super) fn insert(
+        &mut self,
+        index_hash: &PieceIndexHash,
+        offset: PieceOffset,
+    ) -> io::Result<()> {
+        self.put(index_hash, offset)
+    }
+
+    pub(super) fn replace_furthest(
+        &mut self,
+        index_hash: &PieceIndexHash,
+    ) -> io::Result<PieceOffset> {
+        let piece_offset = self.remove_furthest()?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Database is empty, no furthest piece found",
+            )
+        })?;
+
+        self.put(index_hash, piece_offset)?;
+
+        Ok(piece_offset)
     }
 
     pub(super) fn get_sequential(

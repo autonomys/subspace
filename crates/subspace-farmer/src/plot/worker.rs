@@ -271,7 +271,7 @@ impl<T: PlotFile> PlotWorker<T> {
                 (current_piece_count..).zip(sequential_piece_indexes)
             {
                 self.piece_index_hash_to_offset_db
-                    .put(&PieceIndexHash::from_index(piece_index), piece_offset)?;
+                    .insert(&PieceIndexHash::from_index(piece_index), piece_offset)?;
             }
 
             self.piece_offset_to_index
@@ -309,16 +309,13 @@ impl<T: PlotFile> PlotWorker<T> {
 
             let piece_offset = self
                 .piece_index_hash_to_offset_db
-                .remove_furthest()?
-                .expect("Must be always present as plot is non-empty; qed");
+                .replace_furthest(&PieceIndexHash::from_index(piece_index))?;
 
             let mut old_piece = Piece::default();
             self.plot.read(piece_offset, &mut old_piece)?;
 
             self.plot.write(piece, piece_offset)?;
 
-            self.piece_index_hash_to_offset_db
-                .put(&PieceIndexHash::from_index(piece_index), piece_offset)?;
             self.piece_offset_to_index
                 .put_piece_index(piece_offset, piece_index)?;
 
