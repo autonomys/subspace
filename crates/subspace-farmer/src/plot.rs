@@ -4,11 +4,12 @@ mod piece_offset_to_index_db;
 mod tests;
 mod worker;
 
+use crate::file_ext::FileExt;
 use crate::plot::worker::{PlotWorker, Request, RequestPriority, RequestWithPriority, WriteResult};
 use crate::single_plot_farm::SinglePlotFarmId;
 use event_listener_primitives::{Bag, HandlerId};
-use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{Seek, SeekFrom};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,10 +38,7 @@ pub trait PlotFile {
     fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
 }
 
-impl<T> PlotFile for T
-where
-    T: Read + Write + Seek,
-{
+impl PlotFile for File {
     fn piece_count(&mut self) -> io::Result<u64> {
         let plot_file_size = self.seek(SeekFrom::End(0))?;
 
@@ -49,13 +47,11 @@ where
 
     /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
-        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.write_all(pieces.as_ref())
+        self.write_all_at(pieces.as_ref(), offset * PIECE_SIZE as u64)
     }
 
     fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
-        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.read_exact(buf.as_mut())
+        self.read_exact_at(buf.as_mut(), offset * PIECE_SIZE as u64)
     }
 }
 
@@ -144,6 +140,8 @@ impl Plot {
             .create(true)
             .open(plot_directory.join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
+
+        plot.advise_random_access().map_err(PlotError::PlotOpen)?;
 
         Self::with_plot_file(
             single_plot_farm_id,
