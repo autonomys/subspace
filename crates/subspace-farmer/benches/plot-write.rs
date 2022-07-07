@@ -19,7 +19,7 @@ async fn main() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
-        piece_count,
+        piece_count * PIECE_SIZE as u64,
     )
     .unwrap();
 

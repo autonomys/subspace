@@ -24,28 +24,11 @@ use tempfile::TempDir;
 use tokio::time::Instant;
 use tracing::{info, warn};
 
-pub struct BenchPlotMock {
-    piece_count: u64,
-    max_piece_count: u64,
-}
-
-impl BenchPlotMock {
-    pub fn new(max_piece_count: u64) -> Self {
-        Self {
-            max_piece_count,
-            piece_count: 0,
-        }
-    }
-}
+#[derive(Default)]
+pub struct BenchPlotMock;
 
 impl PlotFile for BenchPlotMock {
-    fn piece_count(&mut self) -> io::Result<u64> {
-        Ok(self.piece_count)
-    }
-
-    fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
-        self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
-            .max(self.max_piece_count);
+    fn write(&mut self, _pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
         Ok(())
     }
 
@@ -152,17 +135,17 @@ pub(crate) async fn bench(
     let plot_factory = move |options: PlotFactoryOptions<'_>| match write_to_disk {
         WriteToDisk::Nothing => Plot::with_plot_file(
             options.single_plot_farm_id,
-            BenchPlotMock::new(options.max_piece_count),
+            BenchPlotMock::default(),
             options.metadata_directory,
             options.public_key,
-            options.max_piece_count,
+            options.max_plot_size,
         ),
         WriteToDisk::Everything => Plot::open_or_create(
             options.single_plot_farm_id,
             options.plot_directory,
             options.metadata_directory,
             options.public_key,
-            options.max_piece_count,
+            options.max_plot_size,
         ),
     };
 

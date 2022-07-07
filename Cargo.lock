@@ -3181,9 +3181,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.123"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb691a747a7ab48abc15c5b42066eaafde10dc427e3b6ee2a1cf43db04c763bd"
+checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 
 [[package]]
 name = "libloading"
@@ -7916,9 +7916,11 @@ dependencies = [
  "dirs",
  "event-listener-primitives",
  "fdlimit",
+ "fs2",
  "futures 0.3.21",
  "hex",
  "jsonrpsee",
+ "libc",
  "lru",
  "num-traits",
  "parity-scale-codec",

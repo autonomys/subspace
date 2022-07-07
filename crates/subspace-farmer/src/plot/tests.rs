@@ -113,7 +113,7 @@ async fn partial_plot() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        max_plot_pieces,
+        max_plot_pieces * PIECE_SIZE as u64,
     )
     .unwrap();
     assert!(plot.is_empty());

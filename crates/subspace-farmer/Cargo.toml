@@ -23,11 +23,11 @@ derive_more = "0.99.17"
 dirs = "4.0.0"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
+fs2 = "0.4.3"
 futures = "0.3.21"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.14.0", features = ["client", "macros", "server"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+libc = "0.2.126"
 lru = "0.7.5"
 num-traits = "0.2.15"
 parity-scale-codec = "3.1.2"
@@ -48,6 +48,8 @@ substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ulid = { version = "0.6.0", features = ["serde"] }
 zeroize = "1.5.5"
 

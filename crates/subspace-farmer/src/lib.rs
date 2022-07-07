@@ -33,6 +33,7 @@ pub mod bench_rpc_client;
 pub(crate) mod commitments;
 pub(crate) mod dsn;
 pub(crate) mod farming;
+mod file_ext;
 pub(crate) mod identity;
 pub mod legacy_multi_plots_farm;
 #[cfg(test)]

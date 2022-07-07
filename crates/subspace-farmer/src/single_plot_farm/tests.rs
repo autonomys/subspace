@@ -137,7 +137,7 @@ async fn plotting_piece_eviction() {
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        5,
+        5 * PIECE_SIZE as u64,
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();

@@ -4,11 +4,11 @@ mod piece_offset_to_index_db;
 mod tests;
 mod worker;
 
+use crate::file_ext::FileExt;
 use crate::plot::worker::{PlotWorker, Request, RequestPriority, RequestWithPriority, WriteResult};
 use crate::single_plot_farm::SinglePlotFarmId;
 use event_listener_primitives::{Bag, HandlerId};
-use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,7 +18,7 @@ use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use thiserror::Error;
-use tracing::{error, Span};
+use tracing::{error, warn, Span};
 
 /// Distance to piece index hash from farmer identity
 pub type PieceDistance = U256;
@@ -28,34 +28,20 @@ pub type PieceOffset = u64;
 
 /// Trait for mocking plot behaviour
 pub trait PlotFile {
-    /// Get number of pieces in plot
-    fn piece_count(&mut self) -> io::Result<u64>;
-
     /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()>;
     /// Read pieces from disk under some offset
     fn read(&mut self, offset: PieceOffset, buf: impl AsMut<[u8]>) -> io::Result<()>;
 }
 
-impl<T> PlotFile for T
-where
-    T: Read + Write + Seek,
-{
-    fn piece_count(&mut self) -> io::Result<u64> {
-        let plot_file_size = self.seek(SeekFrom::End(0))?;
-
-        Ok(plot_file_size / PIECE_SIZE as u64)
-    }
-
+impl PlotFile for File {
     /// Write pieces sequentially under some offset
     fn write(&mut self, pieces: impl AsRef<[u8]>, offset: PieceOffset) -> io::Result<()> {
-        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.write_all(pieces.as_ref())
+        self.write_all_at(pieces.as_ref(), offset * PIECE_SIZE as u64)
     }
 
     fn read(&mut self, offset: PieceOffset, mut buf: impl AsMut<[u8]>) -> io::Result<()> {
-        self.seek(SeekFrom::Start(offset * PIECE_SIZE as u64))?;
-        self.read_exact(buf.as_mut())
+        self.read_exact_at(buf.as_mut(), offset * PIECE_SIZE as u64)
     }
 }
 
@@ -67,6 +53,8 @@ pub enum PlotError {
     MetadataDbOpen(rocksdb::Error),
     #[error("Index DB open error: {0}")]
     IndexDbOpen(rocksdb::Error),
+    #[error("Failed to read piece count: {0}")]
+    PieceCountReadError(Box<dyn std::error::Error + Send + Sync + 'static>),
     #[error("Offset DB open error: {0}")]
     OffsetDbOpen(io::Error),
     #[error("Failed to spawn plot worker thread: {0}")]
@@ -136,7 +124,7 @@ impl Plot {
         plot_directory: &Path,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_plot_size: u64,
     ) -> Result<Plot, PlotError> {
         let plot = OpenOptions::new()
             .read(true)
@@ -145,12 +133,17 @@ impl Plot {
             .open(plot_directory.join("plot.bin"))
             .map_err(PlotError::PlotOpen)?;
 
+        if let Err(error) = plot.preallocate(max_plot_size) {
+            warn!(%error, %max_plot_size, "Failed to pre-allocate plot file");
+        }
+        plot.advise_random_access().map_err(PlotError::PlotOpen)?;
+
         Self::with_plot_file(
             single_plot_farm_id,
             plot,
             metadata_directory,
             public_key,
-            max_piece_count,
+            max_plot_size,
         )
     }
 
@@ -160,12 +153,17 @@ impl Plot {
         plot: P,
         metadata_directory: &Path,
         public_key: PublicKey,
-        max_piece_count: u64,
+        max_plot_size: u64,
     ) -> Result<Plot, PlotError>
     where
         P: PlotFile + Send + 'static,
     {
-        let plot_worker = PlotWorker::new(plot, metadata_directory, public_key, max_piece_count)?;
+        let plot_worker = PlotWorker::new(
+            plot,
+            metadata_directory,
+            public_key,
+            max_plot_size / PIECE_SIZE as u64,
+        )?;
 
         let (requests_sender, requests_receiver) = mpsc::sync_channel(100);
 
@@ -249,7 +247,8 @@ impl Plot {
         })?
     }
 
-    /// Writes a piece/s to the plot by index, will overwrite if piece exists (updates)
+    /// Writes a piece/s to the plot by index, will overwrite some parts of the plot if necessary
+    // TODO: Doesn't handle duplicates in any way
     pub fn write_many(
         &self,
         encodings: Arc<FlatPieces>,
