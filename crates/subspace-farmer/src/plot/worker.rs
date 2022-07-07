@@ -261,12 +261,14 @@ impl<T: PlotFile> PlotWorker<T> {
         {
             self.plot.write(sequential_pieces, current_piece_count)?;
 
-            for (piece_offset, &piece_index) in
-                (current_piece_count..).zip(sequential_piece_indexes)
-            {
-                self.piece_index_hash_to_offset_db
-                    .insert(&PieceIndexHash::from_index(piece_index), piece_offset)?;
-            }
+            self.piece_index_hash_to_offset_db.batch_insert(
+                &sequential_piece_indexes
+                    .iter()
+                    .copied()
+                    .map(PieceIndexHash::from_index)
+                    .collect::<Vec<_>>(),
+                current_piece_count,
+            )?;
 
             self.piece_offset_to_index
                 .put_piece_indexes(current_piece_count, sequential_piece_indexes)?;

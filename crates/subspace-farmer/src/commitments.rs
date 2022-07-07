@@ -9,7 +9,7 @@ use databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use rocksdb::DB;
+use rocksdb::{WriteBatch, DB};
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -150,10 +150,11 @@ impl Commitments {
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
+                let mut batch = WriteBatch::default();
                 for (tag, offset) in tags.iter().zip(batch_start..) {
-                    db.put(tag, offset.to_le_bytes())
-                        .map_err(CommitmentError::CommitmentDb)?;
+                    batch.put(tag, offset.to_le_bytes());
                 }
+                db.write(batch).map_err(CommitmentError::CommitmentDb)?;
             } else {
                 // Database was already removed, no need to continue
                 break;
@@ -226,10 +227,11 @@ impl Commitments {
                     .map(|(piece_offset, piece)| (piece_offset, create_tag(piece, salt)))
                     .collect();
 
+                let mut batch = WriteBatch::default();
                 for (piece_offset, tag) in tags_with_offset {
-                    db.put(tag, piece_offset.to_le_bytes())
-                        .map_err(CommitmentError::CommitmentDb)?;
+                    batch.put(tag, piece_offset.to_le_bytes());
                 }
+                db.write(batch).map_err(CommitmentError::CommitmentDb)?;
             };
         }
 

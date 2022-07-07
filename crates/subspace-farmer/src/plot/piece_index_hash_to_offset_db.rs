@@ -1,12 +1,12 @@
 use crate::plot::{PieceDistance, PieceOffset, PlotError};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::{Options, DB};
+use rocksdb::{Options, WriteBatch, DB};
 use std::collections::BTreeSet;
-use std::io;
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::{io, iter};
 use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,35 +184,47 @@ impl IndexHashToOffsetDB {
         Ok(result)
     }
 
-    /// Returns `true` if element didn't exist there before
-    fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let key = self.piece_hash_to_distance(index_hash);
-        self.inner
-            .put(&key.to_bytes(), offset.to_le_bytes())
-            .map_err(io::Error::other)?;
+    fn batch_put<'a, I>(&'a mut self, index_hashes: I, offset: PieceOffset) -> io::Result<()>
+    where
+        I: Iterator<Item = &'a PieceIndexHash>,
+    {
+        let mut batch = WriteBatch::default();
+        for (index_hash, offset) in index_hashes.zip(offset..) {
+            let key = self.piece_hash_to_distance(index_hash);
+            batch.put(key.to_bytes(), offset.to_le_bytes());
 
-        if let Some(first) = self.max_distance_cache.first() {
-            let key = BidirectionalDistanceSorted::new(key);
-            if key > *first {
-                self.max_distance_cache.insert(key);
-                if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
-                    self.max_distance_cache.pop_first();
+            if let Some(first) = self.max_distance_cache.first() {
+                let key = BidirectionalDistanceSorted::new(key);
+                if key > *first {
+                    self.max_distance_cache.insert(key);
+                    if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP
+                    {
+                        self.max_distance_cache.pop_first();
+                    }
                 }
             }
         }
 
+        self.inner.write(batch).map_err(|error| {
+            // Restore correct cache that was modified above
+            self.update_max_distance_cache();
+
+            io::Error::other(error)
+        })?;
+
         Ok(())
     }
 
-    // TODO: Batch insert
-    pub(super) fn insert(
+    pub(super) fn batch_insert(
         &mut self,
-        index_hash: &PieceIndexHash,
+        index_hashes: &[PieceIndexHash],
         offset: PieceOffset,
     ) -> io::Result<()> {
-        self.put(index_hash, offset)?;
+        self.batch_put(index_hashes.iter(), offset)?;
 
-        let piece_count = self.piece_count.fetch_add(1, Ordering::SeqCst) + 1;
+        let count = index_hashes.len() as u64;
+
+        let piece_count = self.piece_count.fetch_add(count, Ordering::SeqCst) + count;
         self.inner
             .put_cf(
                 self.inner
@@ -237,7 +249,7 @@ impl IndexHashToOffsetDB {
             )
         })?;
 
-        self.put(index_hash, piece_offset)?;
+        self.batch_put(iter::once(index_hash), piece_offset)?;
 
         Ok(piece_offset)
     }
