@@ -503,6 +503,10 @@ where
 						.try_into()
 						.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
+					// TODO: Ensure the `block_hash` aligns with the one returned in
+					// `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are
+					// multiple forks at present, `block_hash` is on one of them, but another fork
+					// becomes the canonical chain later.
 					let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
 						sp_blockchain::Error::Backend(format!(
 							"Header hash not found for number {block_number}"

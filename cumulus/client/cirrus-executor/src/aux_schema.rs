@@ -304,7 +304,7 @@ where
 				)
 			})?;
 
-			// Ensure the block from which the trace mismatch index was generated is still on the
+			// TODO: Ensure the block from which the trace mismatch index was generated is still on the
 			// canonical chain.
 			if backend.header(BlockId::Hash(block_hash))?.is_some() {
 				if !fork_receipt_hashes.is_empty() {
