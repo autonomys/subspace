@@ -149,8 +149,6 @@ impl NodeRunner {
                     }
                 } else {
                     // TODO: Add support for public address for add_external_address, AutoNAT
-                    self.swarm
-                        .add_external_address(address.clone(), AddressScore::Infinite);
                 }
                 self.shared.handlers.new_listener.call_simple(&address);
             }
