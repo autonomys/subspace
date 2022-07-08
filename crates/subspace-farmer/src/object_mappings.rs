@@ -2,7 +2,7 @@
 mod tests;
 
 use parity_scale_codec::{Decode, Encode};
-use rocksdb::DB;
+use rocksdb::{WriteBatch, DB};
 use std::path::Path;
 use std::sync::Arc;
 use subspace_core_primitives::objects::GlobalObject;
@@ -51,14 +51,14 @@ impl ObjectMappings {
     ) -> Result<(), ObjectMappingError> {
         let mut tmp = Vec::new();
 
+        let mut batch = WriteBatch::default();
         for (object_id, global_object) in object_mapping {
             global_object.encode_to(&mut tmp);
-            self.db
-                .put(object_id, &tmp)
-                .map_err(ObjectMappingError::Db)?;
+            batch.put(object_id, &tmp);
 
             tmp.clear();
         }
+        self.db.write(batch).map_err(ObjectMappingError::Db)?;
 
         Ok(())
     }

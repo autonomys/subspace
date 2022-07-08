@@ -1,12 +1,12 @@
 use crate::plot::{PieceDistance, PieceOffset, PlotError};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::{Options, DB};
+use rocksdb::{Options, WriteBatch, DB};
 use std::collections::BTreeSet;
-use std::io;
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::{io, iter};
 use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,65 +163,59 @@ impl IndexHashToOffsetDB {
             .unwrap_or(true)
     }
 
-    fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance_key() {
-            Some(max_distance) => max_distance,
-            None => return Ok(None),
-        };
+    fn batch_put<'a, I>(
+        &'a mut self,
+        mut batch: WriteBatch,
+        index_hashes: I,
+        offset: PieceOffset,
+    ) -> io::Result<()>
+    where
+        I: Iterator<Item = &'a PieceIndexHash>,
+    {
+        for (index_hash, offset) in index_hashes.zip(offset..) {
+            let key = self.piece_hash_to_distance(index_hash);
+            batch.put(key.to_bytes(), offset.to_le_bytes());
 
-        let result = self
-            .inner
-            .get(&max_distance.to_bytes())
-            .map_err(io::Error::other)?
-            .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
-            .map(PieceOffset::from_le_bytes);
-        self.inner
-            .delete(&max_distance.to_bytes())
-            .map_err(io::Error::other)?;
-        self.max_distance_cache
-            .remove(&BidirectionalDistanceSorted::new(max_distance));
-
-        Ok(result)
-    }
-
-    /// Returns `true` if element didn't exist there before
-    fn put(&mut self, index_hash: &PieceIndexHash, offset: PieceOffset) -> io::Result<()> {
-        let key = self.piece_hash_to_distance(index_hash);
-        self.inner
-            .put(&key.to_bytes(), offset.to_le_bytes())
-            .map_err(io::Error::other)?;
-
-        if let Some(first) = self.max_distance_cache.first() {
-            let key = BidirectionalDistanceSorted::new(key);
-            if key > *first {
-                self.max_distance_cache.insert(key);
-                if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
-                    self.max_distance_cache.pop_first();
+            if let Some(first) = self.max_distance_cache.first() {
+                let key = BidirectionalDistanceSorted::new(key);
+                if key > *first {
+                    self.max_distance_cache.insert(key);
+                    if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP
+                    {
+                        self.max_distance_cache.pop_first();
+                    }
                 }
             }
         }
 
+        self.inner.write(batch).map_err(|error| {
+            // Restore correct cache that was modified above
+            self.update_max_distance_cache();
+
+            io::Error::other(error)
+        })?;
+
         Ok(())
     }
 
-    // TODO: Batch insert
-    pub(super) fn insert(
+    pub(super) fn batch_insert(
         &mut self,
-        index_hash: &PieceIndexHash,
+        index_hashes: &[PieceIndexHash],
         offset: PieceOffset,
     ) -> io::Result<()> {
-        self.put(index_hash, offset)?;
+        let count = index_hashes.len() as u64;
+        let piece_count = self.piece_count.fetch_add(count, Ordering::SeqCst) + count;
 
-        let piece_count = self.piece_count.fetch_add(1, Ordering::SeqCst) + 1;
-        self.inner
-            .put_cf(
-                self.inner
-                    .cf_handle(Self::METADATA_COLUMN_FAMILY)
-                    .expect("Column name opened in constructor; qed"),
-                Self::PIECE_COUNT_KEY,
-                piece_count.to_le_bytes(),
-            )
-            .map_err(io::Error::other)?;
+        let mut batch = WriteBatch::default();
+        batch.put_cf(
+            self.inner
+                .cf_handle(Self::METADATA_COLUMN_FAMILY)
+                .expect("Column name opened in constructor; qed"),
+            Self::PIECE_COUNT_KEY,
+            piece_count.to_le_bytes(),
+        );
+
+        self.batch_put(batch, index_hashes.iter(), offset)?;
 
         Ok(())
     }
@@ -230,14 +224,39 @@ impl IndexHashToOffsetDB {
         &mut self,
         index_hash: &PieceIndexHash,
     ) -> io::Result<PieceOffset> {
-        let piece_offset = self.remove_furthest()?.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "Database is empty, no furthest piece found",
-            )
-        })?;
+        let mut batch = WriteBatch::default();
+        let piece_offset = {
+            let max_distance = match self.max_distance_key() {
+                Some(max_distance) => max_distance,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Database is empty, no furthest piece found",
+                    ));
+                }
+            };
 
-        self.put(index_hash, piece_offset)?;
+            let piece_offset = self
+                .inner
+                .get(&max_distance.to_bytes())
+                .map_err(io::Error::other)?
+                .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
+                .map(PieceOffset::from_le_bytes)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Database is empty, no furthest piece found",
+                    )
+                })?;
+
+            batch.delete(&max_distance.to_bytes());
+            self.max_distance_cache
+                .remove(&BidirectionalDistanceSorted::new(max_distance));
+
+            piece_offset
+        };
+
+        self.batch_put(batch, iter::once(index_hash), piece_offset)?;
 
         Ok(piece_offset)
     }
