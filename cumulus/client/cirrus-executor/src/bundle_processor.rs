@@ -484,10 +484,6 @@ where
 					if let Some(trace_mismatch_index) =
 						find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
 					{
-						let trace_mismatch_index = trace_mismatch_index
-							.try_into()
-							.expect("Trace mismatch index must fit into u32; qed");
-
 						crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
 							&*self.client,
 							signed_receipt.execution_receipt.primary_number,
@@ -574,7 +570,7 @@ where
 			let fraud_proof = self
 				.fraud_proof_generator
 				.generate_proof::<PBlock>(
-					trace_mismatch_index as usize,
+					trace_mismatch_index,
 					&local_receipt,
 					bad_signed_receipt_hash,
 				)
