@@ -12,6 +12,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
+use parking_lot::Mutex;
 use std::ops::Div;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, U256};
@@ -123,20 +124,25 @@ pub enum RelayConfigurationError {
     /// Client configuration error: expected server parent configuration.
     #[error("cannot configure relay client, parent configuration should be server")]
     ExpectedServerConfiguration,
+    /// Failed to retrieve memory address, typically means networking was destroyed.
+    #[error("Failed to retrieve memory address")]
+    FailedToRetrieveMemoryAddress,
 }
 
 /// Implementation of a network node on Subspace Network.
 #[derive(Debug, Clone)]
 pub struct Node {
     shared: Arc<Shared>,
-    relay_config: RelayConfiguration,
+    is_relay_server: bool,
+    relay_server_memory_address: Arc<Mutex<Option<Multiaddr>>>,
 }
 
 impl Node {
-    pub(crate) fn new(shared: Arc<Shared>, relay_config: RelayConfiguration) -> Self {
+    pub(crate) fn new(shared: Arc<Shared>, is_relay_server: bool) -> Self {
         Self {
             shared,
-            relay_config,
+            is_relay_server,
+            relay_server_memory_address: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -147,17 +153,68 @@ impl Node {
 
     /// Configures relay-client configuration (ClientAcceptor) from this Node. It expects Node
     /// running in the relay server mode and create relay client's listening address with the proper
-    /// circuit address in the format: /ip4/127.0.0.1/tcp/50000/p2p/<server_peer_id>/p2p-circuit
-    pub fn configure_relay_client(&self) -> Result<RelayConfiguration, RelayConfigurationError> {
-        if let RelayConfiguration::Server(server_addr, _) = self.relay_config.clone() {
-            Ok(RelayConfiguration::ClientAcceptor(
-                server_addr
+    /// circuit address in the format: /memory/50000/p2p/<server_peer_id>/p2p-circuit
+    pub async fn configure_relay_client(
+        &self,
+    ) -> Result<RelayConfiguration, RelayConfigurationError> {
+        if !self.is_relay_server {
+            return Err(RelayConfigurationError::ExpectedServerConfiguration);
+        }
+
+        // Fast path in case address is already known
+        if let Some(relay_server_memory_address) = self.relay_server_memory_address.lock().as_ref()
+        {
+            return Ok(RelayConfiguration::ClientAcceptor(
+                relay_server_memory_address
+                    .clone()
                     .with(Protocol::P2p(self.id().into()))
                     .with(Protocol::P2pCircuit),
-            ))
-        } else {
-            Err(RelayConfigurationError::ExpectedServerConfiguration)
+            ));
         }
+
+        let (address_sender, address_receiver) = oneshot::channel();
+        let _handler = self.on_new_listener(Arc::new({
+            let address_sender = Mutex::new(Some(address_sender));
+
+            move |address| {
+                if let Some(Protocol::Memory(port)) = address.iter().next() {
+                    if let Some(address_sender) = address_sender.lock().take() {
+                        let _ = address_sender.send(Multiaddr::from(Protocol::Memory(port)));
+                    }
+                }
+            }
+        }));
+
+        // Subscription to events is in place, check if listener is already known
+        for address in self.shared.listeners.lock().iter() {
+            if let Some(Protocol::Memory(port)) = address.iter().next() {
+                let address = Multiaddr::from(Protocol::Memory(port));
+                self.relay_server_memory_address
+                    .lock()
+                    .replace(address.clone());
+
+                return Ok(RelayConfiguration::ClientAcceptor(
+                    address
+                        .with(Protocol::P2p(self.id().into()))
+                        .with(Protocol::P2pCircuit),
+                ));
+            }
+        }
+
+        // Otherwise for new memory listener
+        let address = address_receiver
+            .await
+            .map_err(|_error| RelayConfigurationError::FailedToRetrieveMemoryAddress)?;
+
+        self.relay_server_memory_address
+            .lock()
+            .replace(address.clone());
+
+        Ok(RelayConfiguration::ClientAcceptor(
+            address
+                .with(Protocol::P2p(self.id().into()))
+                .with(Protocol::P2pCircuit),
+        ))
     }
 
     pub async fn get_value(&self, key: Multihash) -> Result<Option<Vec<u8>>, GetValueError> {

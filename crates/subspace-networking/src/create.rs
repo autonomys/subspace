@@ -20,8 +20,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
-use libp2p::relay::v2::relay::Config as RelayConfig;
-use libp2p::swarm::{AddressScore, SwarmBuilder};
+use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::TokioTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
@@ -36,64 +35,13 @@ use tracing::info;
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
 
-/// A helper structure for working with libp2p `relay::Config`. The original structure is not Clone,
-/// Send and Sync which is not convenient. `RelayLimitSettings` implements a conversion method to the
-/// original `relay::Config` and the default method with the original recommended settings.
-#[derive(Clone, Debug)]
-pub struct RelayLimitSettings {
-    pub max_reservations: usize,
-    pub max_reservations_per_peer: usize,
-    pub reservation_duration: Duration,
-    pub max_circuits: usize,
-    pub max_circuits_per_peer: usize,
-    pub max_circuit_duration: Duration,
-    pub max_circuit_bytes: u64,
-}
-
-impl Default for RelayLimitSettings {
-    fn default() -> Self {
-        let default_relay_config = RelayConfig::default();
-
-        Self {
-            max_reservations: default_relay_config.max_reservations,
-            max_reservations_per_peer: default_relay_config.max_circuits_per_peer,
-            reservation_duration: default_relay_config.reservation_duration,
-            max_circuits: default_relay_config.max_circuits,
-            max_circuits_per_peer: default_relay_config.max_circuits_per_peer,
-            max_circuit_duration: default_relay_config.max_circuit_duration,
-            max_circuit_bytes: default_relay_config.max_circuit_bytes,
-        }
-    }
-}
-
-impl RelayLimitSettings {
-    // TODO: Probably, reservation_rate_limiters and circuit_src_rate_limiters should be filled
-    // for some use-cases.
-    /// Converts `RelayLimitSettings` to libp2p `relay::Config`.
-    pub fn to_relay_config(self) -> RelayConfig {
-        RelayConfig {
-            max_reservations: self.max_reservations,
-            max_reservations_per_peer: self.max_circuits_per_peer,
-            reservation_duration: self.reservation_duration,
-            reservation_rate_limiters: Vec::new(),
-            max_circuits: self.max_circuits,
-            max_circuits_per_peer: self.max_circuits_per_peer,
-            max_circuit_duration: self.max_circuit_duration,
-            max_circuit_bytes: self.max_circuit_bytes,
-            circuit_src_rate_limiters: Vec::new(),
-        }
-    }
-}
-
 /// Defines relay circuits configuration for the networking.
 #[derive(Clone, Debug)]
 pub enum RelayConfiguration {
-    /// Relay server configuration. The node will be able to listen on the provided Multiaddr with
-    /// adding it as an external address.
-    /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000
-    /// The relay configuration will be configured with provided RelayLimitSettings.
+    /// Relay server configuration. The node will be able to act as a relay for other peers, but
+    /// only for local peers.
     /// This option will toggle the relay behaviour (relay server).
-    Server(Multiaddr, RelayLimitSettings),
+    Server,
 
     /// Relay-client configuration in accepting mode (eg.: client behind NAT). It will enable listening
     /// on the provided Multiaddr with registering a circuit reservation.
@@ -123,13 +71,9 @@ impl RelayConfiguration {
         )
     }
 
-    /// Extracts `RelayLimitSettings` from the `Server` configuration option. Returns None otherwise.
-    pub fn server_relay_settings(&self) -> Option<RelayLimitSettings> {
-        if let RelayConfiguration::Server(_, settings) = self {
-            return Some(settings.clone());
-        }
-
-        None
+    /// Defines whether `self` is configured as a relay server.
+    pub fn is_server_enabled(&self) -> bool {
+        matches!(self, RelayConfiguration::Server)
     }
 }
 
@@ -338,37 +282,42 @@ pub async fn create(
             }
         }
 
-        // Setup circuit for the accepting relay client. This will reserve a circuit.
-        if let RelayConfiguration::ClientAcceptor(addr) = relay_config_for_swarm.clone() {
-            swarm.listen_on(addr)?;
+        let is_relay_server = relay_config_for_swarm.is_server_enabled();
+
+        match relay_config_for_swarm {
+            RelayConfiguration::Server => {
+                swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;
+            }
+            RelayConfiguration::ClientAcceptor(addr) => {
+                // Setup circuit for the accepting relay client. This will reserve a circuit.
+                swarm.listen_on(addr)?;
+            }
+            RelayConfiguration::ClientInitiator => {
+                // Nothing special to do in this case
+            }
         }
 
-        // Listen on an address and set is as an external address for relay server.
-        // Initially a server is not aware of its external addresses.
-        if let RelayConfiguration::Server(addr, _) = relay_config_for_swarm {
-            swarm.listen_on(addr.clone())?;
-            swarm.add_external_address(addr, AddressScore::Infinite);
-        }
+        let (command_sender, command_receiver) = mpsc::channel(1);
 
-        Ok::<_, CreationError>(swarm)
+        let shared = Arc::new(Shared::new(local_peer_id, command_sender));
+
+        let node = Node::new(Arc::clone(&shared), is_relay_server);
+        let node_runner = NodeRunner::new(
+            allow_non_globals_in_dht,
+            is_relay_server,
+            command_receiver,
+            swarm,
+            shared,
+            initial_random_query_interval,
+        );
+
+        Ok((node, node_runner))
     });
 
-    let swarm = create_swarm_fut.await.expect("Swarm future failed.")?;
-
-    let (command_sender, command_receiver) = mpsc::channel(1);
-
-    let shared = Arc::new(Shared::new(local_peer_id, command_sender));
-
-    let node = Node::new(Arc::clone(&shared), relay_config);
-    let node_runner = NodeRunner::new(
-        allow_non_globals_in_dht,
-        command_receiver,
-        swarm,
-        shared,
-        initial_random_query_interval,
-    );
-
-    Ok((node, node_runner))
+    create_swarm_fut.await.expect(
+        "Blocking tasks never panics, if it does it is an implementation bug and everything \
+        must crash",
+    )
 }
 
 // Builds the transport stack that LibP2P will communicate over along with an optional relay client.

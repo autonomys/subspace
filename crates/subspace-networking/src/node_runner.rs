@@ -13,7 +13,8 @@ use libp2p::kad::{
     GetClosestPeersError, GetClosestPeersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId,
     QueryResult, Quorum,
 };
-use libp2p::swarm::SwarmEvent;
+use libp2p::multiaddr::Protocol;
+use libp2p::swarm::{AddressScore, SwarmEvent};
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use parity_scale_codec::Encode;
@@ -40,6 +41,7 @@ enum QueryResultSender {
 pub struct NodeRunner {
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
+    is_relay_server: bool,
     command_receiver: mpsc::Receiver<Command>,
     swarm: Swarm<Behavior>,
     shared: Arc<Shared>,
@@ -58,6 +60,7 @@ pub struct NodeRunner {
 impl NodeRunner {
     pub(crate) fn new(
         allow_non_globals_in_dht: bool,
+        is_relay_server: bool,
         command_receiver: mpsc::Receiver<Command>,
         swarm: Swarm<Behavior>,
         shared: Arc<Shared>,
@@ -65,6 +68,7 @@ impl NodeRunner {
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
+            is_relay_server,
             command_receiver,
             swarm,
             shared,
@@ -137,6 +141,17 @@ impl NodeRunner {
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.shared.listeners.lock().push(address.clone());
+                if matches!(address.iter().next(), Some(Protocol::Memory(_))) {
+                    // This is necessary for local connections using circuit relay
+                    if self.is_relay_server {
+                        self.swarm
+                            .add_external_address(address.clone(), AddressScore::Infinite);
+                    }
+                } else {
+                    // TODO: Add support for public address for add_external_address, AutoNAT
+                    self.swarm
+                        .add_external_address(address.clone(), AddressScore::Infinite);
+                }
                 self.shared.handlers.new_listener.call_simple(&address);
             }
             SwarmEvent::ConnectionEstablished {
