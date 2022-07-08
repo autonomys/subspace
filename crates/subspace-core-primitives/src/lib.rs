@@ -62,6 +62,9 @@ pub const TAG_SIZE: usize = 8;
 /// Type of the commitment for a particular piece.
 pub type Tag = [u8; TAG_SIZE];
 
+/// Tag prefix
+pub const SALT_HASHING_PREFIX: &[u8] = b"salt";
+
 /// Size of `Tag` in bytes.
 pub const SALT_SIZE: usize = 8;
 

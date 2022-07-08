@@ -7261,6 +7261,7 @@ dependencies = [
  "schnorrkel",
  "sp-api",
  "sp-application-crypto",
+ "sp-arithmetic",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-core",

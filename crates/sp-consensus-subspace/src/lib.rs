@@ -42,7 +42,9 @@ use sp_runtime::ConsensusEngineId;
 use sp_std::vec::Vec;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-pub use verification::derive_randomness;
+pub use verification::{
+    derive_next_salt_from_randomness, derive_next_solution_range, derive_randomness,
+};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
