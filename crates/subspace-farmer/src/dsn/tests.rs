@@ -1,8 +1,9 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
-use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
+use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
-use crate::{ObjectMappings, Plot};
-use futures::channel::oneshot;
+use crate::single_plot_farm::PlotFactoryOptions;
+use crate::{ObjectMappings, Plot, RpcClient};
+use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use rand::Rng;
@@ -144,10 +145,16 @@ async fn test_dsn_sync() {
 
     let seeder_base_directory = TempDir::new().unwrap();
 
-    let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) =
-        futures::channel::mpsc::channel(0);
-    let seeder_client =
-        BenchRpcClient::new(BENCH_FARMER_METADATA, seeder_archived_segments_receiver);
+    let (_seeder_slot_info_sender, seeder_slot_info_receiver) = mpsc::channel(10);
+    let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) = mpsc::channel(0);
+    let (seeder_acknowledge_archived_segment_sender, _seeder_acknowledge_archived_segment_receiver) =
+        mpsc::channel(1);
+    let seeder_client = BenchRpcClient::new(
+        BENCH_FARMER_PROTOCOL_INFO,
+        seeder_slot_info_receiver,
+        seeder_archived_segments_receiver,
+        seeder_acknowledge_archived_segment_sender,
+    );
 
     let object_mappings = tokio::task::spawn_blocking({
         let path = seeder_base_directory.as_ref().join("object-mappings");
@@ -158,15 +165,20 @@ async fn test_dsn_sync() {
     .unwrap()
     .unwrap();
 
-    let base_path = seeder_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
+    let plot_factory = move |options: PlotFactoryOptions<'_>| {
+        Plot::open_or_create(
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_plot_size,
+        )
     };
 
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
+            farmer_protocol_info: seeder_client.farmer_protocol_info().await.unwrap(),
             archiving_client: seeder_client.clone(),
             farming_client: seeder_client.clone(),
             object_mappings: object_mappings.clone(),
@@ -178,7 +190,6 @@ async fn test_dsn_sync() {
             enable_farming: false,
         },
         u64::MAX / 100,
-        u64::MAX,
         plot_factory,
     )
     .await
@@ -228,15 +239,18 @@ async fn test_dsn_sync() {
             .collect::<BTreeMap<_, _>>()
     };
 
-    let (seeder_address_sender, mut seeder_address_receiver) = futures::channel::mpsc::unbounded();
-    seeder_multi_farming.single_plot_farms[0]
+    let (seeder_address_sender, mut seeder_address_receiver) = mpsc::unbounded();
+    seeder_multi_farming.single_plot_farms()[0]
         .node()
         .on_new_listener(Arc::new(move |address| {
             let _ = seeder_address_sender.unbounded_send(address.clone());
         }))
         .detach();
 
-    let peer_id = seeder_multi_farming.single_plot_farms[0].node().id().into();
+    let peer_id = seeder_multi_farming.single_plot_farms()[0]
+        .node()
+        .id()
+        .into();
 
     let (seeder_multi_farming_finished_sender, seeder_multi_farming_finished_receiver) =
         oneshot::channel();
@@ -257,9 +271,16 @@ async fn test_dsn_sync() {
     drop(seeder_address_receiver);
 
     let syncer_base_directory = TempDir::new().unwrap();
-    let (_sender, syncer_archived_segments_receiver) = futures::channel::mpsc::channel(10);
-    let syncer_client =
-        BenchRpcClient::new(BENCH_FARMER_METADATA, syncer_archived_segments_receiver);
+    let (_syncer_slot_info_sender, syncer_slot_info_receiver) = mpsc::channel(10);
+    let (_syncer_archived_segments_sender, syncer_archived_segments_receiver) = mpsc::channel(10);
+    let (syncer_acknowledge_archived_segment_sender, _syncer_acknowledge_archived_segment_receiver) =
+        mpsc::channel(1);
+    let syncer_client = BenchRpcClient::new(
+        BENCH_FARMER_PROTOCOL_INFO,
+        syncer_slot_info_receiver,
+        syncer_archived_segments_receiver,
+        syncer_acknowledge_archived_segment_sender,
+    );
 
     let object_mappings = tokio::task::spawn_blocking({
         let path = syncer_base_directory.as_ref().join("object-mappings");
@@ -270,15 +291,24 @@ async fn test_dsn_sync() {
     .unwrap()
     .unwrap();
 
-    let base_path = syncer_base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
-        Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
+    let plot_factory = move |options: PlotFactoryOptions<'_>| {
+        Plot::open_or_create(
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_plot_size,
+        )
     };
 
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: syncer_base_directory.as_ref().to_owned(),
+            farmer_protocol_info: {
+                let mut farmer_protocol_info = syncer_client.farmer_protocol_info().await.unwrap();
+                farmer_protocol_info.max_plot_size = syncer_max_plot_size;
+                farmer_protocol_info
+            },
             archiving_client: syncer_client.clone(),
             farming_client: syncer_client.clone(),
             object_mappings: object_mappings.clone(),
@@ -290,7 +320,6 @@ async fn test_dsn_sync() {
             enable_farming: false,
         },
         syncer_max_plot_size * PIECE_SIZE as u64,
-        syncer_max_plot_size,
         plot_factory,
     )
     .await
@@ -299,14 +328,14 @@ async fn test_dsn_sync() {
     let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
-    let plot = syncer_multi_farming.single_plot_farms[0].plot().clone();
-    let dsn_sync = syncer_multi_farming.single_plot_farms[0].dsn_sync(
+    let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
+    let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync(
         syncer_max_plot_size,
         seeder_max_plot_size,
         range_size,
     );
     let public_key = U256::from_big_endian(
-        syncer_multi_farming.single_plot_farms[0]
+        syncer_multi_farming.single_plot_farms()[0]
             .public_key()
             .as_ref(),
     );
@@ -380,9 +409,9 @@ async fn test_dsn_sync() {
         ),
     };
 
-    syncer_client.stop().await;
+    drop(syncer_client);
 
     drop(seeder_archived_segments_sender);
-    seeder_client.stop().await;
+    drop(seeder_client);
     seeder_multi_farming_finished_receiver.await.unwrap();
 }

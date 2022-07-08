@@ -29,6 +29,7 @@ async fn read_write() {
     let piece_index_start = 0;
 
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -49,6 +50,7 @@ async fn read_write() {
 
     // Make sure it is still not empty on reopen
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -64,6 +66,7 @@ async fn piece_retrievable() {
     let base_directory = TempDir::new().unwrap();
 
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -106,10 +109,11 @@ async fn partial_plot() {
     let public_key = random::<[u8; 32]>().into();
 
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        max_plot_pieces,
+        max_plot_pieces * PIECE_SIZE as u64,
     )
     .unwrap();
     assert!(plot.is_empty());
@@ -152,6 +156,7 @@ async fn sequential_pieces_iterator() {
     let public_key = random::<[u8; 32]>().into();
 
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -248,6 +253,7 @@ async fn test_read_sequential_pieces() {
         bytes
     };
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key_bytes.into(),

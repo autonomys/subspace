@@ -1,4 +1,11 @@
-#![feature(try_blocks, hash_drain_filter, int_log, io_error_other, map_first_last)]
+#![feature(
+    hash_drain_filter,
+    int_log,
+    io_error_other,
+    map_first_last,
+    trait_alias,
+    try_blocks
+)]
 
 //! # `subspace-farmer` library implementation overview
 //!
@@ -26,6 +33,7 @@ pub mod bench_rpc_client;
 pub(crate) mod commitments;
 pub(crate) mod dsn;
 pub(crate) mod farming;
+mod file_ext;
 pub(crate) mod identity;
 pub mod legacy_multi_plots_farm;
 #[cfg(test)]
@@ -36,6 +44,7 @@ pub(crate) mod plot;
 pub(crate) mod rpc_client;
 pub mod single_disk_farm;
 pub mod single_plot_farm;
+mod utils;
 pub mod ws_rpc_server;
 
 pub use archiving::{Archiving, ArchivingError};

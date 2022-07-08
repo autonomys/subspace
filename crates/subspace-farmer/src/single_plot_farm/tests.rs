@@ -4,14 +4,16 @@ use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotPlotter;
 use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
+use std::num::NonZeroU16;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
-use subspace_rpc_primitives::FarmerMetadata;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 use tracing::error;
@@ -36,6 +38,7 @@ async fn plotting_happy_path() {
 
     let public_key = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -49,19 +52,20 @@ async fn plotting_happy_path() {
     let client = MockRpcClient::new();
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
-    let farmer_metadata = FarmerMetadata {
+    let farmer_protocol_info = FarmerProtocolInfo {
+        genesis_hash: [0; 32],
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
         total_pieces: 0,
     };
 
-    client.send_metadata(farmer_metadata).await;
+    client.send_farmer_protocol_info(farmer_protocol_info).await;
 
-    let farmer_metadata = client
-        .farmer_metadata()
+    let farmer_protocol_info = client
+        .farmer_protocol_info()
         .await
-        .expect("Could not retrieve farmer_metadata");
+        .expect("Could not retrieve farmer_protocol_info");
 
     let encoded_block0 = vec![0u8; SEGMENT_SIZE / 2];
     let encoded_block1 = vec![1u8; SEGMENT_SIZE / 2];
@@ -76,12 +80,17 @@ async fn plotting_happy_path() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
-    let single_plot_plotter = SinglePlotPlotter::new(subspace_codec, plot.clone(), commitments);
+    let single_plot_plotter = SinglePlotPlotter::new(
+        subspace_codec,
+        plot.clone(),
+        commitments,
+        SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
+    );
 
     // Start archiving task
     let archiving_instance = Archiving::start(
-        farmer_metadata,
-        object_mappings,
+        farmer_protocol_info,
+        vec![object_mappings],
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,
@@ -124,10 +133,11 @@ async fn plotting_piece_eviction() {
     let public_key = identity.public_key().to_bytes().into();
     let salt = Salt::default();
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
-        5,
+        5 * PIECE_SIZE as u64,
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
@@ -141,19 +151,20 @@ async fn plotting_piece_eviction() {
     let client = MockRpcClient::new();
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
-    let farmer_metadata = FarmerMetadata {
+    let farmer_protocol_info = FarmerProtocolInfo {
+        genesis_hash: [0; 32],
         record_size: RECORD_SIZE as u32,
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
         total_pieces: 0,
     };
 
-    client.send_metadata(farmer_metadata).await;
+    client.send_farmer_protocol_info(farmer_protocol_info).await;
 
-    let farmer_metadata = client
-        .farmer_metadata()
+    let farmer_protocol_info = client
+        .farmer_protocol_info()
         .await
-        .expect("Could not retrieve farmer_metadata");
+        .expect("Could not retrieve farmer_protocol_info");
 
     let encoded_block0 = {
         let mut block = vec![0u8; SEGMENT_SIZE];
@@ -176,13 +187,17 @@ async fn plotting_piece_eviction() {
 
     let subspace_codec = SubspaceCodec::new_with_gpu(identity.public_key().as_ref());
 
-    let single_plot_plotter =
-        SinglePlotPlotter::new(subspace_codec.clone(), plot.clone(), commitments.clone());
+    let single_plot_plotter = SinglePlotPlotter::new(
+        subspace_codec.clone(),
+        plot.clone(),
+        commitments.clone(),
+        SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
+    );
 
     // Start archiving task
     let archiving_instance = Archiving::start(
-        farmer_metadata,
-        object_mappings,
+        farmer_protocol_info,
+        vec![object_mappings],
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,

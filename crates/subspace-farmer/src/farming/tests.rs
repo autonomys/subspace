@@ -3,8 +3,10 @@ use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::mock_rpc_client::MockRpcClient;
 use crate::plot::Plot;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
+use std::num::NonZeroU16;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
@@ -28,6 +30,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let public_key = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(
+        &0usize.into(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -45,12 +48,15 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     // start the farming task
     let mut farming_instance = Farming::start(
+        0usize.into(),
         plot.clone(),
         commitments.clone(),
         client.clone(),
+        SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
         identity.clone(),
         public_key,
-    );
+    )
+    .await;
 
     let mut counter = 0;
     let mut latest_salt = slots.first().unwrap().salt;

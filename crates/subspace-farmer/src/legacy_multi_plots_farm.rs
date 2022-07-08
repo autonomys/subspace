@@ -1,42 +1,26 @@
 use crate::archiving::Archiving;
 use crate::object_mappings::ObjectMappings;
-use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
-use crate::single_disk_farm::SingleDiskFarmPieceGetter;
-use crate::single_plot_farm::{SinglePlotFarm, SinglePlotFarmOptions};
-use anyhow::anyhow;
+use crate::single_disk_farm::SingleDiskSemaphore;
+use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
+use crate::utils::{get_plot_sizes, get_usable_plot_space};
+use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use rayon::prelude::*;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PublicKey, PIECE_SIZE};
+use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
-use tracing::error;
-
-fn get_plot_sizes(allocated_space: u64, max_plot_size: u64) -> Vec<u64> {
-    // TODO: we need to remember plot size in order to prune unused plots in future if plot size is
-    //  less than it was specified before.
-    // TODO: Piece count should account for database overhead of various additional databases.
-    //  For now assume 92% will go for plot itself
-    let usable_space_for_plots = allocated_space * 92 / 100;
-
-    let plot_sizes =
-        std::iter::repeat(max_plot_size).take((usable_space_for_plots / max_plot_size) as usize);
-    if usable_space_for_plots / max_plot_size == 0
-        || usable_space_for_plots % max_plot_size > max_plot_size / 2
-    {
-        plot_sizes
-            .chain(std::iter::once(usable_space_for_plots % max_plot_size))
-            .collect::<Vec<_>>()
-    } else {
-        plot_sizes.collect()
-    }
-}
+use subspace_rpc_primitives::FarmerProtocolInfo;
+use tokio::runtime::Handle;
+use tracing::{error, info_span};
 
 /// Options for `MultiFarming` creation
 pub struct Options<C> {
     pub base_directory: PathBuf,
+    pub farmer_protocol_info: FarmerProtocolInfo,
     /// Client used for archiving subscriptions
     pub archiving_client: C,
     /// Independent client used for farming, such that it is not blocked by archiving
@@ -56,15 +40,24 @@ pub struct Options<C> {
 /// It is needed because of the limit of a single plot size from the consensus
 /// (`pallet_subspace::MaxPlotSize`) in order to support any amount of disk space from user.
 pub struct LegacyMultiPlotsFarm {
-    pub single_plot_farms: Vec<SinglePlotFarm>,
+    single_plot_farms: Vec<SinglePlotFarm>,
     archiving: Option<Archiving>,
 }
 
 impl LegacyMultiPlotsFarm {
-    /// Starts multiple farmers with any plot sizes which user gives
-    pub async fn new<C: RpcClient>(
-        Options {
+    /// Creates multiple single plot farms with user-provided total plot size
+    pub async fn new<RC, PF>(
+        options: Options<RC>,
+        allocated_space: u64,
+        plot_factory: PF,
+    ) -> anyhow::Result<Self>
+    where
+        RC: RpcClient,
+        PF: PlotFactory,
+    {
+        let Options {
             base_directory,
+            farmer_protocol_info,
             archiving_client,
             farming_client,
             object_mappings,
@@ -74,47 +67,49 @@ impl LegacyMultiPlotsFarm {
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
-        }: Options<C>,
-        allocated_space: u64,
-        max_plot_size: u64,
-        plot_factory: impl Fn(usize, PublicKey, u64) -> Result<Plot, PlotError>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    ) -> anyhow::Result<Self> {
-        let plot_sizes = get_plot_sizes(allocated_space, max_plot_size);
+        } = options;
+        let usable_space = get_usable_plot_space(allocated_space);
+        let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
 
         let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
-        let farmer_metadata = farming_client
-            .farmer_metadata()
-            .await
-            .map_err(|error| anyhow!(error))?;
+        // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
+        // unbounded.
+        let single_disk_semaphore =
+            SingleDiskSemaphore::new(NonZeroU16::try_from(16).expect("Non zero; qed"));
 
         let single_plot_farms = tokio::task::spawn_blocking(move || {
+            let handle = Handle::current();
             plot_sizes
-                .par_iter()
-                .map(|&plot_size| plot_size / PIECE_SIZE as u64)
+                .into_par_iter()
                 .enumerate()
-                .map(|(plot_index, max_plot_pieces)| {
+                .map(move |(plot_index, allocated_plotting_space)| {
+                    let _guard = handle.enter();
+
+                    let plot_directory = base_directory.join(format!("plot{plot_index}"));
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
-                    let plot_factory = plot_factory.clone();
                     let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
                     let first_listen_on = Arc::clone(&first_listen_on);
+                    let single_disk_semaphore = single_disk_semaphore.clone();
+
+                    let span = info_span!("single_plot_farm", %plot_index);
+                    let _enter = span.enter();
 
                     SinglePlotFarm::new(SinglePlotFarmOptions {
+                        id: plot_index.into(),
+                        plot_directory,
                         metadata_directory,
                         plot_index,
-                        max_plot_pieces,
-                        farmer_metadata,
+                        allocated_plotting_space,
+                        farmer_protocol_info,
                         farming_client,
-                        plot_factory,
+                        plot_factory: &plot_factory,
                         listen_on,
                         bootstrap_nodes,
                         first_listen_on,
+                        single_disk_semaphore,
                         enable_farming,
                         reward_address,
                         enable_dsn_archiving,
@@ -128,8 +123,15 @@ impl LegacyMultiPlotsFarm {
 
         // Start archiving task
         let archiving = if !enable_dsn_archiving {
-            let archiving_start_fut =
-                Archiving::start(farmer_metadata, object_mappings, archiving_client, {
+            let archiving_start_fut = Archiving::start(
+                farmer_protocol_info,
+                single_plot_farms
+                    .iter()
+                    .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
+                    .chain([object_mappings])
+                    .collect(),
+                archiving_client,
+                {
                     let plotters = single_plot_farms
                         .iter()
                         .map(|single_plot_farm| single_plot_farm.plotter())
@@ -147,7 +149,8 @@ impl LegacyMultiPlotsFarm {
                             true
                         }
                     }
-                });
+                },
+            );
 
             Some(archiving_start_fut.await?)
         } else {
@@ -160,13 +163,15 @@ impl LegacyMultiPlotsFarm {
         })
     }
 
-    pub fn piece_getter(&self) -> SingleDiskFarmPieceGetter {
-        SingleDiskFarmPieceGetter::new(
-            self.single_plot_farms
-                .iter()
-                .map(|single_plot_farm| single_plot_farm.piece_getter())
-                .collect(),
-        )
+    pub fn single_plot_farms(&self) -> &[SinglePlotFarm] {
+        &self.single_plot_farms
+    }
+
+    pub fn piece_getter(&self) -> impl PieceGetter {
+        self.single_plot_farms
+            .iter()
+            .map(|single_plot_farm| single_plot_farm.piece_getter())
+            .collect::<Vec<_>>()
     }
 
     /// Waits for farming and plotting completion (or errors)

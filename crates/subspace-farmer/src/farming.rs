@@ -7,17 +7,20 @@ use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
-use futures::future::{Either, Fuse, FusedFuture};
-use futures::{future, FutureExt, StreamExt};
+use crate::single_disk_farm::SingleDiskSemaphore;
+use crate::single_plot_farm::SinglePlotFarmId;
+use crate::utils::AbortingJoinHandle;
+use futures::future::{Fuse, FusedFuture};
+use futures::{FutureExt, StreamExt};
 use std::sync::mpsc;
+use std::thread;
 use std::time::Instant;
 use subspace_core_primitives::{PublicKey, Salt, Solution};
 use subspace_rpc_primitives::{
     RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use thiserror::Error;
-use tokio::task::JoinHandle;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -36,54 +39,46 @@ pub enum FarmingError {
 /// At high level it receives a new challenge from the consensus and tries to find solution for it
 /// in its `Commitments` database.
 pub struct Farming {
-    stop_sender: async_oneshot::Sender<()>,
-    handle: Fuse<JoinHandle<Result<(), FarmingError>>>,
+    handle: Fuse<AbortingJoinHandle<Result<(), FarmingError>>>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
 impl Farming {
     /// Returns an instance of farming, and also starts a concurrent background farming task
-    pub fn start<T: RpcClient + Sync + Send + 'static>(
+    pub async fn start<T: RpcClient + Sync + Send + 'static>(
+        single_plot_farm_id: SinglePlotFarmId,
         plot: Plot,
         commitments: Commitments,
         client: T,
+        single_disk_semaphore: SingleDiskSemaphore,
         identity: Identity,
         reward_address: PublicKey,
     ) -> Self {
-        // Oneshot channels, that will be used for interrupt/stop the process
-        let (stop_sender, stop_receiver) = async_oneshot::oneshot();
+        let (initialized_sender, initialized_receiver) = async_oneshot::oneshot();
 
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let farming_handle = tokio::spawn(async move {
-            match future::select(
-                Box::pin(subscribe_to_slot_info(
+        let farming_handle = tokio::spawn(
+            async move {
+                subscribe_to_slot_info(
+                    single_plot_farm_id,
+                    initialized_sender,
                     &client,
                     &plot,
                     &commitments,
+                    single_disk_semaphore,
                     &identity,
                     reward_address,
-                )),
-                stop_receiver,
-            )
-            .await
-            {
-                Either::Left((farming_result, _)) => {
-                    if let Err(val) = farming_result {
-                        return Err(val);
-                    }
-                }
-                // either Sender is dropped, or a stop message is received.
-                // in both cases, we stop the process and return Ok(())
-                Either::Right((_, _)) => {
-                    info!("Farming stopped!");
-                }
+                )
+                .await
             }
-            Ok(())
-        });
+            .in_current_span(),
+        );
+
+        // Wait for initialization to finish, result doesn't matter here
+        let _ = initialized_receiver.await;
 
         Farming {
-            stop_sender,
-            handle: farming_handle.fuse(),
+            handle: AbortingJoinHandle::new(farming_handle).fuse(),
         }
     }
 
@@ -96,12 +91,6 @@ impl Farming {
     }
 }
 
-impl Drop for Farming {
-    fn drop(&mut self) {
-        let _ = self.stop_sender.send(());
-    }
-}
-
 /// Salts will change, this struct allows to keep track of them
 #[derive(Default)]
 struct Salts {
@@ -109,19 +98,15 @@ struct Salts {
     next: Option<Salt>,
 }
 
-struct AbortOnDrop<T>(JoinHandle<T>);
-
-impl<T> Drop for AbortOnDrop<T> {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
 /// Subscribes to slots, and tries to find a solution for them
+#[allow(clippy::too_many_arguments)]
 async fn subscribe_to_slot_info<T: RpcClient>(
+    single_plot_farm_id: SinglePlotFarmId,
+    mut initialized_sender: async_oneshot::Sender<()>,
     client: &T,
     plot: &Plot,
     commitments: &Commitments,
+    single_disk_semaphore: SingleDiskSemaphore,
     identity: &Identity,
     reward_address: PublicKey,
 ) -> Result<(), FarmingError> {
@@ -136,7 +121,11 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .await
         .map_err(FarmingError::RpcError)?;
 
-    let _reward_signing_task = AbortOnDrop(tokio::spawn({
+    if let Err(_closed) = initialized_sender.send(()) {
+        return Ok(());
+    }
+
+    let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
         let identity = identity.clone();
         let client = client.clone();
 
@@ -171,6 +160,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 }
             }
         }
+        .in_current_span()
     }));
 
     let mut salts = Salts::default();
@@ -178,7 +168,14 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     while let Some(slot_info) = slot_info_notifications.next().await {
         debug!(?slot_info, "New slot");
 
-        update_commitments(plot, commitments, &mut salts, &slot_info);
+        update_commitments(
+            single_plot_farm_id,
+            plot,
+            commitments,
+            &mut salts,
+            &slot_info,
+            &single_disk_semaphore,
+        );
 
         let maybe_solution_handle = tokio::task::spawn_blocking({
             let identity = identity.clone();
@@ -189,7 +186,8 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 let (local_challenge, target) =
                     identity.derive_local_challenge_and_target(slot_info.global_challenge);
 
-                // Try to first find a block authoring solution, then if not found try to find a vote
+                // Try to first find a block authoring solution, then if not found try to find a
+                // vote
                 let maybe_tag = commitments
                     .find_by_range(target, slot_info.solution_range, slot_info.salt)
                     .or_else(|| {
@@ -247,39 +245,47 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 /// Compare salts in `slot_info` to those known from `salts` and start update plot commitments
 /// accordingly if necessary (in background)
 fn update_commitments(
+    single_plot_farm_id: SinglePlotFarmId,
     plot: &Plot,
     commitments: &Commitments,
     salts: &mut Salts,
     slot_info: &SlotInfo,
+    single_disk_semaphore: &SingleDiskSemaphore,
 ) {
     let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
     if salts.current != Some(slot_info.salt) {
         salts.current.replace(slot_info.salt);
 
-        // If previous `salts.next` is not the same as current (expected behavior), need to re-commit
+        // If previous `salts.next` is not the same as current (expected behavior), need to
+        // re-commit
         if salts.next != Some(slot_info.salt) {
             let (current_recommitment_done_sender, receiver) = mpsc::channel::<()>();
 
             current_recommitment_done_receiver.replace(receiver);
 
-            tokio::task::spawn_blocking({
-                let salt = slot_info.salt;
-                let plot = plot.clone();
-                let commitments = commitments.clone();
+            let salt = slot_info.salt;
+            let plot = plot.clone();
+            let commitments = commitments.clone();
+            let single_disk_semaphore = single_disk_semaphore.clone();
+            let span = info_span!("recommit", new_salt = %hex::encode(salt));
 
-                move || {
+            let result = thread::Builder::new()
+                .name(format!(
+                    "recommit-{}-{single_plot_farm_id}",
+                    hex::encode(salt)
+                ))
+                .spawn(move || {
+                    let _single_disk_semaphore_guard = single_disk_semaphore.acquire();
+                    let _span_guard = span.enter();
+
                     let started = Instant::now();
-                    info!(
-                        new_salt = %hex::encode(salt),
-                        "Salt updated, recommitting in background",
-                    );
+                    info!("Salt updated, recommitting in background");
 
                     if let Err(error) = commitments.create(salt, plot) {
-                        error!(salt = %hex::encode(salt), %error, "Failed to create commitment");
+                        error!(%error, "Failed to create commitment");
                     } else {
                         info!(
-                            salt = %hex::encode(salt),
                             took_seconds = started.elapsed().as_secs_f32(),
                             "Finished recommitment",
                         );
@@ -287,8 +293,11 @@ fn update_commitments(
 
                     // We don't care if anyone is listening on the other side
                     let _ = current_recommitment_done_sender.send(());
-                }
-            });
+                });
+
+            if let Err(error) = result {
+                error!(%error, "Failed to spawn recommitment thread")
+            }
         }
     }
 
@@ -296,37 +305,44 @@ fn update_commitments(
         if salts.next != Some(new_next_salt) {
             salts.next.replace(new_next_salt);
 
-            tokio::task::spawn_blocking({
-                let plot = plot.clone();
-                let commitments = commitments.clone();
+            let plot = plot.clone();
+            let commitments = commitments.clone();
+            let single_disk_semaphore = single_disk_semaphore.clone();
+            let span = info_span!("recommit", next_salt = %hex::encode(new_next_salt));
 
-                move || {
+            let result = thread::Builder::new()
+                .name(format!(
+                    "recommit-{}-{single_plot_farm_id}",
+                    hex::encode(new_next_salt)
+                ))
+                .spawn(move || {
                     // Wait for current recommitment to finish if it is in progress
                     if let Some(receiver) = current_recommitment_done_receiver {
                         // Do not care about result here either
                         let _ = receiver.recv();
                     }
 
+                    let _single_disk_semaphore_guard = single_disk_semaphore.acquire();
+                    let _span_guard = span.enter();
+
                     let started = Instant::now();
-                    info!(
-                        next_salt = %hex::encode(new_next_salt),
-                        "Salt will be updated, recommitting in background",
-                    );
+                    info!("Salt will be updated, recommitting in background");
                     if let Err(error) = commitments.create(new_next_salt, plot) {
                         error!(
-                            next_salt = %hex::encode(new_next_salt),
                             %error,
                             "Recommitting salt in background failed",
                         );
                         return;
                     }
                     info!(
-                        next_salt = %hex::encode(new_next_salt),
                         took_seconds = started.elapsed().as_secs_f32(),
                         "Finished recommitment in background",
                     );
-                }
-            });
+                });
+
+            if let Err(error) = result {
+                error!(%error, "Failed to spawn recommitment thread")
+            }
         }
     }
 }

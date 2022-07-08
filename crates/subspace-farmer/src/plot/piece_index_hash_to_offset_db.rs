@@ -1,10 +1,12 @@
 use crate::plot::{PieceDistance, PieceOffset, PlotError};
 use num_traits::{WrappingAdd, WrappingSub};
-use rocksdb::DB;
+use rocksdb::{Options, WriteBatch, DB};
 use std::collections::BTreeSet;
-use std::io;
 use std::ops::RangeInclusive;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::{io, iter};
 use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +45,7 @@ pub(super) struct IndexHashToOffsetDB {
     inner: DB,
     public_key: PublicKey,
     max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
+    piece_count: Arc<AtomicU64>,
 }
 
 impl IndexHashToOffsetDB {
@@ -51,16 +54,67 @@ impl IndexHashToOffsetDB {
     /// You can find discussion of derivation of this number here:
     /// https://github.com/subspace/subspace/pull/449
     const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
+    const METADATA_COLUMN_FAMILY: &'static str = "metadata";
+    const PIECE_COUNT_KEY: &'static str = "piece_count";
 
     pub(super) fn open_default(path: &Path, public_key: PublicKey) -> Result<Self, PlotError> {
-        let inner = DB::open_default(path).map_err(PlotError::IndexDbOpen)?;
+        let mut options = Options::default();
+        options.create_if_missing(true);
+        options.create_missing_column_families(true);
+        let inner = DB::open_cf(&options, path, &["default", Self::METADATA_COLUMN_FAMILY])
+            .map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
             public_key,
             max_distance_cache: BTreeSet::new(),
+            piece_count: Arc::new(AtomicU64::new(0)),
         };
         me.update_max_distance_cache();
+
+        let mut piece_count = 0;
+        let cf = me
+            .inner
+            .cf_handle(Self::METADATA_COLUMN_FAMILY)
+            .expect("Column name opened in constructor; qed");
+        match me
+            .inner
+            .get_cf(&cf, Self::PIECE_COUNT_KEY)
+            .map_err(Into::into)
+            .map_err(PlotError::PieceCountReadError)?
+        {
+            Some(piece_count_bytes) => {
+                piece_count = u64::from_le_bytes(
+                    piece_count_bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(Into::into)
+                        .map_err(PlotError::PieceCountReadError)?,
+                );
+            }
+            None => {
+                if me.max_distance_cache.len() < Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
+                    piece_count = me.max_distance_cache.len() as u64;
+                } else {
+                    let mut iter = me.inner.raw_iterator();
+                    while iter.key().is_some() {
+                        piece_count += 1;
+                        iter.next();
+                    }
+                }
+            }
+        }
+
+        me.piece_count.store(piece_count, Ordering::SeqCst);
+        me.inner
+            .put_cf(&cf, Self::PIECE_COUNT_KEY, piece_count.to_le_bytes())
+            .map_err(Into::into)
+            .map_err(PlotError::PieceCountReadError)?;
+
         Ok(me)
+    }
+
+    pub(super) fn piece_count(&self) -> &Arc<AtomicU64> {
+        &self.piece_count
     }
 
     // TODO: optimize fast path using `max_distance_cache`
@@ -109,48 +163,102 @@ impl IndexHashToOffsetDB {
             .unwrap_or(true)
     }
 
-    pub(super) fn remove_furthest(&mut self) -> io::Result<Option<PieceOffset>> {
-        let max_distance = match self.max_distance_key() {
-            Some(max_distance) => max_distance,
-            None => return Ok(None),
-        };
-
-        let result = self
-            .inner
-            .get(&max_distance.to_bytes())
-            .map_err(io::Error::other)?
-            .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
-            .map(PieceOffset::from_le_bytes);
-        self.inner
-            .delete(&max_distance.to_bytes())
-            .map_err(io::Error::other)?;
-        self.max_distance_cache
-            .remove(&BidirectionalDistanceSorted::new(max_distance));
-
-        Ok(result)
-    }
-
-    pub(super) fn put(
-        &mut self,
-        index_hash: &PieceIndexHash,
+    fn batch_put<'a, I>(
+        &'a mut self,
+        mut batch: WriteBatch,
+        index_hashes: I,
         offset: PieceOffset,
-    ) -> io::Result<()> {
-        let key = self.piece_hash_to_distance(index_hash);
-        self.inner
-            .put(&key.to_bytes(), offset.to_le_bytes())
-            .map_err(io::Error::other)?;
+    ) -> io::Result<()>
+    where
+        I: Iterator<Item = &'a PieceIndexHash>,
+    {
+        for (index_hash, offset) in index_hashes.zip(offset..) {
+            let key = self.piece_hash_to_distance(index_hash);
+            batch.put(key.to_bytes(), offset.to_le_bytes());
 
-        if let Some(first) = self.max_distance_cache.first() {
-            let key = BidirectionalDistanceSorted::new(key);
-            if key > *first {
-                self.max_distance_cache.insert(key);
-                if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
-                    self.max_distance_cache.pop_first();
+            if let Some(first) = self.max_distance_cache.first() {
+                let key = BidirectionalDistanceSorted::new(key);
+                if key > *first {
+                    self.max_distance_cache.insert(key);
+                    if self.max_distance_cache.len() > 2 * Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP
+                    {
+                        self.max_distance_cache.pop_first();
+                    }
                 }
             }
         }
 
+        self.inner.write(batch).map_err(|error| {
+            // Restore correct cache that was modified above
+            self.update_max_distance_cache();
+
+            io::Error::other(error)
+        })?;
+
         Ok(())
+    }
+
+    pub(super) fn batch_insert(
+        &mut self,
+        index_hashes: &[PieceIndexHash],
+        offset: PieceOffset,
+    ) -> io::Result<()> {
+        let count = index_hashes.len() as u64;
+        let piece_count = self.piece_count.fetch_add(count, Ordering::SeqCst) + count;
+
+        let mut batch = WriteBatch::default();
+        batch.put_cf(
+            self.inner
+                .cf_handle(Self::METADATA_COLUMN_FAMILY)
+                .expect("Column name opened in constructor; qed"),
+            Self::PIECE_COUNT_KEY,
+            piece_count.to_le_bytes(),
+        );
+
+        self.batch_put(batch, index_hashes.iter(), offset)?;
+
+        Ok(())
+    }
+
+    pub(super) fn replace_furthest(
+        &mut self,
+        index_hash: &PieceIndexHash,
+    ) -> io::Result<PieceOffset> {
+        let mut batch = WriteBatch::default();
+        let piece_offset = {
+            let max_distance = match self.max_distance_key() {
+                Some(max_distance) => max_distance,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Database is empty, no furthest piece found",
+                    ));
+                }
+            };
+
+            let piece_offset = self
+                .inner
+                .get(&max_distance.to_bytes())
+                .map_err(io::Error::other)?
+                .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
+                .map(PieceOffset::from_le_bytes)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Database is empty, no furthest piece found",
+                    )
+                })?;
+
+            batch.delete(&max_distance.to_bytes());
+            self.max_distance_cache
+                .remove(&BidirectionalDistanceSorted::new(max_distance));
+
+            piece_offset
+        };
+
+        self.batch_put(batch, iter::once(index_hash), piece_offset)?;
+
+        Ok(piece_offset)
     }
 
     pub(super) fn get_sequential(

@@ -12,6 +12,7 @@ include = [
 ]
 
 [dependencies]
+hex = { version  = "0.4.3", default-features = false }
 hmac = { version  = "0.12.1", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 parity-scale-codec = { version = "3.1.2", default-features = false, features = ["derive"] }
@@ -34,6 +35,8 @@ version = "0.10.2"
 [features]
 default = ["std"]
 std = [
+    "hex/serde",
+    "hex/std",
     "hmac/std",
     "num-traits/std",
     "parity-scale-codec/std",

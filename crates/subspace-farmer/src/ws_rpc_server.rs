@@ -1,6 +1,6 @@
 use crate::object_mappings::ObjectMappings;
+use crate::ObjectMappingError;
 use async_trait::async_trait;
-use hex_buffer_serde::{Hex, HexForm};
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
+use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, Sha256Hash};
 use tracing::{debug, error};
 
@@ -21,9 +22,23 @@ pub trait PieceGetter {
         -> Option<Piece>;
 }
 
+impl<PG> PieceGetter for Vec<PG>
+where
+    PG: PieceGetter,
+{
+    fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        piece_index_hash: PieceIndexHash,
+    ) -> Option<Piece> {
+        self.iter()
+            .find_map(|piece_getter| piece_getter.get_piece(piece_index, piece_index_hash))
+    }
+}
+
 /// Same as [`Piece`], but serializes/deserialized to/from hex string
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HexPiece(#[serde(with = "HexForm")] Vec<u8>);
+pub struct HexPiece(#[serde(with = "hex::serde")] Vec<u8>);
 
 impl From<Piece> for HexPiece {
     fn from(piece: Piece) -> Self {
@@ -68,7 +83,7 @@ impl AsMut<[u8]> for HexPiece {
 
 /// Similar to [`Sha256Hash`], but serializes/deserialized to/from hex string
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct HexSha256Hash(#[serde(with = "HexForm")] Sha256Hash);
+pub struct HexSha256Hash(#[serde(with = "hex::serde")] Sha256Hash);
 
 impl From<Sha256Hash> for HexSha256Hash {
     fn from(hash: Sha256Hash) -> Self {
@@ -116,7 +131,7 @@ pub struct Object {
     /// Offset of the object
     offset: u16,
     /// The data object contains for convenience
-    #[serde(with = "HexForm")]
+    #[serde(with = "hex::serde")]
     data: Vec<u8>,
 }
 
@@ -149,14 +164,20 @@ pub trait Rpc {
 ///
 /// let identity = Identity::open_or_create(&base_directory)?;
 /// let public_key = identity.public_key().to_bytes().into();
-/// let plot = Plot::open_or_create(&base_directory, &base_directory, public_key, u64::MAX)?;
+/// let plot = Plot::open_or_create(
+///     &0usize.into(),
+///     &base_directory,
+///     &base_directory,
+///     public_key,
+///     u64::MAX,
+/// )?;
 /// let object_mappings = ObjectMappings::open_or_create(base_directory.join("object-mappings"))?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,
 ///     3480 * 128,
 ///     Arc::new(SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot)),
-///     object_mappings,
+///     Arc::new(vec![object_mappings]),
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -167,7 +188,7 @@ pub struct RpcServerImpl {
     record_size: u32,
     merkle_num_leaves: u32,
     piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
-    object_mappings: ObjectMappings,
+    object_mappings: Arc<Vec<ObjectMappings>>,
 }
 
 impl RpcServerImpl {
@@ -175,7 +196,7 @@ impl RpcServerImpl {
         record_size: u32,
         recorded_history_segment_size: u32,
         piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
-        object_mappings: ObjectMappings,
+        object_mappings: Arc<Vec<ObjectMappings>>,
     ) -> Self {
         Self {
             record_size,
@@ -463,9 +484,19 @@ impl RpcServer for RpcServerImpl {
     /// Find object by its ID
     async fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error> {
         let global_object_handle = tokio::task::spawn_blocking({
-            let object_mappings = self.object_mappings.clone();
+            let object_mappings = Arc::clone(&self.object_mappings);
 
-            move || object_mappings.retrieve(&object_id.into())
+            move || -> Result<Option<GlobalObject>, ObjectMappingError> {
+                for object_mappings in object_mappings.as_ref() {
+                    let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
+
+                    if let Some(global_object) = maybe_global_object {
+                        return Ok(Some(global_object));
+                    }
+                }
+
+                Ok(None)
+            }
         });
 
         let object_id_string = hex::encode(object_id);

@@ -13,37 +13,22 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
     PIECE_SIZE,
 };
-use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_METADATA};
+use subspace_farmer::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
+use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
+use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
-use tracing::info;
+use tracing::{info, warn};
 
-pub struct BenchPlotMock {
-    piece_count: u64,
-    max_piece_count: u64,
-}
-
-impl BenchPlotMock {
-    pub fn new(max_piece_count: u64) -> Self {
-        Self {
-            max_piece_count,
-            piece_count: 0,
-        }
-    }
-}
+#[derive(Default)]
+pub struct BenchPlotMock;
 
 impl PlotFile for BenchPlotMock {
-    fn piece_count(&mut self) -> io::Result<u64> {
-        Ok(self.piece_count)
-    }
-
-    fn write(&mut self, pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
-        self.piece_count = (self.piece_count + (pieces.as_ref().len() / PIECE_SIZE) as u64)
-            .max(self.max_piece_count);
+    fn write(&mut self, _pieces: impl AsRef<[u8]>, _offset: PieceOffset) -> io::Result<()> {
         Ok(())
     }
 
@@ -113,28 +98,31 @@ pub(crate) async fn bench(
 ) -> anyhow::Result<()> {
     utils::raise_fd_limit();
 
-    let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
-    let client = BenchRpcClient::new(BENCH_FARMER_METADATA, archived_segments_receiver);
+    let (mut slot_info_sender, slot_info_receiver) = mpsc::channel(1);
+    let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(1);
+    let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
+        mpsc::channel(1);
+    let client = BenchRpcClient::new(
+        BENCH_FARMER_PROTOCOL_INFO,
+        slot_info_receiver,
+        archived_segments_receiver,
+        acknowledge_archived_segment_sender,
+    );
 
     let base_directory = TempDir::new_in(base_directory)?;
 
-    let metadata = client
-        .farmer_metadata()
+    let mut farmer_protocol_info = client
+        .farmer_protocol_info()
         .await
         .map_err(|error| anyhow!(error))?;
 
-    // TODO: `max_plot_size` in the protocol must change to bytes as well
-    let consensus_max_plot_size = metadata.max_plot_size * PIECE_SIZE as u64;
-    let max_plot_size = match max_plot_size {
-        Some(max_plot_size) if max_plot_size > consensus_max_plot_size => {
-            tracing::warn!(
-                "Passed `max_plot_size` is too big. Fallback to the one from consensus."
-            );
-            consensus_max_plot_size
+    if let Some(max_plot_size) = max_plot_size {
+        if max_plot_size > farmer_protocol_info.max_plot_size {
+            warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
+        } else {
+            farmer_protocol_info.max_plot_size = max_plot_size;
         }
-        Some(max_plot_size) => max_plot_size,
-        None => consensus_max_plot_size,
-    };
+    }
 
     info!("Opening object mapping");
     let object_mappings = tokio::task::spawn_blocking({
@@ -144,25 +132,27 @@ pub(crate) async fn bench(
     })
     .await??;
 
-    let base_path = base_directory.as_ref().to_owned();
-    let plot_factory = move |plot_index, public_key, max_piece_count| {
-        let base_path = base_path.join(format!("plot{plot_index}"));
-        match write_to_disk {
-            WriteToDisk::Nothing => Plot::with_plot_file(
-                BenchPlotMock::new(max_piece_count),
-                &base_path,
-                public_key,
-                max_piece_count,
-            ),
-            WriteToDisk::Everything => {
-                Plot::open_or_create(&base_path, &base_path, public_key, max_piece_count)
-            }
-        }
+    let plot_factory = move |options: PlotFactoryOptions<'_>| match write_to_disk {
+        WriteToDisk::Nothing => Plot::with_plot_file(
+            options.single_plot_farm_id,
+            BenchPlotMock::default(),
+            options.metadata_directory,
+            options.public_key,
+            options.max_plot_size,
+        ),
+        WriteToDisk::Everything => Plot::open_or_create(
+            options.single_plot_farm_id,
+            options.plot_directory,
+            options.metadata_directory,
+            options.public_key,
+            options.max_plot_size,
+        ),
     };
 
     let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
+            farmer_protocol_info,
             archiving_client: client.clone(),
             farming_client: client.clone(),
             object_mappings: object_mappings.clone(),
@@ -171,13 +161,26 @@ pub(crate) async fn bench(
             listen_on: vec![],
             enable_dsn_archiving: false,
             enable_dsn_sync: false,
-            enable_farming: false,
+            enable_farming: true,
         },
         plot_size,
-        max_plot_size,
         plot_factory,
     )
     .await?;
+
+    if do_recommitments {
+        slot_info_sender
+            .send(SlotInfo {
+                slot_number: 0,
+                global_challenge: [0; 32],
+                salt: [0; 8],
+                next_salt: None,
+                solution_range: 0,
+                voting_solution_range: 0,
+            })
+            .await
+            .unwrap();
+    }
 
     let start = Instant::now();
 
@@ -216,20 +219,23 @@ pub(crate) async fn bench(
             }
         };
 
-        if archived_segments_sender
-            .send(archived_segment)
-            .await
-            .is_err()
-        {
+        if let Err(error) = archived_segments_sender.send(archived_segment).await {
+            eprintln!("Failed to send archived segment: {}", error);
+            break;
+        }
+
+        if acknowledge_archived_segment_receiver.next().await.is_none() {
+            eprintln!("Failed to receive archiving acknowledgement");
             break;
         }
     }
+    drop(archived_segments_sender);
 
     let took = start.elapsed();
 
     let space_allocated = get_size(base_directory)?;
     let actual_space_pledged = multi_farming
-        .single_plot_farms
+        .single_plot_farms()
         .iter()
         .map(|single_plot_farm| single_plot_farm.plot().piece_count())
         .sum::<u64>()
@@ -261,11 +267,11 @@ pub(crate) async fn bench(
         let start = Instant::now();
 
         let mut tasks = multi_farming
-            .single_plot_farms
+            .single_plot_farms()
             .iter()
             .map(|single_plot_farm| {
                 (
-                    single_plot_farm.commitments.clone(),
+                    single_plot_farm.commitments().clone(),
                     single_plot_farm.plot().clone(),
                 )
             })
@@ -284,7 +290,7 @@ pub(crate) async fn bench(
         );
     }
 
-    client.stop().await;
+    drop(client);
     multi_farming.wait().await?;
 
     Ok(())

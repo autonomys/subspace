@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_rpc_primitives::{
-    FarmerMetadata, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
 
@@ -18,8 +18,8 @@ pub struct MockRpcClient {
 
 #[derive(Debug)]
 pub struct Inner {
-    metadata_sender: mpsc::Sender<FarmerMetadata>,
-    metadata_receiver: Arc<Mutex<mpsc::Receiver<FarmerMetadata>>>,
+    farmer_protocol_info_sender: mpsc::Sender<FarmerProtocolInfo>,
+    farmer_protocol_info_receiver: Arc<Mutex<mpsc::Receiver<FarmerProtocolInfo>>>,
     slot_into_sender: Mutex<Option<mpsc::Sender<SlotInfo>>>,
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     solution_sender: mpsc::Sender<SolutionResponse>,
@@ -42,7 +42,7 @@ impl MockRpcClient {
     /// Create a new instance of [`MockRPC`].
     pub(crate) fn new() -> Self {
         // channels for MockRPC to communicate with the environment
-        let (metadata_sender, metadata_receiver) = mpsc::channel(10);
+        let (farmer_protocol_info_sender, farmer_protocol_info_receiver) = mpsc::channel(10);
         let (slot_info_sender, slot_info_receiver) = mpsc::channel(10);
         let (solution_sender, solution_receiver) = mpsc::channel(1);
         let (reward_signing_info_sender, reward_signing_info_receiver) = mpsc::channel(10);
@@ -53,8 +53,8 @@ impl MockRpcClient {
 
         Self {
             inner: Arc::new(Inner {
-                metadata_sender,
-                metadata_receiver: Arc::new(Mutex::new(metadata_receiver)),
+                farmer_protocol_info_sender,
+                farmer_protocol_info_receiver: Arc::new(Mutex::new(farmer_protocol_info_receiver)),
                 slot_into_sender: Mutex::new(Some(slot_info_sender)),
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 solution_sender,
@@ -73,11 +73,11 @@ impl MockRpcClient {
         }
     }
 
-    pub(crate) async fn send_metadata(&self, metadata: FarmerMetadata) {
+    pub(crate) async fn send_farmer_protocol_info(&self, farmer_protocol_info: FarmerProtocolInfo) {
         self.inner
-            .metadata_sender
+            .farmer_protocol_info_sender
             .clone()
-            .send(metadata)
+            .send(farmer_protocol_info)
             .await
             .unwrap();
     }
@@ -137,10 +137,10 @@ impl MockRpcClient {
 
 #[async_trait]
 impl RpcClient for MockRpcClient {
-    async fn farmer_metadata(&self) -> Result<FarmerMetadata, MockError> {
+    async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, MockError> {
         Ok(self
             .inner
-            .metadata_receiver
+            .farmer_protocol_info_receiver
             .lock()
             .await
             .try_next()?

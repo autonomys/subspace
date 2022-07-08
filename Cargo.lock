@@ -728,7 +728,7 @@ dependencies = [
  "libc",
  "num-integer",
  "num-traits",
- "time",
+ "time 0.1.44",
  "winapi 0.3.9",
 ]
 
@@ -2612,14 +2612,7 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "hex-buffer-serde"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f52012c160668b4494727f3588045aa00429849fcae51de70d68fa98228039"
 dependencies = [
- "hex",
  "serde",
 ]
 
@@ -3188,9 +3181,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.123"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb691a747a7ab48abc15c5b42066eaafde10dc427e3b6ee2a1cf43db04c763bd"
+checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 
 [[package]]
 name = "libloading"
@@ -4383,6 +4376,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
 dependencies = [
  "hermit-abi",
+ "libc",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
+dependencies = [
  "libc",
 ]
 
@@ -7836,6 +7838,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "std-semaphore"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33ae9eec00137a8eed469fb4148acd9fc6ac8c3f9b110f52cd34698c8b5bfa0e"
+
+[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7882,6 +7890,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "hmac 0.12.1",
  "num-traits",
  "parity-scale-codec",
@@ -7903,13 +7912,15 @@ dependencies = [
  "base58",
  "blake2-rfc",
  "clap 3.1.18",
+ "derive_more",
  "dirs",
  "event-listener-primitives",
  "fdlimit",
+ "fs2",
  "futures 0.3.21",
  "hex",
- "hex-buffer-serde",
  "jsonrpsee",
+ "libc",
  "lru",
  "num-traits",
  "parity-scale-codec",
@@ -7921,6 +7932,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ss58-registry",
+ "std-semaphore",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-networking",
@@ -7932,6 +7944,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.11",
+ "ulid",
  "zeroize",
 ]
 
@@ -7970,6 +7983,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "clap 3.1.18",
+ "derive_more",
  "env_logger",
  "event-listener-primitives",
  "futures 0.3.21",
@@ -8033,7 +8047,7 @@ dependencies = [
 name = "subspace-rpc-primitives"
 version = "0.1.0"
 dependencies = [
- "hex-buffer-serde",
+ "hex",
  "serde",
  "subspace-core-primitives",
 ]
@@ -8652,6 +8666,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "time"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
+dependencies = [
+ "libc",
+ "num_threads",
+]
+
+[[package]]
 name = "tiny-bip39"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8998,6 +9022,17 @@ dependencies = [
  "crunchy",
  "hex",
  "static_assertions",
+]
+
+[[package]]
+name = "ulid"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3be932d774bfad49722da2c4915ac7cc77b77dd223890739a0240de2b2a15957"
+dependencies = [
+ "rand 0.8.5",
+ "serde",
+ "time 0.3.11",
 ]
 
 [[package]]
