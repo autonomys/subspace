@@ -11,12 +11,22 @@ use derive_more::From;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::multiaddr::Protocol;
 use libp2p::ping::{Ping, PingEvent};
 use libp2p::relay::v2::client::{Client as RelayClient, Event as RelayClientEvent};
+use libp2p::relay::v2::relay::rate_limiter::RateLimiter;
 use libp2p::relay::v2::relay::{Config as RelayConfig, Event as RelayEvent, Relay};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{Multiaddr, NetworkBehaviour, PeerId};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+struct MemoryRateLimiter;
+
+impl RateLimiter for MemoryRateLimiter {
+    fn try_next(&mut self, _peer: PeerId, addr: &Multiaddr, _now: Instant) -> bool {
+        matches!(addr.iter().next(), Some(Protocol::Memory(_)))
+    }
+}
 
 pub(crate) struct BehaviorConfig {
     /// Identity keypair of a node used for authenticated connections.
@@ -81,12 +91,11 @@ impl Behavior {
                     // Duration::MAX causes runtime overflows and u32::MAX was recommended in the runtime error!
                     let very_long_duration = Duration::from_secs(u32::MAX.into());
 
-                    // TODO: Prevent non-local peers from using circuit relay
                     RelayConfig {
                         max_reservations: usize::MAX,
                         max_reservations_per_peer: usize::MAX,
                         reservation_duration: very_long_duration,
-                        reservation_rate_limiters: vec![],
+                        reservation_rate_limiters: vec![Box::new(MemoryRateLimiter)],
                         max_circuits: usize::MAX,
                         max_circuits_per_peer: usize::MAX,
                         max_circuit_duration: very_long_duration,
