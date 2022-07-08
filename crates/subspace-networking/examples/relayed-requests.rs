@@ -25,27 +25,26 @@ async fn main() {
 
     println!("Node 1 (relay) ID is {}", node_1.id());
 
-    let (node_1_addresses_sender, node_1_addresses_receiver) = oneshot::channel();
-    node_1
-        .on_new_listener(Arc::new({
-            let node_1_addresses_sender = Mutex::new(Some(node_1_addresses_sender));
+    let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = node_1.on_new_listener(Arc::new({
+        let node_1_address_sender = Mutex::new(Some(node_1_address_sender));
 
-            move |address| {
-                if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                    if let Some(node_1_addresses_sender) = node_1_addresses_sender.lock().take() {
-                        node_1_addresses_sender.send(address.clone()).unwrap();
-                    }
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
+                    node_1_address_sender.send(address.clone()).unwrap();
                 }
             }
-        }))
-        .detach();
+        }
+    }));
 
     tokio::spawn(async move {
         node_runner_1.run().await;
     });
 
     // Wait for relay to know its address
-    let node_1_addr = node_1_addresses_receiver.await.unwrap();
+    let node_1_addr = node_1_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
 
     // NODE 2 - Server
 

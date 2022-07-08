@@ -24,29 +24,26 @@ async fn main() {
 
     println!("Relay Node ID is {}", relay_node.id());
 
-    let (relay_node_addresses_sender, relay_node_addresses_receiver) = oneshot::channel();
-    relay_node
-        .on_new_listener(Arc::new({
-            let relay_node_addresses_sender = Mutex::new(Some(relay_node_addresses_sender));
+    let (relay_node_address_sender, relay_node_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = relay_node.on_new_listener(Arc::new({
+        let relay_node_address_sender = Mutex::new(Some(relay_node_address_sender));
 
-            move |address| {
-                if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                    if let Some(relay_node_addresses_sender) =
-                        relay_node_addresses_sender.lock().take()
-                    {
-                        relay_node_addresses_sender.send(address.clone()).unwrap();
-                    }
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(relay_node_address_sender) = relay_node_address_sender.lock().take() {
+                    relay_node_address_sender.send(address.clone()).unwrap();
                 }
             }
-        }))
-        .detach();
+        }
+    }));
 
     tokio::spawn(async move {
         relay_node_runner.run().await;
     });
 
     // Wait for relay to know its address
-    let relay_node_addr = relay_node_addresses_receiver.await.unwrap();
+    let relay_node_addr = relay_node_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
 
     let mut bootstrap_nodes = Vec::new();
     let mut expected_node_id = PeerId::random();
