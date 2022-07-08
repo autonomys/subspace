@@ -185,8 +185,8 @@ pub enum CreationError {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create(
-    Config {
+pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError> {
+    let Config {
         keypair,
         listen_on,
         listen_on_fallback_to_random_port,
@@ -201,8 +201,7 @@ pub async fn create(
         initial_random_query_interval,
         pieces_by_range_request_handler,
         relay_config,
-    }: Config,
-) -> Result<(Node, NodeRunner), CreationError> {
+    } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
     // Create optional relay transport and client.
