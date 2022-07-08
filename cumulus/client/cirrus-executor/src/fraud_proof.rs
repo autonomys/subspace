@@ -23,6 +23,8 @@ use subspace_core_primitives::BlockNumber;
 pub enum FraudProofError {
 	#[error("State root not using H256")]
 	InvalidStateRootType,
+	#[error("Invalid trace index, got: {index}, max: {max}")]
+	InvalidTraceIndex { index: usize, max: usize },
 	#[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
 	InvalidExtrinsicIndex { index: usize, max: usize },
 	#[error(transparent)]
@@ -77,8 +79,9 @@ where
 
 	pub(crate) fn generate_proof<PBlock: BlockT>(
 		&self,
-		local_trace_index: usize,
+		local_trace_index: u32,
 		local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+		bad_signed_receipt_hash: H256,
 	) -> Result<FraudProof, FraudProofError> {
 		let block_hash = local_receipt.secondary_hash;
 		let block_number: BlockNumber = local_receipt
@@ -104,13 +107,18 @@ where
 		let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
 			.unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
 
-		let local_root = local_receipt.trace[local_trace_index];
+		let local_root = local_receipt.trace.get(local_trace_index as usize).ok_or(
+			FraudProofError::InvalidTraceIndex {
+				index: local_trace_index as usize,
+				max: local_receipt.trace.len() - 1,
+			},
+		)?;
 
 		// TODO: abstract the execution proof impl to be reusable in the test.
 		let fraud_proof = if local_trace_index == 0 {
 			// `initialize_block` execution proof.
 			let pre_state_root = as_h256(parent_header.state_root())?;
-			let post_state_root = as_h256(&local_root)?;
+			let post_state_root = as_h256(local_root)?;
 
 			let new_header = Block::Header::new(
 				block_number.into(),
@@ -129,6 +137,7 @@ where
 			)?;
 
 			FraudProof {
+				bad_signed_receipt_hash,
 				parent_number,
 				parent_hash: as_h256(&parent_header.hash())?,
 				pre_state_root,
@@ -136,10 +145,10 @@ where
 				proof,
 				execution_phase,
 			}
-		} else if local_trace_index == local_receipt.trace.len() - 1 {
+		} else if local_trace_index as usize == local_receipt.trace.len() - 1 {
 			// `finalize_block` execution proof.
-			let pre_state_root = as_h256(&local_receipt.trace[local_trace_index - 1])?;
-			let post_state_root = as_h256(&local_root)?;
+			let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
+			let post_state_root = as_h256(local_root)?;
 			let execution_phase = ExecutionPhase::FinalizeBlock;
 
 			let block_builder = BlockBuilder::new(
@@ -163,6 +172,7 @@ where
 			)?;
 
 			FraudProof {
+				bad_signed_receipt_hash,
 				parent_number,
 				parent_hash: as_h256(&parent_header.hash())?,
 				pre_state_root,
@@ -172,11 +182,11 @@ where
 			}
 		} else {
 			// Regular extrinsic execution proof.
-			let pre_state_root = as_h256(&local_receipt.trace[local_trace_index - 1])?;
-			let post_state_root = as_h256(&local_root)?;
+			let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
+			let post_state_root = as_h256(local_root)?;
 
 			let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-				local_trace_index - 1,
+				local_trace_index as usize - 1,
 				&parent_header,
 				block_hash,
 				&prover,
@@ -184,6 +194,7 @@ where
 
 			// TODO: proof should be a CompactProof.
 			FraudProof {
+				bad_signed_receipt_hash,
 				parent_number,
 				parent_hash: as_h256(&parent_header.hash())?,
 				pre_state_root,
@@ -254,11 +265,11 @@ where
 pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
 	local: &ExecutionReceipt<Number, PHash, Hash>,
 	other: &ExecutionReceipt<Number, PHash, Hash>,
-) -> Option<usize> {
+) -> Option<u32> {
 	local.trace.iter().enumerate().zip(other.trace.iter().enumerate()).find_map(
 		|((local_index, local_root), (_, other_root))| {
 			if local_root != other_root {
-				Some(local_index)
+				Some(local_index.try_into().expect("Trace mismatch index must fit into u32; qed"))
 			} else {
 				None
 			}

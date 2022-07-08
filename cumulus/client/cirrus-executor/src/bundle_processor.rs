@@ -1,7 +1,11 @@
-use crate::{aux_schema, ExecutionReceiptFor, SignedExecutionReceiptFor};
+use crate::{
+	fraud_proof::{find_trace_mismatch, FraudProofGenerator},
+	ExecutionReceiptFor, SignedExecutionReceiptFor, TransactionFor,
+};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
+use futures::FutureExt;
 use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::{AuxStore, BlockBackend};
@@ -10,18 +14,21 @@ use sc_consensus::{
 };
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_core::ByteArray;
+use sp_core::{
+	traits::{CodeExecutor, SpawnNamed},
+	ByteArray,
+};
 use sp_executor::{
-	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
+	ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, FraudProof, OpaqueBundle,
 	SignedExecutionReceipt,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT, One},
+	traits::{Block as BlockT, HashFor, Header as HeaderT, One},
 	RuntimeAppPublic,
 };
 use std::{
@@ -78,7 +85,7 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 	shuffled_extrinsics
 }
 
-pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend>
+pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -91,11 +98,13 @@ where
 	backend: Arc<Backend>,
 	is_authority: bool,
 	keystore: SyncCryptoStorePtr,
+	spawner: Box<dyn SpawnNamed + Send + Sync>,
+	fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
 	_phantom_data: PhantomData<PBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend> Clone
-	for BundleProcessor<Block, PBlock, Client, PClient, Backend>
+impl<Block, PBlock, Client, PClient, Backend, E> Clone
+	for BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
@@ -109,17 +118,20 @@ where
 			backend: self.backend.clone(),
 			is_authority: self.is_authority,
 			keystore: self.keystore.clone(),
+			spawner: self.spawner.clone(),
+			fraud_proof_generator: self.fraud_proof_generator.clone(),
 			_phantom_data: self._phantom_data,
 		}
 	}
 }
 
-impl<Block, PBlock, Client, PClient, Backend>
-	BundleProcessor<Block, PBlock, Client, PClient, Backend>
+impl<Block, PBlock, Client, PClient, Backend, E>
+	BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
 	Block: BlockT,
 	PBlock: BlockT,
-	Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+	Client:
+		HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
 	Client::Api: SecondaryApi<Block, AccountId>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_api::ApiExt<
@@ -128,13 +140,16 @@ where
 		>,
 	for<'b> &'b Client: BlockImport<
 		Block,
-		Transaction = TransactionFor<Client, Block>,
+		Transaction = sp_api::TransactionFor<Client, Block>,
 		Error = sp_consensus::Error,
 	>,
-	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-	Backend: sc_client_api::Backend<Block>,
+	PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+	PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
+	Backend: sc_client_api::Backend<Block> + 'static,
+	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+	E: CodeExecutor,
 {
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		primary_chain_client: Arc<PClient>,
 		primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
@@ -145,6 +160,8 @@ where
 		backend: Arc<Backend>,
 		is_authority: bool,
 		keystore: SyncCryptoStorePtr,
+		spawner: Box<dyn SpawnNamed + Send + Sync>,
+		fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
 	) -> Self {
 		Self {
 			primary_chain_client,
@@ -154,6 +171,8 @@ where
 			backend,
 			is_authority,
 			keystore,
+			spawner,
+			fraud_proof_generator,
 			_phantom_data: PhantomData::default(),
 		}
 	}
@@ -319,7 +338,13 @@ where
 			return Ok(())
 		}
 
-		// TODO: Generate FraudProof for the first incorrect ER which is still not _confirmed_.
+		// Submit fraud proof for the first unconfirmed incorrent ER.
+		let oldest_receipt_number = self
+			.primary_chain_client
+			.runtime_api()
+			.oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+		crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+		self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
 		// Ideally, the receipt of current block will be included in the next block, i.e., no
 		// missing receipts.
@@ -345,25 +370,14 @@ where
 					sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
 				})?;
 
-				// TODO: will be removed once the TODO below is resolved.
-				#[allow(clippy::single_match)]
-				match crate::aux_schema::load_execution_receipt(&*self.client, block_hash)? {
-					Some(receipt) => {
-						self.try_sign_and_send_receipt(primary_hash, receipt)?;
-					},
-					None => {
-						// TODO: In order to solve the problem that the receipt can be pruned by
-						// executor, we need to check if every ER in the primary chain is valid beforehand:
-						// - If ER is invalid, cache it and expect FraudProof within next X blocks.
-						//    - If FraudProof found, remove it from the cache.
-						//    - If FraudProof not found and major sync is done:
-						//        - Generate a FraudProof for the first incorrect ER.
-						//            - FraudProof might need to access the block body, hence all
-						//            the blocks have to be kept in the database. TODO: double check.
-						//        - Start publishing the correct ERs after the above corrected one.
-						// println!("TODO: Cache the invalid receipts without fraud proof");
-					},
-				}
+				let receipt = crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?
+					.ok_or_else(|| {
+						sp_blockchain::Error::Backend(format!(
+							"Execution receipt not found for block {block_hash}"
+						))
+					})?;
+
+				self.try_sign_and_send_receipt(primary_hash, receipt)?;
 
 				to_send += One::one();
 			}
@@ -458,25 +472,51 @@ where
 			.extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
 		for signed_receipt in signed_receipts.iter() {
-			match aux_schema::load_execution_receipt::<
+			let secondary_hash = signed_receipt.execution_receipt.secondary_hash;
+			match crate::aux_schema::load_execution_receipt::<
 				_,
 				Block::Hash,
 				NumberFor<PBlock>,
 				PBlock::Hash,
-			>(&*self.client, signed_receipt.execution_receipt.secondary_hash)?
+			>(&*self.client, secondary_hash)?
 			{
 				Some(local_receipt) => {
-					if crate::find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
-						.is_some()
+					if let Some(trace_mismatch_index) =
+						find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
 					{
-						// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
+						crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
+							&*self.client,
+							signed_receipt.execution_receipt.primary_number,
+							signed_receipt.hash(),
+							(trace_mismatch_index, secondary_hash),
+						)?;
 					}
 				},
 				None => {
+					let block_number: BlockNumber = signed_receipt
+						.execution_receipt
+						.primary_number
+						.try_into()
+						.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+					// TODO: Ensure the `block_hash` aligns with the one returned in
+					// `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are
+					// multiple forks at present, `block_hash` is on one of them, but another fork
+					// becomes the canonical chain later.
+					let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
+						sp_blockchain::Error::Backend(format!(
+							"Header hash not found for number {block_number}"
+						))
+					})?;
+
 					// The receipt of a prior block must exist, otherwise it means the receipt included
 					// on the primary chain points to an invalid secondary block.
-
-					// TODO: An invalid receipt, add it to cache and expect FP in next X blocks.
+					crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
+						&*self.client,
+						signed_receipt.execution_receipt.primary_number,
+						signed_receipt.hash(),
+						(0u32, block_hash),
+					)?;
 				},
 			}
 		}
@@ -486,11 +526,90 @@ where
 			.runtime_api()
 			.extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
 
-		for _fraud_proof in fraud_proofs {
-			// TODO: Remove the corresponding invalid receipt entry from cache.
+		for fraud_proof in fraud_proofs {
+			let bad_receipt_number = fraud_proof.parent_number + 1;
+			// TODO: There is a chance that the fraud proof and the bad receipt are included
+			// in the same block, especially when multiple receipts are included in one block,
+			// which means it's possible we're deleting a receipt which was just inserted above,
+			// so it's more efficient we collect all the write&delete changes before operating
+			// the database.
+			if let Err(e) = crate::aux_schema::delete_bad_receipt(
+				&*self.client,
+				bad_receipt_number,
+				fraud_proof.bad_signed_receipt_hash,
+			) {
+				tracing::error!(
+					target: LOG_TARGET,
+					error = ?e,
+					?bad_receipt_number,
+					bad_signed_receipt_hash = ?fraud_proof.bad_signed_receipt_hash,
+					"Failed to delete bad receipt",
+				);
+			}
 		}
 
 		Ok(())
+	}
+
+	fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
+		&self,
+	) -> Result<(), sp_blockchain::Error> {
+		if let Some((bad_signed_receipt_hash, trace_mismatch_index, block_hash)) =
+			crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
+				&*self.client,
+			)? {
+			let local_receipt =
+				crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?.ok_or_else(
+					|| {
+						sp_blockchain::Error::Backend(format!(
+							"Execution receipt not found for {block_hash:?}"
+						))
+					},
+				)?;
+
+			let fraud_proof = self
+				.fraud_proof_generator
+				.generate_proof::<PBlock>(
+					trace_mismatch_index,
+					&local_receipt,
+					bad_signed_receipt_hash,
+				)
+				.map_err(|err| {
+					sp_blockchain::Error::Application(Box::from(format!(
+						"Failed to generate fraud proof: {err}"
+					)))
+				})?;
+
+			self.submit_fraud_proof(fraud_proof);
+		}
+
+		Ok(())
+	}
+
+	fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
+		let primary_chain_client = self.primary_chain_client.clone();
+		// TODO: No backpressure
+		self.spawner.spawn_blocking(
+			"cirrus-submit-fraud-proof",
+			None,
+			async move {
+				tracing::debug!(
+					target: LOG_TARGET,
+					"Submitting fraud proof in a background task..."
+				);
+				if let Err(error) = primary_chain_client.runtime_api().submit_fraud_proof_unsigned(
+					&BlockId::Hash(primary_chain_client.info().best_hash),
+					fraud_proof,
+				) {
+					tracing::debug!(
+						target: LOG_TARGET,
+						error = ?error,
+						"Failed to submit fraud proof"
+					);
+				}
+			}
+			.boxed(),
+		);
 	}
 
 	fn try_sign_and_send_receipt(
