@@ -64,6 +64,7 @@ async fn main() {
         }
     };
 
+    let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
         let local_response = expected_response.clone();
         let config = Config {
@@ -102,6 +103,8 @@ async fn main() {
         if i == EXPECTED_NODE_INDEX {
             expected_node_id = node.id();
         }
+
+        nodes.push(node);
     }
 
     // Debug:

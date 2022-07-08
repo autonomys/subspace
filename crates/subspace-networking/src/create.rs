@@ -68,6 +68,8 @@ pub struct Config {
     ///
     /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
     pub relay_server_address: Option<Multiaddr>,
+    /// Parent node instance (if any) to keep alive.
+    pub parent_node: Option<Node>,
 }
 
 impl fmt::Debug for Config {
@@ -125,6 +127,7 @@ impl Config {
             initial_random_query_interval: Duration::from_secs(1),
             pieces_by_range_request_handler: Arc::new(|_| None),
             relay_server_address: None,
+            parent_node: None,
         }
     }
 }
@@ -163,6 +166,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         initial_random_query_interval,
         pieces_by_range_request_handler,
         relay_server_address,
+        parent_node,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
@@ -245,15 +249,16 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
         let (command_sender, command_receiver) = mpsc::channel(1);
 
-        let shared = Arc::new(Shared::new(local_peer_id, command_sender));
+        let shared = Arc::new(Shared::new(local_peer_id, parent_node, command_sender));
+        let shared_weak = Arc::downgrade(&shared);
 
-        let node = Node::new(Arc::clone(&shared), is_relay_server);
+        let node = Node::new(shared, is_relay_server);
         let node_runner = NodeRunner::new(
             allow_non_globals_in_dht,
             is_relay_server,
             command_receiver,
             swarm,
-            shared,
+            shared_weak,
             initial_random_query_interval,
         );
 

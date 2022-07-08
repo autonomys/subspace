@@ -3,6 +3,7 @@
 
 use crate::pieces_by_range_handler::PiecesByRangeRequest;
 use crate::request_responses::RequestFailure;
+use crate::Node;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -73,16 +74,23 @@ pub(crate) struct Shared {
     pub(crate) connected_peers_count: AtomicUsize,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
+    /// Parent node instance (if any) to keep alive.
+    pub(crate) _parent_node: Option<Node>,
 }
 
 impl Shared {
-    pub(crate) fn new(id: PeerId, command_sender: mpsc::Sender<Command>) -> Self {
+    pub(crate) fn new(
+        id: PeerId,
+        parent_node: Option<Node>,
+        command_sender: mpsc::Sender<Command>,
+    ) -> Self {
         Self {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
             connected_peers_count: AtomicUsize::new(0),
             command_sender,
+            _parent_node: parent_node,
         }
     }
 }

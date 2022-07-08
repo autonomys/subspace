@@ -132,6 +132,7 @@ pub enum CircuitRelayClientError {
 
 /// Implementation of a network node on Subspace Network.
 #[derive(Debug, Clone)]
+#[must_use = "Node doesn't do anything if dropped"]
 pub struct Node {
     shared: Arc<Shared>,
     is_relay_server: bool,

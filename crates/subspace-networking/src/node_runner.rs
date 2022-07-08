@@ -22,7 +22,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
@@ -44,7 +44,7 @@ pub struct NodeRunner {
     is_relay_server: bool,
     command_receiver: mpsc::Receiver<Command>,
     swarm: Swarm<Behavior>,
-    shared: Arc<Shared>,
+    shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
     query_id_receivers: HashMap<QueryId, QueryResultSender>,
@@ -63,7 +63,7 @@ impl NodeRunner {
         is_relay_server: bool,
         command_receiver: mpsc::Receiver<Command>,
         swarm: Swarm<Behavior>,
-        shared: Arc<Shared>,
+        shared_weak: Weak<Shared>,
         initial_random_query_interval: Duration,
     ) -> Self {
         Self {
@@ -71,7 +71,7 @@ impl NodeRunner {
             is_relay_server,
             command_receiver,
             swarm,
-            shared,
+            shared_weak,
             next_random_query_interval: initial_random_query_interval,
             query_id_receivers: HashMap::default(),
             next_subscription_id: 0,
@@ -140,7 +140,13 @@ impl NodeRunner {
                 trace!("Relay Client event: {:?}", event);
             }
             SwarmEvent::NewListenAddr { address, .. } => {
-                self.shared.listeners.lock().push(address.clone());
+                let shared = match self.shared_weak.upgrade() {
+                    Some(shared) => shared,
+                    None => {
+                        return;
+                    }
+                };
+                shared.listeners.lock().push(address.clone());
                 if matches!(address.iter().next(), Some(Protocol::Memory(_))) {
                     // This is necessary for local connections using circuit relay
                     if self.is_relay_server {
@@ -150,28 +156,36 @@ impl NodeRunner {
                 } else {
                     // TODO: Add support for public address for add_external_address, AutoNAT
                 }
-                self.shared.handlers.new_listener.call_simple(&address);
+                shared.handlers.new_listener.call_simple(&address);
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 num_established,
                 ..
             } => {
+                let shared = match self.shared_weak.upgrade() {
+                    Some(shared) => shared,
+                    None => {
+                        return;
+                    }
+                };
                 debug!("Connection established with peer {peer_id} [{num_established} from peer]");
-                self.shared
-                    .connected_peers_count
-                    .fetch_add(1, Ordering::SeqCst);
+                shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
                 num_established,
                 ..
             } => {
+                let shared = match self.shared_weak.upgrade() {
+                    Some(shared) => shared,
+                    None => {
+                        return;
+                    }
+                };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
-                self.shared
-                    .connected_peers_count
-                    .fetch_sub(1, Ordering::SeqCst);
+                shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
             }
             other => {
                 trace!("Other swarm event: {:?}", other);
@@ -239,6 +253,12 @@ impl NodeRunner {
                 {
                     match results {
                         Ok(GetClosestPeersOk { key, peers }) => {
+                            let shared = match self.shared_weak.upgrade() {
+                                Some(shared) => shared,
+                                None => {
+                                    return;
+                                }
+                            };
                             trace!(
                                 "Get closest peers query for {} yielded {} results",
                                 hex::encode(&key),
@@ -246,7 +266,7 @@ impl NodeRunner {
                             );
 
                             if peers.is_empty()
-                                && self.shared.connected_peers_count.load(Ordering::Relaxed) != 0
+                                && shared.connected_peers_count.load(Ordering::Relaxed) != 0
                             {
                                 debug!("Random Kademlia query has yielded empty list of peers");
                             }
