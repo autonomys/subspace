@@ -33,8 +33,6 @@ use crate::digests::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
-use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{PublicKey, SignatureResult};
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
@@ -42,10 +40,9 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::ConsensusEngineId;
 use sp_std::vec::Vec;
-use subspace_core_primitives::{
-    Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
-};
-use subspace_solving::{create_tag_signature_transcript, REWARD_SIGNING_CONTEXT};
+use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
+pub use verification::derive_randomness;
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -248,23 +245,6 @@ impl Default for SolutionRanges {
             voting_next: None,
         }
     }
-}
-
-/// Derive on-chain randomness from tag signature.
-///
-/// NOTE: If you are not the signer then you must verify the local challenge before calling this
-/// function.
-pub fn derive_randomness(
-    public_key: &FarmerPublicKey,
-    tag: Tag,
-    tag_signature: &TagSignature,
-) -> SignatureResult<Randomness> {
-    let in_out = VRFOutput(tag_signature.output).attach_input_hash(
-        &PublicKey::from_bytes(public_key.as_ref())?,
-        create_tag_signature_transcript(tag),
-    )?;
-
-    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
 }
 
 /// Subspace salts used for challenges.

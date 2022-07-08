@@ -17,20 +17,21 @@
 
 //! Verification for Subspace headers.
 use crate::digests::{CompatibleDigestItem, PreDigest};
-use crate::{find_pre_digest, FarmerPublicKey, FarmerSignature};
+use crate::{find_pre_digest, FarmerPublicKey, FarmerSignature, RANDOMNESS_CONTEXT};
 use codec::Decode;
 use schnorrkel::context::SigningContext;
-use schnorrkel::{PublicKey, Signature};
+use schnorrkel::vrf::VRFOutput;
+use schnorrkel::{PublicKey, Signature, SignatureResult};
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_runtime::DigestItem;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, U256,
+    PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, TagSignature, U256,
 };
 use subspace_solving::{
-    derive_global_challenge, derive_target, is_tag_valid, verify_local_challenge,
-    verify_tag_signature, SubspaceCodec,
+    create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
+    verify_local_challenge, verify_tag_signature, SubspaceCodec,
 };
 
 /// Errors encountered by the Subspace authorship task.
@@ -375,4 +376,21 @@ where
     }
 
     Ok(())
+}
+
+/// Derive on-chain randomness from tag signature.
+///
+/// NOTE: If you are not the signer then you must verify the local challenge before calling this
+/// function.
+pub fn derive_randomness(
+    public_key: &FarmerPublicKey,
+    tag: Tag,
+    tag_signature: &TagSignature,
+) -> SignatureResult<Randomness> {
+    let in_out = VRFOutput(tag_signature.output).attach_input_hash(
+        &PublicKey::from_bytes(public_key.as_ref())?,
+        create_tag_signature_transcript(tag),
+    )?;
+
+    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
 }
