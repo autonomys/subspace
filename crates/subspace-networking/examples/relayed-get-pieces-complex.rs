@@ -1,25 +1,22 @@
+use futures::channel::oneshot;
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
-use libp2p::{identity, Multiaddr, PeerId};
+use libp2p::{identity, PeerId};
+use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{
-    Config, PiecesByRangeResponse, PiecesToPlot, RelayConfiguration, RelayLimitSettings,
-};
+use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot, RelayConfiguration};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let relay_server_address = Multiaddr::empty().with(Protocol::Memory(1_000_000_000));
-
     // Relay node
-    let relay_node_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
     let config_1 = Config {
-        listen_on: vec![relay_node_addr.clone()],
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        relay_config: RelayConfiguration::Server(relay_server_address.clone(), relay_config()),
+        relay_config: RelayConfiguration::Server,
         ..Config::with_generated_keypair()
     };
 
@@ -27,9 +24,26 @@ async fn main() {
 
     println!("Relay Node ID is {}", relay_node.id());
 
+    let (relay_node_address_sender, relay_node_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = relay_node.on_new_listener(Arc::new({
+        let relay_node_address_sender = Mutex::new(Some(relay_node_address_sender));
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(relay_node_address_sender) = relay_node_address_sender.lock().take() {
+                    relay_node_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
     tokio::spawn(async move {
         relay_node_runner.run().await;
     });
+
+    // Wait for relay to know its address
+    let relay_node_addr = relay_node_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
 
     let mut bootstrap_nodes = Vec::new();
     let mut expected_node_id = PeerId::random();
@@ -68,6 +82,7 @@ async fn main() {
             }),
             relay_config: relay_node
                 .configure_relay_client()
+                .await
                 .expect("Server should be configured."),
             ..Config::with_generated_keypair()
         };
@@ -149,16 +164,4 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     println!("Exiting..");
-}
-
-fn relay_config() -> RelayLimitSettings {
-    RelayLimitSettings {
-        max_reservations: 128000,
-        max_reservations_per_peer: 128000,
-        reservation_duration: Duration::from_secs(60 * 60),
-        max_circuits: 128000,
-        max_circuits_per_peer: 128000,
-        max_circuit_duration: Duration::from_secs(2 * 60),
-        max_circuit_bytes: 1 << 27,
-    }
 }

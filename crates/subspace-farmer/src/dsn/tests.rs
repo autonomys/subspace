@@ -4,12 +4,13 @@ use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmi
 use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{ObjectMappings, Plot, RpcClient};
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, StreamExt};
+use futures::SinkExt;
 use num_traits::{WrappingAdd, WrappingSub};
+use parking_lot::Mutex;
 use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PieceIndex, PieceIndexHash,
@@ -82,7 +83,7 @@ async fn simple_test() {
         {
             let result = Arc::clone(&result);
             move |pieces, piece_indexes| {
-                let mut result = result.lock().unwrap();
+                let mut result = result.lock();
                 result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
                     (
                         PieceIndexHash::from_index(index),
@@ -97,7 +98,7 @@ async fn simple_test() {
     .await
     .unwrap();
 
-    assert_eq!(source, *result.lock().unwrap());
+    assert_eq!(source, *result.lock());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -119,7 +120,7 @@ async fn no_sync_test() {
         {
             let result = Arc::clone(&result);
             move |pieces, piece_indexes| {
-                let mut result = result.lock().unwrap();
+                let mut result = result.lock();
                 result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
                     (
                         PieceIndexHash::from_index(index),
@@ -133,7 +134,7 @@ async fn no_sync_test() {
     .await
     .unwrap();
 
-    assert!(result.lock().unwrap().is_empty())
+    assert!(result.lock().is_empty())
 }
 
 #[tokio::test]
@@ -239,13 +240,20 @@ async fn test_dsn_sync() {
             .collect::<BTreeMap<_, _>>()
     };
 
-    let (seeder_address_sender, mut seeder_address_receiver) = mpsc::unbounded();
-    seeder_multi_farming.single_plot_farms()[0]
+    let (seeder_address_sender, seeder_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = seeder_multi_farming.single_plot_farms()[0]
         .node()
-        .on_new_listener(Arc::new(move |address| {
-            let _ = seeder_address_sender.unbounded_send(address.clone());
-        }))
-        .detach();
+        .on_new_listener(Arc::new({
+            let seeder_address_sender = Mutex::new(Some(seeder_address_sender));
+
+            move |address| {
+                if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                    if let Some(seeder_address_sender) = seeder_address_sender.lock().take() {
+                        seeder_address_sender.send(address.clone()).unwrap();
+                    }
+                }
+            }
+        }));
 
     let peer_id = seeder_multi_farming.single_plot_farms()[0]
         .node()
@@ -264,11 +272,10 @@ async fn test_dsn_sync() {
     });
 
     let seeder_multiaddr = seeder_address_receiver
-        .next()
         .await
         .unwrap()
         .with(Protocol::P2p(peer_id));
-    drop(seeder_address_receiver);
+    drop(on_new_listener_handler);
 
     let syncer_base_directory = TempDir::new().unwrap();
     let (_syncer_slot_info_sender, syncer_slot_info_receiver) = mpsc::channel(10);

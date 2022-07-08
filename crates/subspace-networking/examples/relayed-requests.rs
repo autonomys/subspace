@@ -1,6 +1,7 @@
 use env_logger::Env;
+use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::Multiaddr;
+use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
@@ -13,12 +14,10 @@ async fn main() {
     env_logger::init_from_env(Env::new().default_filter_or("info"));
 
     // NODE 1 - Relay
-    let node_1_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
-    let custom_relay_address: Multiaddr = "/memory/10".parse().unwrap();
     let config_1 = Config {
-        listen_on: vec![node_1_addr.clone()],
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        relay_config: RelayConfiguration::Server(custom_relay_address.clone(), Default::default()),
+        relay_config: RelayConfiguration::Server,
         ..Config::with_generated_keypair()
     };
 
@@ -26,9 +25,26 @@ async fn main() {
 
     println!("Node 1 (relay) ID is {}", node_1.id());
 
+    let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = node_1.on_new_listener(Arc::new({
+        let node_1_address_sender = Mutex::new(Some(node_1_address_sender));
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
+                    node_1_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
     tokio::spawn(async move {
         node_runner_1.run().await;
     });
+
+    // Wait for relay to know its address
+    let node_1_addr = node_1_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
 
     // NODE 2 - Server
 
@@ -51,6 +67,7 @@ async fn main() {
         }),
         relay_config: node_1
             .configure_relay_client()
+            .await
             .expect("Relay Server should be configured."),
         ..Config::with_generated_keypair()
     };
@@ -66,7 +83,6 @@ async fn main() {
 
     let config_3 = Config {
         bootstrap_nodes: vec![node_1_addr
-            .clone()
             .with(Protocol::P2p(node_1.id().into()))
             .with(Protocol::P2pCircuit)
             .with(Protocol::P2p(node_2.id().into()))],

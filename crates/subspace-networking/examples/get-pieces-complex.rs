@@ -1,7 +1,8 @@
-use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use libp2p::{identity, PeerId};
+use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
@@ -53,25 +54,29 @@ async fn main() {
 
         println!("Node {} ID is {}", i, node.id());
 
-        let (node_addresses_sender, mut node_addresses_receiver) = mpsc::unbounded();
-        node.on_new_listener(Arc::new(move |address| {
-            node_addresses_sender
-                .unbounded_send(address.clone())
-                .unwrap();
-        }))
-        .detach();
+        let (node_address_sender, node_address_receiver) = oneshot::channel();
+        let _handler = node.on_new_listener(Arc::new({
+            let node_address_sender = Mutex::new(Some(node_address_sender));
+
+            move |address| {
+                if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                    if let Some(node_address_sender) = node_address_sender.lock().take() {
+                        node_address_sender.send(address.clone()).unwrap();
+                    }
+                }
+            }
+        }));
 
         tokio::spawn(async move {
             node_runner.run().await;
         });
 
+        // Wait for node to know its address
+        let node_addr = node_address_receiver.await.unwrap();
+
         tokio::time::sleep(Duration::from_millis(40)).await;
 
-        let address = node_addresses_receiver
-            .next()
-            .await
-            .unwrap()
-            .with(Protocol::P2p(node.id().into()));
+        let address = node_addr.with(Protocol::P2p(node.id().into()));
 
         bootstrap_nodes.push(address);
 
