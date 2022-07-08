@@ -7,7 +7,6 @@ use crate::pieces_by_range_handler::{
 };
 use crate::shared::Shared;
 use futures::channel::mpsc;
-use futures::{AsyncRead, AsyncWrite};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, MemoryTransport, OrTransport};
 use libp2p::dns::TokioDnsConfig;
@@ -205,17 +204,9 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
     let local_peer_id = keypair.public().to_peer_id();
 
     // Create optional relay transport and client.
-    let (relay_transport, relay_client) = relay_config
-        .is_client_enabled()
-        .then(|| {
-            let (relay_transport, relay_client) =
-                RelayClient::new_transport_and_behaviour(local_peer_id);
+    let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
-            (Some(relay_transport), Some(relay_client))
-        })
-        .unwrap_or((None, None));
-
-    let transport = build_transport(keypair, timeout, yamux_config, relay_transport).await?;
+    let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
     let relay_config_for_swarm = relay_config.clone();
     // libp2p uses blocking API, hence we need to create a blocking task.
@@ -242,20 +233,18 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
             PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
 
-        let behaviour = Behavior::new(
-            BehaviorConfig {
-                peer_id: local_peer_id,
-                bootstrap_nodes,
-                identify,
-                kademlia,
-                gossipsub,
-                value_getter,
-                pieces_by_range_protocol_config,
-                pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
-                relay_config: relay_config_for_swarm.clone(),
-            },
+        let behaviour = Behavior::new(BehaviorConfig {
+            peer_id: local_peer_id,
+            bootstrap_nodes,
+            identify,
+            kademlia,
+            gossipsub,
+            value_getter,
+            pieces_by_range_protocol_config,
+            pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
+            relay_config: relay_config_for_swarm.clone(),
             relay_client,
-        );
+        });
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             .executor(Box::new(|fut| {
@@ -319,12 +308,12 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
     )
 }
 
-// Builds the transport stack that LibP2P will communicate over along with an optional relay client.
+// Builds the transport stack that LibP2P will communicate over along with a relay client.
 async fn build_transport(
-    keypair: identity::Keypair,
+    keypair: &identity::Keypair,
     timeout: Duration,
     yamux_config: YamuxConfig,
-    relay_transport: Option<ClientTransport>,
+    relay_transport: ClientTransport,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
         let dns_tcp = TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?;
@@ -335,54 +324,15 @@ async fn build_transport(
         MemoryTransport::default().or_transport(transport)
     };
 
-    if let Some(relay_transport) = relay_transport {
-        let transport = OrTransport::new(relay_transport, transport);
-        Ok(upgrade_transport(
-            transport,
-            &keypair,
-            timeout,
-            yamux_config,
-        ))
-    } else {
-        Ok(upgrade_transport(
-            transport,
-            &keypair,
-            timeout,
-            yamux_config,
-        ))
-    }
-}
-
-// Upgrades a provided transport with a multiplexer and a Noise authenticator.
-fn upgrade_transport<T, Output, Error, Listener, ListenerUpgrade, Dial>(
-    transport: T,
-    keypair: &identity::Keypair,
-    timeout: Duration,
-    yamux_config: YamuxConfig,
-) -> Boxed<(PeerId, StreamMuxerBox)>
-where
-    T: Transport<
-            Output = Output,
-            Error = Error,
-            Listener = Listener,
-            ListenerUpgrade = ListenerUpgrade,
-            Dial = Dial,
-        > + Send
-        + 'static,
-    Output: Unpin + Send + AsyncWrite + AsyncRead + 'static,
-    Error: Sync + Send + 'static,
-    Listener: Send + 'static,
-    ListenerUpgrade: Send + 'static,
-    Dial: Send + 'static,
-{
+    let transport = OrTransport::new(relay_transport, transport);
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
         .into_authentic(keypair)
         .expect("Signing libp2p-noise static DH keypair failed.");
 
-    transport
+    Ok(transport
         .upgrade(core::upgrade::Version::V1Lazy)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(yamux_config)
         .timeout(timeout)
-        .boxed()
+        .boxed())
 }

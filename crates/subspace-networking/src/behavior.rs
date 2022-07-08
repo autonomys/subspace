@@ -47,6 +47,8 @@ pub(crate) struct BehaviorConfig {
     pub(crate) pieces_by_range_request_handler: Box<dyn RequestResponseHandlerRunner + Send>,
     /// Defines relay circuits configuration.
     pub(crate) relay_config: RelayConfiguration,
+    /// Circuit relay client.
+    pub(crate) relay_client: RelayClient,
 }
 
 #[derive(NetworkBehaviour)]
@@ -59,11 +61,11 @@ pub(crate) struct Behavior {
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponsesBehaviour,
     pub(crate) relay: Toggle<Relay>,
-    pub(crate) relay_client: Toggle<RelayClient>,
+    pub(crate) relay_client: RelayClient,
 }
 
 impl Behavior {
-    pub(crate) fn new(config: BehaviorConfig, relay_client: Option<RelayClient>) -> Self {
+    pub(crate) fn new(config: BehaviorConfig) -> Self {
         let kademlia = {
             let store = CustomRecordStore::new(config.value_getter);
             let mut kademlia =
@@ -121,7 +123,7 @@ impl Behavior {
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
             relay,
-            relay_client: relay_client.into(),
+            relay_client: config.relay_client,
         }
     }
 }
