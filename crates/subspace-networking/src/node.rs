@@ -1,6 +1,7 @@
+use crate::create::{create, Config, CreationError};
+use crate::node_runner::NodeRunner;
 use crate::pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use crate::shared::{Command, CreatedSubscription, Shared};
-use crate::RelayConfiguration;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::{mpsc, oneshot};
@@ -120,10 +121,10 @@ pub enum SendPiecesByRangeRequestError {
 }
 
 #[derive(Debug, Error)]
-pub enum RelayConfigurationError {
-    /// Client configuration error: expected server parent configuration.
-    #[error("cannot configure relay client, parent configuration should be server")]
-    ExpectedServerConfiguration,
+pub enum CircuitRelayClientError {
+    /// Expected node to be a circuit relay server, found only client
+    #[error("Expected node to be a circuit relay server, found only client")]
+    ExpectedServer,
     /// Failed to retrieve memory address, typically means networking was destroyed.
     #[error("Failed to retrieve memory address")]
     FailedToRetrieveMemoryAddress,
@@ -134,7 +135,7 @@ pub enum RelayConfigurationError {
 pub struct Node {
     shared: Arc<Shared>,
     is_relay_server: bool,
-    relay_server_memory_address: Arc<Mutex<Option<Multiaddr>>>,
+    relay_server_memory_port: Arc<Mutex<Option<u64>>>,
 }
 
 impl Node {
@@ -142,7 +143,7 @@ impl Node {
         Self {
             shared,
             is_relay_server,
-            relay_server_memory_address: Arc::new(Mutex::new(None)),
+            relay_server_memory_port: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -151,35 +152,40 @@ impl Node {
         self.shared.id
     }
 
-    /// Configures relay-client configuration (ClientAcceptor) from this Node. It expects Node
-    /// running in the relay server mode and create relay client's listening address with the proper
-    /// circuit address in the format: /memory/50000/p2p/<server_peer_id>/p2p-circuit
-    pub async fn configure_relay_client(
-        &self,
-    ) -> Result<RelayConfiguration, RelayConfigurationError> {
+    /// Configures circuit relay client using this node as circuit relay server. It expects Node
+    /// running in the relay server mode (which happens automatically when addresses to listen on
+    /// are provided).
+    pub async fn spawn(&self, mut config: Config) -> Result<(Node, NodeRunner), CreationError> {
+        let relay_server_memory_port = self.get_relay_server_memory_port().await?;
+
+        config.relay_server_address.replace(
+            Multiaddr::from(Protocol::Memory(relay_server_memory_port))
+                .with(Protocol::P2p(self.id().into()))
+                .with(Protocol::P2pCircuit),
+        );
+
+        create(config).await
+    }
+
+    /// Get address of circuit relay server for use
+    pub async fn get_relay_server_memory_port(&self) -> Result<u64, CircuitRelayClientError> {
         if !self.is_relay_server {
-            return Err(RelayConfigurationError::ExpectedServerConfiguration);
+            return Err(CircuitRelayClientError::ExpectedServer);
         }
 
         // Fast path in case address is already known
-        if let Some(relay_server_memory_address) = self.relay_server_memory_address.lock().as_ref()
-        {
-            return Ok(RelayConfiguration::ClientAcceptor(
-                relay_server_memory_address
-                    .clone()
-                    .with(Protocol::P2p(self.id().into()))
-                    .with(Protocol::P2pCircuit),
-            ));
+        if let Some(port) = *self.relay_server_memory_port.lock() {
+            return Ok(port);
         }
 
-        let (address_sender, address_receiver) = oneshot::channel();
+        let (port_sender, port_receiver) = oneshot::channel();
         let _handler = self.on_new_listener(Arc::new({
-            let address_sender = Mutex::new(Some(address_sender));
+            let port_sender = Mutex::new(Some(port_sender));
 
             move |address| {
                 if let Some(Protocol::Memory(port)) = address.iter().next() {
-                    if let Some(address_sender) = address_sender.lock().take() {
-                        let _ = address_sender.send(Multiaddr::from(Protocol::Memory(port)));
+                    if let Some(port_sender) = port_sender.lock().take() {
+                        let _ = port_sender.send(port);
                     }
                 }
             }
@@ -188,33 +194,20 @@ impl Node {
         // Subscription to events is in place, check if listener is already known
         for address in self.shared.listeners.lock().iter() {
             if let Some(Protocol::Memory(port)) = address.iter().next() {
-                let address = Multiaddr::from(Protocol::Memory(port));
-                self.relay_server_memory_address
-                    .lock()
-                    .replace(address.clone());
+                self.relay_server_memory_port.lock().replace(port);
 
-                return Ok(RelayConfiguration::ClientAcceptor(
-                    address
-                        .with(Protocol::P2p(self.id().into()))
-                        .with(Protocol::P2pCircuit),
-                ));
+                return Ok(port);
             }
         }
 
         // Otherwise for new memory listener
-        let address = address_receiver
+        let port = port_receiver
             .await
-            .map_err(|_error| RelayConfigurationError::FailedToRetrieveMemoryAddress)?;
+            .map_err(|_error| CircuitRelayClientError::FailedToRetrieveMemoryAddress)?;
 
-        self.relay_server_memory_address
-            .lock()
-            .replace(address.clone());
+        self.relay_server_memory_port.lock().replace(port);
 
-        Ok(RelayConfiguration::ClientAcceptor(
-            address
-                .with(Protocol::P2p(self.id().into()))
-                .with(Protocol::P2pCircuit),
-        ))
+        Ok(port)
     }
 
     pub async fn get_value(&self, key: Multihash) -> Result<Option<Vec<u8>>, GetValueError> {

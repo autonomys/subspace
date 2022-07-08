@@ -1,6 +1,6 @@
 pub(crate) mod custom_record_store;
 
-use crate::create::{RelayConfiguration, ValueGetter};
+use crate::create::ValueGetter;
 use crate::request_responses::{
     Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
     RequestResponseHandlerRunner, RequestResponseInstanceConfig, RequestResponsesBehaviour,
@@ -45,8 +45,8 @@ pub(crate) struct BehaviorConfig {
     pub(crate) pieces_by_range_protocol_config: RequestResponseConfig,
     /// The pieces-by-range request handler.
     pub(crate) pieces_by_range_request_handler: Box<dyn RequestResponseHandlerRunner + Send>,
-    /// Defines relay circuits configuration.
-    pub(crate) relay_config: RelayConfiguration,
+    /// Whether node can serve as relay server.
+    pub(crate) is_relay_server: bool,
     /// Circuit relay client.
     pub(crate) relay_client: RelayClient,
 }
@@ -86,8 +86,7 @@ impl Behavior {
         .expect("Correct configuration");
 
         let relay = config
-            .relay_config
-            .is_server_enabled()
+            .is_relay_server
             .then(|| {
                 Relay::new(config.peer_id, {
                     // Duration::MAX causes runtime overflows and u32::MAX was recommended in the runtime error!

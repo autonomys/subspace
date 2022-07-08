@@ -1,6 +1,6 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
-use crate::node::Node;
+use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
 use crate::pieces_by_range_handler::{
     ExternalPiecesByRangeRequestHandler, PiecesByRangeRequestHandler,
@@ -34,48 +34,6 @@ use tracing::info;
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
 
-/// Defines relay circuits configuration for the networking.
-#[derive(Clone, Debug)]
-pub enum RelayConfiguration {
-    /// Relay server configuration. The node will be able to act as a relay for other peers, but
-    /// only for local peers.
-    /// This option will toggle the relay behaviour (relay server).
-    Server,
-
-    /// Relay-client configuration in accepting mode (eg.: client behind NAT). It will enable listening
-    /// on the provided Multiaddr with registering a circuit reservation.
-    /// Expected format for Multiaddr: /ip4/127.0.0.1/tcp/50000/p2p/<server_peer_id>/p2p-circuit
-    /// This option will toggle the relay-client behaviour.
-    ClientAcceptor(Multiaddr),
-
-    /// Relay-client configuration in requesting mode (a request for a client behind NAT).
-    /// It will enable creating a relay circuit.
-    /// This option will toggle the relay-client behaviour.
-    ClientInitiator,
-}
-
-impl Default for RelayConfiguration {
-    fn default() -> Self {
-        Self::ClientInitiator
-    }
-}
-
-impl RelayConfiguration {
-    /// Defines whether `self` is configured as a relay client in either ClientInitiator or
-    /// ClientAcceptor modes.
-    pub fn is_client_enabled(&self) -> bool {
-        matches!(
-            self,
-            RelayConfiguration::ClientInitiator | RelayConfiguration::ClientAcceptor(..)
-        )
-    }
-
-    /// Defines whether `self` is configured as a relay server.
-    pub fn is_server_enabled(&self) -> bool {
-        matches!(self, RelayConfiguration::Server)
-    }
-}
-
 /// [`Node`] configuration.
 #[derive(Clone)]
 pub struct Config {
@@ -106,8 +64,10 @@ pub struct Config {
     pub initial_random_query_interval: Duration,
     /// Defines a handler for the pieces-by-range protocol.
     pub pieces_by_range_request_handler: ExternalPiecesByRangeRequestHandler,
-    /// Defines relay mode and limit settings.
-    pub relay_config: RelayConfiguration,
+    /// Circuit relay server address.
+    ///
+    /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
+    pub relay_server_address: Option<Multiaddr>,
 }
 
 impl fmt::Debug for Config {
@@ -164,7 +124,7 @@ impl Config {
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             pieces_by_range_request_handler: Arc::new(|_| None),
-            relay_config: Default::default(),
+            relay_server_address: None,
         }
     }
 }
@@ -175,6 +135,9 @@ pub enum CreationError {
     /// Bad bootstrap address.
     #[error("Bad bootstrap address")]
     BadBootstrapAddress,
+    /// Circuit relay client error.
+    #[error("Circuit relay client error: {0}")]
+    CircuitRelayClient(#[from] CircuitRelayClientError),
     /// I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -199,7 +162,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         allow_non_globals_in_dht,
         initial_random_query_interval,
         pieces_by_range_request_handler,
-        relay_config,
+        relay_server_address,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
@@ -208,7 +171,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
-    let relay_config_for_swarm = relay_config.clone();
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
         // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
@@ -233,6 +195,8 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
             PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
 
+        let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
+
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
             bootstrap_nodes,
@@ -242,7 +206,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             value_getter,
             pieces_by_range_protocol_config,
             pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
-            relay_config: relay_config_for_swarm.clone(),
+            is_relay_server,
             relay_client,
         });
 
@@ -270,19 +234,13 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             }
         }
 
-        let is_relay_server = relay_config_for_swarm.is_server_enabled();
-
-        match relay_config_for_swarm {
-            RelayConfiguration::Server => {
-                swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;
-            }
-            RelayConfiguration::ClientAcceptor(addr) => {
-                // Setup circuit for the accepting relay client. This will reserve a circuit.
-                swarm.listen_on(addr)?;
-            }
-            RelayConfiguration::ClientInitiator => {
-                // Nothing special to do in this case
-            }
+        if let Some(relay_server_address) = relay_server_address {
+            // Setup circuit for the accepting relay client. This will reserve a circuit.
+            swarm.listen_on(relay_server_address)?;
+        }
+        if is_relay_server {
+            // Will potentially act as relay server for which memory transport is necessary
+            swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;
         }
 
         let (command_sender, command_receiver) = mpsc::channel(1);

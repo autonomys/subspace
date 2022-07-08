@@ -5,9 +5,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{
-    Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot, RelayConfiguration,
-};
+use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +15,6 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        relay_config: RelayConfiguration::Server,
         ..Config::with_generated_keypair()
     };
 
@@ -65,13 +62,9 @@ async fn main() {
                 next_piece_index_hash: None,
             })
         }),
-        relay_config: node_1
-            .configure_relay_client()
-            .await
-            .expect("Relay Server should be configured."),
         ..Config::with_generated_keypair()
     };
-    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = node_1.spawn(config_2).await.unwrap();
 
     println!("Node 2 (server) ID is {}", node_2.id());
 
@@ -87,7 +80,6 @@ async fn main() {
             .with(Protocol::P2pCircuit)
             .with(Protocol::P2p(node_2.id().into()))],
         allow_non_globals_in_dht: true,
-        relay_config: RelayConfiguration::ClientInitiator,
         ..Config::with_generated_keypair()
     };
 
