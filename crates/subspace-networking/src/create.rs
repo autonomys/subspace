@@ -105,15 +105,11 @@ pub enum RelayConfiguration {
     /// It will enable creating a relay circuit.
     /// This option will toggle the relay-client behaviour.
     ClientInitiator,
-
-    /// No relay configuration.
-    /// This option will have both relay (server) and relay client behaviour disabled.
-    NoRelay,
 }
 
 impl Default for RelayConfiguration {
     fn default() -> Self {
-        Self::NoRelay
+        Self::ClientInitiator
     }
 }
 
