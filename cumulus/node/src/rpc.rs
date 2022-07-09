@@ -5,7 +5,8 @@
 
 #![warn(missing_docs)]
 
-use cirrus_runtime::{opaque::Block, AccountId, Balance, Index as Nonce};
+use cirrus_runtime::opaque::Block;
+use cirrus_runtime::{AccountId, Balance, Index as Nonce};
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::AuxStore;
@@ -19,36 +20,40 @@ use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies
 pub struct FullDeps<C, P> {
-	/// The client instance to use.
-	pub client: Arc<C>,
-	/// Transaction pool instance.
-	pub pool: Arc<P>,
-	/// Whether to deny unsafe calls
-	pub deny_unsafe: DenyUnsafe,
+    /// The client instance to use.
+    pub client: Arc<C>,
+    /// Transaction pool instance.
+    pub pool: Arc<P>,
+    /// Whether to deny unsafe calls
+    pub deny_unsafe: DenyUnsafe,
 }
 
 /// Instantiate all RPC extensions.
 pub fn create_full<C, P>(
-	deps: FullDeps<C, P>,
+    deps: FullDeps<C, P>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
-	C: ProvideRuntimeApi<Block>
-		+ HeaderBackend<Block>
-		+ AuxStore
-		+ HeaderMetadata<Block, Error = BlockChainError>
-		+ Send
-		+ Sync
-		+ 'static,
-	C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
-	C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
-	C::Api: BlockBuilder<Block>,
-	P: TransactionPool + Sync + Send + 'static,
+    C: ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + AuxStore
+        + HeaderMetadata<Block, Error = BlockChainError>
+        + Send
+        + Sync
+        + 'static,
+    C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
+    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
+    C::Api: BlockBuilder<Block>,
+    P: TransactionPool + Sync + Send + 'static,
 {
-	let mut module = RpcModule::new(());
-	let FullDeps { client, pool, deny_unsafe } = deps;
+    let mut module = RpcModule::new(());
+    let FullDeps {
+        client,
+        pool,
+        deny_unsafe,
+    } = deps;
 
-	module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
-	module.merge(TransactionPayment::new(client).into_rpc())?;
+    module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+    module.merge(TransactionPayment::new(client).into_rpc())?;
 
-	Ok(module)
+    Ok(module)
 }

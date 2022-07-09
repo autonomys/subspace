@@ -14,15 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
+use sc_consensus::import_queue::{BasicQueue, Verifier as VerifierT};
 use sc_consensus::{
-	import_queue::{BasicQueue, Verifier as VerifierT},
-	BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
+    BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sp_blockchain::Result as ClientResult;
-use sp_consensus::{error::Error as ConsensusError, BlockOrigin, CacheKeyId};
+use sp_consensus::error::Error as ConsensusError;
+use sp_consensus::{BlockOrigin, CacheKeyId};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
+use std::marker::PhantomData;
 use substrate_prometheus_endpoint::Registry;
 
 /// Secondary chain specific block import.
@@ -33,84 +35,92 @@ use substrate_prometheus_endpoint::Registry;
 struct SecondaryChainBlockImport<I>(I);
 
 impl<I> SecondaryChainBlockImport<I> {
-	/// Create a new instance.
-	fn new(inner: I) -> Self {
-		Self(inner)
-	}
+    /// Create a new instance.
+    fn new(inner: I) -> Self {
+        Self(inner)
+    }
 }
 
 #[async_trait::async_trait]
 impl<Block, I> BlockImport<Block> for SecondaryChainBlockImport<I>
 where
-	Block: BlockT,
-	I: BlockImport<Block> + Send,
+    Block: BlockT,
+    I: BlockImport<Block> + Send,
 {
-	type Error = I::Error;
-	type Transaction = I::Transaction;
+    type Error = I::Error;
+    type Transaction = I::Transaction;
 
-	async fn check_block(
-		&mut self,
-		block: BlockCheckParams<Block>,
-	) -> Result<ImportResult, Self::Error> {
-		self.0.check_block(block).await
-	}
+    async fn check_block(
+        &mut self,
+        block: BlockCheckParams<Block>,
+    ) -> Result<ImportResult, Self::Error> {
+        self.0.check_block(block).await
+    }
 
-	async fn import_block(
-		&mut self,
-		mut block_import_params: BlockImportParams<Block, Self::Transaction>,
-		cache: HashMap<CacheKeyId, Vec<u8>>,
-	) -> Result<ImportResult, Self::Error> {
-		// Best block is determined by the primary chain, or if we are doing the initial sync
-		// we import all blocks as new best.
-		block_import_params.fork_choice = Some(ForkChoiceStrategy::Custom(
-			block_import_params.origin == BlockOrigin::NetworkInitialSync,
-		));
-		self.0.import_block(block_import_params, cache).await
-	}
+    async fn import_block(
+        &mut self,
+        mut block_import_params: BlockImportParams<Block, Self::Transaction>,
+        cache: HashMap<CacheKeyId, Vec<u8>>,
+    ) -> Result<ImportResult, Self::Error> {
+        // Best block is determined by the primary chain, or if we are doing the initial sync
+        // we import all blocks as new best.
+        block_import_params.fork_choice = Some(ForkChoiceStrategy::Custom(
+            block_import_params.origin == BlockOrigin::NetworkInitialSync,
+        ));
+        self.0.import_block(block_import_params, cache).await
+    }
 }
 
 /// A verifier that just checks the inherents.
 pub struct Verifier<Block> {
-	_marker: PhantomData<Block>,
+    _marker: PhantomData<Block>,
 }
 
 impl<Block> Default for Verifier<Block> {
-	/// Create a new instance.
-	fn default() -> Self {
-		Self { _marker: PhantomData }
-	}
+    /// Create a new instance.
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl<Block> VerifierT<Block> for Verifier<Block>
 where
-	Block: BlockT,
+    Block: BlockT,
 {
-	async fn verify(
-		&mut self,
-		mut block_params: BlockImportParams<Block, ()>,
-	) -> Result<(BlockImportParams<Block, ()>, Option<Vec<(CacheKeyId, Vec<u8>)>>), String> {
-		block_params.post_hash = Some(block_params.header.hash());
+    async fn verify(
+        &mut self,
+        mut block_params: BlockImportParams<Block, ()>,
+    ) -> Result<
+        (
+            BlockImportParams<Block, ()>,
+            Option<Vec<(CacheKeyId, Vec<u8>)>>,
+        ),
+        String,
+    > {
+        block_params.post_hash = Some(block_params.header.hash());
 
-		Ok((block_params, None))
-	}
+        Ok((block_params, None))
+    }
 }
 
 /// Start an import queue for a Cumulus collator that does not uses any special authoring logic.
 pub fn import_queue<Block: BlockT, I>(
-	block_import: I,
-	spawner: &impl SpawnEssentialNamed,
-	registry: Option<&Registry>,
+    block_import: I,
+    spawner: &impl SpawnEssentialNamed,
+    registry: Option<&Registry>,
 ) -> ClientResult<BasicQueue<Block, I::Transaction>>
 where
-	I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
-	I::Transaction: Send,
+    I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
+    I::Transaction: Send,
 {
-	Ok(BasicQueue::new(
-		Verifier::default(),
-		Box::new(SecondaryChainBlockImport::new(block_import)),
-		None,
-		spawner,
-		registry,
-	))
+    Ok(BasicQueue::new(
+        Verifier::default(),
+        Box::new(SecondaryChainBlockImport::new(block_import)),
+        None,
+        spawner,
+        registry,
+    ))
 }
