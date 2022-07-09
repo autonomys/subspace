@@ -25,7 +25,7 @@ impl Account {
     pub(crate) fn secret(&self) -> SecretKey {
         let data = self.0.encode();
         let mut bytes = [0_u8; 32];
-        bytes[0..data.len()].copy_from_slice(&*data);
+        bytes[0..data.len()].copy_from_slice(&data);
         SecretKey::from_bytes(&bytes)
             .expect("A static array of the correct length is a known good.")
     }

@@ -48,7 +48,7 @@ impl<Offender> offence::OnOffenceHandler<Offender> for OnOffenceHandler {
 }
 
 pub fn with_on_offence_fractions<R, F: FnOnce(&mut Vec<Perbill>) -> R>(f: F) -> R {
-    ON_OFFENCE_PERBILL.with(|fractions| f(&mut *fractions.borrow_mut()))
+    ON_OFFENCE_PERBILL.with(|fractions| f(fractions.borrow_mut().as_mut()))
 }
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;

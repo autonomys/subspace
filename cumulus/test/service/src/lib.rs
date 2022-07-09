@@ -454,7 +454,7 @@ impl TestNode {
         immortal: bool,
         nonce: u32,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
-        let extrinsic = construct_extrinsic(&*self.client, function, caller, immortal, nonce);
+        let extrinsic = construct_extrinsic(&self.client, function, caller, immortal, nonce);
 
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }

@@ -839,7 +839,7 @@ fn block_announce_data_is_propagated() {
 		) -> Pin<
 			Box<dyn Future<Output = Result<Validation, Box<dyn std::error::Error + Send>>> + Send>,
 		> {
-			let correct = data.get(0) == Some(&137);
+			let correct = data.first() == Some(&137);
 			async move {
 				if correct {
 					Ok(Validation::Success { is_new_best: true })

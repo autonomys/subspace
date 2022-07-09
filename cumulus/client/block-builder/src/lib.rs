@@ -46,7 +46,7 @@ use sc_client_api::backend;
 /// When `RecordProof::Yes` is given, all accessed trie nodes should be saved. These recorded
 /// trie nodes can be used by a third party to proof this proposal without having access to the
 /// full storage.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum RecordProof {
     /// `Yes`, record a proof.
     Yes,

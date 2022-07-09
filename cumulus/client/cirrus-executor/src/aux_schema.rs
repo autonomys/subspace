@@ -649,12 +649,16 @@ mod tests {
 
         let (bad_receipt_hash1, block_hash1) = (
             Hash::random(),
-            insert_header(&*backend, 1u64, client.info().genesis_hash),
+            insert_header(backend.as_ref(), 1u64, client.info().genesis_hash),
         );
-        let (bad_receipt_hash2, block_hash2) =
-            (Hash::random(), insert_header(&*backend, 2u64, block_hash1));
-        let (bad_receipt_hash3, block_hash3) =
-            (Hash::random(), insert_header(&*backend, 3u64, block_hash2));
+        let (bad_receipt_hash2, block_hash2) = (
+            Hash::random(),
+            insert_header(backend.as_ref(), 2u64, block_hash1),
+        );
+        let (bad_receipt_hash3, block_hash3) = (
+            Hash::random(),
+            insert_header(backend.as_ref(), 3u64, block_hash2),
+        );
 
         write_bad_receipt::<_, PBlock, _>(&client, 10, bad_receipt_hash1, (1, block_hash1))
             .unwrap();
@@ -666,8 +670,10 @@ mod tests {
             .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
 
-        let (bad_receipt_hash4, block_hash4) =
-            (Hash::random(), insert_header(&*backend, 4u64, block_hash3));
+        let (bad_receipt_hash4, block_hash4) = (
+            Hash::random(),
+            insert_header(backend.as_ref(), 4u64, block_hash3),
+        );
         write_bad_receipt::<_, PBlock, _>(&client, 20, bad_receipt_hash4, (1, block_hash4))
             .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
@@ -720,8 +726,10 @@ mod tests {
         assert!(delete_bad_receipt(&client, 20, bad_receipt_hash4).is_ok());
         assert_eq!(first_unconfirmed_bad_receipt_info(20), None);
 
-        let (bad_receipt_hash5, block_hash5) =
-            (Hash::random(), insert_header(&*backend, 5u64, block_hash4));
+        let (bad_receipt_hash5, block_hash5) = (
+            Hash::random(),
+            insert_header(backend.as_ref(), 5u64, block_hash4),
+        );
         write_bad_receipt::<_, PBlock, _>(&client, 30, bad_receipt_hash5, (1, block_hash5))
             .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![30]));

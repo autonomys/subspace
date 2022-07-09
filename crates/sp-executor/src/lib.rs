@@ -411,7 +411,7 @@ impl BundleEquivocationProof {
 }
 
 /// Represents an invalid transaction proof.
-#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidTransactionProof;
 
 sp_api::decl_runtime_apis! {

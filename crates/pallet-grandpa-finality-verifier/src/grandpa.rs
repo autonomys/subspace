@@ -45,7 +45,7 @@ pub struct GrandpaJustification<Header: HeaderT> {
 }
 
 /// A GRANDPA Authority List and ID.
-#[derive(Debug, Default, Encode, Decode, PartialEq, Clone, TypeInfo)]
+#[derive(Debug, Default, Encode, Decode, Eq, PartialEq, Clone, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct AuthoritySet {
     /// List of GRANDPA authorities for the current round.
@@ -108,7 +108,7 @@ impl<Header: HeaderT> AncestryChain<Header> {
 }
 
 /// Justification verification error.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     /// Justification is finalizing unexpected header.
     InvalidJustificationTarget,

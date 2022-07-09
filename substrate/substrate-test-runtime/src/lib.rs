@@ -289,7 +289,7 @@ pub fn run_tests(mut input: &[u8]) -> Vec<u8> {
 }
 
 /// A type that can not be decoded.
-#[derive(PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct DecodeFails<B: BlockT> {
     _phantom: PhantomData<B>,
 }
@@ -1315,9 +1315,9 @@ mod tests {
     use sp_core::storage::well_known_keys::HEAP_PAGES;
     use sp_runtime::generic::BlockId;
     use sp_state_machine::ExecutionStrategy;
-    use substrate_test_runtime_client::{
-        prelude::*, runtime::TestAPI, DefaultTestClientBuilderExt, TestClientBuilder,
-    };
+    use substrate_test_runtime_client::prelude::*;
+    use substrate_test_runtime_client::runtime::TestAPI;
+    use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilder};
 
     #[test]
     fn heap_pages_is_respected() {

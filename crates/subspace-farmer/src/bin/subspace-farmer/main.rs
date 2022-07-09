@@ -156,7 +156,7 @@ impl FromStr for DiskFarm {
                 return Err("Each component must contain = separating key from value".to_string());
             }
 
-            let key = *part.get(0).expect("Length checked above; qed");
+            let key = *part.first().expect("Length checked above; qed");
             let value = *part.get(1).expect("Length checked above; qed");
 
             match key {

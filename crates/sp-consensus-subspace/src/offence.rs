@@ -65,7 +65,7 @@ pub trait Offence<Offender> {
 }
 
 /// Errors that may happen on offence reports.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum OffenceError {
     /// The report has already been submitted.
     DuplicateReport,
