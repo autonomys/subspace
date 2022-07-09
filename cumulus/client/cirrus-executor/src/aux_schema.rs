@@ -203,8 +203,8 @@ pub(super) fn delete_bad_receipt<Backend: AuxStore>(
         hashes_at_block_number.swap_remove(index);
     } else {
         return Err(ClientError::Backend(format!(
-			"Deleting an inexistent bad receipt {signed_receipt_hash:?}, available: {hashes_at_block_number:?}"
-		)));
+            "Deleting an inexistent bad receipt {signed_receipt_hash:?}, available: {hashes_at_block_number:?}",
+        )));
     }
 
     let mut keys_to_delete = vec![bad_receipt_mismatch_info_key(signed_receipt_hash)];
@@ -334,9 +334,9 @@ where
                 bad_receipt_mismatch_info_key(bad_signed_receipt_hash).as_slice(),
             )?
             .ok_or_else(|| {
-                ClientError::Backend(
-					format!("Trace mismatch info not found for `bad_signed_receipt_hash`: {bad_signed_receipt_hash:?}")
-				)
+                ClientError::Backend(format!(
+                        "Trace mismatch info not found for `bad_signed_receipt_hash`: {bad_signed_receipt_hash:?}"
+                ))
             })?;
 
             // TODO: Ensure the block from which the trace mismatch index was generated is still on the
@@ -618,8 +618,6 @@ mod tests {
 
     #[test]
     fn write_delete_prune_bad_receipt_works() {
-        // let client = substrate_test_runtime_client::new();
-
         let (client, backend) =
             substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();
 

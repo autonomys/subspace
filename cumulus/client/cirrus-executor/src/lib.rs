@@ -341,7 +341,7 @@ where
                         bundle_equivocation_proof,
                     )
                 {
-                    tracing::debug!(
+                    tracing::error!(
                         target: LOG_TARGET,
                         error = ?error,
                         "Failed to submit bundle equivocation proof"
@@ -370,7 +370,7 @@ where
                         fraud_proof,
                     )
                 {
-                    tracing::debug!(
+                    tracing::error!(
                         target: LOG_TARGET,
                         error = ?error,
                         "Failed to submit fraud proof"
@@ -399,7 +399,7 @@ where
                         invalid_transaction_proof,
                     )
                 {
-                    tracing::debug!(
+                    tracing::error!(
                         target: LOG_TARGET,
                         error = ?error,
                         "Failed to submit invalid transaction proof"

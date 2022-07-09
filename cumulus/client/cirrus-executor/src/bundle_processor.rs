@@ -340,9 +340,9 @@ where
 
         if self.primary_network.is_major_syncing() {
             tracing::debug!(
-				target: LOG_TARGET,
-				"Skip generating signed execution receipt as the primary node is still major syncing..."
-			);
+                target: LOG_TARGET,
+                "Skip generating signed execution receipt as the primary node is still major syncing..."
+            );
             return Ok(());
         }
 
@@ -404,20 +404,20 @@ where
             .into_iter()
             .flat_map(|bundle| {
                 bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-					match <<Block as BlockT>::Extrinsic>::decode(
-						&mut opaque_extrinsic.encode().as_slice(),
-					) {
-						Ok(uxt) => Some(uxt),
-						Err(e) => {
-							tracing::error!(
-								target: LOG_TARGET,
-								error = ?e,
-								"Failed to decode the opaque extrisic in bundle, this should not happen"
-							);
-							None
-						},
-					}
-				})
+                    match <<Block as BlockT>::Extrinsic>::decode(
+                        &mut opaque_extrinsic.encode().as_slice(),
+                    ) {
+                        Ok(uxt) => Some(uxt),
+                        Err(e) => {
+                            tracing::error!(
+                                target: LOG_TARGET,
+                                error = ?e,
+                                "Failed to decode the opaque extrisic in bundle, this should not happen"
+                            );
+                            None
+                        },
+                    }
+                })
             })
             .collect::<Vec<_>>();
 
@@ -617,7 +617,7 @@ where
                         fraud_proof,
                     )
                 {
-                    tracing::debug!(
+                    tracing::error!(
                         target: LOG_TARGET,
                         error = ?error,
                         "Failed to submit fraud proof"
