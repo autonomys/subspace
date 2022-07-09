@@ -18,11 +18,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use parity_scale_codec::{Decode, Encode};
-use sp_runtime::{
-	generic::UncheckedExtrinsic,
-	traits::{Block as BlockT, IdentifyAccount, Verify},
-	MultiAddress, MultiSignature,
-};
+use sp_runtime::generic::UncheckedExtrinsic;
+use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
+use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -51,42 +49,42 @@ pub type Address = MultiAddress<AccountId, ()>;
 ///
 /// Used by executor to extract the optional signer when shuffling the extrinsics.
 pub trait Signer<AccountId, Lookup> {
-	/// Returns the AccountId of signer.
-	fn signer(&self, lookup: &Lookup) -> Option<AccountId>;
+    /// Returns the AccountId of signer.
+    fn signer(&self, lookup: &Lookup) -> Option<AccountId>;
 }
 
 impl<Address, AccountId, Call, Signature, Extra, Lookup> Signer<AccountId, Lookup>
-	for UncheckedExtrinsic<Address, Call, Signature, Extra>
+    for UncheckedExtrinsic<Address, Call, Signature, Extra>
 where
-	Address: Clone,
-	Extra: sp_runtime::traits::SignedExtension<AccountId = AccountId>,
-	Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
+    Address: Clone,
+    Extra: sp_runtime::traits::SignedExtension<AccountId = AccountId>,
+    Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
-	fn signer(&self, lookup: &Lookup) -> Option<AccountId> {
-		self.signature
-			.as_ref()
-			.and_then(|(signed, _, _)| lookup.lookup(signed.clone()).ok())
-	}
+    fn signer(&self, lookup: &Lookup) -> Option<AccountId> {
+        self.signature
+            .as_ref()
+            .and_then(|(signed, _, _)| lookup.lookup(signed.clone()).ok())
+    }
 }
 
 sp_api::decl_runtime_apis! {
-	/// API necessary for secondary node.
-	pub trait SecondaryApi<AccountId: Encode + Decode> {
-		/// Extracts the optional signer per extrinsic.
-		fn extract_signer(
-			extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-		) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+    /// API necessary for secondary node.
+    pub trait SecondaryApi<AccountId: Encode + Decode> {
+        /// Extracts the optional signer per extrinsic.
+        fn extract_signer(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
 
-		/// Returns the intermediate storage roots in an encoded form.
-		fn intermediate_roots() -> Vec<[u8; 32]>;
+        /// Returns the intermediate storage roots in an encoded form.
+        fn intermediate_roots() -> Vec<[u8; 32]>;
 
-		/// Returns the storage root after initializing the block.
-		fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8>;
+        /// Returns the storage root after initializing the block.
+        fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8>;
 
-		/// Returns the storage root after applying the extrinsic.
-		fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
+        /// Returns the storage root after applying the extrinsic.
+        fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
 
-		/// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
-		fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
-	}
+        /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
+        fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
+    }
 }
