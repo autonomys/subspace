@@ -240,7 +240,7 @@ impl PrimaryTestNode {
         function: impl Into<subspace_test_runtime::Call>,
         caller: Sr25519Keyring,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
-        let extrinsic = construct_extrinsic(&*self.client, function, caller, 0);
+        let extrinsic = construct_extrinsic(&self.client, function, caller, 0);
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
 

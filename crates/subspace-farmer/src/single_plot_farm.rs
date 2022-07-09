@@ -626,7 +626,7 @@ impl SinglePlotFarm {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         if let Some(farming) = self.farming.as_mut() {
             try_join(farming.wait(), async {
-                (&mut self.node_runner).run().await;
+                self.node_runner.run().await;
 
                 Ok(())
             })

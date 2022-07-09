@@ -44,6 +44,7 @@ pub enum CommitmentStatusChange {
 
 #[derive(Default, Debug)]
 struct Handlers {
+    #[allow(clippy::type_complexity)]
     status_change:
         Bag<Arc<dyn Fn(&CommitmentStatusChange) + Send + Sync + 'static>, CommitmentStatusChange>,
 }
