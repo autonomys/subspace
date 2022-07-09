@@ -246,7 +246,9 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 			alice.client.hash(primary_number).unwrap().unwrap(),
 		)
 		.expect("Failed to load execution receipt from the local aux_db")
-		.expect("The requested execution receipt must exist");
+		.unwrap_or_else(|| {
+			panic!("The requested execution receipt for block {primary_number} does not exist")
+		});
 
 		let pair = ExecutorPair::from_string("//Alice", None).unwrap();
 		let signature = pair.sign(execution_receipt.hash().as_ref());
