@@ -2,7 +2,7 @@
 mod tests;
 
 use parity_scale_codec::{Decode, Encode};
-use rocksdb::{WriteBatch, DB};
+use rocksdb::{Options, WriteBatch, DB};
 use std::path::Path;
 use std::sync::Arc;
 use subspace_core_primitives::objects::GlobalObject;
@@ -27,7 +27,10 @@ impl ObjectMappings {
     where
         P: AsRef<Path>,
     {
-        let db = DB::open_default(path).map_err(ObjectMappingError::Db)?;
+        let mut options = Options::default();
+        options.create_if_missing(true);
+        options.set_unordered_write(true);
+        let db = DB::open(&options, path).map_err(ObjectMappingError::Db)?;
 
         Ok(Self { db: Arc::new(db) })
     }

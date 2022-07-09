@@ -10,15 +10,19 @@ use event_listener_primitives::{Bag, HandlerId};
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::{WriteBatch, DB};
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE};
+use std::{io, mem};
+use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE, TAG_SIZE};
 use subspace_solving::create_tag;
 use thiserror::Error;
 use tracing::trace;
 
-const BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
+/// Number of pieces to read at once during commitments creation (16MiB)
+const PLOT_READ_BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
+const PIECE_OFFSET_SIZE: usize = mem::size_of::<PieceOffset>();
+/// Number of commitments to store in memory before writing as a batch to disk (16MiB)
+const TAGS_WRITE_BATCH_SIZE: usize = 16 * 1024 * 1024 / (TAG_SIZE + PIECE_OFFSET_SIZE);
 
 #[derive(Debug, Error)]
 pub enum CommitmentError {
@@ -127,8 +131,10 @@ impl Commitments {
         }
 
         let piece_count = plot.piece_count();
-        for batch_start in (0..piece_count).step_by(BATCH_SIZE as usize) {
-            let pieces_to_process = (batch_start + BATCH_SIZE).min(piece_count) - batch_start;
+        let mut tags_with_offset = Vec::with_capacity(TAGS_WRITE_BATCH_SIZE);
+        for batch_start in (0..piece_count).step_by(PLOT_READ_BATCH_SIZE as usize) {
+            let pieces_to_process =
+                (batch_start + PLOT_READ_BATCH_SIZE).min(piece_count) - batch_start;
             // TODO: Read next batch while creating tags for the previous one for faster
             //  recommitment.
             let pieces = plot
@@ -151,15 +157,44 @@ impl Commitments {
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
-                let mut batch = WriteBatch::default();
-                for (tag, offset) in tags.iter().zip(batch_start..) {
-                    batch.put(tag, offset.to_le_bytes());
+                for (tag, offset) in tags.into_iter().zip(batch_start..) {
+                    tags_with_offset.push((tag, offset.to_le_bytes()));
                 }
-                db.write(batch).map_err(CommitmentError::CommitmentDb)?;
+
+                if tags_with_offset.len() == tags_with_offset.capacity() {
+                    tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
+
+                    let mut batch = WriteBatch::default();
+                    for (tag, offset) in &tags_with_offset {
+                        batch.put(tag, offset);
+                    }
+                    db.write(batch).map_err(CommitmentError::CommitmentDb)?;
+
+                    tags_with_offset.clear();
+                }
             } else {
                 // Database was already removed, no need to continue
                 break;
             }
+        }
+
+        // Write any remaining commitments in the buffer
+        if !tags_with_offset.is_empty() {
+            if let Some(db_entry) = self.get_db_entry(salt) {
+                let db_guard = db_entry.lock();
+
+                if let Some(db) = db_guard.as_ref() {
+                    tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
+
+                    let mut batch = WriteBatch::default();
+                    for (tag, offset) in &tags_with_offset {
+                        batch.put(tag, offset);
+                    }
+                    db.write(batch).map_err(CommitmentError::CommitmentDb)?;
+                }
+            }
+
+            drop(tags_with_offset);
         }
 
         let mut commitment_databases = self.inner.commitment_databases.lock();
@@ -226,12 +261,14 @@ impl Commitments {
             let db_guard = db_entry.lock();
 
             if let Some(db) = db_guard.as_ref() {
-                let tags_with_offset: Vec<(PieceOffset, Tag)> = pieces_with_offsets()
-                    .map(|(piece_offset, piece)| (piece_offset, create_tag(piece, salt)))
+                let mut tags_with_offset: Vec<(Tag, PieceOffset)> = pieces_with_offsets()
+                    .map(|(piece_offset, piece)| (create_tag(piece, salt), piece_offset))
                     .collect();
 
+                tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
+
                 let mut batch = WriteBatch::default();
-                for (piece_offset, tag) in tags_with_offset {
+                for (tag, piece_offset) in tags_with_offset {
                     batch.put(tag, piece_offset.to_le_bytes());
                 }
                 db.write(batch).map_err(CommitmentError::CommitmentDb)?;
