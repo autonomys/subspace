@@ -6,21 +6,6 @@ pub(crate) fn default_base_path() -> PathBuf {
         .join("subspace-farmer")
 }
 
-pub(crate) fn parse_human_readable_size(s: &str) -> Result<u64, std::num::ParseIntError> {
-    const SUFFIXES: &[(&str, u64)] = &[
-        ("G", 10u64.pow(9)),
-        ("GB", 10u64.pow(9)),
-        ("T", 10u64.pow(12)),
-        ("TB", 10u64.pow(12)),
-    ];
-
-    SUFFIXES
-        .iter()
-        .find_map(|(suf, mul)| s.strip_suffix(suf).map(|s| (s, mul)))
-        .map(|(s, mul)| s.parse::<u64>().map(|num| num * mul))
-        .unwrap_or_else(|| s.parse::<u64>())
-}
-
 pub(crate) fn raise_fd_limit() {
     match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
         Ok(Some(limit)) => {
