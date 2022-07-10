@@ -567,10 +567,8 @@ mod construct_uint {
 
     impl U256 {
         /// Calculates the distance metric between piece index hash and farmer address.
-        pub fn distance(PieceIndexHash(piece): &PieceIndexHash, address: &[u8]) -> U256 {
-            let piece = Self::from_big_endian(piece);
-            let address = Self::from_big_endian(address);
-            bidirectional_distance(&piece, &address)
+        pub fn distance(&self, address: &Self) -> U256 {
+            bidirectional_distance(self, address)
         }
 
         /// Convert piece distance to big endian bytes
@@ -601,7 +599,7 @@ mod construct_uint {
 
     impl From<PieceIndexHash> for U256 {
         fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
-            hash.into()
+            Self::from_big_endian(&hash)
         }
     }
 

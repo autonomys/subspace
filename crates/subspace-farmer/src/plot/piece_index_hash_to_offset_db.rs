@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::{io, iter};
-use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE};
+use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE, U256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BidirectionalDistanceSorted<T> {
@@ -43,7 +43,7 @@ impl BidirectionalDistanceSorted<PieceDistance> {
 #[derive(Debug)]
 pub(super) struct IndexHashToOffsetDB {
     inner: DB,
-    public_key: PublicKey,
+    public_key_as_number: U256,
     max_distance_cache: BTreeSet<BidirectionalDistanceSorted<PieceDistance>>,
     piece_count: Arc<AtomicU64>,
 }
@@ -65,7 +65,7 @@ impl IndexHashToOffsetDB {
             .map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
-            public_key,
+            public_key_as_number: U256::from_big_endian(&public_key),
             max_distance_cache: BTreeSet::new(),
             piece_count: Arc::new(AtomicU64::new(0)),
         };
@@ -152,13 +152,13 @@ impl IndexHashToOffsetDB {
 
     /// Returns `true` if piece plot will not result in exceeding plot size and doesn't exist
     /// already
-    pub(super) fn should_store(&mut self, index_hash: &PieceIndexHash) -> bool {
+    pub(super) fn should_store(&mut self, index_hash: PieceIndexHash) -> bool {
         self.max_distance_key()
             .map(|max_distance_key| {
                 subspace_core_primitives::bidirectional_distance(
                     &max_distance_key,
                     &PieceDistance::MIDDLE,
-                ) >= PieceDistance::distance(index_hash, self.public_key.as_ref())
+                ) >= U256::from(index_hash).distance(&self.public_key_as_number)
             })
             .unwrap_or(true)
     }
@@ -345,7 +345,7 @@ impl IndexHashToOffsetDB {
         // We permute distance such that if piece index hash is equal to the `self.public_key` then
         // it lands to the `PieceDistance::MIDDLE`
         PieceDistance::from_big_endian(&index_hash.0)
-            .wrapping_sub(&PieceDistance::from_big_endian(self.public_key.as_ref()))
+            .wrapping_sub(&self.public_key_as_number)
             .wrapping_add(&PieceDistance::MIDDLE)
     }
 
@@ -353,7 +353,7 @@ impl IndexHashToOffsetDB {
         let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
         distance
             .wrapping_sub(&PieceDistance::MIDDLE)
-            .wrapping_add(&PieceDistance::from_big_endian(self.public_key.as_ref()))
+            .wrapping_add(&self.public_key_as_number)
             .to_big_endian(&mut piece_index_hash.0);
         piece_index_hash
     }

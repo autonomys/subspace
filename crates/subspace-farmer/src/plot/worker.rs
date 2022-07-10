@@ -295,7 +295,7 @@ impl<T: PlotFile> PlotWorker<T> {
             // Check if piece is out of plot range or if it is in the plot
             if !self
                 .piece_index_hash_to_offset_db
-                .should_store(&PieceIndexHash::from_index(piece_index))
+                .should_store(PieceIndexHash::from_index(piece_index))
             {
                 continue;
             }

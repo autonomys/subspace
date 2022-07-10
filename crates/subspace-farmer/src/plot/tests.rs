@@ -1,7 +1,7 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE, U256};
 use tempfile::TempDir;
 
 fn init() {
@@ -126,8 +126,10 @@ async fn partial_plot() {
     assert!(!plot.is_empty());
 
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
-    piece_indexes
-        .sort_by_key(|i| PieceDistance::distance(&PieceIndexHash::from_index(*i), &public_key));
+    let public_key_as_number = U256::from_big_endian(&public_key);
+    piece_indexes.sort_by_key(|i| {
+        U256::from(PieceIndexHash::from_index(*i)).distance(&public_key_as_number)
+    });
 
     // First pieces should be present and equal
     for &piece_index in &piece_indexes[..max_plot_pieces as usize] {
