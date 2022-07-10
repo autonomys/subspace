@@ -30,9 +30,10 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
-pub use construct_uint::U256;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
+use derive_more::{Add, Display, Div, Mul, Sub};
+use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
@@ -567,64 +568,123 @@ pub fn bidirectional_distance<T: num_traits::WrappingSub + Ord>(a: &T, b: &T) ->
 }
 
 #[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
-mod construct_uint {
+mod private_u256 {
     //! This module is needed to scope clippy allows
-
-    use super::{bidirectional_distance, PieceIndexHash};
-    use num_traits::{WrappingAdd, WrappingSub};
 
     uint::construct_uint! {
         pub struct U256(4);
     }
+}
 
-    impl U256 {
-        /// Calculates bidirectional distance
-        pub fn distance(&self, address: &Self) -> U256 {
-            bidirectional_distance(self, address)
-        }
+/// 256-bit unsigned integer
+#[derive(Debug, Display, Add, Sub, Mul, Div, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct U256(private_u256::U256);
 
-        /// Create from big endian bytes
-        pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
-            U256::from_big_endian(&bytes)
-        }
-
-        /// Convert to big endian bytes
-        pub fn to_be_bytes(self) -> [u8; 32] {
-            let mut arr = [0u8; 32];
-            self.to_big_endian(&mut arr);
-            arr
-        }
-
-        /// The middle of the piece distance field.
-        /// The analogue of `0b1000_0000` for `u8`.
-        pub const MIDDLE: Self = {
-            // TODO: This assumes that numbers are stored little endian,
-            //  should be replaced with just `Self::MAX / 2`, but it is not `const fn` in Rust yet.
-            Self([u64::MAX, u64::MAX, u64::MAX, u64::MAX / 2])
-        };
+impl U256 {
+    /// Zero (additive identity) of this type.
+    pub const fn zero() -> Self {
+        Self(private_u256::U256::zero())
     }
 
-    impl WrappingAdd for U256 {
-        fn wrapping_add(&self, other: &Self) -> Self {
-            self.overflowing_add(*other).0
-        }
+    /// One (multiplicative identity) of this type.
+    pub fn one() -> Self {
+        Self(private_u256::U256::one())
     }
 
-    impl WrappingSub for U256 {
-        fn wrapping_sub(&self, other: &Self) -> Self {
-            self.overflowing_sub(*other).0
-        }
+    /// Calculates bidirectional distance
+    pub fn distance(&self, address: &Self) -> U256 {
+        bidirectional_distance(self, address)
     }
 
-    impl From<PieceIndexHash> for U256 {
-        fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
-            Self::from_big_endian(&hash)
-        }
+    /// Create from big endian bytes
+    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+        Self(private_u256::U256::from_big_endian(&bytes))
     }
 
-    impl From<U256> for PieceIndexHash {
-        fn from(distance: U256) -> Self {
-            Self(distance.into())
-        }
+    /// Convert to big endian bytes
+    pub fn to_be_bytes(self) -> [u8; 32] {
+        let mut arr = [0u8; 32];
+        self.0.to_big_endian(&mut arr);
+        arr
+    }
+
+    /// Adds two numbers, checking for overflow. If overflow happens, `None` is returned.
+    pub fn checked_add(&self, v: &Self) -> Option<Self> {
+        self.0.checked_add(v.0).map(Self)
+    }
+
+    /// Subtracts two numbers, checking for underflow. If underflow happens, `None` is returned.
+    pub fn checked_sub(&self, v: &Self) -> Option<Self> {
+        self.0.checked_sub(v.0).map(Self)
+    }
+
+    /// Multiplies two numbers, checking for underflow or overflow. If underflow or overflow
+    /// happens, `None` is returned.
+    pub fn checked_mul(&self, v: &Self) -> Option<Self> {
+        self.0.checked_mul(v.0).map(Self)
+    }
+
+    /// Divides two numbers, checking for underflow, overflow and division by zero. If any of that
+    /// happens, `None` is returned.
+    pub fn checked_div(&self, v: &Self) -> Option<Self> {
+        self.0.checked_div(v.0).map(Self)
+    }
+
+    /// Saturating addition. Computes `self + other`, saturating at the relevant high or low
+    /// boundary of the type.
+    pub fn saturating_add(&self, v: &Self) -> Self {
+        Self(self.0.saturating_add(v.0))
+    }
+
+    /// Saturating subtraction. Computes `self - other`, saturating at the relevant high or low
+    /// boundary of the type.
+    pub fn saturating_sub(&self, v: &Self) -> Self {
+        Self(self.0.saturating_sub(v.0))
+    }
+
+    /// Saturating multiplication. Computes `self * other`, saturating at the relevant high or low
+    /// boundary of the type.
+    pub fn saturating_mul(&self, v: &Self) -> Self {
+        Self(self.0.saturating_mul(v.0))
+    }
+
+    /// The middle of the piece distance field.
+    /// The analogue of `0b1000_0000` for `u8`.
+    pub const MIDDLE: Self = {
+        // TODO: This assumes that numbers are stored little endian,
+        //  should be replaced with just `Self::MAX / 2`, but it is not `const fn` in Rust yet.
+        Self(private_u256::U256([
+            u64::MAX,
+            u64::MAX,
+            u64::MAX,
+            u64::MAX / 2,
+        ]))
+    };
+
+    /// Maximum value.
+    pub const MAX: Self = Self(private_u256::U256::MAX);
+}
+
+impl WrappingAdd for U256 {
+    fn wrapping_add(&self, other: &Self) -> Self {
+        Self(self.0.overflowing_add(other.0).0)
+    }
+}
+
+impl WrappingSub for U256 {
+    fn wrapping_sub(&self, other: &Self) -> Self {
+        Self(self.0.overflowing_sub(other.0).0)
+    }
+}
+
+impl From<PieceIndexHash> for U256 {
+    fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
+        Self(private_u256::U256::from_big_endian(&hash))
+    }
+}
+
+impl From<U256> for PieceIndexHash {
+    fn from(number: U256) -> Self {
+        Self(number.to_be_bytes())
     }
 }

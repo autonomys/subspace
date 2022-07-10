@@ -2,7 +2,7 @@ use futures::{Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, PIECE_SIZE, U256,
+    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use subspace_networking::PiecesToPlot;
 
@@ -82,7 +82,7 @@ where
         range_size,
         public_key,
     } = options;
-    let public_key = PieceIndexHashNumber::from(Sha256Hash::from(public_key));
+    let public_key = PieceIndexHashNumber::from_be_bytes(public_key.into());
 
     let sync_sector_size = if total_pieces < max_plot_size / PIECE_SIZE as u64 {
         PieceIndexHashNumber::MAX
@@ -95,18 +95,20 @@ where
         let mut i = PieceIndexHashNumber::zero();
 
         move || {
-            let offset_start = i.checked_mul(range_size)?.checked_add(
+            let offset_start = i.checked_mul(&range_size)?.checked_add(
                 // Do not include the same number twice
-                if i == PieceIndexHashNumber::zero() {
+                &if i == PieceIndexHashNumber::zero() {
                     PieceIndexHashNumber::zero()
                 } else {
                     PieceIndexHashNumber::one()
                 },
             )?;
 
-            let offset_end = (i + 1).saturating_mul(range_size).min(sync_sector_size);
+            let offset_end = (i + PieceIndexHashNumber::one())
+                .saturating_mul(&range_size)
+                .min(sync_sector_size);
 
-            i += PieceIndexHashNumber::one();
+            i = i + PieceIndexHashNumber::one();
 
             if offset_start <= sync_sector_size {
                 Some((offset_start, offset_end))

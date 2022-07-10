@@ -249,7 +249,7 @@ async fn test_read_sequential_pieces() {
     // Public key in the middle of piece index hashes, so we can test all necessary edge-cases
     let public_key_bytes = {
         // Just after second out of four hashes
-        (PieceDistance::from(piece_index_hashes[1].0) + 1).to_be_bytes()
+        (PieceDistance::from(piece_index_hashes[1].0) + PieceDistance::one()).to_be_bytes()
     };
     let plot = Plot::open_or_create(
         &0usize.into(),
