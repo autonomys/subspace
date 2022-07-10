@@ -128,7 +128,10 @@ async fn partial_plot() {
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
     let public_key_as_number = U256::from_be_bytes(public_key.into());
     piece_indexes.sort_by_key(|i| {
-        U256::from(PieceIndexHash::from_index(*i)).distance(&public_key_as_number)
+        subspace_core_primitives::bidirectional_distance(
+            &U256::from(PieceIndexHash::from_index(*i)),
+            &public_key_as_number,
+        )
     });
 
     // First pieces should be present and equal

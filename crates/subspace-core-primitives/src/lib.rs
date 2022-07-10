@@ -591,11 +591,6 @@ impl U256 {
         Self(private_u256::U256::one())
     }
 
-    /// Calculates bidirectional distance
-    pub fn distance(&self, address: &Self) -> U256 {
-        bidirectional_distance(self, address)
-    }
-
     /// Create from big endian bytes
     pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
         Self(private_u256::U256::from_big_endian(&bytes))

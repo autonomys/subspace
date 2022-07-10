@@ -166,7 +166,10 @@ impl IndexHashToOffsetDB {
                 subspace_core_primitives::bidirectional_distance(
                     &max_distance_key,
                     &PieceDistance::MIDDLE,
-                ) >= U256::from(index_hash).distance(&self.public_key_as_number)
+                ) >= subspace_core_primitives::bidirectional_distance(
+                    &U256::from(index_hash),
+                    &self.public_key_as_number,
+                )
             })
             .unwrap_or(true)
     }

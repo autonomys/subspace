@@ -267,11 +267,14 @@ fn is_within_max_plot(
         return true;
     }
     let max_distance_one_direction = U256::MAX / total_pieces * max_plot_size / 2;
-    U256::from(PieceIndexHash::from_index(piece_index)).distance(&U256::from_be_bytes(
-        AsRef::<[u8]>::as_ref(&public_key)
-            .try_into()
-            .expect("Always correct length; qed"),
-    )) <= max_distance_one_direction
+    subspace_core_primitives::bidirectional_distance(
+        &U256::from(PieceIndexHash::from_index(piece_index)),
+        &U256::from_be_bytes(
+            AsRef::<[u8]>::as_ref(&public_key)
+                .try_into()
+                .expect("Always correct length; qed"),
+        ),
+    ) <= max_distance_one_direction
 }
 
 /// Parameters for checking piece validity
