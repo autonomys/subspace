@@ -9,28 +9,30 @@ use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::Sha256Hash;
 use thiserror::Error;
 
+// TODO: Remove once global object mappings are gone
 #[derive(Debug, Error)]
-pub enum ObjectMappingError {
+pub enum LegacyObjectMappingError {
     #[error("DB error: {0}")]
     Db(rocksdb::Error),
 }
 
 /// `ObjectMappings` is a mapping from arbitrary object hash to its location in archived history.
+// TODO: Remove once global object mappings are gone
 #[derive(Debug, Clone)]
-pub struct ObjectMappings {
+pub struct LegacyObjectMappings {
     db: Arc<DB>,
 }
 
-impl ObjectMappings {
+impl LegacyObjectMappings {
     /// Opens or creates a new object mappings database
-    pub fn open_or_create<P>(path: P) -> Result<Self, ObjectMappingError>
+    pub fn open_or_create<P>(path: P) -> Result<Self, LegacyObjectMappingError>
     where
         P: AsRef<Path>,
     {
         let mut options = Options::default();
         options.create_if_missing(true);
         options.set_unordered_write(true);
-        let db = DB::open(&options, path).map_err(ObjectMappingError::Db)?;
+        let db = DB::open(&options, path).map_err(LegacyObjectMappingError::Db)?;
 
         Ok(Self { db: Arc::new(db) })
     }
@@ -39,11 +41,11 @@ impl ObjectMappings {
     pub fn retrieve(
         &self,
         object_id: &Sha256Hash,
-    ) -> Result<Option<GlobalObject>, ObjectMappingError> {
+    ) -> Result<Option<GlobalObject>, LegacyObjectMappingError> {
         Ok(self
             .db
             .get(object_id)
-            .map_err(ObjectMappingError::Db)?
+            .map_err(LegacyObjectMappingError::Db)?
             .and_then(|global_object| GlobalObject::decode(&mut global_object.as_ref()).ok()))
     }
 
@@ -51,7 +53,7 @@ impl ObjectMappings {
     pub fn store(
         &self,
         object_mapping: &[(Sha256Hash, GlobalObject)],
-    ) -> Result<(), ObjectMappingError> {
+    ) -> Result<(), LegacyObjectMappingError> {
         let mut tmp = Vec::new();
 
         let mut batch = WriteBatch::default();
@@ -61,7 +63,7 @@ impl ObjectMappings {
 
             tmp.clear();
         }
-        self.db.write(batch).map_err(ObjectMappingError::Db)?;
+        self.db.write(batch).map_err(LegacyObjectMappingError::Db)?;
 
         Ok(())
     }

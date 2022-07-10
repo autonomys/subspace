@@ -1,4 +1,4 @@
-use crate::object_mappings::ObjectMappings;
+use crate::object_mappings::LegacyObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::utils::AbortingJoinHandle;
 use futures::StreamExt;
@@ -40,7 +40,7 @@ impl Archiving {
     /// `on_pieces_to_plot` must return `true` unless archiving is no longer necessary
     pub async fn start<Client, OPTP>(
         farmer_protocol_info: FarmerProtocolInfo,
-        object_mappings: Vec<ObjectMappings>,
+        object_mappings: Vec<LegacyObjectMappings>,
         client: Client,
         mut on_pieces_to_plot: OPTP,
     ) -> Result<Archiving, ArchivingError>

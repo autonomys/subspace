@@ -1,5 +1,5 @@
 use crate::archiving::Archiving;
-use crate::object_mappings::ObjectMappings;
+use crate::object_mappings::LegacyObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
@@ -25,7 +25,7 @@ pub struct Options<C> {
     pub archiving_client: C,
     /// Independent client used for farming, such that it is not blocked by archiving
     pub farming_client: C,
-    pub object_mappings: ObjectMappings,
+    pub object_mappings: LegacyObjectMappings,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
     pub listen_on: Vec<Multiaddr>,

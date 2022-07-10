@@ -12,7 +12,7 @@ use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
-use crate::{dsn, CommitmentError, ObjectMappings};
+use crate::{dsn, CommitmentError, LegacyObjectMappings};
 use anyhow::anyhow;
 use derive_more::{Display, From};
 use futures::future::try_join;
@@ -283,7 +283,7 @@ pub struct SinglePlotFarm {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
-    object_mappings: ObjectMappings,
+    object_mappings: LegacyObjectMappings,
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
@@ -374,7 +374,7 @@ impl SinglePlotFarm {
 
         info!("Opening object mappings");
         let object_mappings =
-            ObjectMappings::open_or_create(metadata_directory.join("object-mappings"))?;
+            LegacyObjectMappings::open_or_create(metadata_directory.join("object-mappings"))?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(metadata_directory.join("commitments"))?;
@@ -600,7 +600,7 @@ impl SinglePlotFarm {
     }
 
     /// Access object mappings instance of the farm
-    pub fn object_mappings(&self) -> &ObjectMappings {
+    pub fn object_mappings(&self) -> &LegacyObjectMappings {
         &self.object_mappings
     }
 

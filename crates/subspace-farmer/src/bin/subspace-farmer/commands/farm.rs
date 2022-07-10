@@ -10,7 +10,7 @@ use subspace_farmer::legacy_multi_plots_farm::{
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
+use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, warn};
 
@@ -226,7 +226,7 @@ pub(crate) async fn farm_legacy(
     let object_mappings = tokio::task::spawn_blocking({
         let path = base_directory.join("object-mappings");
 
-        move || ObjectMappings::open_or_create(path)
+        move || LegacyObjectMappings::open_or_create(path)
     })
     .await??;
 

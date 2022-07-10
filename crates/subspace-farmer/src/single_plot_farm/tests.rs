@@ -1,7 +1,7 @@
 use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::mock_rpc_client::MockRpcClient;
-use crate::object_mappings::ObjectMappings;
+use crate::object_mappings::LegacyObjectMappings;
 use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
@@ -47,7 +47,8 @@ async fn plotting_happy_path() {
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings =
-        ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
+        LegacyObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings"))
+            .unwrap();
 
     let client = MockRpcClient::new();
 
@@ -142,7 +143,8 @@ async fn plotting_piece_eviction() {
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let object_mappings =
-        ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
+        LegacyObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings"))
+            .unwrap();
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces
