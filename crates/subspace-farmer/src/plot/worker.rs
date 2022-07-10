@@ -175,8 +175,8 @@ impl<T: PlotFile> PlotWorker<T> {
                             count,
                             result_sender,
                         } => {
-                            let _ = result_sender
-                                .send(self.read_piece_indexes(&from_index_hash, count));
+                            let _ =
+                                result_sender.send(self.read_piece_indexes(from_index_hash, count));
                         }
                         Request::GetPieceRange { result_sender } => {
                             let _ = result_sender
@@ -228,7 +228,7 @@ impl<T: PlotFile> PlotWorker<T> {
         let mut buffer = Piece::default();
         let offset = self
             .piece_index_hash_to_offset_db
-            .get(&piece_index_hash)?
+            .get(piece_index_hash)?
             .ok_or_else(|| {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
             })?;
@@ -262,11 +262,11 @@ impl<T: PlotFile> PlotWorker<T> {
             self.plot.write(sequential_pieces, current_piece_count)?;
 
             self.piece_index_hash_to_offset_db.batch_insert(
-                &sequential_piece_indexes
+                sequential_piece_indexes
                     .iter()
                     .copied()
                     .map(PieceIndexHash::from_index)
-                    .collect::<Vec<_>>(),
+                    .collect(),
                 current_piece_count,
             )?;
 
@@ -302,7 +302,7 @@ impl<T: PlotFile> PlotWorker<T> {
 
             let piece_offset = self
                 .piece_index_hash_to_offset_db
-                .replace_furthest(&PieceIndexHash::from_index(piece_index))?;
+                .replace_furthest(PieceIndexHash::from_index(piece_index))?;
 
             let mut old_piece = Piece::default();
             self.plot.read(piece_offset, &mut old_piece)?;
@@ -327,7 +327,7 @@ impl<T: PlotFile> PlotWorker<T> {
 
     fn read_piece_indexes(
         &mut self,
-        from: &PieceIndexHash,
+        from: PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<PieceIndex>> {
         self.piece_index_hash_to_offset_db

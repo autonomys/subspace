@@ -143,9 +143,9 @@ where
                 .into_iter()
                 .zip(pieces.as_pieces())
                 .filter(|(index, _)| {
-                    (start..end).contains(&PieceIndexHashNumber::from_big_endian(
-                        &PieceIndexHash::from_index(*index).0,
-                    ))
+                    (start..end).contains(&PieceIndexHashNumber::from(PieceIndexHash::from_index(
+                        *index,
+                    )))
                 })
                 .map(|(index, piece)| {
                     (

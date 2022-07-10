@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::{io, iter};
-use subspace_core_primitives::{PieceIndexHash, PublicKey, SHA256_HASH_SIZE, U256};
+use subspace_core_primitives::{PieceIndexHash, PublicKey, U256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BidirectionalDistanceSorted<T> {
@@ -65,7 +65,7 @@ impl IndexHashToOffsetDB {
             .map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
             inner,
-            public_key_as_number: U256::from_big_endian(&public_key),
+            public_key_as_number: U256::from_be_bytes(public_key.into()),
             max_distance_cache: BTreeSet::new(),
             piece_count: Arc::new(AtomicU64::new(0)),
         };
@@ -123,13 +123,21 @@ impl IndexHashToOffsetDB {
 
         iter.seek_to_first();
         let start = match iter.key() {
-            Some(key) => PieceDistance::from_big_endian(key),
+            Some(key) => PieceDistance::from_be_bytes(
+                key.try_into()
+                    .expect("Key read from database must always have correct length; qed"),
+            ),
             None => return Ok(None),
         };
         iter.seek_to_last();
         let end = iter
             .key()
-            .map(PieceDistance::from_big_endian)
+            .map(|key| {
+                PieceDistance::from_be_bytes(
+                    key.try_into()
+                        .expect("Key read from database must always have correct length; qed"),
+                )
+            })
             .expect("Must have at least one key");
 
         Ok(Some(RangeInclusive::new(
@@ -138,9 +146,9 @@ impl IndexHashToOffsetDB {
         )))
     }
 
-    pub(super) fn get(&self, index_hash: &PieceIndexHash) -> io::Result<Option<PieceOffset>> {
+    pub(super) fn get(&self, index_hash: PieceIndexHash) -> io::Result<Option<PieceOffset>> {
         self.inner
-            .get(&self.piece_hash_to_distance(index_hash).to_bytes())
+            .get(&self.piece_hash_to_distance(index_hash).to_be_bytes())
             .map_err(io::Error::other)
             .and_then(|opt_val| {
                 opt_val
@@ -163,18 +171,18 @@ impl IndexHashToOffsetDB {
             .unwrap_or(true)
     }
 
-    fn batch_put<'a, I>(
-        &'a mut self,
+    fn batch_put<I>(
+        &mut self,
         mut batch: WriteBatch,
         index_hashes: I,
         offset: PieceOffset,
     ) -> io::Result<()>
     where
-        I: Iterator<Item = &'a PieceIndexHash>,
+        I: Iterator<Item = PieceIndexHash>,
     {
         for (index_hash, offset) in index_hashes.zip(offset..) {
             let key = self.piece_hash_to_distance(index_hash);
-            batch.put(key.to_bytes(), offset.to_le_bytes());
+            batch.put(key.to_be_bytes(), offset.to_le_bytes());
 
             if let Some(first) = self.max_distance_cache.first() {
                 let key = BidirectionalDistanceSorted::new(key);
@@ -200,7 +208,7 @@ impl IndexHashToOffsetDB {
 
     pub(super) fn batch_insert(
         &mut self,
-        index_hashes: &[PieceIndexHash],
+        index_hashes: Vec<PieceIndexHash>,
         offset: PieceOffset,
     ) -> io::Result<()> {
         let count = index_hashes.len() as u64;
@@ -215,14 +223,14 @@ impl IndexHashToOffsetDB {
             piece_count.to_le_bytes(),
         );
 
-        self.batch_put(batch, index_hashes.iter(), offset)?;
+        self.batch_put(batch, index_hashes.into_iter(), offset)?;
 
         Ok(())
     }
 
     pub(super) fn replace_furthest(
         &mut self,
-        index_hash: &PieceIndexHash,
+        index_hash: PieceIndexHash,
     ) -> io::Result<PieceOffset> {
         let mut batch = WriteBatch::default();
         let piece_offset = {
@@ -238,7 +246,7 @@ impl IndexHashToOffsetDB {
 
             let piece_offset = self
                 .inner
-                .get(&max_distance.to_bytes())
+                .get(&max_distance.to_be_bytes())
                 .map_err(io::Error::other)?
                 .map(|buffer| *<&[u8; 8]>::try_from(&*buffer).unwrap())
                 .map(PieceOffset::from_le_bytes)
@@ -249,7 +257,7 @@ impl IndexHashToOffsetDB {
                     )
                 })?;
 
-            batch.delete(&max_distance.to_bytes());
+            batch.delete(&max_distance.to_be_bytes());
             self.max_distance_cache
                 .remove(&BidirectionalDistanceSorted::new(max_distance));
 
@@ -263,7 +271,7 @@ impl IndexHashToOffsetDB {
 
     pub(super) fn get_sequential(
         &self,
-        from: &PieceIndexHash,
+        from: PieceIndexHash,
         count: usize,
     ) -> Vec<(PieceIndexHash, PieceOffset)> {
         if count == 0 {
@@ -274,7 +282,7 @@ impl IndexHashToOffsetDB {
 
         let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
 
-        iter.seek(self.piece_hash_to_distance(from).to_bytes());
+        iter.seek(self.piece_hash_to_distance(from).to_be_bytes());
 
         while piece_index_hashes_and_offsets.len() < count {
             match iter.key() {
@@ -283,8 +291,10 @@ impl IndexHashToOffsetDB {
                         PieceOffset::from_le_bytes(iter.value().unwrap().try_into().expect(
                             "Value read from database must always have correct length; qed",
                         ));
-                    let index_hash =
-                        self.piece_distance_to_hash(PieceDistance::from_big_endian(key));
+                    let index_hash = self.piece_distance_to_hash(PieceDistance::from_be_bytes(
+                        key.try_into()
+                            .expect("Key read from database must always have correct length; qed"),
+                    ));
 
                     piece_index_hashes_and_offsets.push((index_hash, offset));
 
@@ -304,8 +314,13 @@ impl IndexHashToOffsetDB {
 
         iter.seek_to_first();
         self.max_distance_cache.extend(
-            std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
+            iter::from_fn(|| {
+                let piece_index_hash = iter.key().map(|key| {
+                    PieceDistance::from_be_bytes(
+                        key.try_into()
+                            .expect("Key read from database must always have correct length; qed"),
+                    )
+                });
                 if piece_index_hash.is_some() {
                     iter.next();
                 }
@@ -317,8 +332,13 @@ impl IndexHashToOffsetDB {
 
         iter.seek_to_last();
         self.max_distance_cache.extend(
-            std::iter::from_fn(|| {
-                let piece_index_hash = iter.key().map(PieceDistance::from_big_endian);
+            iter::from_fn(|| {
+                let piece_index_hash = iter.key().map(|key| {
+                    PieceDistance::from_be_bytes(
+                        key.try_into()
+                            .expect("Key read from database must always have correct length; qed"),
+                    )
+                });
                 if piece_index_hash.is_some() {
                     iter.prev();
                 }
@@ -341,20 +361,18 @@ impl IndexHashToOffsetDB {
             .map(|distance| distance.value)
     }
 
-    fn piece_hash_to_distance(&self, index_hash: &PieceIndexHash) -> PieceDistance {
+    fn piece_hash_to_distance(&self, index_hash: PieceIndexHash) -> PieceDistance {
         // We permute distance such that if piece index hash is equal to the `self.public_key` then
         // it lands to the `PieceDistance::MIDDLE`
-        PieceDistance::from_big_endian(&index_hash.0)
+        PieceDistance::from(index_hash)
             .wrapping_sub(&self.public_key_as_number)
             .wrapping_add(&PieceDistance::MIDDLE)
     }
 
     fn piece_distance_to_hash(&self, distance: PieceDistance) -> PieceIndexHash {
-        let mut piece_index_hash = PieceIndexHash([0; SHA256_HASH_SIZE]);
         distance
             .wrapping_sub(&PieceDistance::MIDDLE)
             .wrapping_add(&self.public_key_as_number)
-            .to_big_endian(&mut piece_index_hash.0);
-        piece_index_hash
+            .into()
     }
 }

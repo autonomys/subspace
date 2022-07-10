@@ -338,13 +338,11 @@ impl Node {
 
         // calculate the middle of the range (big endian)
         let middle = {
-            let from = U256::from_big_endian(&from.0);
-            let to = U256::from_big_endian(&to.0);
+            let from = U256::from(from);
+            let to = U256::from(to);
             // min + (max - min) / 2
             let middle = from.div(2) + to.div(2);
-            let mut buf: [u8; 32] = [0; 32];
-            middle.to_big_endian(&mut buf);
-            buf
+            middle.to_be_bytes()
         };
 
         // obtain closest peers to the middle of the range

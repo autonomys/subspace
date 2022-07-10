@@ -453,7 +453,19 @@ pub type PieceIndex = u64;
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PieceIndexHash(pub Sha256Hash);
+pub struct PieceIndexHash(Sha256Hash);
+
+impl From<PieceIndexHash> for Sha256Hash {
+    fn from(piece_index_hash: PieceIndexHash) -> Self {
+        piece_index_hash.0
+    }
+}
+
+impl From<Sha256Hash> for PieceIndexHash {
+    fn from(hash: Sha256Hash) -> Self {
+        Self(hash)
+    }
+}
 
 impl AsRef<[u8]> for PieceIndexHash {
     fn as_ref(&self) -> &[u8] {
@@ -566,14 +578,21 @@ mod construct_uint {
     }
 
     impl U256 {
-        /// Calculates the distance metric between piece index hash and farmer address.
+        /// Calculates bidirectional distance
         pub fn distance(&self, address: &Self) -> U256 {
             bidirectional_distance(self, address)
         }
 
-        /// Convert piece distance to big endian bytes
-        pub fn to_bytes(self) -> [u8; 32] {
-            self.into()
+        /// Create from big endian bytes
+        pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+            U256::from_big_endian(&bytes)
+        }
+
+        /// Convert to big endian bytes
+        pub fn to_be_bytes(self) -> [u8; 32] {
+            let mut arr = [0u8; 32];
+            self.to_big_endian(&mut arr);
+            arr
         }
 
         /// The middle of the piece distance field.

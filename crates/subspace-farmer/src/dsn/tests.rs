@@ -231,12 +231,7 @@ async fn test_dsn_sync() {
         }
 
         (0..number_of_segments * pieces_per_segment)
-            .map(|index| {
-                (
-                    U256::from_big_endian(&PieceIndexHash::from_index(index).0),
-                    index,
-                )
-            })
+            .map(|index| (U256::from(PieceIndexHash::from_index(index)), index))
             .collect::<BTreeMap<_, _>>()
     };
 
@@ -341,11 +336,8 @@ async fn test_dsn_sync() {
         seeder_max_plot_size,
         range_size,
     );
-    let public_key = U256::from_big_endian(
-        syncer_multi_farming.single_plot_farms()[0]
-            .public_key()
-            .as_ref(),
-    );
+    let public_key =
+        U256::from_be_bytes((*syncer_multi_farming.single_plot_farms()[0].public_key()).into());
 
     tokio::spawn(async move {
         if let Err(error) = syncer_multi_farming.wait().await {
@@ -361,10 +353,7 @@ async fn test_dsn_sync() {
 
     match plot.get_piece_range().unwrap() {
         Some(range) => {
-            let (start, end) = (
-                U256::from_big_endian(&range.start().0),
-                U256::from_big_endian(&range.end().0),
-            );
+            let (start, end) = (U256::from(*range.start()), U256::from(*range.end()));
 
             let shift_to_middle =
                 |n: U256, pub_key| n.wrapping_sub(pub_key).wrapping_add(&U256::MIDDLE);
