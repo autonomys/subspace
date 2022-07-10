@@ -10,8 +10,8 @@ fn init() {
     let _ = tracing_subscriber::fmt::try_init();
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn create() {
+#[test]
+fn create() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -41,8 +41,8 @@ async fn create() {
 
 // TODO: Tests for recommitting in background
 
-#[tokio::test(flavor = "multi_thread")]
-async fn find_by_tag() {
+#[test]
+fn find_by_tag() {
     init();
     let base_directory = TempDir::new().unwrap();
     let salt: Salt = [1u8; 8];
@@ -126,8 +126,8 @@ async fn find_by_tag() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn remove_commitments() {
+#[test]
+fn remove_commitments() {
     init();
     let base_directory = TempDir::new().unwrap();
 
