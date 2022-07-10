@@ -672,6 +672,36 @@ impl WrappingSub for U256 {
     }
 }
 
+impl From<u8> for U256 {
+    fn from(number: u8) -> Self {
+        Self(number.into())
+    }
+}
+
+impl From<u16> for U256 {
+    fn from(number: u16) -> Self {
+        Self(number.into())
+    }
+}
+
+impl From<u32> for U256 {
+    fn from(number: u32) -> Self {
+        Self(number.into())
+    }
+}
+
+impl From<u64> for U256 {
+    fn from(number: u64) -> Self {
+        Self(number.into())
+    }
+}
+
+impl From<u128> for U256 {
+    fn from(number: u128) -> Self {
+        Self(number.into())
+    }
+}
+
 impl From<PieceIndexHash> for U256 {
     fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
         Self(private_u256::U256::from_big_endian(&hash))
