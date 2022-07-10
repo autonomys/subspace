@@ -333,6 +333,7 @@ impl SingleDiskFarm {
                     .iter()
                     .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
                     .collect(),
+                vec![],
                 archiving_client,
                 {
                     let plotters = single_plot_farms

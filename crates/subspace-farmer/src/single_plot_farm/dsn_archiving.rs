@@ -1,4 +1,4 @@
-use crate::object_mappings::LegacyObjectMappings;
+use crate::object_mappings::ObjectMappings;
 use crate::single_plot_farm::{SinglePlotFarmId, SinglePlotPlotter};
 use futures::StreamExt;
 use parity_scale_codec::Decode;
@@ -27,7 +27,7 @@ pub(super) async fn start_archiving(
     single_plot_farm_id: SinglePlotFarmId,
     record_size: u32,
     recorded_history_segment_size: u32,
-    object_mappings: LegacyObjectMappings,
+    object_mappings: ObjectMappings,
     node: Node,
     plotter: SinglePlotPlotter,
 ) -> Result<(), StartDsnArchivingError> {

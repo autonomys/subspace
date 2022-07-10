@@ -128,8 +128,8 @@ impl LegacyMultiPlotsFarm {
                 single_plot_farms
                     .iter()
                     .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
-                    .chain([object_mappings])
                     .collect(),
+                vec![object_mappings],
                 archiving_client,
                 {
                     let plotters = single_plot_farms

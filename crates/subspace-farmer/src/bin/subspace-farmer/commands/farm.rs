@@ -152,6 +152,7 @@ pub(crate) async fn farm_multi_disk(
                 })
                 .collect::<Vec<_>>(),
         ),
+        Arc::new(vec![]),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
@@ -283,6 +284,7 @@ pub(crate) async fn farm_legacy(
         record_size,
         recorded_history_segment_size,
         Arc::new(multi_plots_farm.piece_getter()),
+        Arc::new(vec![]),
         Arc::new(vec![object_mappings]),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;

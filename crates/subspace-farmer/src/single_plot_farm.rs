@@ -2,17 +2,18 @@ pub mod dsn_archiving;
 #[cfg(test)]
 mod tests;
 
-use crate::commitments::Commitments;
+use crate::commitments::{CommitmentError, Commitments};
+use crate::dsn;
 use crate::dsn::{PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
+use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
-use crate::{dsn, CommitmentError, LegacyObjectMappings};
 use anyhow::anyhow;
 use derive_more::{Display, From};
 use futures::future::try_join;
@@ -38,6 +39,8 @@ use tracing::{error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 const SYNC_PIECES_AT_ONCE: u64 = 5000;
+/// 100 MiB worth of object mappings per plot
+const MAX_OBJECT_MAPPINGS_SIZE: u64 = 100 * 1024 * 1024;
 
 /// An identifier for single plot farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -283,7 +286,7 @@ pub struct SinglePlotFarm {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
-    object_mappings: LegacyObjectMappings,
+    object_mappings: ObjectMappings,
     farming: Option<Farming>,
     node: Node,
     node_runner: NodeRunner,
@@ -373,8 +376,11 @@ impl SinglePlotFarm {
         })?;
 
         info!("Opening object mappings");
-        let object_mappings =
-            LegacyObjectMappings::open_or_create(metadata_directory.join("object-mappings"))?;
+        let object_mappings = ObjectMappings::open_or_create(
+            &metadata_directory.join("object-mappings"),
+            public_key,
+            MAX_OBJECT_MAPPINGS_SIZE,
+        )?;
 
         info!("Opening commitments");
         let commitments = Commitments::new(metadata_directory.join("commitments"))?;
@@ -600,7 +606,7 @@ impl SinglePlotFarm {
     }
 
     /// Access object mappings instance of the farm
-    pub fn object_mappings(&self) -> &LegacyObjectMappings {
+    pub fn object_mappings(&self) -> &ObjectMappings {
         &self.object_mappings
     }
 
