@@ -137,6 +137,39 @@ impl SinglePlotFarmInfo {
     }
 }
 
+/// Summary of single plot farm for presentational purposes
+pub enum SinglePlotFarmSummary {
+    /// Farm was found and read successfully
+    Found {
+        // ID of the farm
+        id: SinglePlotFarmId,
+        // Public key of identity used for farm creation
+        public_key: PublicKey,
+        // How much space in bytes can farm use for plots (metadata space is not included)
+        allocated_plotting_space: u64,
+        /// Path to directory where plots are stored, typically HDD.
+        plot_directory: PathBuf,
+        /// Path to directory for storing metadata, typically SSD.
+        metadata_directory: PathBuf,
+    },
+    /// Farm was not found
+    NotFound {
+        /// Path to directory where plots are stored, typically HDD.
+        plot_directory: PathBuf,
+        /// Path to directory for storing metadata, typically SSD.
+        metadata_directory: PathBuf,
+    },
+    /// Failed to open farm
+    Error {
+        /// Path to directory where plots are stored, typically HDD.
+        plot_directory: PathBuf,
+        /// Path to directory for storing metadata, typically SSD.
+        metadata_directory: PathBuf,
+        /// Error itself
+        error: io::Error,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct SinglePlotPieceGetter {
     codec: SubspaceCodec,
@@ -577,6 +610,37 @@ impl SinglePlotFarm {
         }
 
         Ok(farm)
+    }
+
+    /// Collect summary of single plot farm for presentational purposes
+    pub fn collect_summary(
+        plot_directory: PathBuf,
+        metadata_directory: PathBuf,
+    ) -> SinglePlotFarmSummary {
+        let single_plot_farm_info = match SinglePlotFarmInfo::load_from(&metadata_directory) {
+            Ok(Some(single_plot_farm_info)) => single_plot_farm_info,
+            Ok(None) => {
+                return SinglePlotFarmSummary::NotFound {
+                    plot_directory,
+                    metadata_directory,
+                };
+            }
+            Err(error) => {
+                return SinglePlotFarmSummary::Error {
+                    plot_directory,
+                    metadata_directory,
+                    error,
+                };
+            }
+        };
+
+        return SinglePlotFarmSummary::Found {
+            id: *single_plot_farm_info.id(),
+            public_key: *single_plot_farm_info.public_key(),
+            allocated_plotting_space: single_plot_farm_info.allocated_plotting_space(),
+            plot_directory,
+            metadata_directory,
+        };
     }
 
     /// ID of this farm

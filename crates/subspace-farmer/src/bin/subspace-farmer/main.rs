@@ -98,6 +98,8 @@ enum Subcommand {
     Wipe,
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
+    /// Print information about farm and its content
+    Info,
     /// Benchmark disk in order to see a throughput of the disk for plotting
     Bench {
         /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
@@ -303,6 +305,13 @@ async fn main() -> Result<()> {
                     }
                 }
                 commands::farm_multi_disk(command.farm, farming_args).await?;
+            }
+        }
+        Subcommand::Info => {
+            if command.farm.is_empty() {
+                panic!("Printing info for legacy plots is not supported");
+            } else {
+                commands::info(command.farm);
             }
         }
         Subcommand::Bench {
