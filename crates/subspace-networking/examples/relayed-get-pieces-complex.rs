@@ -144,12 +144,12 @@ async fn main() {
     let from = {
         let mut buf = peer_id_public_key;
         buf[16] = 0;
-        PieceIndexHash(buf)
+        PieceIndexHash::from(buf)
     };
     let to = {
         let mut buf = peer_id_public_key;
         buf[16] = 50;
-        PieceIndexHash(buf)
+        PieceIndexHash::from(buf)
     };
 
     let stream_future = node.get_pieces_by_range(from, to);

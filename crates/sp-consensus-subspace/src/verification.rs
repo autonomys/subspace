@@ -259,7 +259,7 @@ pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> b
 /// Returns true if piece index is within farmer sector
 fn is_within_max_plot(
     piece_index: PieceIndex,
-    key: &FarmerPublicKey,
+    public_key: &FarmerPublicKey,
     total_pieces: u64,
     max_plot_size: u64,
 ) -> bool {
@@ -267,8 +267,14 @@ fn is_within_max_plot(
         return true;
     }
     let max_distance_one_direction = U256::MAX / total_pieces * max_plot_size / 2;
-    U256::distance(&PieceIndexHash::from_index(piece_index), key.as_ref())
-        <= max_distance_one_direction
+    subspace_core_primitives::bidirectional_distance(
+        &U256::from(PieceIndexHash::from_index(piece_index)),
+        &U256::from_be_bytes(
+            AsRef::<[u8]>::as_ref(&public_key)
+                .try_into()
+                .expect("Always correct length; qed"),
+        ),
+    ) <= max_distance_one_direction
 }
 
 /// Parameters for checking piece validity

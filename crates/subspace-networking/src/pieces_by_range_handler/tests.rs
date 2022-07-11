@@ -10,8 +10,8 @@ use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
 #[tokio::test]
 async fn pieces_by_range_protocol_smoke() {
     let request = PiecesByRangeRequest {
-        from: PieceIndexHash([1u8; 32]),
-        to: PieceIndexHash([1u8; 32]),
+        from: PieceIndexHash::from([1u8; 32]),
+        to: PieceIndexHash::from([1u8; 32]),
     };
 
     let piece_bytes: Vec<u8> = Piece::default().into();
@@ -90,9 +90,9 @@ async fn pieces_by_range_protocol_smoke() {
 
 #[tokio::test]
 async fn get_pieces_by_range_smoke() {
-    let piece_index_from = PieceIndexHash(crypto::sha256_hash(b"from"));
-    let piece_index_continue = PieceIndexHash(crypto::sha256_hash(b"continue"));
-    let piece_index_end = PieceIndexHash(crypto::sha256_hash(b"end"));
+    let piece_index_from = PieceIndexHash::from(crypto::sha256_hash(b"from"));
+    let piece_index_continue = PieceIndexHash::from(crypto::sha256_hash(b"continue"));
+    let piece_index_end = PieceIndexHash::from(crypto::sha256_hash(b"end"));
 
     fn get_pieces_to_plot_mock(seed: u8) -> PiecesToPlot {
         let piece_bytes: Vec<u8> = [seed; 4096].to_vec();
