@@ -30,7 +30,6 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
-use crate::verification::VerifySolutionParams;
 pub use archiver::start_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -66,10 +65,9 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::verification::Error as VerificationPrimitiveError;
 use sp_consensus_subspace::{
-    check_header, verification, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
-    VerificationError, VerificationParams,
+    check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
+    VerificationParams,
 };
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
@@ -85,6 +83,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
+use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
 
 // TODO: Hack for Gemini 1b launch.
 const GEMINI_1B_GENESIS_HASH: &[u8] = &[
@@ -1083,8 +1082,13 @@ where
 
         // Piece is not checked during initial block verification because it requires access to
         // root block, check it now.
-        verification::check_piece(records_root, position, record_size, &pre_digest.solution)
-            .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
+        subspace_verification::check_piece(
+            records_root,
+            position,
+            record_size,
+            &pre_digest.solution,
+        )
+        .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
         let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
 

@@ -16,7 +16,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Verification primitives for Subspace.
-use crate::RANDOMNESS_CONTEXT;
 use core::mem;
 use schnorrkel::context::SigningContext;
 use schnorrkel::vrf::VRFOutput;
@@ -25,7 +24,7 @@ use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
     crypto, PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, TagSignature,
-    RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
+    RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
 };
 use subspace_solving::{
     create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
@@ -148,6 +147,7 @@ fn is_within_max_plot(
 }
 
 /// Parameters for checking piece validity
+#[derive(Debug)]
 pub struct PieceCheckParams {
     /// Records root of segment to which piece belongs
     pub records_root: Sha256Hash,
@@ -162,6 +162,7 @@ pub struct PieceCheckParams {
 }
 
 /// Parameters for solution verification
+#[derive(Debug)]
 pub struct VerifySolutionParams<'a> {
     /// Global randomness
     pub global_randomness: &'a Randomness,
@@ -179,7 +180,7 @@ pub struct VerifySolutionParams<'a> {
 pub fn verify_solution<FarmerPublicKey, RewardAddress, Slot>(
     solution: &Solution<FarmerPublicKey, RewardAddress>,
     slot: Slot,
-    params: VerifySolutionParams,
+    params: VerifySolutionParams<'_>,
 ) -> Result<(), Error>
 where
     FarmerPublicKey: AsRef<[u8]>,

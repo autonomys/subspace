@@ -80,6 +80,9 @@ pub type SlotNumber = u64;
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
+/// Randomness context
+pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
+
 const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;

@@ -47,8 +47,7 @@ use pallet_feeds::feed_processor::FeedProcessor;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    derive_randomness, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote,
-    SolutionRanges, Vote,
+    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote, SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
@@ -71,6 +70,7 @@ use subspace_runtime_primitives::{
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE, SHANNON,
     SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
+use subspace_verification::derive_randomness;
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {

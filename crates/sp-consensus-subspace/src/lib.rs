@@ -24,13 +24,11 @@ pub mod inherents;
 pub mod offence;
 #[cfg(test)]
 mod tests;
-pub mod verification;
 
 use crate::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use crate::verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
@@ -44,9 +42,7 @@ use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-pub use verification::{
-    derive_next_salt_from_randomness, derive_next_solution_range, derive_randomness,
-};
+use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -68,8 +64,6 @@ pub type FarmerPublicKey = app::Public;
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
-
-const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
@@ -165,7 +159,7 @@ where
     };
     let pre_hash = header.hash();
 
-    verification::check_reward_signature(
+    check_reward_signature(
         pre_hash.as_ref(),
         &seal,
         offender,
@@ -349,7 +343,7 @@ pub enum VerificationError<Header: HeaderT> {
         feature = "thiserror",
         error("Verification error on slot {0:?}: {1:?}")
     )]
-    VerificationError(Slot, verification::Error),
+    VerificationError(Slot, Error),
 }
 
 /// A header which has been checked

@@ -41,11 +41,7 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-use sp_consensus_subspace::verification::{
-    Error as VerificationError, PieceCheckParams, VerifySolutionParams,
-};
 use sp_consensus_subspace::{
-    derive_next_salt_from_randomness, derive_next_solution_range, derive_randomness, verification,
     EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
@@ -59,6 +55,11 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{Randomness, RootBlock, Salt, PIECE_SIZE};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_verification::{
+    check_reward_signature, derive_next_salt_from_randomness, derive_next_solution_range,
+    derive_randomness, verify_solution, Error as VerificationError, PieceCheckParams,
+    VerifySolutionParams,
+};
 
 pub trait WeightInfo {
     fn report_equivocation() -> Weight;
@@ -1358,7 +1359,7 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::SlotInThePast);
     }
 
-    if let Err(error) = verification::check_reward_signature(
+    if let Err(error) = check_reward_signature(
         signed_vote.vote.hash().as_bytes(),
         &signed_vote.signature,
         &solution.public_key,
@@ -1394,7 +1395,7 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
-    if let Err(error) = verification::verify_solution::<FarmerPublicKey, T::AccountId, Slot>(
+    if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId, Slot>(
         solution,
         slot,
         VerifySolutionParams {
