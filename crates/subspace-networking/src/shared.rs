@@ -75,6 +75,9 @@ pub(crate) struct Shared {
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
     /// Parent node instance (if any) to keep alive.
+    ///
+    /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
+    /// receive incoming connections.
     pub(crate) _parent_node: Option<Node>,
 }
 

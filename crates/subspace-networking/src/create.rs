@@ -69,6 +69,9 @@ pub struct Config {
     /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
     pub relay_server_address: Option<Multiaddr>,
     /// Parent node instance (if any) to keep alive.
+    ///
+    /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
+    /// receive incoming connections.
     pub parent_node: Option<Node>,
 }
 
@@ -170,7 +173,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
-    // Create optional relay transport and client.
+    // Create relay client transport and client.
     let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
