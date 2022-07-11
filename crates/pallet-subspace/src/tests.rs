@@ -33,9 +33,9 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::verification::Error as VerificationError;
 use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, VerificationError,
-    Vote,
+    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
 };
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
@@ -1070,7 +1070,7 @@ fn vote_outside_of_solution_range() {
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::OutsideOfSolutionRange(_)
+                VerificationError::OutsideSolutionRange
             ))
         );
     });
@@ -1123,7 +1123,7 @@ fn vote_invalid_solution_signature() {
         assert_matches!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::BadSolutionSignature(_, _)
+                VerificationError::InvalidSolutionSignature(_)
             ))
         );
     });

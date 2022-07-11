@@ -15,15 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Verification for Subspace headers.
-use crate::{FarmerPublicKey, FarmerSignature, VerificationError, RANDOMNESS_CONTEXT};
+//! Verification primitives for Subspace.
+use crate::RANDOMNESS_CONTEXT;
 use core::mem;
 use schnorrkel::context::SigningContext;
 use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{PublicKey, Signature, SignatureResult};
-use sp_api::HeaderT;
+use schnorrkel::{PublicKey, Signature, SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
-use sp_consensus_slots::Slot;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
     crypto, PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, TagSignature,
@@ -34,29 +32,58 @@ use subspace_solving::{
     verify_local_challenge, verify_tag_signature, SubspaceCodec,
 };
 
+/// Errors encountered by the Subspace consensus primitives.
+#[derive(Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+pub enum Error {
+    /// Tag verification failed
+    #[cfg_attr(feature = "thiserror", error("Invalid tag for salt"))]
+    InvalidTag,
+
+    /// Piece encoding is invalid
+    #[cfg_attr(feature = "thiserror", error("Invalid piece encoding"))]
+    InvalidPieceEncoding,
+
+    /// Piece verification failed
+    #[cfg_attr(feature = "thiserror", error("Invalid piece"))]
+    InvalidPiece,
+
+    /// Invalid Local challenge
+    #[cfg_attr(feature = "thiserror", error("Invalid local challenge"))]
+    InvalidLocalChallenge(SignatureError),
+
+    /// Solution is outside the challenge range
+    #[cfg_attr(feature = "thiserror", error("Solution is outside the solution range"))]
+    OutsideSolutionRange,
+
+    /// Invalid solution signature
+    #[cfg_attr(feature = "thiserror", error("Invalid solution signature"))]
+    InvalidSolutionSignature(SignatureError),
+
+    /// Solution is outside the MaxPlot
+    #[cfg_attr(feature = "thiserror", error("Solution is outside max plot"))]
+    OutsideMaxPlot,
+}
+
 /// Check the reward signature validity.
 pub fn check_reward_signature(
     hash: &[u8],
-    signature: &FarmerSignature,
-    public_key: &FarmerPublicKey,
+    signature: impl AsRef<[u8]>,
+    public_key: impl AsRef<[u8]>,
     reward_signing_context: &SigningContext,
-) -> Result<(), schnorrkel::SignatureError> {
+) -> Result<(), SignatureError> {
     let public_key = PublicKey::from_bytes(public_key.as_ref())?;
-    let signature = Signature::from_bytes(signature)?;
+    let signature = Signature::from_bytes(signature.as_ref())?;
     public_key.verify(reward_signing_context.bytes(hash), &signature)
 }
 
 /// Check if the tag of a solution's piece is valid.
-fn check_piece_tag<Header, RewardAddress>(
-    slot: Slot,
+fn check_piece_tag<RewardAddress>(
     salt: Salt,
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
-) -> Result<(), VerificationError<Header>>
-where
-    Header: HeaderT,
-{
+    solution: &Solution<impl AsRef<[u8]>, RewardAddress>,
+) -> Result<(), Error> {
     if !is_tag_valid(&solution.encoding, salt, solution.tag) {
-        return Err(VerificationError::InvalidTag(slot));
+        return Err(Error::InvalidTag);
     }
 
     Ok(())
@@ -65,23 +92,19 @@ where
 /// Check piece validity.
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
-pub fn check_piece<Header, RewardAddress>(
-    slot: Slot,
+pub fn check_piece<RewardAddress>(
     records_root: Sha256Hash,
     position: u64,
     record_size: u32,
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
-) -> Result<(), VerificationError<Header>>
-where
-    Header: HeaderT,
-{
+    solution: &Solution<impl AsRef<[u8]>, RewardAddress>,
+) -> Result<(), Error> {
     let mut piece = solution.encoding.clone();
 
     // Ensure piece is decodable.
     let subspace_codec = SubspaceCodec::new(solution.public_key.as_ref());
     subspace_codec
         .decode(&mut piece, solution.piece_index)
-        .map_err(|_| VerificationError::InvalidEncoding(slot))?;
+        .map_err(|_| Error::InvalidPieceEncoding)?;
 
     if !archiver::is_piece_valid(
         &piece,
@@ -89,7 +112,7 @@ where
         position as usize,
         record_size as usize,
     ) {
-        return Err(VerificationError::InvalidEncoding(slot));
+        return Err(Error::InvalidPiece);
     }
 
     Ok(())
@@ -106,7 +129,7 @@ pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> b
 /// Returns true if piece index is within farmer sector
 fn is_within_max_plot(
     piece_index: PieceIndex,
-    public_key: &FarmerPublicKey,
+    public_key: impl AsRef<[u8]>,
     total_pieces: u64,
     max_plot_size: u64,
 ) -> bool {
@@ -153,13 +176,14 @@ pub struct VerifySolutionParams<'a> {
 }
 
 /// Solution verification
-pub fn verify_solution<Header, RewardAddress>(
+pub fn verify_solution<FarmerPublicKey, RewardAddress, Slot>(
     solution: &Solution<FarmerPublicKey, RewardAddress>,
     slot: Slot,
     params: VerifySolutionParams,
-) -> Result<(), VerificationError<Header>>
+) -> Result<(), Error>
 where
-    Header: HeaderT,
+    FarmerPublicKey: AsRef<[u8]>,
+    Slot: Into<u64>,
 {
     let VerifySolutionParams {
         global_randomness,
@@ -168,38 +192,39 @@ where
         piece_check_params,
     } = params;
 
+    let slot = slot.into();
     let public_key =
         PublicKey::from_bytes(solution.public_key.as_ref()).expect("Always correct length; qed");
 
     if let Err(error) = verify_local_challenge(
         &public_key,
-        derive_global_challenge(global_randomness, slot.into()),
+        derive_global_challenge(global_randomness, slot),
         &solution.local_challenge,
     ) {
-        return Err(VerificationError::BadLocalChallenge(slot, error));
+        return Err(Error::InvalidLocalChallenge(error));
     }
 
     // Verification of the local challenge was done above
     let target = match derive_target(
         &public_key,
-        derive_global_challenge(global_randomness, slot.into()),
+        derive_global_challenge(global_randomness, slot),
         &solution.local_challenge,
     ) {
         Ok(target) => target,
         Err(error) => {
-            return Err(VerificationError::BadLocalChallenge(slot, error));
+            return Err(Error::InvalidLocalChallenge(error));
         }
     };
 
     if !is_within_solution_range(solution.tag, target, solution_range) {
-        return Err(VerificationError::OutsideOfSolutionRange(slot));
+        return Err(Error::OutsideSolutionRange);
     }
 
     if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &public_key) {
-        return Err(VerificationError::BadSolutionSignature(slot, error));
+        return Err(Error::InvalidSolutionSignature(error));
     }
 
-    check_piece_tag(slot, salt, solution)?;
+    check_piece_tag(salt, solution)?;
 
     if let Some(PieceCheckParams {
         records_root,
@@ -215,10 +240,10 @@ where
             total_pieces,
             max_plot_size,
         ) {
-            return Err(VerificationError::OutsideOfMaxPlot(slot));
+            return Err(Error::OutsideMaxPlot);
         }
 
-        check_piece(slot, records_root, position, record_size, solution)?;
+        check_piece(records_root, position, record_size, solution)?;
     }
 
     Ok(())
@@ -229,7 +254,7 @@ where
 /// NOTE: If you are not the signer then you must verify the local challenge before calling this
 /// function.
 pub fn derive_randomness(
-    public_key: &FarmerPublicKey,
+    public_key: impl AsRef<[u8]>,
     tag: Tag,
     tag_signature: &TagSignature,
 ) -> SignatureResult<Randomness> {

@@ -244,23 +244,22 @@ where
                 }
             };
 
-            let solution_verification_result =
-                verification::verify_solution::<Block::Header, FarmerPublicKey>(
-                    &solution,
-                    slot,
-                    verification::VerifySolutionParams {
-                        global_randomness: &global_randomness,
-                        solution_range: voting_solution_range,
-                        salt,
-                        piece_check_params: Some(PieceCheckParams {
-                            records_root,
-                            position,
-                            record_size,
-                            max_plot_size,
-                            total_pieces,
-                        }),
-                    },
-                );
+            let solution_verification_result = verification::verify_solution(
+                &solution,
+                slot,
+                verification::VerifySolutionParams {
+                    global_randomness: &global_randomness,
+                    solution_range: voting_solution_range,
+                    salt,
+                    piece_check_params: Some(PieceCheckParams {
+                        records_root,
+                        position,
+                        record_size,
+                        max_plot_size,
+                        total_pieces,
+                    }),
+                },
+            );
 
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");

@@ -66,6 +66,7 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
+use sp_consensus_subspace::verification::Error as VerificationPrimitiveError;
 use sp_consensus_subspace::{
     check_header, verification, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
     VerificationError, VerificationParams,
@@ -271,16 +272,21 @@ where
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
-            VerificationError::BadSolutionSignature(slot, signature_error) => {
-                Error::BadSolutionSignature(slot, signature_error)
-            }
-            VerificationError::BadLocalChallenge(slot, signature_error) => {
-                Error::BadLocalChallenge(slot, signature_error)
-            }
-            VerificationError::OutsideOfSolutionRange(slot) => Error::OutsideOfSolutionRange(slot),
-            VerificationError::OutsideOfMaxPlot(slot) => Error::OutsideOfMaxPlot(slot),
-            VerificationError::InvalidEncoding(slot) => Error::InvalidEncoding(slot),
-            VerificationError::InvalidTag(slot) => Error::InvalidTag(slot),
+            VerificationError::VerificationError(slot, error) => match error {
+                VerificationPrimitiveError::InvalidTag => Error::InvalidTag(slot),
+                VerificationPrimitiveError::InvalidPieceEncoding => Error::InvalidEncoding(slot),
+                VerificationPrimitiveError::InvalidPiece => Error::InvalidEncoding(slot),
+                VerificationPrimitiveError::InvalidLocalChallenge(err) => {
+                    Error::BadLocalChallenge(slot, err)
+                }
+                VerificationPrimitiveError::OutsideSolutionRange => {
+                    Error::OutsideOfSolutionRange(slot)
+                }
+                VerificationPrimitiveError::InvalidSolutionSignature(err) => {
+                    Error::BadSolutionSignature(slot, err)
+                }
+                VerificationPrimitiveError::OutsideMaxPlot => Error::OutsideOfMaxPlot(slot),
+            },
         }
     }
 }
@@ -1077,13 +1083,8 @@ where
 
         // Piece is not checked during initial block verification because it requires access to
         // root block, check it now.
-        verification::check_piece(
-            pre_digest.slot,
-            records_root,
-            position,
-            record_size,
-            &pre_digest.solution,
-        )?;
+        verification::check_piece(records_root, position, record_size, &pre_digest.solution)
+            .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
         let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
 

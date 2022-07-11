@@ -344,36 +344,12 @@ pub enum VerificationError<Header: HeaderT> {
     /// Bad reward signature
     #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
     BadRewardSignature(Header::Hash),
-    /// Bad solution signature
+    /// Verification error
     #[cfg_attr(
         feature = "thiserror",
-        error("Bad solution signature on slot {0:?}: {1:?}")
+        error("Verification error on slot {0:?}: {1:?}")
     )]
-    BadSolutionSignature(Slot, schnorrkel::SignatureError),
-    /// Bad local challenge
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Local challenge is invalid for slot {0}: {1}")
-    )]
-    BadLocalChallenge(Slot, schnorrkel::SignatureError),
-    /// Solution is outside of solution range
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Solution is outside of solution range for slot {0}")
-    )]
-    OutsideOfSolutionRange(Slot),
-    /// Solution is outside of max plot size
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Solution is outside of max plot size {0}")
-    )]
-    OutsideOfMaxPlot(Slot),
-    /// Invalid encoding of a piece
-    #[cfg_attr(feature = "thiserror", error("Invalid encoding for slot {0}"))]
-    InvalidEncoding(Slot),
-    /// Invalid tag for salt
-    #[cfg_attr(feature = "thiserror", error("Invalid tag for salt for slot {0}"))]
-    InvalidTag(Slot),
+    VerificationError(Slot, verification::Error),
 }
 
 /// A header which has been checked
@@ -474,7 +450,8 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(&pre_digest.solution, slot, verify_solution_params)?;
+    verify_solution(&pre_digest.solution, slot, verify_solution_params)
+        .map_err(|error| VerificationError::VerificationError(slot, error))?;
 
     Ok(CheckedHeader::Checked(
         header,
