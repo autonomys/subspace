@@ -1,7 +1,7 @@
 use crate::archiving::Archiving;
 use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{
-    PlotFactory, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions,
+    PlotFactory, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions, SinglePlotFarmSummary,
 };
 use crate::utils::get_plot_sizes;
 use crate::ws_rpc_server::PieceGetter;
@@ -105,8 +105,8 @@ impl SingleDiskFarmInfo {
 
     /// Load `SingleDiskFarm` from path, `None` means no info file was found, happens during first
     /// start.
-    pub fn load_from(metadata_directory: &Path) -> io::Result<Option<Self>> {
-        let bytes = match fs::read(metadata_directory.join(Self::FILE_NAME)) {
+    pub fn load_from(path: &Path) -> io::Result<Option<Self>> {
+        let bytes = match fs::read(path.join(Self::FILE_NAME)) {
             Ok(bytes) => bytes,
             Err(error) => {
                 return if error.kind() == io::ErrorKind::NotFound {
@@ -123,9 +123,9 @@ impl SingleDiskFarmInfo {
     }
 
     /// Store `SingleDiskFarm` info to path so it can be loaded again upon restart.
-    pub fn store_to(&self, metadata_directory: &Path) -> io::Result<()> {
+    pub fn store_to(&self, path: &Path) -> io::Result<()> {
         fs::write(
-            metadata_directory.join(Self::FILE_NAME),
+            path.join(Self::FILE_NAME),
             serde_json::to_vec(self).expect("Info serialization never fails; qed"),
         )
     }
@@ -158,6 +158,41 @@ impl SingleDiskFarmInfo {
         } = self;
         single_plot_farms
     }
+}
+
+/// Summary of single disk farm for presentational purposes
+pub enum SingleDiskFarmSummary {
+    /// Farm was found and read successfully
+    Found {
+        // ID of the farm
+        id: SingleDiskFarmId,
+        // Genesis hash of the chain used for farm creation
+        genesis_hash: [u8; 32],
+        // How much space in bytes can farm use for plots (metadata space is not included)
+        allocated_plotting_space: u64,
+        /// Path to directory where plots are stored, typically HDD.
+        plot_directory: PathBuf,
+        /// Path to directory for storing metadata, typically SSD.
+        metadata_directory: PathBuf,
+        // Summaries of single plot farms contained within
+        single_plot_farm_summaries: Vec<SinglePlotFarmSummary>,
+    },
+    /// Farm was not found
+    NotFound {
+        /// Path to directory where plots are stored, typically HDD.
+        plot_directory: PathBuf,
+        /// Path to directory for storing metadata, typically SSD.
+        metadata_directory: PathBuf,
+    },
+    /// Failed to open farm
+    Error {
+        /// Path to directory where plots are stored, typically HDD.
+        plot_directory: PathBuf,
+        /// Path to directory for storing metadata, typically SSD.
+        metadata_directory: PathBuf,
+        /// Error itself
+        error: io::Error,
+    },
 }
 
 /// Options for `SingleDiskFarm` creation
@@ -285,23 +320,23 @@ impl SingleDiskFarm {
                 .zip(plot_sizes)
                 .enumerate()
                 .map(
-                    move |(plot_index, (single_farm_plot_id, allocated_plotting_space))| {
+                    move |(plot_index, (single_plot_farm_id, allocated_plotting_space))| {
                         let _guard = handle.enter();
 
-                        let plot_directory = plot_directory.join(single_farm_plot_id.to_string());
+                        let plot_directory = plot_directory.join(single_plot_farm_id.to_string());
                         let metadata_directory =
-                            metadata_directory.join(single_farm_plot_id.to_string());
+                            metadata_directory.join(single_plot_farm_id.to_string());
                         let farming_client = farming_client.clone();
                         let listen_on = listen_on.clone();
                         let bootstrap_nodes = bootstrap_nodes.clone();
                         let first_listen_on = Arc::clone(&first_listen_on);
                         let single_disk_semaphore = single_disk_semaphore.clone();
 
-                        let span = info_span!("single_plot_farm", %single_farm_plot_id);
+                        let span = info_span!("single_plot_farm", %single_plot_farm_id);
                         let _enter = span.enter();
 
                         SinglePlotFarm::new(SinglePlotFarmOptions {
-                            id: *single_farm_plot_id,
+                            id: *single_plot_farm_id,
                             plot_directory,
                             metadata_directory,
                             plot_index,
@@ -408,6 +443,49 @@ impl SingleDiskFarm {
         }
 
         Ok(())
+    }
+
+    /// Collect summary of single disk farm for presentational purposes
+    pub fn collect_summary(
+        plot_directory: PathBuf,
+        metadata_directory: PathBuf,
+    ) -> SingleDiskFarmSummary {
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&plot_directory) {
+            Ok(Some(single_disk_farm_info)) => single_disk_farm_info,
+            Ok(None) => {
+                return SingleDiskFarmSummary::NotFound {
+                    plot_directory,
+                    metadata_directory,
+                };
+            }
+            Err(error) => {
+                return SingleDiskFarmSummary::Error {
+                    plot_directory,
+                    metadata_directory,
+                    error,
+                };
+            }
+        };
+
+        let single_plot_farm_summaries = single_disk_farm_info
+            .single_plot_farms()
+            .iter()
+            .map(|single_plot_farm_id| {
+                SinglePlotFarm::collect_summary(
+                    plot_directory.join(single_plot_farm_id.to_string()),
+                    metadata_directory.join(single_plot_farm_id.to_string()),
+                )
+            })
+            .collect();
+
+        return SingleDiskFarmSummary::Found {
+            id: *single_disk_farm_info.id(),
+            genesis_hash: *single_disk_farm_info.genesis_hash(),
+            allocated_plotting_space: single_disk_farm_info.allocated_plotting_space(),
+            plot_directory,
+            metadata_directory,
+            single_plot_farm_summaries,
+        };
     }
 
     /// Wipe everything that belongs to this single disk farm

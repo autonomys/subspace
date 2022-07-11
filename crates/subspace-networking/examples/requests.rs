@@ -82,8 +82,8 @@ async fn main() {
             .send_pieces_by_range_request(
                 node_1.id(),
                 PiecesByRangeRequest {
-                    from: PieceIndexHash([1u8; 32]),
-                    to: PieceIndexHash([1u8; 32]),
+                    from: PieceIndexHash::from([1u8; 32]),
+                    to: PieceIndexHash::from([1u8; 32]),
                 },
             )
             .await

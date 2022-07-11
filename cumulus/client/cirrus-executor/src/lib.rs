@@ -57,6 +57,8 @@
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
 
+#![feature(drain_filter)]
+
 mod aux_schema;
 mod bundle_processor;
 mod bundle_producer;
@@ -66,12 +68,10 @@ mod merkle_tree;
 mod tests;
 mod worker;
 
-use crate::{
-	bundle_processor::BundleProcessor,
-	bundle_producer::BundleProducer,
-	fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator},
-	worker::BlockInfo,
-};
+use crate::bundle_processor::BundleProcessor;
+use crate::bundle_producer::BundleProducer;
+use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::worker::BlockInfo;
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -85,16 +85,17 @@ use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_executor::{
-	Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId, FraudProof,
-	InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
+    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId, FraudProof,
+    InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::{
-	generic::BlockId,
-	traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero},
-	RuntimeAppPublic,
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{
+    Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
-use std::{borrow::Cow, sync::Arc};
+use sp_runtime::RuntimeAppPublic;
+use std::borrow::Cow;
+use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
 
 /// The logging target.
@@ -103,655 +104,689 @@ const LOG_TARGET: &str = "cirrus::executor";
 /// The implementation of the Cirrus `Executor`.
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
-	Block: BlockT,
-	PBlock: BlockT,
+    Block: BlockT,
+    PBlock: BlockT,
 {
-	// TODO: no longer used in executor, revisit this with ParachainBlockImport together.
-	primary_chain_client: Arc<PClient>,
-	client: Arc<Client>,
-	spawner: Box<dyn SpawnNamed + Send + Sync>,
-	transaction_pool: Arc<TransactionPool>,
-	backend: Arc<Backend>,
-	fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
-	bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend>,
+    // TODO: no longer used in executor, revisit this with ParachainBlockImport together.
+    primary_chain_client: Arc<PClient>,
+    client: Arc<Client>,
+    spawner: Box<dyn SpawnNamed + Send + Sync>,
+    transaction_pool: Arc<TransactionPool>,
+    backend: Arc<Backend>,
+    fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
-	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
-	Block: BlockT,
-	PBlock: BlockT,
+    Block: BlockT,
+    PBlock: BlockT,
 {
-	fn clone(&self) -> Self {
-		Self {
-			primary_chain_client: self.primary_chain_client.clone(),
-			client: self.client.clone(),
-			spawner: self.spawner.clone(),
-			transaction_pool: self.transaction_pool.clone(),
-			backend: self.backend.clone(),
-			fraud_proof_generator: self.fraud_proof_generator.clone(),
-			bundle_processor: self.bundle_processor.clone(),
-		}
-	}
+    fn clone(&self) -> Self {
+        Self {
+            primary_chain_client: self.primary_chain_client.clone(),
+            client: self.client.clone(),
+            spawner: self.spawner.clone(),
+            transaction_pool: self.transaction_pool.clone(),
+            backend: self.backend.clone(),
+            fraud_proof_generator: self.fraud_proof_generator.clone(),
+            bundle_processor: self.bundle_processor.clone(),
+        }
+    }
 }
 
 type ExecutionReceiptFor<PBlock, Hash> =
-	ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
+    ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
 
 type SignedExecutionReceiptFor<PBlock, Hash> =
-	SignedExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
+    SignedExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
 
 type TransactionFor<Backend, Block> =
-	<<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
-		HashFor<Block>,
-	>>::Transaction;
+    <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
+        HashFor<Block>,
+    >>::Transaction;
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-	Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+    Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
-	Block: BlockT,
-	PBlock: BlockT,
-	Client:
-		HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-	Client::Api: SecondaryApi<Block, AccountId>
-		+ sp_block_builder::BlockBuilder<Block>
-		+ sp_api::ApiExt<
-			Block,
-			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-		>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<Client, Block>,
-		Error = sp_consensus::Error,
-	>,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
-		+ Send
-		+ Sync
-		+ 'static,
-	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
-	E: CodeExecutor,
+    Block: BlockT,
+    PBlock: BlockT,
+    Client:
+        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: SecondaryApi<Block, AccountId>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<
+            Block,
+            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+        >,
+    for<'b> &'b Client: sc_consensus::BlockImport<
+        Block,
+        Transaction = sp_api::TransactionFor<Client, Block>,
+        Error = sp_consensus::Error,
+    >,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    E: CodeExecutor,
 {
-	/// Create a new instance.
-	#[allow(clippy::too_many_arguments)]
-	pub async fn new<SE, SC, IBNS, NSNS>(
-		primary_chain_client: Arc<PClient>,
-		primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
-		spawn_essential: &SE,
-		select_chain: &SC,
-		imported_block_notification_stream: IBNS,
-		new_slot_notification_stream: NSNS,
-		client: Arc<Client>,
-		spawner: Box<dyn SpawnNamed + Send + Sync>,
-		transaction_pool: Arc<TransactionPool>,
-		bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
-		execution_receipt_sender: Arc<
-			TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
-		>,
-		backend: Arc<Backend>,
-		code_executor: Arc<E>,
-		is_authority: bool,
-		keystore: SyncCryptoStorePtr,
-	) -> Result<Self, sp_consensus::Error>
-	where
-		SE: SpawnEssentialNamed,
-		SC: SelectChain<PBlock>,
-		IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
-		NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
-	{
-		let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
+    /// Create a new instance.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new<SE, SC, IBNS, NSNS>(
+        primary_chain_client: Arc<PClient>,
+        primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+        spawn_essential: &SE,
+        select_chain: &SC,
+        imported_block_notification_stream: IBNS,
+        new_slot_notification_stream: NSNS,
+        client: Arc<Client>,
+        spawner: Box<dyn SpawnNamed + Send + Sync>,
+        transaction_pool: Arc<TransactionPool>,
+        bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
+        execution_receipt_sender: Arc<
+            TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
+        >,
+        backend: Arc<Backend>,
+        code_executor: Arc<E>,
+        is_authority: bool,
+        keystore: SyncCryptoStorePtr,
+    ) -> Result<Self, sp_consensus::Error>
+    where
+        SE: SpawnEssentialNamed,
+        SC: SelectChain<PBlock>,
+        IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+        NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
+    {
+        let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
-		let bundle_producer = BundleProducer::new(
-			primary_chain_client.clone(),
-			client.clone(),
-			transaction_pool.clone(),
-			bundle_sender,
-			is_authority,
-			keystore.clone(),
-		);
+        let bundle_producer = BundleProducer::new(
+            primary_chain_client.clone(),
+            client.clone(),
+            transaction_pool.clone(),
+            bundle_sender,
+            is_authority,
+            keystore.clone(),
+        );
 
-		let fraud_proof_generator = FraudProofGenerator::new(
-			client.clone(),
-			spawner.clone(),
-			backend.clone(),
-			code_executor,
-		);
+        let fraud_proof_generator = FraudProofGenerator::new(
+            client.clone(),
+            spawner.clone(),
+            backend.clone(),
+            code_executor,
+        );
 
-		let bundle_processor = BundleProcessor::new(
-			primary_chain_client.clone(),
-			primary_network,
-			client.clone(),
-			execution_receipt_sender,
-			backend.clone(),
-			is_authority,
-			keystore,
-		);
+        let bundle_processor = BundleProcessor::new(
+            primary_chain_client.clone(),
+            primary_network,
+            client.clone(),
+            execution_receipt_sender,
+            backend.clone(),
+            is_authority,
+            keystore,
+            spawner.clone(),
+            fraud_proof_generator.clone(),
+        );
 
-		spawn_essential.spawn_essential_blocking(
-			"executor-worker",
-			None,
-			worker::start_worker(
-				primary_chain_client.clone(),
-				client.clone(),
-				bundle_producer,
-				bundle_processor.clone(),
-				imported_block_notification_stream,
-				new_slot_notification_stream,
-				active_leaves,
-			)
-			.boxed(),
-		);
+        spawn_essential.spawn_essential_blocking(
+            "executor-worker",
+            None,
+            worker::start_worker(
+                primary_chain_client.clone(),
+                client.clone(),
+                bundle_producer,
+                bundle_processor.clone(),
+                imported_block_notification_stream,
+                new_slot_notification_stream,
+                active_leaves,
+            )
+            .boxed(),
+        );
 
-		Ok(Self {
-			primary_chain_client,
-			client,
-			spawner,
-			transaction_pool,
-			backend,
-			fraud_proof_generator,
-			bundle_processor,
-		})
-	}
+        Ok(Self {
+            primary_chain_client,
+            client,
+            spawner,
+            transaction_pool,
+            backend,
+            fraud_proof_generator,
+            bundle_processor,
+        })
+    }
 
-	/// Checks the status of the given block hash in the Parachain.
-	///
-	/// Returns `true` if the block could be found and is good to be build on.
-	#[allow(unused)]
-	fn check_block_status(
-		&self,
-		hash: Block::Hash,
-		number: <Block::Header as HeaderT>::Number,
-	) -> bool {
-		match self.client.block_status(&BlockId::Hash(hash)) {
-			Ok(BlockStatus::Queued) => {
-				tracing::debug!(
-					target: LOG_TARGET,
-					block_hash = ?hash,
-					"Skipping candidate production, because block is still queued for import.",
-				);
-				false
-			},
-			Ok(BlockStatus::InChainWithState) => true,
-			Ok(BlockStatus::InChainPruned) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					"Skipping candidate production, because block `{:?}` is already pruned!",
-					hash,
-				);
-				false
-			},
-			Ok(BlockStatus::KnownBad) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					block_hash = ?hash,
-					"Block is tagged as known bad and is included in the relay chain! Skipping candidate production!",
-				);
-				false
-			},
-			Ok(BlockStatus::Unknown) => {
-				if number.is_zero() {
-					tracing::error!(
-						target: LOG_TARGET,
-						block_hash = ?hash,
-						"Could not find the header of the genesis block in the database!",
-					);
-				} else {
-					tracing::debug!(
-						target: LOG_TARGET,
-						block_hash = ?hash,
-						"Skipping candidate production, because block is unknown.",
-					);
-				}
-				false
-			},
-			Err(e) => {
-				tracing::error!(
-					target: LOG_TARGET,
-					block_hash = ?hash,
-					error = ?e,
-					"Failed to get block status.",
-				);
-				false
-			},
-		}
-	}
+    /// Checks the status of the given block hash in the Parachain.
+    ///
+    /// Returns `true` if the block could be found and is good to be build on.
+    #[allow(unused)]
+    fn check_block_status(
+        &self,
+        hash: Block::Hash,
+        number: <Block::Header as HeaderT>::Number,
+    ) -> bool {
+        match self.client.block_status(&BlockId::Hash(hash)) {
+            Ok(BlockStatus::Queued) => {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    block_hash = ?hash,
+                    "Skipping candidate production, because block is still queued for import.",
+                );
+                false
+            }
+            Ok(BlockStatus::InChainWithState) => true,
+            Ok(BlockStatus::InChainPruned) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    "Skipping candidate production, because block `{:?}` is already pruned!",
+                    hash,
+                );
+                false
+            }
+            Ok(BlockStatus::KnownBad) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    block_hash = ?hash,
+                    "Block is tagged as known bad and is included in the relay chain! Skipping candidate production!",
+                );
+                false
+            }
+            Ok(BlockStatus::Unknown) => {
+                if number.is_zero() {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        block_hash = ?hash,
+                        "Could not find the header of the genesis block in the database!",
+                    );
+                } else {
+                    tracing::debug!(
+                        target: LOG_TARGET,
+                        block_hash = ?hash,
+                        "Skipping candidate production, because block is unknown.",
+                    );
+                }
+                false
+            }
+            Err(e) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    block_hash = ?hash,
+                    error = ?e,
+                    "Failed to get block status.",
+                );
+                false
+            }
+        }
+    }
 
-	fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-		let primary_chain_client = self.primary_chain_client.clone();
-		// TODO: No backpressure
-		self.spawner.spawn_blocking(
-			"cirrus-submit-bundle-equivocation-proof",
-			None,
-			async move {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Submitting bundle equivocation proof in a background task..."
-				);
-				if let Err(error) =
-					primary_chain_client.runtime_api().submit_bundle_equivocation_proof_unsigned(
-						&BlockId::Hash(primary_chain_client.info().best_hash),
-						bundle_equivocation_proof,
-					) {
-					tracing::debug!(
-						target: LOG_TARGET,
-						error = ?error,
-						"Failed to submit bundle equivocation proof"
-					);
-				}
-			}
-			.boxed(),
-		);
-	}
+    fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
+        let primary_chain_client = self.primary_chain_client.clone();
+        // TODO: No backpressure
+        self.spawner.spawn_blocking(
+            "cirrus-submit-bundle-equivocation-proof",
+            None,
+            async move {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    "Submitting bundle equivocation proof in a background task..."
+                );
+                if let Err(error) = primary_chain_client
+                    .runtime_api()
+                    .submit_bundle_equivocation_proof_unsigned(
+                        &BlockId::Hash(primary_chain_client.info().best_hash),
+                        bundle_equivocation_proof,
+                    )
+                {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        error = ?error,
+                        "Failed to submit bundle equivocation proof"
+                    );
+                }
+            }
+            .boxed(),
+        );
+    }
 
-	fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-		let primary_chain_client = self.primary_chain_client.clone();
-		// TODO: No backpressure
-		self.spawner.spawn_blocking(
-			"cirrus-submit-fraud-proof",
-			None,
-			async move {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Submitting fraud proof in a background task..."
-				);
-				if let Err(error) = primary_chain_client.runtime_api().submit_fraud_proof_unsigned(
-					&BlockId::Hash(primary_chain_client.info().best_hash),
-					fraud_proof,
-				) {
-					tracing::debug!(
-						target: LOG_TARGET,
-						error = ?error,
-						"Failed to submit fraud proof"
-					);
-				}
-			}
-			.boxed(),
-		);
-	}
+    fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
+        let primary_chain_client = self.primary_chain_client.clone();
+        // TODO: No backpressure
+        self.spawner.spawn_blocking(
+            "cirrus-submit-fraud-proof",
+            None,
+            async move {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    "Submitting fraud proof in a background task..."
+                );
+                if let Err(error) = primary_chain_client
+                    .runtime_api()
+                    .submit_fraud_proof_unsigned(
+                        &BlockId::Hash(primary_chain_client.info().best_hash),
+                        fraud_proof,
+                    )
+                {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        error = ?error,
+                        "Failed to submit fraud proof"
+                    );
+                }
+            }
+            .boxed(),
+        );
+    }
 
-	fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-		let primary_chain_client = self.primary_chain_client.clone();
-		// TODO: No backpressure
-		self.spawner.spawn_blocking(
-			"cirrus-submit-invalid-transaction-proof",
-			None,
-			async move {
-				tracing::debug!(
-					target: LOG_TARGET,
-					"Submitting invalid transaction proof in a background task..."
-				);
-				if let Err(error) =
-					primary_chain_client.runtime_api().submit_invalid_transaction_proof_unsigned(
-						&BlockId::Hash(primary_chain_client.info().best_hash),
-						invalid_transaction_proof,
-					) {
-					tracing::debug!(
-						target: LOG_TARGET,
-						error = ?error,
-						"Failed to submit invalid transaction proof"
-					);
-				}
-			}
-			.boxed(),
-		);
-	}
+    fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
+        let primary_chain_client = self.primary_chain_client.clone();
+        // TODO: No backpressure
+        self.spawner.spawn_blocking(
+            "cirrus-submit-invalid-transaction-proof",
+            None,
+            async move {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    "Submitting invalid transaction proof in a background task..."
+                );
+                if let Err(error) = primary_chain_client
+                    .runtime_api()
+                    .submit_invalid_transaction_proof_unsigned(
+                        &BlockId::Hash(primary_chain_client.info().best_hash),
+                        invalid_transaction_proof,
+                    )
+                {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        error = ?error,
+                        "Failed to submit invalid transaction proof"
+                    );
+                }
+            }
+            .boxed(),
+        );
+    }
 
-	/// The background is that a receipt received from the network points to a future block
-	/// from the local view, so we need to wait for the receipt for the block at the same
-	/// height to be produced locally in order to check the validity of the external receipt.
-	async fn wait_for_local_future_receipt(
-		&self,
-		secondary_block_hash: Block::Hash,
-		secondary_block_number: <Block::Header as HeaderT>::Number,
-		tx: crossbeam::channel::Sender<
-			sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
-		>,
-	) -> Result<(), GossipMessageError> {
-		loop {
-			match aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
-				Ok(Some(local_receipt)) =>
-					return tx.send(Ok(local_receipt)).map_err(|_| GossipMessageError::SendError),
-				Ok(None) => {
-					// TODO: test how this works under the primary forks.
-					//       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
-					//
-					// Whether or not the best execution chain number on primary chain has been
-					// updated, the local client has proceeded to a higher block, that means the receipt
-					// of `block_hash` received from the network does not match the local one,
-					// we should just send back the local receipt at the same height.
-					if self.client.info().best_number >= secondary_block_number {
-						let local_block_hash = self
-							.client
-							.expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
-						let local_receipt_result =
-							aux_schema::load_execution_receipt(&*self.client, local_block_hash)?
-								.ok_or_else(|| {
-									sp_blockchain::Error::Backend(format!(
-										"Execution receipt not found for {:?}",
-										local_block_hash
-									))
-								});
-						return tx
-							.send(local_receipt_result)
-							.map_err(|_| GossipMessageError::SendError)
-					} else {
-						tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-					}
-				},
-				Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
-			}
-		}
-	}
+    /// The background is that a receipt received from the network points to a future block
+    /// from the local view, so we need to wait for the receipt for the block at the same
+    /// height to be produced locally in order to check the validity of the external receipt.
+    async fn wait_for_local_future_receipt(
+        &self,
+        secondary_block_hash: Block::Hash,
+        secondary_block_number: <Block::Header as HeaderT>::Number,
+        tx: crossbeam::channel::Sender<
+            sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
+        >,
+    ) -> Result<(), GossipMessageError> {
+        loop {
+            match aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
+                Ok(Some(local_receipt)) => {
+                    return tx
+                        .send(Ok(local_receipt))
+                        .map_err(|_| GossipMessageError::SendError)
+                }
+                Ok(None) => {
+                    // TODO: test how this works under the primary forks.
+                    //       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
+                    //
+                    // Whether or not the best execution chain number on primary chain has been
+                    // updated, the local client has proceeded to a higher block, that means the receipt
+                    // of `block_hash` received from the network does not match the local one,
+                    // we should just send back the local receipt at the same height.
+                    if self.client.info().best_number >= secondary_block_number {
+                        let local_block_hash = self
+                            .client
+                            .expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
+                        let local_receipt_result =
+                            aux_schema::load_execution_receipt(&*self.client, local_block_hash)?
+                                .ok_or_else(|| {
+                                    sp_blockchain::Error::Backend(format!(
+                                        "Execution receipt not found for {:?}",
+                                        local_block_hash
+                                    ))
+                                });
+                        return tx
+                            .send(local_receipt_result)
+                            .map_err(|_| GossipMessageError::SendError);
+                    } else {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                }
+                Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
+            }
+        }
+    }
 
-	/// Processes the bundles extracted from the primary block.
-	// TODO: Remove this whole method, `self.bundle_processor` as a property and fix
-	// `set_new_code_should_work` test to do an actual runtime upgrade
-	#[doc(hidden)]
-	pub async fn process_bundles(
-		self,
-		primary_info: (PBlock::Hash, NumberFor<PBlock>),
-		bundles: Vec<OpaqueBundle>,
-		shuffling_seed: Randomness,
-		maybe_new_runtime: Option<Cow<'static, [u8]>>,
-	) {
-		if let Err(err) = self
-			.bundle_processor
-			.process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
-			.await
-		{
-			tracing::error!(
-				target: LOG_TARGET,
-				?primary_info,
-				error = ?err,
-				"Error at processing bundles.",
-			);
-		}
-	}
+    /// Processes the bundles extracted from the primary block.
+    // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
+    // `set_new_code_should_work` test to do an actual runtime upgrade
+    #[doc(hidden)]
+    pub async fn process_bundles(
+        self,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        bundles: Vec<OpaqueBundle>,
+        shuffling_seed: Randomness,
+        maybe_new_runtime: Option<Cow<'static, [u8]>>,
+    ) {
+        if let Err(err) = self
+            .bundle_processor
+            .process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
+            .await
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                ?primary_info,
+                error = ?err,
+                "Error at processing bundles.",
+            );
+        }
+    }
 }
 
 /// Error type for cirrus gossip handling.
 #[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
-	#[error("Bundle equivocation error")]
-	BundleEquivocation,
-	#[error(transparent)]
-	FraudProof(#[from] FraudProofError),
-	#[error(transparent)]
-	Client(Box<sp_blockchain::Error>),
-	#[error(transparent)]
-	RuntimeApi(#[from] sp_api::ApiError),
-	#[error(transparent)]
-	RecvError(#[from] crossbeam::channel::RecvError),
-	#[error("Failed to send local receipt result because the channel is disconnected")]
-	SendError,
-	#[error("The signature of bundle is invalid")]
-	BadBundleSignature,
-	#[error("Invalid bundle author, got: {got}, expected: {expected}")]
-	InvalidBundleAuthor { got: ExecutorId, expected: ExecutorId },
-	#[error("The signature of execution receipt is invalid")]
-	BadExecutionReceiptSignature,
-	#[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
-	InvalidExecutionReceiptAuthor { got: ExecutorId, expected: ExecutorId },
+    #[error("Bundle equivocation error")]
+    BundleEquivocation,
+    #[error(transparent)]
+    FraudProof(#[from] FraudProofError),
+    #[error(transparent)]
+    Client(Box<sp_blockchain::Error>),
+    #[error(transparent)]
+    RuntimeApi(#[from] sp_api::ApiError),
+    #[error(transparent)]
+    RecvError(#[from] crossbeam::channel::RecvError),
+    #[error("Failed to send local receipt result because the channel is disconnected")]
+    SendError,
+    #[error("The signature of bundle is invalid")]
+    BadBundleSignature,
+    #[error("Invalid bundle author, got: {got}, expected: {expected}")]
+    InvalidBundleAuthor {
+        got: ExecutorId,
+        expected: ExecutorId,
+    },
+    #[error("The signature of execution receipt is invalid")]
+    BadExecutionReceiptSignature,
+    #[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
+    InvalidExecutionReceiptAuthor {
+        got: ExecutorId,
+        expected: ExecutorId,
+    },
 }
 
 impl From<sp_blockchain::Error> for GossipMessageError {
-	fn from(error: sp_blockchain::Error) -> Self {
-		Self::Client(Box::new(error))
-	}
+    fn from(error: sp_blockchain::Error) -> Self {
+        Self::Client(Box::new(error))
+    }
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-	GossipMessageHandler<PBlock, Block>
-	for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+    GossipMessageHandler<PBlock, Block>
+    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
-	Block: BlockT,
-	PBlock: BlockT,
-	Client: HeaderBackend<Block>
-		+ BlockBackend<Block>
-		+ ProvideRuntimeApi<Block>
-		+ AuxStore
-		+ Send
-		+ Sync
-		+ 'static,
-	Client::Api: SecondaryApi<Block, AccountId>
-		+ sp_block_builder::BlockBuilder<Block>
-		+ sp_api::ApiExt<
-			Block,
-			StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-		>,
-	for<'b> &'b Client: sc_consensus::BlockImport<
-		Block,
-		Transaction = sp_api::TransactionFor<Client, Block>,
-		Error = sp_consensus::Error,
-	>,
-	PClient: HeaderBackend<PBlock>
-		+ BlockBackend<PBlock>
-		+ ProvideRuntimeApi<PBlock>
-		+ Send
-		+ Sync
-		+ 'static,
-	PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-	Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-	TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-	TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
-	E: CodeExecutor,
+    Block: BlockT,
+    PBlock: BlockT,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + ProvideRuntimeApi<Block>
+        + AuxStore
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: SecondaryApi<Block, AccountId>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<
+            Block,
+            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+        >,
+    for<'b> &'b Client: sc_consensus::BlockImport<
+        Block,
+        Transaction = sp_api::TransactionFor<Client, Block>,
+        Error = sp_consensus::Error,
+    >,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    E: CodeExecutor,
 {
-	type Error = GossipMessageError;
+    type Error = GossipMessageError;
 
-	fn on_bundle(
-		&self,
-		SignedBundle { bundle, signature, signer }: &SignedBundle<Block::Extrinsic>,
-	) -> Result<Action, Self::Error> {
-		let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
-			// TODO: check bundle equivocation
-			let bundle_is_an_equivocation = false;
-			if bundle_is_an_equivocation {
-				Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
-			} else {
-				None
-			}
-		};
+    fn on_bundle(
+        &self,
+        SignedBundle {
+            bundle,
+            signature,
+            signer,
+        }: &SignedBundle<Block::Extrinsic>,
+    ) -> Result<Action, Self::Error> {
+        let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
+            // TODO: check bundle equivocation
+            let bundle_is_an_equivocation = false;
+            if bundle_is_an_equivocation {
+                Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
+            } else {
+                None
+            }
+        };
 
-		// A bundle equivocation occurs.
-		if let Some(equivocation_proof) = check_equivocation(bundle) {
-			self.submit_bundle_equivocation_proof(equivocation_proof);
-			return Err(GossipMessageError::BundleEquivocation)
-		}
+        // A bundle equivocation occurs.
+        if let Some(equivocation_proof) = check_equivocation(bundle) {
+            self.submit_bundle_equivocation_proof(equivocation_proof);
+            return Err(GossipMessageError::BundleEquivocation);
+        }
 
-		let bundle_exists = false;
+        let bundle_exists = false;
 
-		if bundle_exists {
-			Ok(Action::Empty)
-		} else {
-			let primary_hash =
-				PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
-					.expect("Hash type must be correct");
+        if bundle_exists {
+            Ok(Action::Empty)
+        } else {
+            let primary_hash =
+                PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
+                    .expect("Hash type must be correct");
 
-			if !signer.verify(&bundle.hash(), signature) {
-				return Err(Self::Error::BadBundleSignature)
-			}
+            if !signer.verify(&bundle.hash(), signature) {
+                return Err(Self::Error::BadBundleSignature);
+            }
 
-			let expected_executor_id = self
-				.primary_chain_client
-				.runtime_api()
-				.executor_id(&BlockId::Hash(primary_hash))?;
-			if *signer != expected_executor_id {
-				// TODO: handle the misbehavior.
+            let expected_executor_id = self
+                .primary_chain_client
+                .runtime_api()
+                .executor_id(&BlockId::Hash(primary_hash))?;
+            if *signer != expected_executor_id {
+                // TODO: handle the misbehavior.
 
-				return Err(Self::Error::InvalidBundleAuthor {
-					got: signer.clone(),
-					expected: expected_executor_id,
-				})
-			}
+                return Err(Self::Error::InvalidBundleAuthor {
+                    got: signer.clone(),
+                    expected: expected_executor_id,
+                });
+            }
 
-			for extrinsic in bundle.extrinsics.iter() {
-				let tx_hash = self.transaction_pool.hash_of(extrinsic);
+            for extrinsic in bundle.extrinsics.iter() {
+                let tx_hash = self.transaction_pool.hash_of(extrinsic);
 
-				if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
-					// TODO: Set the status of each tx in the bundle to seen
-				} else {
-					// TODO: check the legality
-					//
-					// if illegal => illegal tx proof
-					let invalid_transaction_proof = InvalidTransactionProof;
+                if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
+                    // TODO: Set the status of each tx in the bundle to seen
+                } else {
+                    // TODO: check the legality
+                    //
+                    // if illegal => illegal tx proof
+                    let invalid_transaction_proof = InvalidTransactionProof;
 
-					self.submit_invalid_transaction_proof(invalid_transaction_proof);
-				}
-			}
+                    self.submit_invalid_transaction_proof(invalid_transaction_proof);
+                }
+            }
 
-			// TODO: all checks pass, add to the bundle pool
+            // TODO: all checks pass, add to the bundle pool
 
-			Ok(Action::RebroadcastBundle)
-		}
-	}
+            Ok(Action::RebroadcastBundle)
+        }
+    }
 
-	/// Checks the execution receipt from the executor peers.
-	fn on_execution_receipt(
-		&self,
-		signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
-	) -> Result<Action, Self::Error> {
-		let SignedExecutionReceipt { execution_receipt, signature, signer } =
-			signed_execution_receipt;
+    /// Checks the execution receipt from the executor peers.
+    fn on_execution_receipt(
+        &self,
+        signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
+    ) -> Result<Action, Self::Error> {
+        let signed_receipt_hash = signed_execution_receipt.hash();
 
-		if !signer.verify(&execution_receipt.hash(), signature) {
-			return Err(Self::Error::BadExecutionReceiptSignature)
-		}
+        let SignedExecutionReceipt {
+            execution_receipt,
+            signature,
+            signer,
+        } = signed_execution_receipt;
 
-		let expected_executor_id = self
-			.primary_chain_client
-			.runtime_api()
-			.executor_id(&BlockId::Hash(execution_receipt.primary_hash))?;
-		if *signer != expected_executor_id {
-			// TODO: handle the misbehavior.
+        if !signer.verify(&execution_receipt.hash(), signature) {
+            return Err(Self::Error::BadExecutionReceiptSignature);
+        }
 
-			return Err(Self::Error::InvalidExecutionReceiptAuthor {
-				got: signer.clone(),
-				expected: expected_executor_id,
-			})
-		}
+        let expected_executor_id = self
+            .primary_chain_client
+            .runtime_api()
+            .executor_id(&BlockId::Hash(execution_receipt.primary_hash))?;
+        if *signer != expected_executor_id {
+            // TODO: handle the misbehavior.
 
-		let primary_number: BlockNumber = execution_receipt
-			.primary_number
-			.try_into()
-			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+            return Err(Self::Error::InvalidExecutionReceiptAuthor {
+                got: signer.clone(),
+                expected: expected_executor_id,
+            });
+        }
 
-		let best_execution_chain_number = self
-			.primary_chain_client
-			.runtime_api()
-			.best_execution_chain_number(&BlockId::Hash(
-				self.primary_chain_client.info().best_hash,
-			))?;
-		let best_execution_chain_number: BlockNumber = best_execution_chain_number
-			.try_into()
-			.unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let primary_number: BlockNumber = execution_receipt
+            .primary_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-		// Just ignore it if the receipt is too old and has been pruned.
-		if aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number) {
-			return Ok(Action::Empty)
-		}
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(
+                self.primary_chain_client.info().best_hash,
+            ))?;
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-		let block_hash = execution_receipt.secondary_hash;
-		let block_number = primary_number.into();
+        // Just ignore it if the receipt is too old and has been pruned.
+        if aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number) {
+            return Ok(Action::Empty);
+        }
 
-		// TODO: more efficient execution receipt checking strategy?
-		let local_receipt = if let Some(local_receipt) =
-			aux_schema::load_execution_receipt(&*self.client, block_hash)?
-		{
-			local_receipt
-		} else {
-			// Wait for the local execution receipt until it's ready.
-			let (tx, rx) = crossbeam::channel::bounded::<
-				sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
-			>(1);
-			let executor = self.clone();
-			self.spawner.spawn(
-				"wait-for-local-execution-receipt",
-				None,
-				async move {
-					if let Err(err) =
-						executor.wait_for_local_future_receipt(block_hash, block_number, tx).await
-					{
-						tracing::error!(
-							target: LOG_TARGET,
-							?err,
-							"Error occurred while waiting for the local receipt"
-						);
-					}
-				}
-				.boxed(),
-			);
-			rx.recv()??
-		};
+        let block_hash = execution_receipt.secondary_hash;
+        let block_number = primary_number.into();
 
-		// TODO: What happens for this obvious error?
-		if local_receipt.trace.len() != execution_receipt.trace.len() {}
+        // TODO: more efficient execution receipt checking strategy?
+        let local_receipt = if let Some(local_receipt) =
+            aux_schema::load_execution_receipt(&*self.client, block_hash)?
+        {
+            local_receipt
+        } else {
+            // Wait for the local execution receipt until it's ready.
+            let (tx, rx) = crossbeam::channel::bounded::<
+                sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
+            >(1);
+            let executor = self.clone();
+            self.spawner.spawn(
+                "wait-for-local-execution-receipt",
+                None,
+                async move {
+                    if let Err(err) = executor
+                        .wait_for_local_future_receipt(block_hash, block_number, tx)
+                        .await
+                    {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            ?err,
+                            "Error occurred while waiting for the local receipt"
+                        );
+                    }
+                }
+                .boxed(),
+            );
+            rx.recv()??
+        };
 
-		if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-			let fraud_proof = self
-				.fraud_proof_generator
-				.generate_proof::<PBlock>(trace_mismatch_index, &local_receipt)?;
+        // TODO: What happens for this obvious error?
+        if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-			self.submit_fraud_proof(fraud_proof);
+        if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
+            let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
+                trace_mismatch_index,
+                &local_receipt,
+                signed_receipt_hash,
+            )?;
 
-			Ok(Action::Empty)
-		} else {
-			Ok(Action::RebroadcastExecutionReceipt)
-		}
-	}
+            self.submit_fraud_proof(fraud_proof);
+
+            Ok(Action::Empty)
+        } else {
+            Ok(Action::RebroadcastExecutionReceipt)
+        }
+    }
 }
 
 /// Returns the active leaves the overseer should start with.
 async fn active_leaves<PBlock, PClient, SC>(
-	client: &PClient,
-	select_chain: &SC,
+    client: &PClient,
+    select_chain: &SC,
 ) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
 where
-	PBlock: BlockT,
-	PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-	SC: SelectChain<PBlock>,
+    PBlock: BlockT,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    SC: SelectChain<PBlock>,
 {
-	let best_block = select_chain.best_chain().await?;
+    let best_block = select_chain.best_chain().await?;
 
-	// No leaves if starting from the genesis.
-	if best_block.number().is_zero() {
-		return Ok(Vec::new())
-	}
+    // No leaves if starting from the genesis.
+    if best_block.number().is_zero() {
+        return Ok(Vec::new());
+    }
 
-	let mut leaves = select_chain
-		.leaves()
-		.await
-		.unwrap_or_default()
-		.into_iter()
-		.filter_map(|hash| {
-			let number = client.number(hash).ok()??;
+    let mut leaves = select_chain
+        .leaves()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|hash| {
+            let number = client.number(hash).ok()??;
 
-			// Only consider leaves that are in maximum an uncle of the best block.
-			if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
-			{
-				return None
-			};
+            // Only consider leaves that are in maximum an uncle of the best block.
+            if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
+            {
+                return None;
+            };
 
-			let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
+            let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
 
-			Some(BlockInfo { hash, parent_hash, number })
-		})
-		.collect::<Vec<_>>();
+            Some(BlockInfo {
+                hash,
+                parent_hash,
+                number,
+            })
+        })
+        .collect::<Vec<_>>();
 
-	// Sort by block number and get the maximum number of leaves
-	leaves.sort_by_key(|b| b.number);
+    // Sort by block number and get the maximum number of leaves
+    leaves.sort_by_key(|b| b.number);
 
-	leaves.push(BlockInfo {
-		hash: best_block.hash(),
-		parent_hash: *best_block.parent_hash(),
-		number: *best_block.number(),
-	});
+    leaves.push(BlockInfo {
+        hash: best_block.hash(),
+        parent_hash: *best_block.parent_hash(),
+        number: *best_block.number(),
+    });
 
-	/// The maximum number of active leaves we forward to the [`Overseer`] on startup.
-	const MAX_ACTIVE_LEAVES: usize = 4;
+    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
+    const MAX_ACTIVE_LEAVES: usize = 4;
 
-	Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
+    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
 }

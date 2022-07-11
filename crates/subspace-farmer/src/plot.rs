@@ -68,6 +68,7 @@ pub struct PlottedPieces {
 
 #[derive(Default, Debug)]
 struct Handlers {
+    #[allow(clippy::type_complexity)]
     progress_change: Bag<Arc<dyn Fn(&PlottedPieces) + Send + Sync + 'static>, PlottedPieces>,
 }
 

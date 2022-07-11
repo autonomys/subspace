@@ -62,6 +62,7 @@ pub(crate) enum Command {
 
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
+    #[allow(clippy::type_complexity)]
     pub(crate) new_listener: Bag<Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>, Multiaddr>,
 }
 

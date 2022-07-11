@@ -231,9 +231,9 @@ pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
 impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
     SignedExecutionReceipt<Number, Hash, SecondaryHash>
 {
-    /// Returns the hash of inner execution receipt.
+    /// Returns the hash of signed execution receipt.
     pub fn hash(&self) -> H256 {
-        self.execution_receipt.hash()
+        BlakeTwo256::hash_of(self)
     }
 }
 
@@ -352,6 +352,8 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof {
+    /// Hash of the signed execution receipt in which an invalid state transition occurred.
+    pub bad_signed_receipt_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
     /// Parent hash of the block at which the invalid execution occurred.
@@ -409,7 +411,7 @@ impl BundleEquivocationProof {
 }
 
 /// Represents an invalid transaction proof.
-#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidTransactionProof;
 
 sp_api::decl_runtime_apis! {
@@ -463,6 +465,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the best execution chain number.
         fn best_execution_chain_number() -> NumberFor<Block>;
+
+        /// Returns the block number of oldest execution receipt.
+        fn oldest_receipt_number() -> NumberFor<Block>;
 
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;

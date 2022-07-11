@@ -81,6 +81,7 @@ pub struct ChainState {
 
 /// Test Api for transaction pool.
 pub struct TestApi {
+	#[allow(clippy::type_complexity)]
 	valid_modifier: RwLock<Box<dyn Fn(&mut ValidTransaction) + Send + Sync>>,
 	chain: RwLock<ChainState>,
 	validation_requests: RwLock<Vec<Extrinsic>>,

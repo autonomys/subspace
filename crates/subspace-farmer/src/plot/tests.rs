@@ -1,7 +1,7 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE, U256};
 use tempfile::TempDir;
 
 fn init() {
@@ -126,8 +126,13 @@ async fn partial_plot() {
     assert!(!plot.is_empty());
 
     let mut piece_indexes = (0..pieces_to_plot).collect::<Vec<_>>();
-    piece_indexes
-        .sort_by_key(|i| PieceDistance::distance(&PieceIndexHash::from_index(*i), &public_key));
+    let public_key_as_number = U256::from_be_bytes(public_key.into());
+    piece_indexes.sort_by_key(|i| {
+        subspace_core_primitives::bidirectional_distance(
+            &U256::from(PieceIndexHash::from_index(*i)),
+            &public_key_as_number,
+        )
+    });
 
     // First pieces should be present and equal
     for &piece_index in &piece_indexes[..max_plot_pieces as usize] {
@@ -173,7 +178,7 @@ async fn sequential_pieces_iterator() {
     piece_indexes.sort_by_key(|i| PieceIndexHash::from_index(*i));
 
     let got_indexes = plot
-        .get_sequential_pieces(PieceIndexHash([0; 32]), 100)
+        .get_sequential_pieces(PieceIndexHash::from([0; 32]), 100)
         .unwrap()
         .into_iter()
         .map(|(index, _)| index)
@@ -200,42 +205,42 @@ async fn test_read_sequential_pieces() {
     // 6 piece index hashes, sorted as big endian numbers
     let expected_piece_index_hashes: Vec<(PieceIndexHash, u64)> = vec![
         (
-            PieceIndexHash([
+            PieceIndexHash::from([
                 53, 190, 50, 45, 9, 79, 157, 21, 74, 138, 186, 71, 51, 184, 73, 127, 24, 3, 83,
                 189, 122, 231, 176, 161, 95, 144, 181, 134, 181, 73, 242, 139,
             ]),
             3,
         ),
         (
-            PieceIndexHash([
+            PieceIndexHash::from([
                 124, 159, 161, 54, 212, 65, 63, 166, 23, 54, 55, 232, 131, 182, 153, 141, 50, 225,
                 214, 117, 248, 140, 221, 255, 157, 203, 207, 51, 24, 32, 244, 184,
             ]),
             1,
         ),
         (
-            PieceIndexHash([
+            PieceIndexHash::from([
                 175, 85, 112, 245, 161, 129, 11, 122, 247, 140, 175, 75, 199, 10, 102, 15, 13, 245,
                 30, 66, 186, 249, 29, 77, 229, 178, 50, 141, 224, 232, 61, 252,
             ]),
             0,
         ),
         (
-            PieceIndexHash([
+            PieceIndexHash::from([
                 216, 110, 129, 18, 243, 196, 196, 68, 33, 38, 248, 233, 244, 79, 22, 134, 125, 164,
                 135, 242, 144, 82, 191, 145, 184, 16, 69, 125, 179, 66, 9, 164,
             ]),
             2,
         ),
         (
-            PieceIndexHash([
+            PieceIndexHash::from([
                 240, 160, 39, 142, 67, 114, 69, 156, 202, 97, 89, 205, 94, 113, 207, 238, 99, 131,
                 2, 167, 185, 202, 155, 5, 195, 65, 129, 172, 10, 101, 172, 93,
             ]),
             4,
         ),
         (
-            PieceIndexHash([
+            PieceIndexHash::from([
                 241, 62, 230, 237, 84, 234, 42, 174, 159, 196, 154, 159, 174, 181, 218, 110, 141,
                 222, 240, 225, 46, 213, 211, 13, 53, 166, 36, 174, 129, 62, 4, 133,
             ]),
@@ -246,11 +251,8 @@ async fn test_read_sequential_pieces() {
 
     // Public key in the middle of piece index hashes, so we can test all necessary edge-cases
     let public_key_bytes = {
-        let mut bytes = [0u8; 32];
         // Just after second out of four hashes
-        (PieceDistance::from_big_endian(piece_index_hashes[1].0.as_ref()) + 1)
-            .to_big_endian(&mut bytes);
-        bytes
+        (PieceDistance::from(piece_index_hashes[1].0) + PieceDistance::one()).to_be_bytes()
     };
     let plot = Plot::open_or_create(
         &0usize.into(),
@@ -265,7 +267,7 @@ async fn test_read_sequential_pieces() {
     // Zero count should return no indexes
     {
         let indexes = plot
-            .read_sequential_piece_indexes(PieceIndexHash([0; 32]), 0)
+            .read_sequential_piece_indexes(PieceIndexHash::from([0; 32]), 0)
             .unwrap();
         let expected_indexes: Vec<PieceIndex> = vec![];
         assert_eq!(indexes, expected_indexes);
@@ -348,7 +350,7 @@ async fn test_read_sequential_pieces() {
     // Wrapping case, read more than there is pieces from zero
     {
         let indexes = plot
-            .read_sequential_piece_indexes(PieceIndexHash([0; 32]), 10)
+            .read_sequential_piece_indexes(PieceIndexHash::from([0; 32]), 10)
             .unwrap();
         // This should read all piece indexes and nothing else
         let expected_indexes = piece_index_hashes
