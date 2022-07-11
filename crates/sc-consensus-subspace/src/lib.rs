@@ -30,7 +30,7 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
-use crate::verification::{VerificationParams, VerifySolutionParams};
+use crate::verification::VerifySolutionParams;
 pub use archiver::start_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -66,8 +66,10 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::verification::{CheckedHeader, VerificationError};
-use sp_consensus_subspace::{verification, FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{
+    check_header, verification, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
+    VerificationError, VerificationParams,
+};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
@@ -828,7 +830,7 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            verification::check_header::<_, FarmerPublicKey>(
+            check_header::<_, FarmerPublicKey>(
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,

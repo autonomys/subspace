@@ -41,12 +41,10 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-use sp_consensus_subspace::verification::{
-    PieceCheckParams, VerificationError, VerifySolutionParams,
-};
+use sp_consensus_subspace::verification::{PieceCheckParams, VerifySolutionParams};
 use sp_consensus_subspace::{
     derive_next_salt_from_randomness, derive_next_solution_range, derive_randomness, verification,
-    EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
+    EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, VerificationError, Vote,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{

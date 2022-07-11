@@ -33,9 +33,9 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::verification::VerificationError;
 use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
+    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, VerificationError,
+    Vote,
 };
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
