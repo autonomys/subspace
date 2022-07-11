@@ -603,6 +603,18 @@ impl U256 {
         arr
     }
 
+    /// Create from little endian bytes
+    pub fn from_le_bytes(bytes: [u8; 32]) -> Self {
+        Self(private_u256::U256::from_little_endian(&bytes))
+    }
+
+    /// Convert to little endian bytes
+    pub fn to_le_bytes(self) -> [u8; 32] {
+        let mut arr = [0u8; 32];
+        self.0.to_little_endian(&mut arr);
+        arr
+    }
+
     /// Adds two numbers, checking for overflow. If overflow happens, `None` is returned.
     pub fn checked_add(&self, v: &Self) -> Option<Self> {
         self.0.checked_add(v.0).map(Self)
