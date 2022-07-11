@@ -127,6 +127,8 @@ impl ObjectMappings {
                 .get_mut(Columns::Mappings as usize)
                 .expect("Number of columns defined above; qed");
             mappings_column_options.uniform = true;
+            // TODO: Only using BTree because of https://github.com/paritytech/parity-db/issues/81
+            mappings_column_options.btree_index = true;
         }
         // We don't use stats
         options.stats = false;
@@ -212,18 +214,30 @@ impl ObjectMappings {
 
     fn prune(&self, remove_size: u64, size: &mut u64) -> Result<(), parity_db::Error> {
         let mut pruning_state = PruningState::new(self.inner.public_key_as_number, remove_size);
-        self.inner
-            .db
-            .iter_column_while(Columns::Mappings as u8, |iter_state| {
-                pruning_state.process(FurthestKey {
-                    key: iter_state.key,
-                    size: u16::try_from(iter_state.key.len()).expect("Key always fits in u16; qed")
-                        + u16::try_from(iter_state.value.len())
-                            .expect("Value always fits in u16; qed"),
-                });
-
-                true
-            })?;
+        // TODO: Commented code is for non-BTree column, use in the future if switch back from BTree
+        // self.inner
+        //     .db
+        //     .iter_column_while(Columns::Mappings as u8, |iter_state| {
+        //         pruning_state.process(FurthestKey {
+        //             key: iter_state.key,
+        //             size: u16::try_from(iter_state.key.len()).expect("Key always fits in u16; qed")
+        //                 + u16::try_from(iter_state.value.len())
+        //                     .expect("Value always fits in u16; qed"),
+        //         });
+        //
+        //         true
+        //     })?;
+        let mut iter = self.inner.db.iter(Columns::Mappings as u8)?;
+        while let Some((key, value)) = iter.next()? {
+            pruning_state.process(FurthestKey {
+                key: key
+                    .as_slice()
+                    .try_into()
+                    .expect("Key read from database is always of correct size"),
+                size: u16::try_from(key.len()).expect("Key always fits in u16; qed")
+                    + u16::try_from(value.len()).expect("Value always fits in u16; qed"),
+            });
+        }
 
         let bytes_to_delete = RefCell::new(0u64);
         let tx = pruning_state.keys_to_delete().map(|furthest_key| {
