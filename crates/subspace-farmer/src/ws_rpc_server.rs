@@ -495,14 +495,14 @@ impl RpcServer for RpcServerImpl {
             let legacy_object_mappings = Arc::clone(&self.legacy_object_mappings);
 
             move || -> Result<Option<GlobalObject>, ObjectMappingError> {
-                for object_mappings in object_mappings.as_ref() {
+                for object_mappings in object_mappings.iter() {
                     let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
 
                     if let Some(global_object) = maybe_global_object {
                         return Ok(Some(global_object));
                     }
                 }
-                for object_mappings in legacy_object_mappings.as_ref() {
+                for object_mappings in legacy_object_mappings.iter() {
                     if let Ok(Some(global_object)) = object_mappings.retrieve(&object_id.into()) {
                         return Ok(Some(global_object));
                     }
