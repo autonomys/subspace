@@ -34,7 +34,7 @@ pub(crate) async fn farm_multi_disk(
         node_rpc_url,
         mut ws_server_listen_addr,
         reward_address,
-        plot_size,
+        plot_size: _,
         max_plot_size,
         disk_concurrency,
         dsn_sync,
@@ -49,9 +49,10 @@ pub(crate) async fn farm_multi_disk(
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later (note that multiple farms can use the same location for metadata)
     for disk_farm in disk_farms {
-        if plot_size < 1024 * 1024 {
+        if disk_farm.allocated_plotting_space < 1024 * 1024 {
             return Err(anyhow::anyhow!(
-                "Plot size is too low ({plot_size} bytes). Did you mean {plot_size}G or {plot_size}T?"
+                "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
+                disk_farm.allocated_plotting_space
             ));
         }
 
@@ -65,6 +66,7 @@ pub(crate) async fn farm_multi_disk(
             .map_err(|error| anyhow!(error))?;
 
         if let Some(max_plot_size) = max_plot_size {
+            let max_plot_size = max_plot_size.as_u64();
             if max_plot_size > farmer_protocol_info.max_plot_size {
                 warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
             } else {
@@ -193,9 +195,10 @@ pub(crate) async fn farm_legacy(
         disable_farming,
     } = farm_args;
 
-    if plot_size < 1024 * 1024 {
+    if plot_size.as_u64() < 1024 * 1024 {
         return Err(anyhow::anyhow!(
-            "Plot size is too low ({plot_size} bytes). Did you mean {plot_size}G or {plot_size}T?"
+            "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
+            plot_size.as_u64()
         ));
     }
 
@@ -209,6 +212,7 @@ pub(crate) async fn farm_legacy(
         .map_err(|error| anyhow!(error))?;
 
     if let Some(max_plot_size) = max_plot_size {
+        let max_plot_size = max_plot_size.as_u64();
         if max_plot_size > farmer_protocol_info.max_plot_size {
             warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
         } else {
@@ -244,7 +248,7 @@ pub(crate) async fn farm_legacy(
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
         },
-        plot_size,
+        plot_size.as_u64(),
         move |options: PlotFactoryOptions<'_>| {
             Plot::open_or_create(
                 options.single_plot_farm_id,
