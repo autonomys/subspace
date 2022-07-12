@@ -10,7 +10,6 @@ use derive_more::{Display, From};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use parking_lot::Mutex;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU16;
@@ -20,6 +19,7 @@ use std::{fmt, fs, io};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::Node;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
 use tracing::{error, info, info_span};
@@ -215,11 +215,11 @@ pub struct SingleDiskFarmOptions<RC, PF> {
     pub plot_factory: PF,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
-    pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
+    pub relay_server_node: Arc<Node>,
 }
 
 /// Abstraction on top of `SinglePlotFarm` instances contained within the same physical disk (or
@@ -252,10 +252,10 @@ impl SingleDiskFarm {
             farming_client,
             reward_address,
             bootstrap_nodes,
-            listen_on,
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
+            relay_server_node,
         } = options;
 
         let plot_sizes =
@@ -308,8 +308,6 @@ impl SingleDiskFarm {
             }
         };
 
-        let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
-
         let single_disk_semaphore = SingleDiskSemaphore::new(disk_concurrency);
 
         let single_plot_farms = tokio::task::spawn_blocking(move || {
@@ -318,43 +316,36 @@ impl SingleDiskFarm {
                 .single_plot_farms()
                 .into_par_iter()
                 .zip(plot_sizes)
-                .enumerate()
-                .map(
-                    move |(plot_index, (single_plot_farm_id, allocated_plotting_space))| {
-                        let _guard = handle.enter();
+                .map(move |(single_plot_farm_id, allocated_plotting_space)| {
+                    let _guard = handle.enter();
 
-                        let plot_directory = plot_directory.join(single_plot_farm_id.to_string());
-                        let metadata_directory =
-                            metadata_directory.join(single_plot_farm_id.to_string());
-                        let farming_client = farming_client.clone();
-                        let listen_on = listen_on.clone();
-                        let bootstrap_nodes = bootstrap_nodes.clone();
-                        let first_listen_on = Arc::clone(&first_listen_on);
-                        let single_disk_semaphore = single_disk_semaphore.clone();
+                    let plot_directory = plot_directory.join(single_plot_farm_id.to_string());
+                    let metadata_directory =
+                        metadata_directory.join(single_plot_farm_id.to_string());
+                    let farming_client = farming_client.clone();
+                    let bootstrap_nodes = bootstrap_nodes.clone();
+                    let single_disk_semaphore = single_disk_semaphore.clone();
 
-                        let span = info_span!("single_plot_farm", %single_plot_farm_id);
-                        let _enter = span.enter();
+                    let span = info_span!("single_plot_farm", %single_plot_farm_id);
+                    let _enter = span.enter();
 
-                        SinglePlotFarm::new(SinglePlotFarmOptions {
-                            id: *single_plot_farm_id,
-                            plot_directory,
-                            metadata_directory,
-                            plot_index,
-                            allocated_plotting_space,
-                            farmer_protocol_info,
-                            farming_client,
-                            plot_factory: &plot_factory,
-                            listen_on,
-                            bootstrap_nodes,
-                            first_listen_on,
-                            single_disk_semaphore,
-                            enable_farming,
-                            reward_address,
-                            enable_dsn_archiving,
-                            enable_dsn_sync,
-                        })
-                    },
-                )
+                    SinglePlotFarm::new(SinglePlotFarmOptions {
+                        id: *single_plot_farm_id,
+                        plot_directory,
+                        metadata_directory,
+                        allocated_plotting_space,
+                        farmer_protocol_info,
+                        farming_client,
+                        plot_factory: &plot_factory,
+                        bootstrap_nodes,
+                        single_disk_semaphore,
+                        enable_farming,
+                        reward_address,
+                        enable_dsn_archiving,
+                        enable_dsn_sync,
+                        relay_server_node: relay_server_node.clone(),
+                    })
+                })
                 .collect::<anyhow::Result<Vec<_>>>()
         })
         .await

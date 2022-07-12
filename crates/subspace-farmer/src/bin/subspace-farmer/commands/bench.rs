@@ -5,6 +5,7 @@ use futures::stream::FuturesUnordered;
 use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
@@ -18,7 +19,9 @@ use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
-use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
+use subspace_farmer::{
+    configure_relay_server, ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient,
+};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
@@ -149,6 +152,8 @@ pub(crate) async fn bench(
         ),
     };
 
+    let (relay_server_node, _) = configure_relay_server(vec![]).await;
+
     let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
@@ -158,10 +163,10 @@ pub(crate) async fn bench(
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
             bootstrap_nodes: vec![],
-            listen_on: vec![],
             enable_dsn_archiving: false,
             enable_dsn_sync: false,
             enable_farming: true,
+            relay_server_node: Arc::new(relay_server_node),
         },
         plot_size,
         plot_factory,

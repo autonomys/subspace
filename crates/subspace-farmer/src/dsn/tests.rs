@@ -2,7 +2,7 @@ use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::{ObjectMappings, Plot, RpcClient};
+use crate::{configure_relay_server, ObjectMappings, Plot, RpcClient};
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
 use num_traits::{WrappingAdd, WrappingSub};
@@ -176,6 +176,13 @@ async fn test_dsn_sync() {
         )
     };
 
+    let relay_server_node = {
+        let (relay_server_node, _) =
+            configure_relay_server(vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()]).await;
+
+        Arc::new(relay_server_node)
+    };
+
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
@@ -185,10 +192,10 @@ async fn test_dsn_sync() {
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             bootstrap_nodes: vec![],
-            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
+            relay_server_node,
         },
         u64::MAX / 100,
         plot_factory,
@@ -303,6 +310,13 @@ async fn test_dsn_sync() {
         )
     };
 
+    let relay_server_node = {
+        let (relay_server_node, _) =
+            configure_relay_server(vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()]).await;
+
+        Arc::new(relay_server_node)
+    };
+
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: syncer_base_directory.as_ref().to_owned(),
@@ -316,10 +330,10 @@ async fn test_dsn_sync() {
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             bootstrap_nodes: vec![seeder_multiaddr.clone()],
-            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
+            relay_server_node,
         },
         syncer_max_plot_size * PIECE_SIZE as u64,
         plot_factory,

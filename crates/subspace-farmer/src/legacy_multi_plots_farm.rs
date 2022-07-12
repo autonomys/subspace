@@ -6,13 +6,13 @@ use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions
 use crate::utils::{get_plot_sizes, get_usable_plot_space};
 use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
-use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::Node;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
 use tracing::{error, info_span};
@@ -28,11 +28,11 @@ pub struct Options<C> {
     pub object_mappings: ObjectMappings,
     pub reward_address: PublicKey,
     pub bootstrap_nodes: Vec<Multiaddr>,
-    pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
+    pub relay_server_node: Arc<Node>,
 }
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
@@ -63,15 +63,13 @@ impl LegacyMultiPlotsFarm {
             object_mappings,
             reward_address,
             bootstrap_nodes,
-            listen_on,
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
+            relay_server_node,
         } = options;
         let usable_space = get_usable_plot_space(allocated_space);
         let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
-
-        let first_listen_on: Arc<Mutex<Option<Vec<Multiaddr>>>> = Arc::default();
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.
@@ -89,9 +87,7 @@ impl LegacyMultiPlotsFarm {
                     let plot_directory = base_directory.join(format!("plot{plot_index}"));
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
-                    let listen_on = listen_on.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
-                    let first_listen_on = Arc::clone(&first_listen_on);
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
                     let span = info_span!("single_plot_farm", %plot_index);
@@ -101,19 +97,17 @@ impl LegacyMultiPlotsFarm {
                         id: plot_index.into(),
                         plot_directory,
                         metadata_directory,
-                        plot_index,
                         allocated_plotting_space,
                         farmer_protocol_info,
                         farming_client,
                         plot_factory: &plot_factory,
-                        listen_on,
                         bootstrap_nodes,
-                        first_listen_on,
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,
                         enable_dsn_archiving,
                         enable_dsn_sync,
+                        relay_server_node: relay_server_node.clone(),
                     })
                 })
                 .collect::<anyhow::Result<Vec<_>>>()
