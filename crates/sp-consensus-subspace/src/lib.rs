@@ -444,7 +444,7 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(&pre_digest.solution, slot, verify_solution_params)
+    verify_solution(&pre_digest.solution, slot.into(), verify_solution_params)
         .map_err(|error| VerificationError::VerificationError(slot, error))?;
 
     Ok(CheckedHeader::Checked(

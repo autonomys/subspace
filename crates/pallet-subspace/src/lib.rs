@@ -1395,9 +1395,9 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
-    if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId, Slot>(
+    if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
         solution,
-        slot,
+        slot.into(),
         VerifySolutionParams {
             global_randomness: &vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,

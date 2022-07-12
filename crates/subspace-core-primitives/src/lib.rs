@@ -103,8 +103,8 @@ impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
 }
 
 impl From<PublicKey> for [u8; PUBLIC_KEY_LENGTH] {
-    fn from(signature: PublicKey) -> Self {
-        signature.0
+    fn from(public_key: PublicKey) -> Self {
+        public_key.0
     }
 }
 

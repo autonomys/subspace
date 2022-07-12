@@ -248,7 +248,7 @@ where
 
             let solution_verification_result = verify_solution(
                 &solution,
-                slot,
+                slot.into(),
                 VerifySolutionParams {
                     global_randomness: &global_randomness,
                     solution_range: voting_solution_range,
