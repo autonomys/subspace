@@ -9,7 +9,6 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use rayon::prelude::*;
 use std::num::NonZeroU16;
 use std::path::PathBuf;
-use std::sync::Arc;
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
@@ -32,7 +31,7 @@ pub struct Options<C> {
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
-    pub relay_server_node: Arc<Node>,
+    pub relay_server_node: Node,
 }
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.

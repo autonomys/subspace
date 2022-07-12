@@ -10,9 +10,10 @@ use subspace_farmer::legacy_multi_plots_farm::{
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-use subspace_farmer::{configure_relay_server, NodeRpcClient, ObjectMappings, Plot, RpcClient};
+use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
+use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 use crate::{utils, ArchivingFrom, DiskFarm, FarmingArgs};
 
@@ -46,11 +47,19 @@ pub(crate) async fn farm_multi_disk(
     let mut record_size = None;
     let mut recorded_history_segment_size = None;
 
-    let relay_server_node = {
-        let (relay_server_node, _relay_stop_handle) = configure_relay_server(listen_on).await;
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on,
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await?;
 
-        Arc::new(relay_server_node)
-    };
+    let _relay_stop_handle = tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
+    trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later (note that multiple farms can use the same location for metadata)
@@ -238,11 +247,19 @@ pub(crate) async fn farm_legacy(
     })
     .await??;
 
-    let relay_server_node = {
-        let (relay_server_node, _relay_stop_handle) = configure_relay_server(listen_on).await;
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on,
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await?;
 
-        Arc::new(relay_server_node)
-    };
+    let _relay_stop_handle = tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
+    trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {

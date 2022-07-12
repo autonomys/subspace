@@ -5,7 +5,6 @@ use futures::stream::FuturesUnordered;
 use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
@@ -19,13 +18,12 @@ use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
-use subspace_farmer::{
-    configure_relay_server, ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient,
-};
+use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
+use subspace_networking::Config;
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 #[derive(Default)]
 pub struct BenchPlotMock;
@@ -152,7 +150,15 @@ pub(crate) async fn bench(
         ),
     };
 
-    let (relay_server_node, _) = configure_relay_server(vec![]).await;
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) =
+        subspace_networking::create(Config::with_generated_keypair()).await?;
+
+    let _relay_stop_handle = tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
+    trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
     let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
@@ -166,7 +172,7 @@ pub(crate) async fn bench(
             enable_dsn_archiving: false,
             enable_dsn_sync: false,
             enable_farming: true,
-            relay_server_node: Arc::new(relay_server_node),
+            relay_server_node,
         },
         plot_size,
         plot_factory,

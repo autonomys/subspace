@@ -49,7 +49,6 @@ pub mod ws_rpc_server;
 
 pub use archiving::{Archiving, ArchivingError};
 pub use commitments::{CommitmentError, Commitments};
-pub use dsn::configure_relay_server;
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;
 pub use jsonrpsee;

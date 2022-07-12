@@ -4,10 +4,7 @@ use std::ops::Range;
 use subspace_core_primitives::{
     FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
-use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::{Config, Node, PiecesToPlot};
-use tokio::task::JoinHandle;
-use tracing::trace;
+use subspace_networking::PiecesToPlot;
 
 #[cfg(test)]
 mod tests;
@@ -172,25 +169,4 @@ where
     }
 
     Ok(())
-}
-
-/// Starts the relaying node. Returns a Node instance along with a stop handle for the node runner.
-pub async fn configure_relay_server(listen_on: Vec<Multiaddr>) -> (Node, JoinHandle<()>) {
-    let config = Config {
-        listen_on,
-        allow_non_globals_in_dht: true,
-        ..Config::with_generated_keypair()
-    };
-
-    let (node, mut node_runner) = subspace_networking::create(config)
-        .await
-        .expect("Relay node must be created");
-
-    trace!(node_id = %node.id(), "Relay Node started");
-
-    let stop_handle = tokio::spawn(async move {
-        node_runner.run().await;
-    });
-
-    (node, stop_handle)
 }

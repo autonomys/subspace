@@ -219,7 +219,7 @@ pub struct SingleDiskFarmOptions<RC, PF> {
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
-    pub relay_server_node: Arc<Node>,
+    pub relay_server_node: Node,
 }
 
 /// Abstraction on top of `SinglePlotFarm` instances contained within the same physical disk (or

@@ -299,7 +299,7 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) reward_address: PublicKey,
     pub(crate) enable_dsn_archiving: bool,
     pub(crate) enable_dsn_sync: bool,
-    pub(crate) relay_server_node: Arc<Node>,
+    pub(crate) relay_server_node: Node,
 }
 
 /// Single plot farm abstraction is a container for everything necessary to plot/farm with a single

@@ -2,7 +2,7 @@ use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::{configure_relay_server, ObjectMappings, Plot, RpcClient};
+use crate::{ObjectMappings, Plot, RpcClient};
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
 use num_traits::{WrappingAdd, WrappingSub};
@@ -17,7 +17,7 @@ use subspace_core_primitives::{
     RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::PiecesToPlot;
+use subspace_networking::{Config, PiecesToPlot};
 use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -176,12 +176,18 @@ async fn test_dsn_sync() {
         )
     };
 
-    let relay_server_node = {
-        let (relay_server_node, _) =
-            configure_relay_server(vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()]).await;
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await
+    .unwrap();
 
-        Arc::new(relay_server_node)
-    };
+    let _ = tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
 
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
@@ -310,12 +316,18 @@ async fn test_dsn_sync() {
         )
     };
 
-    let relay_server_node = {
-        let (relay_server_node, _) =
-            configure_relay_server(vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()]).await;
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await
+    .unwrap();
 
-        Arc::new(relay_server_node)
-    };
+    let _ = tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
 
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
