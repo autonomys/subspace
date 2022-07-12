@@ -55,6 +55,7 @@ sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "
 sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
+subspace-verification = { version = "0.1.0", default-features = false, path = "../subspace-verification" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
@@ -115,6 +116,7 @@ std = [
 	"sp-version/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
+	"subspace-verification/std"
 ]
 runtime-benchmarks = [
 	"cirrus-runtime/runtime-benchmarks",

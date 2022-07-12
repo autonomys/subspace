@@ -30,7 +30,6 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
-use crate::verification::{VerificationParams, VerifySolutionParams};
 pub use archiver::start_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -66,8 +65,10 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
     SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::verification::{CheckedHeader, VerificationError};
-use sp_consensus_subspace::{verification, FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{
+    check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
+    VerificationParams,
+};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
@@ -82,6 +83,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
+use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
 
 // TODO: Hack for Gemini 1b launch.
 const GEMINI_1B_GENESIS_HASH: &[u8] = &[
@@ -269,16 +271,21 @@ where
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
-            VerificationError::BadSolutionSignature(slot, signature_error) => {
-                Error::BadSolutionSignature(slot, signature_error)
-            }
-            VerificationError::BadLocalChallenge(slot, signature_error) => {
-                Error::BadLocalChallenge(slot, signature_error)
-            }
-            VerificationError::OutsideOfSolutionRange(slot) => Error::OutsideOfSolutionRange(slot),
-            VerificationError::OutsideOfMaxPlot(slot) => Error::OutsideOfMaxPlot(slot),
-            VerificationError::InvalidEncoding(slot) => Error::InvalidEncoding(slot),
-            VerificationError::InvalidTag(slot) => Error::InvalidTag(slot),
+            VerificationError::VerificationError(slot, error) => match error {
+                VerificationPrimitiveError::InvalidTag => Error::InvalidTag(slot),
+                VerificationPrimitiveError::InvalidPieceEncoding => Error::InvalidEncoding(slot),
+                VerificationPrimitiveError::InvalidPiece => Error::InvalidEncoding(slot),
+                VerificationPrimitiveError::InvalidLocalChallenge(err) => {
+                    Error::BadLocalChallenge(slot, err)
+                }
+                VerificationPrimitiveError::OutsideSolutionRange => {
+                    Error::OutsideOfSolutionRange(slot)
+                }
+                VerificationPrimitiveError::InvalidSolutionSignature(err) => {
+                    Error::BadSolutionSignature(slot, err)
+                }
+                VerificationPrimitiveError::OutsideMaxPlot => Error::OutsideOfMaxPlot(slot),
+            },
         }
     }
 }
@@ -828,7 +835,7 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            verification::check_header::<_, FarmerPublicKey>(
+            check_header::<_, FarmerPublicKey>(
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
@@ -1075,13 +1082,13 @@ where
 
         // Piece is not checked during initial block verification because it requires access to
         // root block, check it now.
-        verification::check_piece(
-            pre_digest.slot,
+        subspace_verification::check_piece(
             records_root,
             position,
             record_size,
             &pre_digest.solution,
-        )?;
+        )
+        .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
         let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
 

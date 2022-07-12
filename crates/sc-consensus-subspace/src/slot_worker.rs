@@ -15,10 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::verification::PieceCheckParams;
 use crate::{
-    find_pre_digest, verification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
-    SubspaceLink,
+    find_pre_digest, NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -45,8 +43,12 @@ use sp_runtime::DigestItem;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Randomness, Salt, Solution};
+use subspace_core_primitives::{Randomness, RewardSignature, Salt, Solution};
 use subspace_solving::{derive_global_challenge, derive_target};
+use subspace_verification::{
+    check_reward_signature, is_within_solution_range, verify_solution, PieceCheckParams,
+    VerifySolutionParams,
+};
 
 pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) client: Arc<Client>,
@@ -244,23 +246,22 @@ where
                 }
             };
 
-            let solution_verification_result =
-                verification::verify_solution::<Block::Header, FarmerPublicKey>(
-                    &solution,
-                    slot,
-                    verification::VerifySolutionParams {
-                        global_randomness: &global_randomness,
-                        solution_range: voting_solution_range,
-                        salt,
-                        piece_check_params: Some(PieceCheckParams {
-                            records_root,
-                            position,
-                            record_size,
-                            max_plot_size,
-                            total_pieces,
-                        }),
-                    },
-                );
+            let solution_verification_result = verify_solution(
+                &solution,
+                slot.into(),
+                VerifySolutionParams {
+                    global_randomness: &global_randomness,
+                    solution_range: voting_solution_range,
+                    salt,
+                    piece_check_params: Some(PieceCheckParams {
+                        records_root,
+                        position,
+                        record_size,
+                        max_plot_size,
+                        total_pieces,
+                    }),
+                },
+            );
 
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
@@ -276,7 +277,7 @@ where
                 // If solution is of high enough quality and block pre-digest wasn't produced yet,
                 // block reward is claimed
                 if maybe_pre_digest.is_none()
-                    && verification::is_within_solution_range(target, solution.tag, solution_range)
+                    && is_within_solution_range(target, solution.tag, solution_range)
                 {
                     info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
@@ -454,10 +455,10 @@ where
             });
 
         while let Some(signature) = signature_receiver.next().await {
-            if verification::check_reward_signature(
+            if check_reward_signature(
                 hash.as_ref(),
-                &signature,
-                public_key,
+                &Into::<RewardSignature>::into(&signature),
+                &Into::<subspace_core_primitives::PublicKey>::into(public_key),
                 &self.reward_signing_context,
             )
             .is_err()

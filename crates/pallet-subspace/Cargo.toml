@@ -28,6 +28,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-solving = { version = "0.1.0", default-features = false, path = "../subspace-solving" }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 
 [dev-dependencies]
 env_logger = "0.9.0"
@@ -54,6 +55,7 @@ std = [
 	"sp-std/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
-	"subspace-solving/std"
+	"subspace-solving/std",
+	"subspace-verification/std"
 ]
 try-runtime = ["frame-support/try-runtime"]

@@ -27,7 +27,6 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::traits::{Get, OnTimestampSet};
@@ -42,17 +41,11 @@ use sp_consensus_subspace::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-use sp_consensus_subspace::verification::{
-    PieceCheckParams, VerificationError, VerifySolutionParams,
-};
 use sp_consensus_subspace::{
-    derive_randomness, verification, EquivocationProof, FarmerPublicKey, FarmerSignature,
-    SignedVote, Vote,
+    EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{
-    BlockNumberProvider, Hash, Header as HeaderT, One, SaturatedConversion, Saturating, Zero,
-};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -61,12 +54,14 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    crypto, Randomness, RootBlock, Salt, PIECE_SIZE, RANDOMNESS_LENGTH, SALT_SIZE,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, PIECE_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-
-const SALT_HASHING_PREFIX: &[u8] = b"salt";
-const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
+use subspace_verification::{
+    check_reward_signature, derive_next_salt_from_randomness, derive_next_solution_range,
+    derive_randomness, verify_solution, Error as VerificationError, PieceCheckParams,
+    VerifySolutionParams,
+};
 
 pub trait WeightInfo {
     fn report_equivocation() -> Weight;
@@ -716,38 +711,15 @@ impl<T: Config> Pallet<T> {
                 next_solution_range = solution_range_override.solution_range;
                 next_voting_solution_range = solution_range_override.voting_solution_range;
             } else {
-                // If Era start slot is not found it means we have just finished the first era
-                let era_start_slot = EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get);
-                let era_slot_count = u64::from(current_slot) - u64::from(era_start_slot);
-
-                // Now we need to re-calculate solution range. The idea here is to keep block production at
-                // the same pace while space pledged on the network changes. For this we adjust previous
-                // solution range according to actual and expected number of blocks per era.
-                let era_duration: u64 = T::EraDuration::get()
-                    .try_into()
-                    .unwrap_or_else(|_| panic!("Era duration is always within u64; qed"));
-
-                // Below is code analogous to the following, but without using floats:
-                // ```rust
-                // let actual_slots_per_block = era_slot_count as f64 / era_duration as f64;
-                // let expected_slots_per_block =
-                //     slot_probability.1 as f64 / slot_probability.0 as f64;
-                // let adjustment_factor =
-                //     (actual_slots_per_block / expected_slots_per_block).clamp(0.25, 4.0);
-                //
-                // next_solution_range =
-                //     (solution_ranges.current as f64 * adjustment_factor).round() as u64;
-                // ```
-                next_solution_range = u64::saturated_from(
-                    u128::from(solution_ranges.current)
-                        .saturating_mul(u128::from(era_slot_count))
-                        .saturating_mul(u128::from(slot_probability.0))
-                        / u128::from(era_duration)
-                        / u128::from(slot_probability.1),
-                )
-                .clamp(
-                    solution_ranges.current / 4,
-                    solution_ranges.current.saturating_mul(4),
+                next_solution_range = derive_next_solution_range(
+                    // If Era start slot is not found it means we have just finished the first era
+                    u64::from(EraStartSlot::<T>::get().unwrap_or_else(GenesisSlot::<T>::get)),
+                    u64::from(current_slot),
+                    slot_probability,
+                    solution_ranges.current,
+                    T::EraDuration::get()
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
                 );
 
                 next_voting_solution_range = next_solution_range
@@ -906,7 +878,7 @@ impl<T: Config> Pallet<T> {
         // Extract PoR randomness from pre-digest.
         // Tag signature is validated by the client and is always valid here.
         let por_randomness: Randomness = derive_randomness(
-            &pre_digest.solution.public_key,
+            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
             pre_digest.solution.tag,
             &pre_digest.solution.tag_signature,
         )
@@ -945,10 +917,9 @@ impl<T: Config> Pallet<T> {
                         eon_index,
                         *current_slot
                     );
-                    salts.next.replace(Self::derive_next_salt_from_randomness(
-                        eon_index,
-                        &por_randomness,
-                    ));
+                    salts
+                        .next
+                        .replace(derive_next_salt_from_randomness(eon_index, &por_randomness));
                 }
             });
         }
@@ -1071,22 +1042,6 @@ impl<T: Config> Pallet<T> {
         EnableRewards::<T>::put(height.unwrap_or(next_block_number).max(next_block_number));
 
         Ok(())
-    }
-
-    fn derive_next_salt_from_randomness(
-        eon_index: u64,
-        randomness: &Randomness,
-    ) -> subspace_core_primitives::Salt {
-        let mut input = [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
-        input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
-        input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
-            .copy_from_slice(randomness);
-        input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..]
-            .copy_from_slice(&eon_index.to_le_bytes());
-
-        crypto::sha256_hash(&input)[..SALT_SIZE]
-            .try_into()
-            .expect("Slice has exactly the size needed; qed")
     }
 
     /// Submits an extrinsic to report an equivocation. This method will create an unsigned
@@ -1270,10 +1225,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum CheckVoteError<Header>
-where
-    Header: HeaderT,
-{
+enum CheckVoteError {
     BlockListed,
     UnexpectedBeforeHeightTwo,
     HeightInTheFuture,
@@ -1283,16 +1235,13 @@ where
     SlotInThePast,
     BadRewardSignature(SignatureError),
     UnknownRecordsRoot,
-    InvalidSolution(VerificationError<Header>),
+    InvalidSolution(VerificationError),
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
 
-impl<Header> From<CheckVoteError<Header>> for TransactionValidityError
-where
-    Header: HeaderT,
-{
-    fn from(error: CheckVoteError<Header>) -> Self {
+impl From<CheckVoteError> for TransactionValidityError {
+    fn from(error: CheckVoteError) -> Self {
         TransactionValidityError::Invalid(match error {
             CheckVoteError::BlockListed => InvalidTransaction::BadSigner,
             CheckVoteError::UnexpectedBeforeHeightTwo => InvalidTransaction::Call,
@@ -1313,7 +1262,7 @@ where
 fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
-) -> Result<(), CheckVoteError<T::Header>> {
+) -> Result<(), CheckVoteError> {
     let Vote::V0 {
         height,
         parent_hash,
@@ -1412,10 +1361,10 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::SlotInThePast);
     }
 
-    if let Err(error) = verification::check_reward_signature(
+    if let Err(error) = check_reward_signature(
         signed_vote.vote.hash().as_bytes(),
-        &signed_vote.signature,
-        &solution.public_key,
+        &Into::<RewardSignature>::into(&signed_vote.signature),
+        &Into::<PublicKey>::into(&solution.public_key),
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
         debug!(
@@ -1448,9 +1397,9 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
-    if let Err(error) = verification::verify_solution::<T::Header, T::AccountId>(
+    if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
         solution,
-        slot,
+        slot.into(),
         VerifySolutionParams {
             global_randomness: &vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,

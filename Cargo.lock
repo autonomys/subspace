@@ -4628,6 +4628,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-solving",
+ "subspace-verification",
 ]
 
 [[package]]
@@ -6049,6 +6050,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-solving",
+ "subspace-verification",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
@@ -7261,6 +7263,7 @@ dependencies = [
  "schnorrkel",
  "sp-api",
  "sp-application-crypto",
+ "sp-arithmetic",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-core",
@@ -7272,6 +7275,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-solving",
+ "subspace-verification",
  "thiserror",
 ]
 
@@ -8107,6 +8111,7 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
@@ -8264,6 +8269,7 @@ dependencies = [
  "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
@@ -8294,6 +8300,22 @@ dependencies = [
  "substrate-test-client",
  "substrate-test-utils",
  "tokio",
+]
+
+[[package]]
+name = "subspace-verification"
+version = "0.1.0"
+dependencies = [
+ "merlin",
+ "parity-scale-codec",
+ "scale-info",
+ "schnorrkel",
+ "sp-arithmetic",
+ "sp-std",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-solving",
+ "thiserror",
 ]
 
 [[package]]

@@ -62,6 +62,9 @@ pub const TAG_SIZE: usize = 8;
 /// Type of the commitment for a particular piece.
 pub type Tag = [u8; TAG_SIZE];
 
+/// Tag prefix
+pub const SALT_HASHING_PREFIX: &[u8] = b"salt";
+
 /// Size of `Tag` in bytes.
 pub const SALT_SIZE: usize = 8;
 
@@ -77,7 +80,11 @@ pub type SlotNumber = u64;
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
-const REWARD_SIGNATURE_LENGTH: usize = 64;
+/// Randomness context
+pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
+
+/// Length of signature in bytes
+pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
 
@@ -97,8 +104,8 @@ impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
 }
 
 impl From<PublicKey> for [u8; PUBLIC_KEY_LENGTH] {
-    fn from(signature: PublicKey) -> Self {
-        signature.0
+    fn from(public_key: PublicKey) -> Self {
+        public_key.0
     }
 }
 

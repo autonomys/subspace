@@ -24,7 +24,6 @@ pub mod inherents;
 pub mod offence;
 #[cfg(test)]
 mod tests;
-pub mod verification;
 
 use crate::digests::{
     CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
@@ -33,19 +32,20 @@ use crate::digests::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
-use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{PublicKey, SignatureResult};
+use schnorrkel::context::SigningContext;
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::ConsensusEngineId;
+use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{
-    Randomness, RootBlock, Salt, Sha256Hash, Solution, Tag, TagSignature,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, Sha256Hash, Solution,
+    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
-use subspace_solving::{create_tag_signature_transcript, REWARD_SIGNING_CONTEXT};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -61,14 +61,30 @@ mod app {
 /// A Subspace farmer signature.
 pub type FarmerSignature = app::Signature;
 
+impl From<&FarmerSignature> for RewardSignature {
+    fn from(signature: &FarmerSignature) -> Self {
+        RewardSignature::from(
+            TryInto::<[u8; REWARD_SIGNATURE_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(signature))
+                .expect("Always correct length; qed"),
+        )
+    }
+}
+
 /// A Subspace farmer identifier. Necessarily equivalent to the schnorrkel public key used in
 /// the main Subspace module. If that ever changes, then this must, too.
 pub type FarmerPublicKey = app::Public;
 
+impl From<&FarmerPublicKey> for PublicKey {
+    fn from(pub_key: &FarmerPublicKey) -> Self {
+        PublicKey::from(
+            TryInto::<[u8; PUBLIC_KEY_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(pub_key))
+                .expect("Always correct length; qed"),
+        )
+    }
+}
+
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
-
-const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
@@ -164,10 +180,10 @@ where
     };
     let pre_hash = header.hash();
 
-    verification::check_reward_signature(
+    check_reward_signature(
         pre_hash.as_ref(),
-        &seal,
-        offender,
+        &Into::<RewardSignature>::into(&seal),
+        &Into::<PublicKey>::into(offender),
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     )
     .is_ok()
@@ -250,23 +266,6 @@ impl Default for SolutionRanges {
     }
 }
 
-/// Derive on-chain randomness from tag signature.
-///
-/// NOTE: If you are not the signer then you must verify the local challenge before calling this
-/// function.
-pub fn derive_randomness(
-    public_key: &FarmerPublicKey,
-    tag: Tag,
-    tag_signature: &TagSignature,
-) -> SignatureResult<Randomness> {
-    let in_out = VRFOutput(tag_signature.output).attach_input_hash(
-        &PublicKey::from_bytes(public_key.as_ref())?,
-        create_tag_signature_transcript(tag),
-    )?;
-
-    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
-}
-
 /// Subspace salts used for challenges.
 #[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
 pub struct Salts {
@@ -342,4 +341,135 @@ sp_api::decl_runtime_apis! {
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;
     }
+}
+
+/// Errors encountered by the Subspace authorship task.
+#[derive(Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+pub enum VerificationError<Header: HeaderT> {
+    /// No Subspace pre-runtime digest found
+    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
+    NoPreRuntimeDigest,
+    /// Header has a bad seal
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
+    HeaderBadSeal(Header::Hash),
+    /// Header is unsealed
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
+    HeaderUnsealed(Header::Hash),
+    /// Bad reward signature
+    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
+    BadRewardSignature(Header::Hash),
+    /// Verification error
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Verification error on slot {0:?}: {1:?}")
+    )]
+    VerificationError(Slot, Error),
+}
+
+/// A header which has been checked
+pub enum CheckedHeader<H, S> {
+    /// A header which has slot in the future. this is the full header (not stripped)
+    /// and the slot in which it should be processed.
+    Deferred(H, Slot),
+    /// A header which is fully checked, including signature. This is the pre-header
+    /// accompanied by the seal components.
+    ///
+    /// Includes the digest item that encoded the seal.
+    Checked(H, S),
+}
+
+/// Subspace verification parameters
+pub struct VerificationParams<'a, Header>
+where
+    Header: HeaderT + 'a,
+{
+    /// The header being verified.
+    pub header: Header,
+    /// The slot number of the current time.
+    pub slot_now: Slot,
+    /// Parameters for solution verification
+    pub verify_solution_params: VerifySolutionParams<'a>,
+    /// Signing context for reward signature
+    pub reward_signing_context: &'a SigningContext,
+}
+
+/// Information from verified header
+pub struct VerifiedHeaderInfo<RewardAddress> {
+    /// Pre-digest
+    pub pre_digest: PreDigest<FarmerPublicKey, RewardAddress>,
+    /// Seal (signature)
+    pub seal: DigestItem,
+}
+
+/// Check a header has been signed correctly and whether solution is correct. If the slot is too far
+/// in the future, an error will be returned. If successful, returns the pre-header and the digest
+/// item containing the seal.
+///
+/// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This is
+/// required for security and must not be changed.
+///
+/// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
+///
+/// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
+/// it from the header twice.
+pub fn check_header<Header, RewardAddress>(
+    params: VerificationParams<Header>,
+    pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
+) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
+where
+    Header: HeaderT,
+    RewardAddress: Decode,
+{
+    let VerificationParams {
+        mut header,
+        slot_now,
+        verify_solution_params,
+        reward_signing_context,
+    } = params;
+
+    let pre_digest = match pre_digest {
+        Some(pre_digest) => pre_digest,
+        None => find_pre_digest::<Header, RewardAddress>(&header)
+            .ok_or(VerificationError::NoPreRuntimeDigest)?,
+    };
+    let slot = pre_digest.slot;
+
+    let seal = header
+        .digest_mut()
+        .pop()
+        .ok_or_else(|| VerificationError::HeaderUnsealed(header.hash()))?;
+
+    let signature = seal
+        .as_subspace_seal()
+        .ok_or_else(|| VerificationError::HeaderBadSeal(header.hash()))?;
+
+    // The pre-hash of the header doesn't include the seal and that's what we sign
+    let pre_hash = header.hash();
+
+    if pre_digest.slot > slot_now {
+        header.digest_mut().push(seal);
+        return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
+    }
+
+    // Verify that block is signed properly
+    if check_reward_signature(
+        pre_hash.as_ref(),
+        &Into::<RewardSignature>::into(&signature),
+        &Into::<PublicKey>::into(&pre_digest.solution.public_key),
+        reward_signing_context,
+    )
+    .is_err()
+    {
+        return Err(VerificationError::BadRewardSignature(pre_hash));
+    }
+
+    // Verify that solution is valid
+    verify_solution(&pre_digest.solution, slot.into(), verify_solution_params)
+        .map_err(|error| VerificationError::VerificationError(slot, error))?;
+
+    Ok(CheckedHeader::Checked(
+        header,
+        VerifiedHeaderInfo { pre_digest, seal },
+    ))
 }
