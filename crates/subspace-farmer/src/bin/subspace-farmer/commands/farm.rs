@@ -55,7 +55,7 @@ pub(crate) async fn farm_multi_disk(
     })
     .await?;
 
-    let _relay_stop_handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         relay_node_runner.run().await;
     });
 
@@ -255,7 +255,7 @@ pub(crate) async fn farm_legacy(
     })
     .await?;
 
-    let _relay_stop_handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         relay_node_runner.run().await;
     });
 

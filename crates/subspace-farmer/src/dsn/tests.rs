@@ -185,7 +185,7 @@ async fn test_dsn_sync() {
     .await
     .unwrap();
 
-    let _ = tokio::spawn(async move {
+    tokio::spawn(async move {
         relay_node_runner.run().await;
     });
 
@@ -325,7 +325,7 @@ async fn test_dsn_sync() {
     .await
     .unwrap();
 
-    let _ = tokio::spawn(async move {
+    tokio::spawn(async move {
         relay_node_runner.run().await;
     });
 

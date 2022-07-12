@@ -154,7 +154,7 @@ pub(crate) async fn bench(
     let (relay_server_node, mut relay_node_runner) =
         subspace_networking::create(Config::with_generated_keypair()).await?;
 
-    let _relay_stop_handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         relay_node_runner.run().await;
     });
 
