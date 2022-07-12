@@ -543,6 +543,7 @@ impl SinglePlotFarm {
                 farm.object_mappings().clone(),
                 node,
                 farm.plotter(),
+                farm.single_disk_semaphore.clone(),
             );
             let dsn_archiving_handle = tokio::spawn(async move {
                 if let Err(error) = archiving_fut.await {
