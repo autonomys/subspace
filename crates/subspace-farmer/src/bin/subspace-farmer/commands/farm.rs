@@ -11,8 +11,9 @@ use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
+use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 use crate::{utils, ArchivingFrom, DiskFarm, FarmingArgs};
 
@@ -46,6 +47,20 @@ pub(crate) async fn farm_multi_disk(
     let mut record_size = None;
     let mut recorded_history_segment_size = None;
 
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on,
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await?;
+
+    tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
+    trace!(node_id = %relay_server_node.id(), "Relay Node started");
+
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later (note that multiple farms can use the same location for metadata)
     for disk_farm in disk_farms {
@@ -77,8 +92,6 @@ pub(crate) async fn farm_multi_disk(
         record_size.replace(farmer_protocol_info.record_size);
         recorded_history_segment_size.replace(farmer_protocol_info.recorded_history_segment_size);
 
-        // TODO: listen_on should not be specified here, common networking instance should be used
-        //  instead once we have circuit relay
         let single_disk_farm = SingleDiskFarm::new(SingleDiskFarmOptions {
             plot_directory: disk_farm.plot_directory,
             metadata_directory: disk_farm.metadata_directory,
@@ -89,7 +102,6 @@ pub(crate) async fn farm_multi_disk(
             farming_client,
             reward_address,
             bootstrap_nodes: bootstrap_nodes.clone(),
-            listen_on: listen_on.clone(),
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
@@ -102,6 +114,7 @@ pub(crate) async fn farm_multi_disk(
                     options.max_plot_size,
                 )
             },
+            relay_server_node: relay_server_node.clone(),
         })
         .await?;
 
@@ -234,6 +247,20 @@ pub(crate) async fn farm_legacy(
     })
     .await??;
 
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on,
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await?;
+
+    tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
+    trace!(node_id = %relay_server_node.id(), "Relay Node started");
+
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory,
@@ -243,10 +270,10 @@ pub(crate) async fn farm_legacy(
             object_mappings: object_mappings.clone(),
             reward_address,
             bootstrap_nodes,
-            listen_on,
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
+            relay_server_node,
         },
         plot_size.as_u64(),
         move |options: PlotFactoryOptions<'_>| {

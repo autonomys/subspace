@@ -17,7 +17,7 @@ use subspace_core_primitives::{
     RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::PiecesToPlot;
+use subspace_networking::{Config, PiecesToPlot};
 use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -176,6 +176,19 @@ async fn test_dsn_sync() {
         )
     };
 
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await
+    .unwrap();
+
+    tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
@@ -185,10 +198,10 @@ async fn test_dsn_sync() {
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             bootstrap_nodes: vec![],
-            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
+            relay_server_node,
         },
         u64::MAX / 100,
         plot_factory,
@@ -303,6 +316,19 @@ async fn test_dsn_sync() {
         )
     };
 
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        ..Config::with_generated_keypair()
+    })
+    .await
+    .unwrap();
+
+    tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
     let syncer_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: syncer_base_directory.as_ref().to_owned(),
@@ -316,10 +342,10 @@ async fn test_dsn_sync() {
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             bootstrap_nodes: vec![seeder_multiaddr.clone()],
-            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
+            relay_server_node,
         },
         syncer_max_plot_size * PIECE_SIZE as u64,
         plot_factory,
