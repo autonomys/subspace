@@ -272,6 +272,10 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 
     alice.wait_for_blocks(3).await;
 
+    // Wait for one more block to make sure the execution receipts of block 1,2,3 are
+    // able to be written to the database.
+    alice.wait_for_blocks(1).await;
+
     let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
         let execution_receipt = crate::aux_schema::load_execution_receipt(
             &*alice.backend,
