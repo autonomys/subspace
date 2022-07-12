@@ -68,7 +68,7 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{PublicKey, Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -899,7 +899,7 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
 
         let seed: &[u8] = b"extrinsics-shuffling-seed";
         let randomness = derive_randomness(
-            &pre_digest.solution.public_key,
+            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
             pre_digest.solution.tag,
             &pre_digest.solution.tag_signature,
         )

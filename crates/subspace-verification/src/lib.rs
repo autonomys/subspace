@@ -26,8 +26,9 @@ use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    crypto, PieceIndex, PieceIndexHash, Randomness, Salt, Sha256Hash, Solution, Tag, TagSignature,
-    RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
+    crypto, PieceIndex, PieceIndexHash, PublicKey, Randomness, RewardSignature, Salt, Sha256Hash,
+    Solution, Tag, TagSignature, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX,
+    SALT_SIZE, U256,
 };
 use subspace_solving::{
     create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
@@ -70,16 +71,12 @@ pub enum Error {
 }
 
 /// Check the reward signature validity.
-pub fn check_reward_signature<FarmerPublicKey, RewardSignature>(
+pub fn check_reward_signature(
     hash: &[u8],
     signature: &RewardSignature,
-    public_key: &FarmerPublicKey,
+    public_key: &PublicKey,
     reward_signing_context: &SigningContext,
-) -> Result<(), SignatureError>
-where
-    FarmerPublicKey: AsRef<[u8]>,
-    RewardSignature: AsRef<[u8]>,
-{
+) -> Result<(), SignatureError> {
     let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())?;
     let signature = schnorrkel::Signature::from_bytes(signature.as_ref())?;
     public_key.verify(reward_signing_context.bytes(hash), &signature)
@@ -100,19 +97,20 @@ fn check_piece_tag<FarmerPublicKey, RewardAddress>(
 /// Check piece validity.
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
-pub fn check_piece<FarmerPublicKey, RewardAddress>(
+pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     records_root: Sha256Hash,
     position: u64,
     record_size: u32,
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
+    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), Error>
 where
-    FarmerPublicKey: AsRef<[u8]>,
+    &'a FarmerPublicKey: Into<PublicKey>,
 {
     let mut piece = solution.encoding.clone();
 
     // Ensure piece is decodable.
-    let subspace_codec = SubspaceCodec::new(solution.public_key.as_ref());
+    let public_key = Into::<PublicKey>::into(&solution.public_key);
+    let subspace_codec = SubspaceCodec::new(public_key.as_ref());
     subspace_codec
         .decode(&mut piece, solution.piece_index)
         .map_err(|_| Error::InvalidPieceEncoding)?;
@@ -138,15 +136,12 @@ pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> b
 }
 
 /// Returns true if piece index is within farmer sector
-fn is_within_max_plot<FarmerPublicKey>(
+fn is_within_max_plot(
     piece_index: PieceIndex,
-    public_key: &FarmerPublicKey,
+    public_key: &PublicKey,
     total_pieces: u64,
     max_plot_size: u64,
-) -> bool
-where
-    FarmerPublicKey: AsRef<[u8]>,
-{
+) -> bool {
     if total_pieces < max_plot_size {
         return true;
     }
@@ -154,7 +149,7 @@ where
     subspace_core_primitives::bidirectional_distance(
         &U256::from(PieceIndexHash::from_index(piece_index)),
         &U256::from_be_bytes(
-            AsRef::<[u8]>::as_ref(&public_key)
+            AsRef::<[u8]>::as_ref(public_key)
                 .try_into()
                 .expect("Always correct length; qed"),
         ),
@@ -192,13 +187,13 @@ pub struct VerifySolutionParams<'a> {
 }
 
 /// Solution verification
-pub fn verify_solution<FarmerPublicKey, RewardAddress>(
-    solution: &Solution<FarmerPublicKey, RewardAddress>,
+pub fn verify_solution<'a, FarmerPublicKey, RewardAddress>(
+    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
     slot: u64,
     params: VerifySolutionParams<'_>,
 ) -> Result<(), Error>
 where
-    FarmerPublicKey: AsRef<[u8]>,
+    &'a FarmerPublicKey: Into<PublicKey>,
 {
     let VerifySolutionParams {
         global_randomness,
@@ -207,11 +202,11 @@ where
         piece_check_params,
     } = params;
 
-    let public_key = schnorrkel::PublicKey::from_bytes(solution.public_key.as_ref())
-        .expect("Always correct length; qed");
-
+    let public_key = Into::<PublicKey>::into(&solution.public_key);
+    let sc_pub_key =
+        schnorrkel::PublicKey::from_bytes(public_key.as_ref()).expect("Always correct length; qed");
     if let Err(error) = verify_local_challenge(
-        &public_key,
+        &sc_pub_key,
         derive_global_challenge(global_randomness, slot),
         &solution.local_challenge,
     ) {
@@ -220,7 +215,7 @@ where
 
     // Verification of the local challenge was done above
     let target = match derive_target(
-        &public_key,
+        &sc_pub_key,
         derive_global_challenge(global_randomness, slot),
         &solution.local_challenge,
     ) {
@@ -234,7 +229,7 @@ where
         return Err(Error::OutsideSolutionRange);
     }
 
-    if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &public_key) {
+    if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &sc_pub_key) {
         return Err(Error::InvalidSolutionSignature(error));
     }
 
@@ -267,14 +262,11 @@ where
 ///
 /// NOTE: If you are not the signer then you must verify the local challenge before calling this
 /// function.
-pub fn derive_randomness<FarmerPublicKey>(
-    public_key: &FarmerPublicKey,
+pub fn derive_randomness(
+    public_key: &PublicKey,
     tag: Tag,
     tag_signature: &TagSignature,
-) -> SignatureResult<Randomness>
-where
-    FarmerPublicKey: AsRef<[u8]>,
-{
+) -> SignatureResult<Randomness> {
     let in_out = VRFOutput(tag_signature.output).attach_input_hash(
         &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
         create_tag_signature_transcript(tag),

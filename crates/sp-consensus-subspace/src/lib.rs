@@ -40,7 +40,10 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
-use subspace_core_primitives::{Randomness, RootBlock, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, Sha256Hash, Solution,
+    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
 
@@ -58,9 +61,27 @@ mod app {
 /// A Subspace farmer signature.
 pub type FarmerSignature = app::Signature;
 
+impl From<&FarmerSignature> for RewardSignature {
+    fn from(signature: &FarmerSignature) -> Self {
+        RewardSignature::from(
+            TryInto::<[u8; REWARD_SIGNATURE_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(signature))
+                .expect("Always correct length; qed"),
+        )
+    }
+}
+
 /// A Subspace farmer identifier. Necessarily equivalent to the schnorrkel public key used in
 /// the main Subspace module. If that ever changes, then this must, too.
 pub type FarmerPublicKey = app::Public;
+
+impl From<&FarmerPublicKey> for PublicKey {
+    fn from(pub_key: &FarmerPublicKey) -> Self {
+        PublicKey::from(
+            TryInto::<[u8; PUBLIC_KEY_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(pub_key))
+                .expect("Always correct length; qed"),
+        )
+    }
+}
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
@@ -161,8 +182,8 @@ where
 
     check_reward_signature(
         pre_hash.as_ref(),
-        &seal,
-        offender,
+        &Into::<RewardSignature>::into(&seal),
+        &Into::<PublicKey>::into(offender),
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     )
     .is_ok()
@@ -434,8 +455,8 @@ where
     // Verify that block is signed properly
     if check_reward_signature(
         pre_hash.as_ref(),
-        &signature,
-        &pre_digest.solution.public_key,
+        &Into::<RewardSignature>::into(&signature),
+        &Into::<PublicKey>::into(&pre_digest.solution.public_key),
         reward_signing_context,
     )
     .is_err()

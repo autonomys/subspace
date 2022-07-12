@@ -43,7 +43,7 @@ use sp_runtime::DigestItem;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Randomness, Salt, Solution};
+use subspace_core_primitives::{Randomness, RewardSignature, Salt, Solution};
 use subspace_solving::{derive_global_challenge, derive_target};
 use subspace_verification::{
     check_reward_signature, is_within_solution_range, verify_solution, PieceCheckParams,
@@ -457,8 +457,8 @@ where
         while let Some(signature) = signature_receiver.next().await {
             if check_reward_signature(
                 hash.as_ref(),
-                &signature,
-                public_key,
+                &Into::<RewardSignature>::into(&signature),
+                &Into::<subspace_core_primitives::PublicKey>::into(public_key),
                 &self.reward_signing_context,
             )
             .is_err()

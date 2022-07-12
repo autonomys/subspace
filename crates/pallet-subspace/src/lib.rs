@@ -53,7 +53,9 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
-use subspace_core_primitives::{Randomness, RootBlock, Salt, PIECE_SIZE};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, PIECE_SIZE,
+};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     check_reward_signature, derive_next_salt_from_randomness, derive_next_solution_range,
@@ -876,7 +878,7 @@ impl<T: Config> Pallet<T> {
         // Extract PoR randomness from pre-digest.
         // Tag signature is validated by the client and is always valid here.
         let por_randomness: Randomness = derive_randomness(
-            &pre_digest.solution.public_key,
+            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
             pre_digest.solution.tag,
             &pre_digest.solution.tag_signature,
         )
@@ -1361,8 +1363,8 @@ fn check_vote<T: Config>(
 
     if let Err(error) = check_reward_signature(
         signed_vote.vote.hash().as_bytes(),
-        &signed_vote.signature,
-        &solution.public_key,
+        &Into::<RewardSignature>::into(&signed_vote.signature),
+        &Into::<PublicKey>::into(&solution.public_key),
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
         debug!(
