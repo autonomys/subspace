@@ -19,10 +19,11 @@ use subspace_farmer::legacy_multi_plots_farm::{
 };
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
+use subspace_networking::Config;
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 #[derive(Default)]
 pub struct BenchPlotMock;
@@ -149,6 +150,16 @@ pub(crate) async fn bench(
         ),
     };
 
+    // Starting the relay server node.
+    let (relay_server_node, mut relay_node_runner) =
+        subspace_networking::create(Config::with_generated_keypair()).await?;
+
+    tokio::spawn(async move {
+        relay_node_runner.run().await;
+    });
+
+    trace!(node_id = %relay_server_node.id(), "Relay Node started");
+
     let multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: base_directory.as_ref().to_owned(),
@@ -158,10 +169,10 @@ pub(crate) async fn bench(
             object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
             bootstrap_nodes: vec![],
-            listen_on: vec![],
             enable_dsn_archiving: false,
             enable_dsn_sync: false,
             enable_farming: true,
+            relay_server_node,
         },
         plot_size,
         plot_factory,
