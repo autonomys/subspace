@@ -18,6 +18,7 @@ async-oneshot = "0.5.0"
 async-trait = "0.1.53"
 base58 = "0.2.0"
 blake2-rfc = "0.2.18"
+bytesize = "1.1.0"
 clap = { version = "3.1.18", features = ["color", "derive"] }
 derive_more = "0.99.17"
 dirs = "4.0.0"

@@ -3,6 +3,7 @@ mod ss58;
 mod utils;
 
 use anyhow::Result;
+use bytesize::ByteSize;
 use clap::{ArgEnum, Parser, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
@@ -19,7 +20,6 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
-use utils::parse_human_readable_size;
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
 enum ArchivingFrom {
@@ -54,18 +54,14 @@ struct FarmingArgs {
     /// Address for farming rewards
     #[clap(long, parse(try_from_str = parse_ss58_reward_address))]
     reward_address: PublicKey,
-    /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
-    ///
-    /// Only `G` and `T` endings are supported.
-    #[clap(long, parse(try_from_str = parse_human_readable_size))]
-    plot_size: u64,
-    /// Maximum single plot size in bytes human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
-    ///
-    /// Only `G` and `T` endings are supported.
+    /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+    #[clap(long, default_value_t)]
+    plot_size: ByteSize,
+    /// Maximum single plot size in bytes human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     ///
     /// Only a developer testing flag, not helpful for normal users.
-    #[clap(long, parse(try_from_str = parse_human_readable_size))]
-    max_plot_size: Option<u64>,
+    #[clap(long)]
+    max_plot_size: Option<ByteSize>,
     /// Number of major concurrent operations to allow for disk
     #[clap(long, default_value = "2")]
     disk_concurrency: NonZeroU16,
@@ -98,20 +94,18 @@ enum Subcommand {
     Wipe,
     /// Start a farmer using previously created plot
     Farm(FarmingArgs),
+    /// Print information about farm and its content
+    Info,
     /// Benchmark disk in order to see a throughput of the disk for plotting
     Bench {
-        /// Maximum plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
-        ///
-        /// Only `G` and `T` endings are supported.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        plot_size: u64,
-        /// Maximum single plot size in bytes human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
-        ///
-        /// Only `G` and `T` endings are supported.
+        /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+        #[clap(long)]
+        plot_size: ByteSize,
+        /// Maximum single plot size in bytes human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
         ///
         /// Only a developer testing flag, as it might be needed for testing.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        max_plot_size: Option<u64>,
+        #[clap(long)]
+        max_plot_size: Option<ByteSize>,
         /// How much things to write on disk (the more we write during benchmark, the more accurate
         /// it is)
         #[clap(arg_enum, long, default_value_t)]
@@ -119,8 +113,8 @@ enum Subcommand {
         /// Amount of data to plot for benchmarking.
         ///
         /// Only `G` and `T` endings are supported.
-        #[clap(long, parse(try_from_str = parse_human_readable_size))]
-        write_pieces_size: u64,
+        #[clap(long)]
+        write_pieces_size: ByteSize,
         /// Skip recommitment benchmark
         #[clap(long)]
         no_recommitments: bool,
@@ -176,9 +170,12 @@ impl FromStr for DiskFarm {
                 }
                 "size" => {
                     allocated_plotting_space.replace(
-                        parse_human_readable_size(value).map_err(|error| {
-                            format!("Failed to parse `size` \"{value}\": {error}")
-                        })?,
+                        value
+                            .parse::<ByteSize>()
+                            .map_err(|error| {
+                                format!("Failed to parse `size` \"{value}\": {error}")
+                            })?
+                            .as_u64(),
                     );
                 }
                 key => {
@@ -225,7 +222,7 @@ struct Command {
     ///
     ///   hdd=/path/to/plot-directory,ssd=/path/to/metadata-directory,size=5T
     ///
-    /// `size` is max plot size in human readable format (e.g. 10G, 2T) or just bytes (e.g. 4096).
+    /// `size` is max plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     /// Note that `size` is how much data will be plotted, you also need to account for metadata,
     /// which right now occupies up to 8% of the disk space.
     ///
@@ -305,6 +302,13 @@ async fn main() -> Result<()> {
                 commands::farm_multi_disk(command.farm, farming_args).await?;
             }
         }
+        Subcommand::Info => {
+            if command.farm.is_empty() {
+                panic!("Printing info for legacy plots is not supported");
+            } else {
+                commands::info(command.farm);
+            }
+        }
         Subcommand::Bench {
             plot_size,
             max_plot_size,
@@ -324,10 +328,10 @@ async fn main() -> Result<()> {
 
                 commands::bench(
                     base_path,
-                    plot_size,
-                    max_plot_size,
+                    plot_size.as_u64(),
+                    max_plot_size.map(|max_plot_size| max_plot_size.as_u64()),
                     write_to_disk,
-                    write_pieces_size,
+                    write_pieces_size.as_u64(),
                     !no_recommitments,
                 )
                 .await?
