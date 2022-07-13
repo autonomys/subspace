@@ -203,16 +203,12 @@ impl ObjectMappings {
         });
         let tx = object_mapping
             .iter()
-            .filter(|(object_id, _global_object)| {
-                let (store_from, store_to) = match store {
-                    Some(store) => store,
-                    None => {
-                        return true;
-                    }
-                };
-                let object_id = U256::from_be_bytes(*object_id);
-
-                store_from < object_id && object_id < store_to
+            .filter(|(object_id, _global_object)| match store {
+                Some((store_from, store_to)) => {
+                    let object_id = U256::from_be_bytes(*object_id);
+                    store_from < object_id && object_id < store_to
+                }
+                None => true,
             })
             .map(|(object_id, global_object)| {
                 let encoded_global_object = global_object.encode();
