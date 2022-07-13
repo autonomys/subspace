@@ -62,18 +62,17 @@ use sp_consensus::{
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor,
+    find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
+    find_solution_range_descriptor, Error as DigestError, PreDigest,
 };
 use sp_consensus_subspace::{
     check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
     VerificationParams,
 };
-use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{One, Zero};
+use sp_runtime::traits::One;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
@@ -290,6 +289,21 @@ where
     }
 }
 
+impl<Header> From<DigestError> for Error<Header>
+where
+    Header: HeaderT,
+{
+    fn from(error: DigestError) -> Self {
+        match error {
+            DigestError::MultipleGlobalRandomnessDigests => Error::MultipleGlobalRandomnessDigests,
+            DigestError::MultipleSolutionRangeDigests => Error::MultipleSolutionRangeDigests,
+            DigestError::MultipleSaltDigests => Error::MultipleSaltDigests,
+            DigestError::MultiplePreRuntimeDigests => Error::MultiplePreRuntimeDigests,
+            DigestError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
+        }
+    }
+}
+
 impl<Header> From<Error<Header>> for String
 where
     Header: HeaderT,
@@ -481,104 +495,6 @@ impl Future for SubspaceWorker {
     ) -> futures::task::Poll<Self::Output> {
         self.inner.as_mut().poll(cx)
     }
-}
-
-/// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
-/// function will return `Err` if none is found.
-pub fn find_pre_digest<Header>(
-    header: &Header,
-) -> Result<PreDigest<FarmerPublicKey, FarmerPublicKey>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    // genesis block doesn't contain a pre digest so let's generate a
-    // dummy one to not break any invariants in the rest of the code
-    if header.number().is_zero() {
-        return Ok(PreDigest {
-            slot: Slot::from(0),
-            solution: Solution::genesis_solution(
-                FarmerPublicKey::unchecked_from([0u8; 32]),
-                FarmerPublicKey::unchecked_from([0u8; 32]),
-            ),
-        });
-    }
-
-    let mut pre_digest = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
-        match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(Error::MultiplePreRuntimeDigests),
-            (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
-            (s, false) => pre_digest = s,
-        }
-    }
-    pre_digest.ok_or(Error::NoPreRuntimeDigest)
-}
-
-/// Extract the Subspace global randomness descriptor from the given header.
-fn find_global_randomness_descriptor<Header>(
-    header: &Header,
-) -> Result<Option<GlobalRandomnessDescriptor>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    let mut global_randomness_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for global randomness digest.", log);
-        match (
-            log.as_global_randomness_descriptor(),
-            global_randomness_descriptor.is_some(),
-        ) {
-            (Some(_), true) => return Err(Error::MultipleGlobalRandomnessDigests),
-            (Some(global_randomness), false) => {
-                global_randomness_descriptor = Some(global_randomness)
-            }
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(global_randomness_descriptor)
-}
-
-/// Extract the Subspace solution range descriptor from the given header.
-fn find_solution_range_descriptor<Header>(
-    header: &Header,
-) -> Result<Option<SolutionRangeDescriptor>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    let mut solution_range_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
-        match (
-            log.as_solution_range_descriptor(),
-            solution_range_descriptor.is_some(),
-        ) {
-            (Some(_), true) => return Err(Error::MultipleSolutionRangeDigests),
-            (Some(solution_range), false) => solution_range_descriptor = Some(solution_range),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(solution_range_descriptor)
-}
-
-/// Extract the Subspace salt descriptor from the given header.
-fn find_salt_descriptor<Header>(header: &Header) -> Result<Option<SaltDescriptor>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    let mut salt_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
-        match (log.as_salt_descriptor(), salt_descriptor.is_some()) {
-            (Some(_), true) => return Err(Error::MultipleSaltDigests),
-            (Some(salt), false) => salt_descriptor = Some(salt),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(salt_descriptor)
 }
 
 /// State that must be shared between the import queue and the authoring logic.

@@ -15,6 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 async-trait = { version = "0.1.53", optional = true }
 codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false }
+log = { version = "0.4.17", default-features = false }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
@@ -39,6 +40,7 @@ default = ["std"]
 std = [
 	"async-trait",
 	"codec/std",
+	"log/std",
 	"scale-info/std",
 	"schnorrkel/std",
 	"sp-api/std",
