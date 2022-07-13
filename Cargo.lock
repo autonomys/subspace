@@ -7487,6 +7487,11 @@ dependencies = [
 [[package]]
 name = "sp-lightclient"
 version = "0.1.0"
+dependencies = [
+ "sp-api",
+ "sp-arithmetic",
+ "subspace-core-primitives",
+]
 
 [[package]]
 name = "sp-maybe-compressed-blob"
