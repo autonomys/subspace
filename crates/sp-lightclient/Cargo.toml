@@ -1,0 +1,23 @@
+[package]
+name = "sp-lightclient"
+version = "0.1.0"
+authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Light client substrate primitives for Subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+    "/README.md",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+
+[features]
+default = ["std"]
+std = []

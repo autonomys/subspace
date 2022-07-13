@@ -7485,6 +7485,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-lightclient"
+version = "0.1.0"
+
+[[package]]
 name = "sp-maybe-compressed-blob"
 version = "4.1.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
