@@ -10,7 +10,7 @@ use subspace_farmer::legacy_multi_plots_farm::{
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-use subspace_farmer::{NodeRpcClient, ObjectMappings, Plot, RpcClient};
+use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, trace, warn};
@@ -167,6 +167,7 @@ pub(crate) async fn farm_multi_disk(
                 })
                 .collect::<Vec<_>>(),
         ),
+        Arc::new(vec![]),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
 
@@ -243,7 +244,7 @@ pub(crate) async fn farm_legacy(
     let object_mappings = tokio::task::spawn_blocking({
         let path = base_directory.join("object-mappings");
 
-        move || ObjectMappings::open_or_create(path)
+        move || LegacyObjectMappings::open_or_create(path)
     })
     .await??;
 
@@ -314,6 +315,7 @@ pub(crate) async fn farm_legacy(
         record_size,
         recorded_history_segment_size,
         Arc::new(multi_plots_farm.piece_getter()),
+        Arc::new(vec![]),
         Arc::new(vec![object_mappings]),
     );
     let _stop_handle = ws_server.start(rpc_server.into_rpc())?;

@@ -18,7 +18,7 @@ use subspace_farmer::legacy_multi_plots_farm::{
     LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
 };
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
-use subspace_farmer::{ObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
+use subspace_farmer::{LegacyObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_networking::Config;
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
@@ -129,7 +129,7 @@ pub(crate) async fn bench(
     let object_mappings = tokio::task::spawn_blocking({
         let path = base_directory.as_ref().join("object-mappings");
 
-        move || ObjectMappings::open_or_create(path)
+        move || LegacyObjectMappings::open_or_create(path)
     })
     .await??;
 

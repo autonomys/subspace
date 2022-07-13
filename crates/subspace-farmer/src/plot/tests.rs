@@ -20,8 +20,8 @@ fn generate_random_pieces(n: usize) -> FlatPieces {
     pieces
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn read_write() {
+#[test]
+fn read_write() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -60,8 +60,8 @@ async fn read_write() {
     assert!(!plot.is_empty());
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn piece_retrievable() {
+#[test]
+fn piece_retrievable() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -100,8 +100,8 @@ async fn piece_retrievable() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn partial_plot() {
+#[test]
+fn partial_plot() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -153,8 +153,8 @@ async fn partial_plot() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn sequential_pieces_iterator() {
+#[test]
+fn sequential_pieces_iterator() {
     init();
     let base_directory = TempDir::new().unwrap();
 
@@ -187,8 +187,8 @@ async fn sequential_pieces_iterator() {
     assert_eq!(got_indexes, piece_indexes[..got_indexes.len()]);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn test_read_sequential_pieces() {
+#[test]
+fn test_read_sequential_pieces() {
     init();
     let base_directory = TempDir::new().unwrap();
 

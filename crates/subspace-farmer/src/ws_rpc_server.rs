@@ -1,5 +1,4 @@
-use crate::object_mappings::ObjectMappings;
-use crate::ObjectMappingError;
+use crate::object_mappings::{LegacyObjectMappings, ObjectMappingError, ObjectMappings};
 use async_trait::async_trait;
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
@@ -171,13 +170,18 @@ pub trait Rpc {
 ///     public_key,
 ///     u64::MAX,
 /// )?;
-/// let object_mappings = ObjectMappings::open_or_create(base_directory.join("object-mappings"))?;
+/// let object_mappings = ObjectMappings::open_or_create(
+///     &base_directory.join("object-mappings"),
+///     public_key,
+///     100 * 1024 * 1024,
+/// )?;
 /// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
 /// let rpc_server = RpcServerImpl::new(
 ///     3840,
 ///     3480 * 128,
 ///     Arc::new(SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot)),
 ///     Arc::new(vec![object_mappings]),
+///     Arc::new(vec![]),
 /// );
 /// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -189,6 +193,7 @@ pub struct RpcServerImpl {
     merkle_num_leaves: u32,
     piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
     object_mappings: Arc<Vec<ObjectMappings>>,
+    legacy_object_mappings: Arc<Vec<LegacyObjectMappings>>,
 }
 
 impl RpcServerImpl {
@@ -197,12 +202,14 @@ impl RpcServerImpl {
         recorded_history_segment_size: u32,
         piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
         object_mappings: Arc<Vec<ObjectMappings>>,
+        legacy_object_mappings: Arc<Vec<LegacyObjectMappings>>,
     ) -> Self {
         Self {
             record_size,
             merkle_num_leaves: recorded_history_segment_size / record_size * 2,
             piece_getter,
             object_mappings,
+            legacy_object_mappings,
         }
     }
 
@@ -485,12 +492,18 @@ impl RpcServer for RpcServerImpl {
     async fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error> {
         let global_object_handle = tokio::task::spawn_blocking({
             let object_mappings = Arc::clone(&self.object_mappings);
+            let legacy_object_mappings = Arc::clone(&self.legacy_object_mappings);
 
             move || -> Result<Option<GlobalObject>, ObjectMappingError> {
-                for object_mappings in object_mappings.as_ref() {
+                for object_mappings in object_mappings.iter() {
                     let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
 
                     if let Some(global_object) = maybe_global_object {
+                        return Ok(Some(global_object));
+                    }
+                }
+                for object_mappings in legacy_object_mappings.iter() {
+                    if let Ok(Some(global_object)) = object_mappings.retrieve(&object_id.into()) {
                         return Ok(Some(global_object));
                     }
                 }

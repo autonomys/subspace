@@ -1,3 +1,4 @@
+use crate::archiving::Archiving;
 use crate::commitments::Commitments;
 use crate::identity::Identity;
 use crate::mock_rpc_client::MockRpcClient;
@@ -6,7 +7,6 @@ use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotPlotter;
-use crate::Archiving;
 use rand::prelude::*;
 use rand::Rng;
 use std::num::NonZeroU16;
@@ -46,8 +46,12 @@ async fn plotting_happy_path() {
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings =
-        ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
+    let object_mappings = ObjectMappings::open_or_create(
+        &base_directory.as_ref().join("object-mappings"),
+        public_key,
+        u64::MAX,
+    )
+    .unwrap();
 
     let client = MockRpcClient::new();
 
@@ -91,6 +95,7 @@ async fn plotting_happy_path() {
     let archiving_instance = Archiving::start(
         farmer_protocol_info,
         vec![object_mappings],
+        vec![],
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,
@@ -141,8 +146,12 @@ async fn plotting_piece_eviction() {
     )
     .unwrap();
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
-    let object_mappings =
-        ObjectMappings::open_or_create(base_directory.as_ref().join("object-mappings")).unwrap();
+    let object_mappings = ObjectMappings::open_or_create(
+        &base_directory.as_ref().join("object-mappings"),
+        public_key,
+        u64::MAX,
+    )
+    .unwrap();
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces
@@ -198,6 +207,7 @@ async fn plotting_piece_eviction() {
     let archiving_instance = Archiving::start(
         farmer_protocol_info,
         vec![object_mappings],
+        vec![],
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,

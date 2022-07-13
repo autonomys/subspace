@@ -2,7 +2,7 @@ use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::{ObjectMappings, Plot, RpcClient};
+use crate::{LegacyObjectMappings, Plot, RpcClient};
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
 use num_traits::{WrappingAdd, WrappingSub};
@@ -160,7 +160,7 @@ async fn test_dsn_sync() {
     let object_mappings = tokio::task::spawn_blocking({
         let path = seeder_base_directory.as_ref().join("object-mappings");
 
-        move || ObjectMappings::open_or_create(path)
+        move || LegacyObjectMappings::open_or_create(path)
     })
     .await
     .unwrap()
@@ -300,7 +300,7 @@ async fn test_dsn_sync() {
     let object_mappings = tokio::task::spawn_blocking({
         let path = syncer_base_directory.as_ref().join("object-mappings");
 
-        move || ObjectMappings::open_or_create(path)
+        move || LegacyObjectMappings::open_or_create(path)
     })
     .await
     .unwrap()

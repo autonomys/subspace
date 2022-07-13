@@ -1,4 +1,5 @@
 use crate::object_mappings::ObjectMappings;
+use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{SinglePlotFarmId, SinglePlotPlotter};
 use futures::StreamExt;
 use parity_scale_codec::Decode;
@@ -30,6 +31,7 @@ pub(super) async fn start_archiving(
     object_mappings: ObjectMappings,
     node: Node,
     plotter: SinglePlotPlotter,
+    single_disk_semaphore: SingleDiskSemaphore,
 ) -> Result<(), StartDsnArchivingError> {
     // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
@@ -66,16 +68,20 @@ pub(super) async fn start_archiving(
                         piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
                         pieces,
                     };
-                    if let Err(error) = plotter.plot_pieces(pieces_to_plot) {
-                        error!(%error, "Failed to plot pieces from DSN");
-                        break;
-                    }
 
-                    let object_mapping =
-                        create_global_object_mapping(piece_index_offset, object_mapping);
+                    {
+                        let _guard = single_disk_semaphore.acquire();
+                        if let Err(error) = plotter.plot_pieces(pieces_to_plot) {
+                            error!(%error, "Failed to plot pieces from DSN");
+                            break;
+                        }
 
-                    if let Err(error) = object_mappings.store(&object_mapping) {
-                        error!(%error, "Failed to store object mappings for pieces");
+                        let object_mapping =
+                            create_global_object_mapping(piece_index_offset, object_mapping);
+
+                        if let Err(error) = object_mappings.store(&object_mapping) {
+                            error!(%error, "Failed to store object mappings for pieces");
+                        }
                     }
 
                     info!(segment_index, "Plotted segment");
