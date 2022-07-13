@@ -20,7 +20,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use sp_api::HeaderT;
+use sp_consensus_subspace::digests::{
+    find_global_randomness_descriptor, find_salt_descriptor, find_solution_range_descriptor,
+    Error as DigestError, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
+};
 use subspace_core_primitives::{Randomness, RecordSize, Salt, SegmentSize, SolutionRange};
+
+#[cfg(test)]
+mod tests;
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
 pub struct HeaderExt<Header> {
@@ -45,14 +52,11 @@ pub enum BlockNumberOrHash<Number, Hash> {
     Hash(Hash),
 }
 
-type NumberOf<T> = <<T as Storage>::Header as HeaderT>::Number;
-type HashOf<T> = <<T as Storage>::Header as HeaderT>::Hash;
+type NumberOf<T> = <T as HeaderT>::Number;
+type HashOf<T> = <T as HeaderT>::Hash;
 
 /// Storage responsible for storing headers
-pub trait Storage {
-    /// Actual header of the subspace block chain at a specific block number
-    type Header: HeaderT;
-
+pub trait Storage<Header: HeaderT> {
     /// Record size
     fn record_size() -> RecordSize;
 
@@ -61,35 +65,46 @@ pub trait Storage {
 
     /// Queries a header at a specific block number or block hash
     fn header(
-        query: BlockNumberOrHash<NumberOf<Self>, HashOf<Self>>,
-    ) -> Option<HeaderExt<Self::Header>>;
+        query: BlockNumberOrHash<NumberOf<Header>, HashOf<Header>>,
+    ) -> Option<HeaderExt<Header>>;
 
     /// Stores the extended header.
-    fn store_header(header_ext: HeaderExt<Self::Header>);
+    fn store_header(header_ext: HeaderExt<Header>);
 
     /// Prunes the header and all its descendants starting from the query.
-    fn prune_header(query: BlockNumberOrHash<NumberOf<Self>, HashOf<Self>>);
+    fn prune_header(query: BlockNumberOrHash<NumberOf<Header>, HashOf<Header>>);
 }
 
-type StorageHeaderOf<T> = <T as Storage>::Header;
-
 /// Error during the header import.
+#[derive(Debug, PartialEq, Eq)]
 pub enum ImportError<Hash> {
     /// Header already imported.
     HeaderAlreadyImported,
     /// Missing parent header
     MissingParent(Hash),
+    /// Error while extracting digests from header
+    DigestExtractionError(DigestError),
+    /// Invalid global randomness digest
+    InvalidGlobalRandomnessDigest,
+    /// Invalid solution range digest
+    InvalidSolutionRangeDigest,
+    /// Invalid salt digest
+    InvalidSaltDigest,
+}
+
+impl<Hash> From<DigestError> for ImportError<Hash> {
+    fn from(error: DigestError) -> Self {
+        ImportError::DigestExtractionError(error)
+    }
 }
 
 /// Verifies and import headers.
-pub trait HeaderImporter {
+pub trait HeaderImporter<Header: HeaderT> {
     /// Storage type to store headers and other computed details.
-    type Storage: Storage;
+    type Storage: Storage<Header>;
 
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
-    fn import_header(
-        header: StorageHeaderOf<Self::Storage>,
-    ) -> Result<(), ImportError<HashOf<Self::Storage>>> {
+    fn import_header(header: Header) -> Result<(), ImportError<HashOf<Header>>> {
         // check if the header is already imported
         match Self::Storage::header(BlockNumberOrHash::Hash(header.hash())) {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
@@ -101,15 +116,67 @@ pub trait HeaderImporter {
         let parent_header = Self::Storage::header(BlockNumberOrHash::Hash(parent_hash))
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
+        // verify global randomness, solution range, and salt from the parent header
+        let (global_randomness, solution_range, salt) =
+            verify_header_digest_with_parent(&parent_header, &header)?;
+
         // store header
         let header_ext = HeaderExt {
             header,
-            derived_global_randomness: parent_header.derived_global_randomness,
-            derived_solution_range: parent_header.derived_solution_range,
-            derived_salt: parent_header.derived_salt,
+            derived_global_randomness: global_randomness.global_randomness,
+            derived_solution_range: solution_range.solution_range,
+            derived_salt: salt.salt,
         };
         Self::Storage::store_header(header_ext);
 
         Ok(())
     }
+}
+
+fn extract_header_digests<Header: HeaderT>(
+    header: &Header,
+) -> Result<
+    (
+        GlobalRandomnessDescriptor,
+        SolutionRangeDescriptor,
+        SaltDescriptor,
+    ),
+    ImportError<HashOf<Header>>,
+> {
+    let randomness = find_global_randomness_descriptor(header)?
+        .ok_or(ImportError::InvalidGlobalRandomnessDigest)?;
+
+    let solution_range =
+        find_solution_range_descriptor(header)?.ok_or(ImportError::InvalidSolutionRangeDigest)?;
+
+    let salt = find_salt_descriptor(header)?.ok_or(ImportError::InvalidSaltDigest)?;
+
+    Ok((randomness, solution_range, salt))
+}
+
+fn verify_header_digest_with_parent<Header: HeaderT>(
+    parent_header: &HeaderExt<Header>,
+    header: &Header,
+) -> Result<
+    (
+        GlobalRandomnessDescriptor,
+        SolutionRangeDescriptor,
+        SaltDescriptor,
+    ),
+    ImportError<HashOf<Header>>,
+> {
+    let (global_randomness, solution_range, salt) = extract_header_digests(header)?;
+    if global_randomness.global_randomness != parent_header.derived_global_randomness {
+        return Err(ImportError::InvalidGlobalRandomnessDigest);
+    }
+
+    if solution_range.solution_range != parent_header.derived_solution_range {
+        return Err(ImportError::InvalidSolutionRangeDigest);
+    }
+
+    if salt.salt != parent_header.derived_salt {
+        return Err(ImportError::InvalidSaltDigest);
+    }
+
+    Ok((global_randomness, solution_range, salt))
 }

@@ -84,14 +84,14 @@ impl From<&FarmerPublicKey> for PublicKey {
 }
 
 /// The `ConsensusEngineId` of Subspace.
-const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
+pub const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
-enum ConsensusLog {
+pub enum ConsensusLog {
     /// Global randomness for this block/interval.
     #[codec(index = 1)]
     GlobalRandomness(GlobalRandomnessDescriptor),

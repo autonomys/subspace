@@ -7489,8 +7489,13 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
+ "frame-support",
+ "parity-scale-codec",
+ "scale-info",
  "sp-api",
  "sp-arithmetic",
+ "sp-consensus-subspace",
+ "sp-runtime",
  "subspace-core-primitives",
 ]
 

@@ -16,14 +16,24 @@ include = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false }
+scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sp-arithmetic = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+
+[dev-dependencies]
+sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 
 [features]
 default = ["std"]
 std = [
+    "codec/std",
+    "scale-info/std",
     "sp-api/std",
     "sp-arithmetic/std",
+    "sp-consensus-subspace/std",
     "subspace-core-primitives/std"
 ]

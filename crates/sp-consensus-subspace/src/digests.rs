@@ -167,7 +167,7 @@ impl CompatibleDigestItem for DigestItem {
 }
 
 /// Digest error
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 pub enum Error {
     /// Multiple Subspace global randomness digests
