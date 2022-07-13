@@ -245,24 +245,26 @@ where
             .import_block(block_import_params, Default::default())
             .await?;
 
-        // TODO: handle the import result properly.
         match import_result {
             ImportResult::Imported(..) => {}
             ImportResult::AlreadyInChain => {}
             ImportResult::KnownBad => {
-                panic!("Bad block {}: {:?}", header_number, header_hash);
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Bad block #{header_number}({header_hash:?})"
+                ))
+                .into());
             }
             ImportResult::UnknownParent => {
-                panic!(
-                    "Block with unknown parent {}: {:?}, parent: {:?}",
-                    header_number, header_hash, parent_hash
-                );
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Block #{header_number}({header_hash:?}) has an unknown parent: {parent_hash:?}"
+                ))
+                .into());
             }
             ImportResult::MissingState => {
-                panic!(
-                    "Parent state is missing for {}: {:?}, parent: {:?}",
-                    header_number, header_hash, parent_hash
-                );
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Parent state of block #{header_number}({header_hash:?}) is missing, parent: {parent_hash:?}"
+                ))
+                .into());
             }
         }
 
