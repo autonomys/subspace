@@ -477,7 +477,7 @@ impl pallet_offences_subspace::Config for Runtime {
 
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
-    pub const MaximumReceiptDrift: BlockNumber = 4;
+    pub const MaximumReceiptDrift: BlockNumber = 2;
 }
 
 impl pallet_executor::Config for Runtime {
