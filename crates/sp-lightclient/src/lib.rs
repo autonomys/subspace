@@ -21,9 +21,11 @@
 
 use sp_api::HeaderT;
 use sp_consensus_subspace::digests::{
-    find_global_randomness_descriptor, find_salt_descriptor, find_solution_range_descriptor,
-    Error as DigestError, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
+    find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
+    find_solution_range_descriptor, Error as DigestError, GlobalRandomnessDescriptor, PreDigest,
+    SaltDescriptor, SolutionRangeDescriptor,
 };
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use subspace_core_primitives::{Randomness, RecordSize, Salt, SegmentSize, SolutionRange};
 
 #[cfg(test)]
@@ -90,6 +92,10 @@ pub enum ImportError<Hash> {
     InvalidSolutionRangeDigest,
     /// Invalid salt digest
     InvalidSaltDigest,
+    /// Invalid predigest
+    InvaildPreDigest,
+    /// Invalid slot when compared with parent header
+    InvalidSlot,
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -119,6 +125,12 @@ pub trait HeaderImporter<Header: HeaderT> {
         // verify global randomness, solution range, and salt from the parent header
         let (global_randomness, solution_range, salt) =
             verify_header_digest_with_parent(&parent_header, &header)?;
+
+        // extract subspace pre digest that contains the solution
+        let pre_digest = find_pre_digest(&header).map_err(|_| ImportError::InvaildPreDigest)?;
+
+        // slot must be strictly increasing from the parent header
+        verify_slot(&parent_header.header, &pre_digest)?;
 
         // store header
         let header_ext = HeaderExt {
@@ -179,4 +191,18 @@ fn verify_header_digest_with_parent<Header: HeaderT>(
     }
 
     Ok((global_randomness, solution_range, salt))
+}
+
+fn verify_slot<Header: HeaderT>(
+    parent_header: &Header,
+    pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+) -> Result<(), ImportError<HashOf<Header>>> {
+    let parent_pre_digest =
+        find_pre_digest(parent_header).map_err(|_| ImportError::InvaildPreDigest)?;
+
+    if pre_digest.slot <= parent_pre_digest.slot {
+        return Err(ImportError::InvalidSlot);
+    }
+
+    Ok(())
 }
