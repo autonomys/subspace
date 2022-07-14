@@ -1,4 +1,7 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
+use crate::behavior::persistent_parameters::{
+    NetworkingParametersHandler, NetworkingParametersManager, NetworkingParametersProviderStub,
+};
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
@@ -73,6 +76,8 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
+    /// A reference to the `NetworkingParametersProvider` implementation.
+    pub network_parameters_persistence_handler: NetworkingParametersHandler,
 }
 
 impl fmt::Debug for Config {
@@ -131,6 +136,7 @@ impl Config {
             pieces_by_range_request_handler: Arc::new(|_| None),
             relay_server_address: None,
             parent_node: None,
+            network_parameters_persistence_handler: Arc::new(NetworkingParametersProviderStub),
         }
     }
 }
@@ -170,13 +176,18 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         pieces_by_range_request_handler,
         relay_server_address,
         parent_node,
+        network_parameters_persistence_handler,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
-
     // Create relay client transport and client.
     let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
+
+    let networking_parameters_manager =
+        NetworkingParametersManager::new(network_parameters_persistence_handler);
+    let cached_bootstrap_addresses =
+        networking_parameters_manager.initial_bootstrap_addresses(true);
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -197,6 +208,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
                 Ok((peer_id, multiaddr))
             })
+            .chain(cached_bootstrap_addresses.into_iter().map(Ok))
             .collect::<Result<_, CreationError>>()?;
 
         let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
@@ -263,6 +275,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             swarm,
             shared_weak,
             initial_random_query_interval,
+            networking_parameters_manager,
         );
 
         Ok((node, node_runner))
