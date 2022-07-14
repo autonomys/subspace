@@ -30,7 +30,7 @@ use subspace_core_primitives::{
     PublicKey, Randomness, RecordSize, RewardSignature, Salt, SegmentSize, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::check_reward_signature;
+use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
 #[cfg(test)]
 mod tests;
@@ -102,6 +102,8 @@ pub enum ImportError<Hash> {
     InvalidSlot,
     /// Block signature is invalid
     InvalidBlockSignature,
+    /// Invalid solution
+    InvalidSolution,
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -128,6 +130,8 @@ pub trait HeaderImporter<Header: HeaderT> {
         let parent_header = Self::Storage::header(BlockNumberOrHash::Hash(parent_hash))
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
+        // TODO(ved): check for farmer equivocation
+
         // verify global randomness, solution range, and salt from the parent header
         let (global_randomness, solution_range, salt) =
             verify_header_digest_with_parent(&parent_header, &header)?;
@@ -140,6 +144,26 @@ pub trait HeaderImporter<Header: HeaderT> {
 
         // verify block signature
         verify_block_signature(&header, &pre_digest.solution.public_key)?;
+
+        // verify solution
+        verify_solution(
+            &pre_digest.solution,
+            pre_digest.slot.into(),
+            VerifySolutionParams {
+                global_randomness: &global_randomness.global_randomness,
+                solution_range: solution_range.solution_range,
+                salt: salt.salt,
+                // TODO(ved): verify POAS once we have access to record root
+                piece_check_params: None,
+            },
+        )
+        .map_err(|_| ImportError::InvalidSolution)?;
+
+        // TODO(ved): calculate cumulative block weight
+        // TODO(ved): check for existing forks and prune fork headers
+        // TODO(ved): derive randomness, solution range, salt if interval is met
+        // TODO(ved): extract record roots from the header
+        // TODO(ved); extract an equivocations from the header
 
         // store header
         let header_ext = HeaderExt {
