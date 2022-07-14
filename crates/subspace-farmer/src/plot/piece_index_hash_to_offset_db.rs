@@ -96,19 +96,21 @@ impl IndexHashToOffsetDB {
                     piece_count = me.max_distance_cache.len() as u64;
                 } else {
                     let mut iter = me.inner.raw_iterator();
+                    iter.seek_to_first();
                     while iter.key().is_some() {
                         piece_count += 1;
                         iter.next();
                     }
                 }
+
+                me.inner
+                    .put_cf(&cf, Self::PIECE_COUNT_KEY, piece_count.to_le_bytes())
+                    .map_err(Into::into)
+                    .map_err(PlotError::PieceCountReadError)?;
             }
         }
 
         me.piece_count.store(piece_count, Ordering::SeqCst);
-        me.inner
-            .put_cf(&cf, Self::PIECE_COUNT_KEY, piece_count.to_le_bytes())
-            .map_err(Into::into)
-            .map_err(PlotError::PieceCountReadError)?;
 
         Ok(me)
     }
