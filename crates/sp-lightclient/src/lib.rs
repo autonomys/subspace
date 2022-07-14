@@ -22,11 +22,15 @@
 use sp_api::HeaderT;
 use sp_consensus_subspace::digests::{
     find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
-    find_solution_range_descriptor, Error as DigestError, GlobalRandomnessDescriptor, PreDigest,
-    SaltDescriptor, SolutionRangeDescriptor,
+    find_solution_range_descriptor, CompatibleDigestItem, Error as DigestError,
+    GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
 };
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
-use subspace_core_primitives::{Randomness, RecordSize, Salt, SegmentSize, SolutionRange};
+use sp_consensus_subspace::FarmerPublicKey;
+use subspace_core_primitives::{
+    PublicKey, Randomness, RecordSize, RewardSignature, Salt, SegmentSize, SolutionRange,
+};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_verification::check_reward_signature;
 
 #[cfg(test)]
 mod tests;
@@ -93,9 +97,11 @@ pub enum ImportError<Hash> {
     /// Invalid salt digest
     InvalidSaltDigest,
     /// Invalid predigest
-    InvaildPreDigest,
+    InvalidPreDigest,
     /// Invalid slot when compared with parent header
     InvalidSlot,
+    /// Block signature is invalid
+    InvalidBlockSignature,
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -127,10 +133,13 @@ pub trait HeaderImporter<Header: HeaderT> {
             verify_header_digest_with_parent(&parent_header, &header)?;
 
         // extract subspace pre digest that contains the solution
-        let pre_digest = find_pre_digest(&header).map_err(|_| ImportError::InvaildPreDigest)?;
+        let pre_digest = find_pre_digest(&header).map_err(|_| ImportError::InvalidPreDigest)?;
 
         // slot must be strictly increasing from the parent header
         verify_slot(&parent_header.header, &pre_digest)?;
+
+        // verify block signature
+        verify_block_signature(&header, &pre_digest.solution.public_key)?;
 
         // store header
         let header_ext = HeaderExt {
@@ -198,11 +207,40 @@ fn verify_slot<Header: HeaderT>(
     pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
 ) -> Result<(), ImportError<HashOf<Header>>> {
     let parent_pre_digest =
-        find_pre_digest(parent_header).map_err(|_| ImportError::InvaildPreDigest)?;
+        find_pre_digest(parent_header).map_err(|_| ImportError::InvalidPreDigest)?;
 
     if pre_digest.slot <= parent_pre_digest.slot {
         return Err(ImportError::InvalidSlot);
     }
+
+    Ok(())
+}
+
+fn verify_block_signature<Header: HeaderT>(
+    header: &Header,
+    public_key: &FarmerPublicKey,
+) -> Result<(), ImportError<HashOf<Header>>> {
+    let mut header = header.clone();
+    let seal = header
+        .digest_mut()
+        .pop()
+        .ok_or(ImportError::InvalidBlockSignature)?;
+
+    let signature = seal
+        .as_subspace_seal()
+        .ok_or(ImportError::InvalidBlockSignature)?;
+
+    // The pre-hash of the header doesn't include the seal and that's what we sign
+    let pre_hash = header.hash();
+
+    // Verify that block is signed properly
+    check_reward_signature(
+        pre_hash.as_ref(),
+        &Into::<RewardSignature>::into(&signature),
+        &Into::<PublicKey>::into(public_key),
+        &schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
+    )
+    .map_err(|_| ImportError::InvalidBlockSignature)?;
 
     Ok(())
 }

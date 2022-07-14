@@ -7492,11 +7492,14 @@ dependencies = [
  "frame-support",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "sp-api",
  "sp-arithmetic",
  "sp-consensus-subspace",
  "sp-runtime",
  "subspace-core-primitives",
+ "subspace-solving",
+ "subspace-verification",
 ]
 
 [[package]]
