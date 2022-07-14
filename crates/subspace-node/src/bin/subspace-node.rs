@@ -22,6 +22,7 @@ use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_client_api::HeaderBackend;
+use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
@@ -381,16 +382,18 @@ fn main() -> Result<(), Error> {
                         dsn_config,
                     };
 
-                    let primary_chain_node = subspace_service::new_full::<
-                        RuntimeApi,
-                        ExecutorDispatch,
-                    >(primary_chain_config, true)
-                    .await
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to build a full subspace node: {error:?}"
-                        ))
-                    })?;
+                    let primary_chain_node =
+                        subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
+                            primary_chain_config,
+                            true,
+                            SlotProportion::new(2f32 / 3f32),
+                        )
+                        .await
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to build a full subspace node: {error:?}"
+                            ))
+                        })?;
 
                     (primary_chain_node, config_dir)
                 };

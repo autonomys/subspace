@@ -32,6 +32,7 @@ parity-scale-codec = "3.1.2"
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false, features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
 sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", features = ["wasmtime"] }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false, features = ["wasmtime"] }
