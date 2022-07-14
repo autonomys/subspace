@@ -6,7 +6,9 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{
+    Config, JsonNetworkingParametersProvider, PiecesByRangeResponse, PiecesToPlot,
+};
 
 #[tokio::main]
 async fn main() {
@@ -32,6 +34,7 @@ async fn main() {
         }
     };
 
+    let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
         let local_response = expected_response.clone();
         let config = Config {
@@ -83,12 +86,16 @@ async fn main() {
         if i == EXPECTED_NODE_INDEX {
             expected_node_id = node.id();
         }
+        nodes.push(node);
     }
 
     let config = Config {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        network_parameters_persistence_handler: Arc::new(JsonNetworkingParametersProvider::new(
+            std::env::temp_dir().join("networking.json"),
+        )),
         ..Config::with_generated_keypair()
     };
 
@@ -134,6 +141,6 @@ async fn main() {
         println!("Received expected response.");
     }
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(6)).await;
     println!("Exiting..");
 }
