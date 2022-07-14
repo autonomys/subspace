@@ -93,9 +93,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.57"
+version = "1.0.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f9b8508dccb7687a1d6c4ce66b2b0ecef467c94667de27d8d7fe1f8d2a9cdc"
+checksum = "bb07d2053ccdbe10e2af2995a2f116c1330396493dc1269f6a91d0ae82e19704"
 
 [[package]]
 name = "approx"
@@ -614,6 +614,9 @@ name = "bytes"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bytesize"
@@ -1581,6 +1584,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6919815d73839e7ad218de758883aae3a257ba6759ce7a9992501efbb53d705c"
 dependencies = [
  "const-oid",
+]
+
+[[package]]
+name = "derive-new"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3418329ca0ad70234b9735dc4ceed10af4df60eff9c8e7b06cb5e520d92c3535"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3295,6 +3309,7 @@ dependencies = [
  "ring",
  "rw-stream-sink",
  "schnorrkel",
+ "serde",
  "sha2 0.10.2",
  "smallvec",
  "thiserror",
@@ -3365,6 +3380,7 @@ dependencies = [
  "prost-build",
  "rand 0.7.3",
  "regex",
+ "serde",
  "sha2 0.10.2",
  "smallvec",
  "unsigned-varint",
@@ -3410,6 +3426,7 @@ dependencies = [
  "prost",
  "prost-build",
  "rand 0.7.3",
+ "serde",
  "sha2 0.10.2",
  "smallvec",
  "thiserror",
@@ -3826,9 +3843,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.7.5"
+version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32613e41de4c47ab04970c348ca7ae7382cf116625755af070b008a15516a889"
+checksum = "c84e6fe5655adc6ce00787cf7dcaf8dc4f998a0565d23eafc207a8b08ca3349a"
 dependencies = [
  "hashbrown 0.11.2",
 ]
@@ -4117,6 +4134,8 @@ dependencies = [
  "core2",
  "digest 0.10.3",
  "multihash-derive",
+ "serde",
+ "serde-big-array",
  "sha2 0.10.2",
  "sha3",
  "unsigned-varint",
@@ -6861,6 +6880,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-big-array"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd31f59f6fe2b0c055371bb2f16d7f0aa7d8881676c04a55b1596d1a17cd10a4"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_arrays"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7996,6 +8024,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "clap 3.1.18",
+ "derive-new",
  "derive_more",
  "env_logger",
  "event-listener-primitives",
@@ -8003,12 +8032,15 @@ dependencies = [
  "generic-array 0.14.5",
  "hex",
  "libp2p",
+ "lru",
  "nohash-hasher",
  "once_cell",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "pin-project",
  "rand 0.7.3",
+ "serde",
+ "serde_json",
  "subspace-core-primitives",
  "thiserror",
  "tokio",
