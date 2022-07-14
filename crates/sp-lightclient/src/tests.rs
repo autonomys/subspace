@@ -69,6 +69,7 @@ fn verify_header_digests() {
         derived_global_randomness: expected_randomness,
         derived_solution_range: expected_solution_range,
         derived_salt: expected_salt,
+        total_weight: 0,
     };
 
     let mut header = Header {

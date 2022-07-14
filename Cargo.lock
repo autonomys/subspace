@@ -7497,6 +7497,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-consensus-subspace",
  "sp-runtime",
+ "sp-std",
  "subspace-core-primitives",
  "subspace-solving",
  "subspace-verification",

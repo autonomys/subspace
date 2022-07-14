@@ -80,6 +80,9 @@ pub const SALT_SIZE: usize = 8;
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; SALT_SIZE];
 
+/// BlockWeight type for fork choice rules
+pub type BlockWeight = u128;
+
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
 

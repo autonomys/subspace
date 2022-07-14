@@ -26,10 +26,12 @@ use sp_consensus_subspace::digests::{
     GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_std::cmp::Ordering;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RecordSize, RewardSignature, Salt, SegmentSize, SolutionRange,
+    BlockWeight, PublicKey, Randomness, RecordSize, RewardSignature, Salt, SegmentSize,
+    SolutionRange,
 };
-use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
 #[cfg(test)]
@@ -48,17 +50,10 @@ pub struct HeaderExt<Header> {
     /// Salt after importing the header above.
     /// This is same as the parent block unless update interval is met.
     pub derived_salt: Salt,
+    /// Cumulative weight of chain until this header
+    pub total_weight: BlockWeight,
 }
 
-/// Type to fetch a block header based on the Number or Hash.
-pub enum BlockNumberOrHash<Number, Hash> {
-    /// Query block header by block number
-    Number(Number),
-    /// Query block header by block hash
-    Hash(Hash),
-}
-
-type NumberOf<T> = <T as HeaderT>::Number;
 type HashOf<T> = <T as HeaderT>::Hash;
 
 /// Storage responsible for storing headers
@@ -70,15 +65,16 @@ pub trait Storage<Header: HeaderT> {
     fn segment_size() -> SegmentSize;
 
     /// Queries a header at a specific block number or block hash
-    fn header(
-        query: BlockNumberOrHash<NumberOf<Header>, HashOf<Header>>,
-    ) -> Option<HeaderExt<Header>>;
+    fn header(query: HashOf<Header>) -> Option<HeaderExt<Header>>;
 
     /// Stores the extended header.
     fn store_header(header_ext: HeaderExt<Header>);
 
-    /// Prunes the header and all its descendants starting from the query.
-    fn prune_header(query: BlockNumberOrHash<NumberOf<Header>, HashOf<Header>>);
+    /// Prunes all the descendants of the header.
+    fn prune_descendants_of(query: HashOf<Header>);
+
+    /// Returns the best known tip of the chain
+    fn best_header() -> HeaderExt<Header>;
 }
 
 /// Error during the header import.
@@ -104,6 +100,8 @@ pub enum ImportError<Hash> {
     InvalidBlockSignature,
     /// Invalid solution
     InvalidSolution,
+    /// Header being imported is part of non canonical chain
+    NonCanonicalHeader,
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -120,14 +118,13 @@ pub trait HeaderImporter<Header: HeaderT> {
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
     fn import_header(header: Header) -> Result<(), ImportError<HashOf<Header>>> {
         // check if the header is already imported
-        match Self::Storage::header(BlockNumberOrHash::Hash(header.hash())) {
+        match Self::Storage::header(header.hash()) {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
             None => Ok(()),
         }?;
 
         // fetch parent header
-        let parent_hash = *header.parent_hash();
-        let parent_header = Self::Storage::header(BlockNumberOrHash::Hash(parent_hash))
+        let parent_header = Self::Storage::header(*header.parent_hash())
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
         // TODO(ved): check for farmer equivocation
@@ -159,8 +156,29 @@ pub trait HeaderImporter<Header: HeaderT> {
         )
         .map_err(|_| ImportError::InvalidSolution)?;
 
-        // TODO(ved): calculate cumulative block weight
-        // TODO(ved): check for existing forks and prune fork headers
+        let block_weight =
+            calculate_block_weight(&global_randomness.global_randomness, &pre_digest);
+        let total_weight = parent_header.total_weight + block_weight;
+
+        // last best header should ideally be parent header. if not check for forks and prune accordingly
+        let last_best_header = Self::Storage::best_header();
+        if last_best_header.header.hash() != parent_header.header.hash() {
+            let last_best_weight = last_best_header.total_weight;
+            if !match total_weight.cmp(&last_best_weight) {
+                // current weight is greater than last best. pick this header
+                Ordering::Greater => true,
+                // if weights are equal, pick the longest chain
+                Ordering::Equal => header.number() > last_best_header.header.number(),
+                // we already are on the best chain
+                Ordering::Less => false,
+            } {
+                return Err(ImportError::NonCanonicalHeader);
+            }
+
+            // re-org: prune all the descendants of the parent header and them import this header as best
+            Self::Storage::prune_descendants_of(parent_header.header.hash());
+        };
+
         // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
@@ -171,6 +189,7 @@ pub trait HeaderImporter<Header: HeaderT> {
             derived_global_randomness: global_randomness.global_randomness,
             derived_solution_range: solution_range.solution_range,
             derived_salt: salt.salt,
+            total_weight,
         };
         Self::Storage::store_header(header_ext);
 
@@ -267,4 +286,23 @@ fn verify_block_signature<Header: HeaderT>(
     .map_err(|_| ImportError::InvalidBlockSignature)?;
 
     Ok(())
+}
+
+fn calculate_block_weight(
+    global_randomness: &Randomness,
+    pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+) -> BlockWeight {
+    let global_challenge = derive_global_challenge(global_randomness, pre_digest.slot.into());
+
+    let target = u64::from_be_bytes(
+        derive_target(
+            &schnorrkel::PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
+                .expect("Always correct length; qed"),
+            global_challenge,
+            &pre_digest.solution.local_challenge,
+        )
+        .expect("Verification of the local challenge was done before this; qed"),
+    );
+    let tag = u64::from_be_bytes(pre_digest.solution.tag);
+    u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
 }
