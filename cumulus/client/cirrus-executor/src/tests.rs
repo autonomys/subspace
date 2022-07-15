@@ -214,14 +214,24 @@ async fn set_new_code_should_work() {
 
     let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
+    let best_number = alice.client.info().best_number;
+    let primary_number = best_number + 1;
+    // Although we're processing the bundle manually, the original bundle processor still works in
+    // the meanwhile, it's possible the executor alice already processed this primary block, expecting next
+    // primary block, in which case we use a dummy primary hash instead.
+    //
+    // Nice to disable the built-in bundle processor and have a full control of the executor block
+    // production manually.
+    let primary_hash = ferdie
+        .client
+        .hash(primary_number)
+        .unwrap()
+        .unwrap_or_else(Hash::random);
     alice
         .executor
         .clone()
         .process_bundles(
-            (
-                ferdie.client.info().best_hash,
-                ferdie.client.info().best_number,
-            ),
+            (primary_hash, primary_number),
             Default::default(),
             BlakeTwo256::hash_of(&[1u8; 64]).into(),
             Some(new_runtime_wasm_blob.clone().into()),
