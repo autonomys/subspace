@@ -46,6 +46,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
