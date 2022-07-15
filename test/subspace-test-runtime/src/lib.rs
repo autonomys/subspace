@@ -132,15 +132,15 @@ pub const SSC: Balance = (10 * SHANNON).pow(DECIMAL_PLACES as u32);
 ///
 /// Based on:
 /// <https://research.web3.foundation/en/latest/polkadot/block-production/Babe.html#-6.-practical-results>
-pub const MILLISECS_PER_BLOCK: u64 = 6000;
+pub const MILLISECS_PER_BLOCK: u64 = 300;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 1000;
+const SLOT_DURATION: u64 = 300;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
-const SLOT_PROBABILITY: (u64, u64) = (1, 6);
+const SLOT_PROBABILITY: (u64, u64) = (1, 1);
 
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 100;
@@ -477,7 +477,7 @@ impl pallet_offences_subspace::Config for Runtime {
 
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
-    pub const MaximumReceiptDrift: BlockNumber = 4;
+    pub const MaximumReceiptDrift: BlockNumber = 2;
 }
 
 impl pallet_executor::Config for Runtime {

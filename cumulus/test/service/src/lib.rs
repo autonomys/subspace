@@ -24,6 +24,7 @@ use cirrus_test_runtime::opaque::Block;
 use cirrus_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_consensus_slots::SlotProportion;
 use sc_network::config::TransportConfig;
 use sc_network::{multiaddr, NetworkService};
 use sc_service::config::{
@@ -127,7 +128,11 @@ async fn run_executor(
         subspace_service::new_full::<
             subspace_test_runtime::RuntimeApi,
             subspace_test_client::TestExecutorDispatch,
-        >(primary_chain_config, false)
+        >(
+            primary_chain_config,
+            false,
+            SlotProportion::new(98f32 / 100f32),
+        )
         .await
         .map_err(|e| {
             sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))

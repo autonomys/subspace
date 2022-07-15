@@ -20,6 +20,7 @@
 
 use futures::future::Future;
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::multiaddr;
@@ -178,6 +179,7 @@ pub async fn run_validator_node(
         subspace_service::new_full::<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>(
             primary_chain_config,
             false,
+            SlotProportion::new(98f32 / 100f32),
         )
         .await
         .expect("Failed to create Subspace primary node")
