@@ -24,7 +24,6 @@ use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
-use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
@@ -490,17 +489,7 @@ impl SinglePlotFarm {
         let create_networking_fut = relay_server_node.spawn(child_node_config);
         let (node, node_runner) = Handle::current().block_on(create_networking_fut)?;
 
-        node.on_new_listener(Arc::new({
-            let node_id = node.id();
-
-            move |multiaddr| {
-                info!(
-                    "Listening on {}",
-                    multiaddr.clone().with(Protocol::P2p(node_id.into()))
-                );
-            }
-        }))
-        .detach();
+        info!("Network peer ID {}", node.id());
 
         // Start the farming task
         let farming = enable_farming.then(|| {

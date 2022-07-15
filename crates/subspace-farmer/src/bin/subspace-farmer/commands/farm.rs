@@ -11,6 +11,7 @@ use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, trace, warn};
@@ -54,6 +55,19 @@ pub(crate) async fn farm_multi_disk(
         ..Config::with_generated_keypair()
     })
     .await?;
+
+    relay_server_node
+        .on_new_listener(Arc::new({
+            let node_id = relay_server_node.id();
+
+            move |multiaddr| {
+                info!(
+                    "Relay listening on {}",
+                    multiaddr.clone().with(Protocol::P2p(node_id.into()))
+                );
+            }
+        }))
+        .detach();
 
     tokio::spawn(async move {
         relay_node_runner.run().await;
@@ -255,6 +269,19 @@ pub(crate) async fn farm_legacy(
         ..Config::with_generated_keypair()
     })
     .await?;
+
+    relay_server_node
+        .on_new_listener(Arc::new({
+            let node_id = relay_server_node.id();
+
+            move |multiaddr| {
+                info!(
+                    "Relay listening on {}",
+                    multiaddr.clone().with(Protocol::P2p(node_id.into()))
+                );
+            }
+        }))
+        .detach();
 
     tokio::spawn(async move {
         relay_node_runner.run().await;
