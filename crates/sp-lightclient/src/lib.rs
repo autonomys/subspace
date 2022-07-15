@@ -19,6 +19,8 @@
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use sp_consensus_subspace::digests::{
     find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
     find_solution_range_descriptor, CompatibleDigestItem, Error as DigestError,
@@ -34,6 +36,9 @@ use subspace_verification::{check_reward_signature, verify_solution, VerifySolut
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod mock;
+
 // TODO(ved): move them to consensus primitives and change usages across
 /// Type of solution range
 type SolutionRange = u64;
@@ -48,6 +53,7 @@ type SegmentSize = u32;
 type BlockWeight = u128;
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct HeaderExt<Header> {
     /// Actual header of the subspace block chain at a specific height
     pub header: Header,
@@ -81,6 +87,8 @@ pub trait Storage<Header: HeaderT> {
     fn store_header(header_ext: HeaderExt<Header>);
 
     /// Prunes all the descendants of the header.
+    /// This makes the provided header as the best header.
+    /// If header is already the best, it should be noop.
     fn prune_descendants_of(query: HashOf<Header>);
 
     /// Returns the best known tip of the chain
@@ -109,7 +117,7 @@ pub enum ImportError<Hash> {
     /// Block signature is invalid
     InvalidBlockSignature,
     /// Invalid solution
-    InvalidSolution,
+    InvalidSolution(subspace_verification::Error),
     /// Header being imported is part of non canonical chain
     NonCanonicalHeader,
 }
@@ -164,7 +172,7 @@ pub trait HeaderImporter<Header: HeaderT> {
                 piece_check_params: None,
             },
         )
-        .map_err(|_| ImportError::InvalidSolution)?;
+        .map_err(ImportError::InvalidSolution)?;
 
         let block_weight =
             calculate_block_weight(&global_randomness.global_randomness, &pre_digest);
@@ -178,6 +186,8 @@ pub trait HeaderImporter<Header: HeaderT> {
                 // current weight is greater than last best. pick this header
                 Ordering::Greater => true,
                 // if weights are equal, pick the longest chain
+                // current header will always be rejected as its improbable to be longer chain than
+                // the best imported header
                 Ordering::Equal => header.number() > last_best_header.header.number(),
                 // we already are on the best chain
                 Ordering::Less => false,
