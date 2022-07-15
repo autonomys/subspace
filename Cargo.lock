@@ -7952,6 +7952,7 @@ dependencies = [
  "subspace-networking",
  "subspace-rpc-primitives",
  "subspace-solving",
+ "subspace-verification",
  "substrate-bip39",
  "tempfile",
  "thiserror",
