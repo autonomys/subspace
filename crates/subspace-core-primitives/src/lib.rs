@@ -56,15 +56,6 @@ pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 /// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
 
-/// Type of solution range
-pub type SolutionRange = u64;
-
-/// The size of data in one piece (in bytes).
-pub type RecordSize = u32;
-
-/// The size of encoded and plotted piece in segments of this size (in bytes).
-pub type SegmentSize = u32;
-
 /// Size of `Tag` in bytes.
 pub const TAG_SIZE: usize = 8;
 
@@ -79,9 +70,6 @@ pub const SALT_SIZE: usize = 8;
 
 /// Salt used for creating commitment tags for pieces.
 pub type Salt = [u8; SALT_SIZE];
-
-/// BlockWeight type for fork choice rules
-pub type BlockWeight = u128;
 
 /// Block number in Subspace network.
 pub type BlockNumber = u32;

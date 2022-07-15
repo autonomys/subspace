@@ -168,31 +168,34 @@ impl CompatibleDigestItem for DigestItem {
 
 /// Digest error
 #[derive(Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(thiserror::Error))]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum Error {
     /// Multiple Subspace global randomness digests
     #[cfg_attr(
-        feature = "std",
+        feature = "thiserror",
         error("Multiple Subspace global randomness digests, rejecting!")
     )]
     MultipleGlobalRandomnessDigests,
     /// Multiple Subspace solution range digests
     #[cfg_attr(
-        feature = "std",
+        feature = "thiserror",
         error("Multiple Subspace solution range digests, rejecting!")
     )]
     MultipleSolutionRangeDigests,
     /// Multiple Subspace salt digests
-    #[cfg_attr(feature = "std", error("Multiple Subspace salt digests, rejecting!"))]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Multiple Subspace salt digests, rejecting!")
+    )]
     MultipleSaltDigests,
     /// Multiple Subspace pre-runtime digests
     #[cfg_attr(
-        feature = "std",
+        feature = "thiserror",
         error("Multiple Subspace pre-runtime digests, rejecting!")
     )]
     MultiplePreRuntimeDigests,
     /// No Subspace pre-runtime digest found
-    #[cfg_attr(feature = "std", error("No Subspace pre-runtime digest found"))]
+    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
     NoPreRuntimeDigest,
 }
 

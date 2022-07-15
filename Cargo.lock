@@ -7493,7 +7493,6 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
- "sp-api",
  "sp-arithmetic",
  "sp-consensus-subspace",
  "sp-runtime",

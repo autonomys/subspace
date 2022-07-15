@@ -84,14 +84,14 @@ impl From<&FarmerPublicKey> for PublicKey {
 }
 
 /// The `ConsensusEngineId` of Subspace.
-pub const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
+const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
-pub enum ConsensusLog {
+enum ConsensusLog {
     /// Global randomness for this block/interval.
     #[codec(index = 1)]
     GlobalRandomness(GlobalRandomnessDescriptor),
@@ -345,22 +345,25 @@ sp_api::decl_runtime_apis! {
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "std", derive(thiserror::Error))]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError<Header: HeaderT> {
     /// No Subspace pre-runtime digest found
-    #[cfg_attr(feature = "std", error("No Subspace pre-runtime digest found"))]
+    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
     NoPreRuntimeDigest,
     /// Header has a bad seal
-    #[cfg_attr(feature = "std", error("Header {0:?} has a bad seal"))]
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
     HeaderBadSeal(Header::Hash),
     /// Header is unsealed
-    #[cfg_attr(feature = "std", error("Header {0:?} is unsealed"))]
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
     HeaderUnsealed(Header::Hash),
     /// Bad reward signature
-    #[cfg_attr(feature = "std", error("Bad reward signature on {0:?}"))]
+    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
     BadRewardSignature(Header::Hash),
     /// Verification error
-    #[cfg_attr(feature = "std", error("Verification error on slot {0:?}: {1:?}"))]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Verification error on slot {0:?}: {1:?}")
+    )]
     VerificationError(Slot, Error),
 }
 

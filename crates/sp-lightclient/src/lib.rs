@@ -19,23 +19,33 @@
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use sp_api::HeaderT;
 use sp_consensus_subspace::digests::{
     find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
     find_solution_range_descriptor, CompatibleDigestItem, Error as DigestError,
     GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
 };
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_runtime::traits::Header as HeaderT;
 use sp_std::cmp::Ordering;
-use subspace_core_primitives::{
-    BlockWeight, PublicKey, Randomness, RecordSize, RewardSignature, Salt, SegmentSize,
-    SolutionRange,
-};
+use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
 #[cfg(test)]
 mod tests;
+
+// TODO(ved): move them to consensus primitives and change usages across
+/// Type of solution range
+type SolutionRange = u64;
+
+/// The size of data in one piece (in bytes).
+type RecordSize = u32;
+
+/// The size of encoded and plotted piece in segments of this size (in bytes).
+type SegmentSize = u32;
+
+/// BlockWeight type for fork choice rules
+type BlockWeight = u128;
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
 pub struct HeaderExt<Header> {
@@ -116,7 +126,7 @@ pub trait HeaderImporter<Header: HeaderT> {
     type Storage: Storage<Header>;
 
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
-    fn import_header(header: Header) -> Result<(), ImportError<HashOf<Header>>> {
+    fn import_header(mut header: Header) -> Result<(), ImportError<HashOf<Header>>> {
         // check if the header is already imported
         match Self::Storage::header(header.hash()) {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
@@ -140,7 +150,7 @@ pub trait HeaderImporter<Header: HeaderT> {
         verify_slot(&parent_header.header, &pre_digest)?;
 
         // verify block signature
-        verify_block_signature(&header, &pre_digest.solution.public_key)?;
+        verify_block_signature(&mut header, &pre_digest.solution.public_key)?;
 
         // verify solution
         verify_solution(
@@ -164,14 +174,16 @@ pub trait HeaderImporter<Header: HeaderT> {
         let last_best_header = Self::Storage::best_header();
         if last_best_header.header.hash() != parent_header.header.hash() {
             let last_best_weight = last_best_header.total_weight;
-            if !match total_weight.cmp(&last_best_weight) {
+            let should_prune_and_import = match total_weight.cmp(&last_best_weight) {
                 // current weight is greater than last best. pick this header
                 Ordering::Greater => true,
                 // if weights are equal, pick the longest chain
                 Ordering::Equal => header.number() > last_best_header.header.number(),
                 // we already are on the best chain
                 Ordering::Less => false,
-            } {
+            };
+
+            if !should_prune_and_import {
                 return Err(ImportError::NonCanonicalHeader);
             }
 
@@ -259,11 +271,11 @@ fn verify_slot<Header: HeaderT>(
     Ok(())
 }
 
+// verifies the block signature present as part of the last digest log
 fn verify_block_signature<Header: HeaderT>(
-    header: &Header,
+    header: &mut Header,
     public_key: &FarmerPublicKey,
 ) -> Result<(), ImportError<HashOf<Header>>> {
-    let mut header = header.clone();
     let seal = header
         .digest_mut()
         .pop()
@@ -285,6 +297,8 @@ fn verify_block_signature<Header: HeaderT>(
     )
     .map_err(|_| ImportError::InvalidBlockSignature)?;
 
+    // push the seal back into the header
+    header.digest_mut().push(seal);
     Ok(())
 }
 
