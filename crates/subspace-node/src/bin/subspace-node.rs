@@ -97,7 +97,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 }
 
 fn main() -> Result<(), Error> {
-    let cli = Cli::from_args();
+    let mut cli = Cli::from_args();
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
@@ -332,6 +332,10 @@ fn main() -> Result<(), Error> {
             unimplemented!("Executor subcommand");
         }
         None => {
+            // Increase default number of peers
+            if cli.run.network_params.out_peers == 25 {
+                cli.run.network_params.out_peers = 50;
+            }
             let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|primary_chain_config| async move {
@@ -406,7 +410,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let secondary_chain_cli = SecondaryChainCli::new(
+                    let mut secondary_chain_cli = SecondaryChainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -415,6 +419,11 @@ fn main() -> Result<(), Error> {
                         })?,
                         cli.secondary_chain_args.iter(),
                     );
+
+                    // Increase default number of peers
+                    if secondary_chain_cli.run.network_params.out_peers == 25 {
+                        secondary_chain_cli.run.network_params.out_peers = 50;
+                    }
 
                     let secondary_chain_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
