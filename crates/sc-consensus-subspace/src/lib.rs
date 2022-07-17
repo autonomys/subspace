@@ -45,7 +45,7 @@ use sc_consensus::block_import::{
 use sc_consensus::import_queue::{
     BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
 };
-use sc_consensus::JustificationSyncLink;
+use sc_consensus::{JustificationSyncLink, StateAction};
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
@@ -663,6 +663,7 @@ where
             );
         }
         // Check if farmer's plot is burned.
+        // TODO: Add to header and store in aux storage?
         if self
             .client
             .runtime_api()
@@ -670,7 +671,13 @@ where
                 &BlockId::Hash(*block.header.parent_hash()),
                 &pre_digest.solution.public_key,
             )
-            .map_err(Error::<Block::Header>::RuntimeApi)?
+            .or_else(|error| {
+                if matches!(block.state_action, StateAction::Skip) {
+                    Ok(false)
+                } else {
+                    Err(Error::<Block::Header>::RuntimeApi(error))
+                }
+            })?
         {
             warn!(
                 target: "subspace",
@@ -857,29 +864,41 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
         let pre_digest = &subspace_digest_items.pre_digest;
 
-        let maybe_root_plot_public_key = self
-            .client
-            .runtime_api()
-            .root_plot_public_key(&parent_block_id)?;
+        // TODO: Think about achieving the same without doing runtime API call
+        if !skip_runtime_access {
+            let maybe_root_plot_public_key = self
+                .client
+                .runtime_api()
+                .root_plot_public_key(&parent_block_id)?;
 
-        if let Some(root_plot_public_key) = maybe_root_plot_public_key {
-            if pre_digest.solution.public_key != root_plot_public_key {
-                // Only root plot public key is allowed.
-                return Err(Error::OnlyRootPlotPublicKeyAllowed);
+            if let Some(root_plot_public_key) = maybe_root_plot_public_key {
+                if pre_digest.solution.public_key != root_plot_public_key {
+                    // Only root plot public key is allowed.
+                    return Err(Error::OnlyRootPlotPublicKeyAllowed);
+                }
             }
         }
 
         // Check if farmer's plot is burned.
+        // TODO: Add to header and store in aux storage?
         if self
             .client
             .runtime_api()
-            .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)?
+            .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)
+            .or_else(|error| {
+                if skip_runtime_access {
+                    Ok(false)
+                } else {
+                    Err(Error::<Block::Header>::RuntimeApi(error))
+                }
+            })?
         {
             warn!(
                 target: "subspace",
@@ -1070,6 +1089,7 @@ where
             block.header.clone(),
             block.body.clone(),
             &subspace_digest_items,
+            matches!(block.state_action, StateAction::Skip),
         )
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
