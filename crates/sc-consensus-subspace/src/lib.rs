@@ -62,8 +62,7 @@ use sp_consensus::{
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
-    extract_global_randomness, extract_pre_digest, extract_salt, extract_solution_range,
-    Error as DigestError, PreDigest,
+    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
     check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
@@ -199,21 +198,12 @@ pub enum Error<Header: HeaderT> {
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
-    /// Block has no associated global randomness
-    #[error("Missing global randomness for block {0}")]
-    MissingGlobalRandomness(Header::Hash),
     /// Block has invalid associated global randomness
     #[error("Invalid global randomness for block {0}")]
     InvalidGlobalRandomness(Header::Hash),
-    /// Block has no associated solution range
-    #[error("Missing solution range for block {0}")]
-    MissingSolutionRange(Header::Hash),
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
-    /// Block has no associated salt
-    #[error("Missing salt for block {0}")]
-    MissingSalt(Header::Hash),
     /// Block has invalid associated salt
     #[error("Invalid salt for block {0}")]
     InvalidSalt(Header::Hash),
@@ -647,7 +637,14 @@ where
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
-        let pre_digest = extract_pre_digest(&block.header)?;
+        let subspace_digest_items = extract_subspace_digest_items::<
+            Block::Header,
+            FarmerPublicKey,
+            FarmerPublicKey,
+            FarmerSignature,
+        >(&block.header)
+        .map_err(Error::<Block::Header>::from)?;
+        let pre_digest = subspace_digest_items.pre_digest;
 
         // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
         if *block.header.number() <= 33_581_u32.into()
@@ -697,19 +694,10 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            let global_randomness = extract_global_randomness(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?;
-
-            let solution_range = extract_solution_range(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?;
-
-            let salt =
-                extract_salt(&block.header)?.ok_or(Error::<Block::Header>::MissingSalt(hash))?;
-
             // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
             if *block.header.number() >= 33_672_u32.into()
                 && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
-                && solution_range == 12_009_599_006_321_322_u64
+                && subspace_digest_items.solution_range == 12_009_599_006_321_322_u64
             {
                 debug!(
                     target: "subspace",
@@ -729,9 +717,9 @@ where
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
                     verify_solution_params: VerifySolutionParams {
-                        global_randomness: &global_randomness,
-                        solution_range,
-                        salt,
+                        global_randomness: &subspace_digest_items.global_randomness,
+                        solution_range: subspace_digest_items.solution_range,
+                        salt: subspace_digest_items.salt,
                         piece_check_params: None,
                     },
                     reward_signing_context: &self.reward_signing_context,
@@ -864,10 +852,16 @@ where
         origin: BlockOrigin,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
-        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        subspace_digest_items: &SubspaceDigestItems<
+            FarmerPublicKey,
+            FarmerPublicKey,
+            FarmerSignature,
+        >,
     ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
+
+        let pre_digest = &subspace_digest_items.pre_digest;
 
         let maybe_root_plot_public_key = self
             .client
@@ -903,28 +897,23 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let global_randomness = extract_global_randomness(&header)?
-            .ok_or(Error::MissingGlobalRandomness(block_hash))?;
         let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
             self.client.as_ref(),
             &parent_block_id,
         )?;
-        if global_randomness != correct_global_randomness {
+        if subspace_digest_items.global_randomness != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
-        let solution_range =
-            extract_solution_range(&header)?.ok_or(Error::MissingSolutionRange(block_hash))?;
         let (correct_solution_range, _) =
             slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id)?;
-        if solution_range != correct_solution_range {
+        if subspace_digest_items.solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let salt = extract_salt(&header)?.ok_or(Error::MissingSalt(block_hash))?;
         let correct_salt =
             slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?.0;
-        if salt != correct_salt {
+        if subspace_digest_items.salt != correct_salt {
             return Err(Error::InvalidSalt(block_hash));
         }
 
@@ -1072,7 +1061,7 @@ where
             Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
         }
 
-        let pre_digest = extract_pre_digest::<Block::Header>(&block.header)
+        let subspace_digest_items = extract_subspace_digest_items(&block.header)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         self.block_import_verification(
@@ -1080,10 +1069,12 @@ where
             block.origin,
             block.header.clone(),
             block.body.clone(),
-            &pre_digest,
+            &subspace_digest_items,
         )
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+
+        let pre_digest = subspace_digest_items.pre_digest;
 
         let parent_weight = if block_number.is_one() {
             0
@@ -1099,11 +1090,10 @@ where
         };
 
         let added_weight = {
-            let global_randomness = extract_global_randomness(&block.header)
-                .expect("Verification of the header was done before this; qed")
-                .expect("Verification of the header was done before this; qed");
-            let global_challenge =
-                derive_global_challenge(&global_randomness, pre_digest.slot.into());
+            let global_challenge = derive_global_challenge(
+                &subspace_digest_items.global_randomness,
+                pre_digest.slot.into(),
+            );
 
             // Verification of the local challenge was done before this
             let target = u64::from_be_bytes(

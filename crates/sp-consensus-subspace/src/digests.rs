@@ -159,6 +159,8 @@ pub enum ErrorDigestType {
     SolutionRange,
     /// Salt
     Salt,
+    /// Generic consensus
+    Consensus,
 }
 
 impl fmt::Display for ErrorDigestType {
@@ -179,6 +181,9 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::Salt => {
                 write!(f, "Salt")
             }
+            ErrorDigestType::Consensus => {
+                write!(f, "Consensus")
+            }
         }
     }
 }
@@ -190,6 +195,12 @@ pub enum Error {
     /// Subspace digest missing
     #[cfg_attr(feature = "thiserror", error("Subspace {0} digest not found"))]
     Missing(ErrorDigestType),
+    /// Failed to decode Subspace digest
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to decode Subspace {0} digest: {1}")
+    )]
+    FailedToDecode(ErrorDigestType, codec::Error),
     /// Multiple Subspace digests
     #[cfg_attr(
         feature = "thiserror",
@@ -203,6 +214,131 @@ impl From<Error> for String {
     fn from(error: Error) -> String {
         error.to_string()
     }
+}
+
+/// Digest items extracted from a header into convenient form
+pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
+    /// Pre-runtime digest
+    pub pre_digest: PreDigest<PublicKey, RewardAddress>,
+    /// Signature (seal) if present
+    pub signature: Option<Signature>,
+    /// Global randomness
+    pub global_randomness: Randomness,
+    /// Solution range
+    pub solution_range: u64,
+    /// Salt
+    pub salt: Salt,
+}
+
+/// Extract the Subspace global randomness from the given header.
+pub fn extract_subspace_digest_items<Header, PublicKey, RewardAddress, Signature>(
+    header: &Header,
+) -> Result<SubspaceDigestItems<PublicKey, RewardAddress, Signature>, Error>
+where
+    Header: HeaderT,
+    PublicKey: Decode,
+    RewardAddress: Decode,
+    Signature: Decode,
+{
+    let mut maybe_pre_digest = None;
+    let mut maybe_seal = None;
+    let mut maybe_global_randomness = None;
+    let mut maybe_solution_range = None;
+    let mut maybe_salt = None;
+
+    for log in header.digest().logs() {
+        match log {
+            DigestItem::PreRuntime(id, data) => {
+                if id != &SUBSPACE_ENGINE_ID {
+                    continue;
+                }
+
+                let pre_digest = PreDigest::<PublicKey, RewardAddress>::decode(
+                    &mut data.as_slice(),
+                )
+                .map_err(|error| Error::FailedToDecode(ErrorDigestType::PreDigest, error))?;
+
+                match maybe_pre_digest {
+                    Some(_) => {
+                        return Err(Error::Multiple(ErrorDigestType::PreDigest));
+                    }
+                    None => {
+                        maybe_pre_digest.replace(pre_digest);
+                    }
+                }
+            }
+            DigestItem::Consensus(id, data) => {
+                if id != &SUBSPACE_ENGINE_ID {
+                    continue;
+                }
+
+                let consensus = ConsensusLog::decode(&mut data.as_slice())
+                    .map_err(|error| Error::FailedToDecode(ErrorDigestType::Consensus, error))?;
+
+                match consensus {
+                    ConsensusLog::GlobalRandomness(global_randomness) => {
+                        match maybe_global_randomness {
+                            Some(_) => {
+                                return Err(Error::Multiple(ErrorDigestType::GlobalRandomness));
+                            }
+                            None => {
+                                maybe_global_randomness.replace(global_randomness);
+                            }
+                        }
+                    }
+                    ConsensusLog::SolutionRange(solution_range) => match maybe_solution_range {
+                        Some(_) => {
+                            return Err(Error::Multiple(ErrorDigestType::SolutionRange));
+                        }
+                        None => {
+                            maybe_solution_range.replace(solution_range);
+                        }
+                    },
+                    ConsensusLog::Salt(salt) => match maybe_salt {
+                        Some(_) => {
+                            return Err(Error::Multiple(ErrorDigestType::Salt));
+                        }
+                        None => {
+                            maybe_salt.replace(salt);
+                        }
+                    },
+                }
+            }
+            DigestItem::Seal(id, data) => {
+                if id != &SUBSPACE_ENGINE_ID {
+                    continue;
+                }
+
+                let seal = Signature::decode(&mut data.as_slice())
+                    .map_err(|error| Error::FailedToDecode(ErrorDigestType::Seal, error))?;
+
+                match maybe_seal {
+                    Some(_) => {
+                        return Err(Error::Multiple(ErrorDigestType::Seal));
+                    }
+                    None => {
+                        maybe_seal.replace(seal);
+                    }
+                }
+            }
+            DigestItem::Other(_data) => {
+                // Ignore
+            }
+            DigestItem::RuntimeEnvironmentUpdated => {
+                // Ignore
+            }
+        }
+    }
+
+    Ok(SubspaceDigestItems {
+        pre_digest: maybe_pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))?,
+        signature: maybe_seal,
+        global_randomness: maybe_global_randomness
+            .ok_or(Error::Missing(ErrorDigestType::GlobalRandomness))?,
+        solution_range: maybe_solution_range
+            .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
+        salt: maybe_salt.ok_or(Error::Missing(ErrorDigestType::Salt))?,
+    })
 }
 
 /// Extract the Subspace global randomness from the given header.
