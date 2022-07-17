@@ -24,6 +24,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Zero;
 use sp_runtime::DigestItem;
+use sp_std::fmt;
 use subspace_core_primitives::{Randomness, Salt, Solution};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
@@ -145,37 +146,56 @@ impl CompatibleDigestItem for DigestItem {
     }
 }
 
+/// Various kinds of digest types used in errors
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ErrorDigestType {
+    /// Pre-digest
+    PreDigest,
+    /// Seal (signature)
+    Seal,
+    /// Global randomness
+    GlobalRandomness,
+    /// Solution range
+    SolutionRange,
+    /// Salt
+    Salt,
+}
+
+impl fmt::Display for ErrorDigestType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ErrorDigestType::PreDigest => {
+                write!(f, "PreDigest")
+            }
+            ErrorDigestType::Seal => {
+                write!(f, "Seal")
+            }
+            ErrorDigestType::GlobalRandomness => {
+                write!(f, "GlobalRandomness")
+            }
+            ErrorDigestType::SolutionRange => {
+                write!(f, "SolutionRange")
+            }
+            ErrorDigestType::Salt => {
+                write!(f, "Salt")
+            }
+        }
+    }
+}
+
 /// Digest error
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum Error {
-    /// Multiple Subspace global randomness digests
+    /// Subspace digest missing
+    #[cfg_attr(feature = "thiserror", error("Subspace {0} digest not found"))]
+    Missing(ErrorDigestType),
+    /// Multiple Subspace digests
     #[cfg_attr(
         feature = "thiserror",
-        error("Multiple Subspace global randomness digests, rejecting!")
+        error("Multiple Subspace {0} digests, rejecting!")
     )]
-    MultipleGlobalRandomnessDigests,
-    /// Multiple Subspace solution range digests
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Multiple Subspace solution range digests, rejecting!")
-    )]
-    MultipleSolutionRangeDigests,
-    /// Multiple Subspace salt digests
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Multiple Subspace salt digests, rejecting!")
-    )]
-    MultipleSaltDigests,
-    /// Multiple Subspace pre-runtime digests
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Multiple Subspace pre-runtime digests, rejecting!")
-    )]
-    MultiplePreRuntimeDigests,
-    /// No Subspace pre-runtime digest found
-    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
-    NoPreRuntimeDigest,
+    Multiple(ErrorDigestType),
 }
 
 #[cfg(feature = "std")]
@@ -197,7 +217,7 @@ where
             log.as_global_randomness(),
             maybe_global_randomness.is_some(),
         ) {
-            (Some(_), true) => return Err(Error::MultipleGlobalRandomnessDigests),
+            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::GlobalRandomness)),
             (Some(global_randomness), false) => maybe_global_randomness = Some(global_randomness),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -215,7 +235,7 @@ where
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
         match (log.as_solution_range(), maybe_solution_range.is_some()) {
-            (Some(_), true) => return Err(Error::MultipleSolutionRangeDigests),
+            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::SolutionRange)),
             (Some(solution_range), false) => maybe_solution_range = Some(solution_range),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -233,7 +253,7 @@ where
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
         match (log.as_salt(), maybe_salt.is_some()) {
-            (Some(_), true) => return Err(Error::MultipleSaltDigests),
+            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::Salt)),
             (Some(salt), false) => maybe_salt = Some(salt),
             _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
         }
@@ -266,10 +286,10 @@ where
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(Error::MultiplePreRuntimeDigests),
+            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::PreDigest)),
             (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }
     }
-    pre_digest.ok_or(Error::NoPreRuntimeDigest)
+    pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))
 }

@@ -154,21 +154,12 @@ where
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
 pub enum Error<Header: HeaderT> {
-    /// Multiple Subspace pre-runtime digests
-    #[error("Multiple Subspace pre-runtime digests, rejecting!")]
-    MultiplePreRuntimeDigests,
+    /// Error during digest item extraction
+    #[error("Digest item error: {0}")]
+    DigestItemError(#[from] DigestError),
     /// No Subspace pre-runtime digest found
     #[error("No Subspace pre-runtime digest found")]
     NoPreRuntimeDigest,
-    /// Multiple Subspace global randomness digests
-    #[error("Multiple Subspace global randomness digests, rejecting!")]
-    MultipleGlobalRandomnessDigests,
-    /// Multiple Subspace solution range digests
-    #[error("Multiple Subspace solution range digests, rejecting!")]
-    MultipleSolutionRangeDigests,
-    /// Multiple Subspace salt digests
-    #[error("Multiple Subspace salt digests, rejecting!")]
-    MultipleSaltDigests,
     /// Header rejected: too far in the future
     #[error("Header {0:?} rejected: too far in the future")]
     TooFarInFuture(Header::Hash),
@@ -285,21 +276,6 @@ where
                 }
                 VerificationPrimitiveError::OutsideMaxPlot => Error::OutsideOfMaxPlot(slot),
             },
-        }
-    }
-}
-
-impl<Header> From<DigestError> for Error<Header>
-where
-    Header: HeaderT,
-{
-    fn from(error: DigestError) -> Self {
-        match error {
-            DigestError::MultipleGlobalRandomnessDigests => Error::MultipleGlobalRandomnessDigests,
-            DigestError::MultipleSolutionRangeDigests => Error::MultipleSolutionRangeDigests,
-            DigestError::MultipleSaltDigests => Error::MultipleSaltDigests,
-            DigestError::MultiplePreRuntimeDigests => Error::MultiplePreRuntimeDigests,
-            DigestError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
         }
     }
 }

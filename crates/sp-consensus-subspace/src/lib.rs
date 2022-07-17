@@ -19,6 +19,8 @@
 #![forbid(unsafe_code, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate core;
+
 pub mod digests;
 pub mod inherents;
 pub mod offence;
