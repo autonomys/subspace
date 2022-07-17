@@ -341,63 +341,6 @@ where
     })
 }
 
-/// Extract the Subspace global randomness from the given header.
-pub fn extract_global_randomness<Header>(header: &Header) -> Result<Option<Randomness>, Error>
-where
-    Header: HeaderT,
-{
-    let mut maybe_global_randomness = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for global randomness digest.", log);
-        match (
-            log.as_global_randomness(),
-            maybe_global_randomness.is_some(),
-        ) {
-            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::GlobalRandomness)),
-            (Some(global_randomness), false) => maybe_global_randomness = Some(global_randomness),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(maybe_global_randomness)
-}
-
-/// Extract the Subspace solution range from the given header.
-pub fn extract_solution_range<Header>(header: &Header) -> Result<Option<u64>, Error>
-where
-    Header: HeaderT,
-{
-    let mut maybe_solution_range = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
-        match (log.as_solution_range(), maybe_solution_range.is_some()) {
-            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::SolutionRange)),
-            (Some(solution_range), false) => maybe_solution_range = Some(solution_range),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(maybe_solution_range)
-}
-
-/// Extract the Subspace salt from the given header.
-pub fn extract_salt<Header>(header: &Header) -> Result<Option<Salt>, Error>
-where
-    Header: HeaderT,
-{
-    let mut maybe_salt = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
-        match (log.as_salt(), maybe_salt.is_some()) {
-            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::Salt)),
-            (Some(salt), false) => maybe_salt = Some(salt),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(maybe_salt)
-}
-
 /// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
 /// function will return `Err` if none is found.
 pub fn extract_pre_digest<Header>(
