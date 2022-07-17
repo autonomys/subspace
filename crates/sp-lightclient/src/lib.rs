@@ -75,24 +75,20 @@ type HashOf<T> = <T as HeaderT>::Hash;
 /// Storage responsible for storing headers
 pub trait Storage<Header: HeaderT> {
     /// Record size
-    fn record_size() -> RecordSize;
+    fn record_size(&self) -> RecordSize;
 
     /// Segment size
-    fn segment_size() -> SegmentSize;
+    fn segment_size(&self) -> SegmentSize;
 
     /// Queries a header at a specific block number or block hash
-    fn header(query: HashOf<Header>) -> Option<HeaderExt<Header>>;
+    fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>>;
 
     /// Stores the extended header.
-    fn store_header(header_ext: HeaderExt<Header>);
-
-    /// Prunes all the descendants of the header.
-    /// This makes the provided header as the best header.
-    /// If header is already the best, it should be noop.
-    fn prune_descendants_of(query: HashOf<Header>);
+    /// as_best_header signifies of the header we are importing is considered best
+    fn store_header(&mut self, header_ext: HeaderExt<Header>, as_best_header: bool);
 
     /// Returns the best known tip of the chain
-    fn best_header() -> HeaderExt<Header>;
+    fn best_header(&self) -> HeaderExt<Header>;
 }
 
 /// Error during the header import.
@@ -118,8 +114,6 @@ pub enum ImportError<Hash> {
     InvalidBlockSignature,
     /// Invalid solution
     InvalidSolution(subspace_verification::Error),
-    /// Header being imported is part of non canonical chain
-    NonCanonicalHeader,
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -129,20 +123,21 @@ impl<Hash> From<DigestError> for ImportError<Hash> {
 }
 
 /// Verifies and import headers.
-pub trait HeaderImporter<Header: HeaderT> {
-    /// Storage type to store headers and other computed details.
-    type Storage: Storage<Header>;
-
+pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
-    fn import_header(mut header: Header) -> Result<(), ImportError<HashOf<Header>>> {
+    fn import_header(
+        store: &mut Store,
+        mut header: Header,
+    ) -> Result<(), ImportError<HashOf<Header>>> {
         // check if the header is already imported
-        match Self::Storage::header(header.hash()) {
+        match store.header(header.hash()) {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
             None => Ok(()),
         }?;
 
         // fetch parent header
-        let parent_header = Self::Storage::header(*header.parent_hash())
+        let parent_header = store
+            .header(*header.parent_hash())
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
         // TODO(ved): check for farmer equivocation
@@ -178,32 +173,29 @@ pub trait HeaderImporter<Header: HeaderT> {
             calculate_block_weight(&global_randomness.global_randomness, &pre_digest);
         let total_weight = parent_header.total_weight + block_weight;
 
-        // last best header should ideally be parent header. if not check for forks and prune accordingly
-        let last_best_header = Self::Storage::best_header();
-        if last_best_header.header.hash() != parent_header.header.hash() {
+        // last best header should ideally be parent header. if not check for forks and pick the best chain
+        let last_best_header = store.best_header();
+        let is_best_header = if last_best_header.header.hash() == parent_header.header.hash() {
+            // header is extending the current best header. consider this best header
+            true
+        } else {
             let last_best_weight = last_best_header.total_weight;
-            let should_prune_and_import = match total_weight.cmp(&last_best_weight) {
-                // current weight is greater than last best. pick this header
+            match total_weight.cmp(&last_best_weight) {
+                // current weight is greater than last best. pick this header as best
                 Ordering::Greater => true,
                 // if weights are equal, pick the longest chain
-                // current header will always be rejected as its improbable to be longer chain than
-                // the best imported header
                 Ordering::Equal => header.number() > last_best_header.header.number(),
                 // we already are on the best chain
                 Ordering::Less => false,
-            };
-
-            if !should_prune_and_import {
-                return Err(ImportError::NonCanonicalHeader);
             }
-
-            // re-org: prune all the descendants of the parent header and them import this header as best
-            Self::Storage::prune_descendants_of(parent_header.header.hash());
         };
 
         // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
+        // TODO(ved):
+        //      at the moment, we cannot prune the fork headers due to the probabilistic nature of the chain
+        //      Once we have some form of finality to the chain, we should prune the forks then
 
         // store header
         let header_ext = HeaderExt {
@@ -213,8 +205,8 @@ pub trait HeaderImporter<Header: HeaderT> {
             derived_salt: salt.salt,
             total_weight,
         };
-        Self::Storage::store_header(header_ext);
 
+        store.store_header(header_ext, is_best_header);
         Ok(())
     }
 }

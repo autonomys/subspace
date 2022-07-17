@@ -1,101 +1,87 @@
 use crate::{
     BlockWeight, HashOf, HeaderExt, HeaderImporter, RecordSize, SegmentSize, SolutionRange, Storage,
 };
-use environmental::environmental;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::HashMap;
-
-environmental!(storage_data: StorageData);
 
 pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 pub(crate) type NumberOf<T> = <T as HeaderT>::Number;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct StorageData {
     headers: HashMap<HashOf<Header>, HeaderExt<Header>>,
-    number_to_hash: HashMap<NumberOf<Header>, HashOf<Header>>,
+    number_to_hashes: HashMap<NumberOf<Header>, Vec<HashOf<Header>>>,
     best_header: (NumberOf<Header>, HashOf<Header>),
 }
 
-pub(crate) struct MockStorage;
+#[derive(Debug, Default)]
+pub(crate) struct MockStorage(StorageData);
 impl Storage<Header> for MockStorage {
-    fn record_size() -> RecordSize {
+    fn record_size(&self) -> RecordSize {
         Default::default()
     }
 
-    fn segment_size() -> SegmentSize {
+    fn segment_size(&self) -> SegmentSize {
         Default::default()
     }
 
-    fn header(query: HashOf<Header>) -> Option<HeaderExt<Header>> {
-        storage_data::with(|data| data.headers.get(&query).cloned()).unwrap()
+    fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>> {
+        self.0.headers.get(&query).cloned()
     }
 
-    fn store_header(header_ext: HeaderExt<Header>) {
-        storage_data::with(|data| {
-            if data.number_to_hash.contains_key(header_ext.header.number()) {
-                panic!("header already imported")
-            }
-
-            let (number, hash) = (*header_ext.header.number(), header_ext.header.hash());
-            data.headers.insert(hash, header_ext);
-            data.number_to_hash.insert(number, hash);
-            let best = data.best_header;
-            if best.0 < number {
-                data.best_header = (number, hash)
-            }
-        });
+    fn store_header(&mut self, header_ext: HeaderExt<Header>, as_best_header: bool) {
+        let (number, hash) = (*header_ext.header.number(), header_ext.header.hash());
+        if self.0.headers.insert(hash, header_ext).is_none() {
+            let mut set = self
+                .0
+                .number_to_hashes
+                .get(&number)
+                .cloned()
+                .unwrap_or_default();
+            set.push(hash);
+            self.0.number_to_hashes.insert(number, set);
+        }
+        if as_best_header {
+            self.0.best_header = (number, hash)
+        }
     }
 
-    fn prune_descendants_of(query: HashOf<Header>) {
-        storage_data::with(|data| {
-            let header = data.headers.get(&query).cloned().unwrap();
-            let mut start_number = header.header.number() + 1;
-            let (best_number, _) = data.best_header;
-            while start_number <= best_number {
-                let hash = data.number_to_hash.remove(&start_number).unwrap();
-                data.headers.remove(&hash);
-                start_number += 1;
-            }
-            data.best_header = (*header.header.number(), header.header.hash());
-        });
-    }
-
-    fn best_header() -> HeaderExt<Header> {
-        storage_data::with(|data| {
-            let (_, hash) = data.best_header;
-            data.headers.get(&hash).cloned().unwrap()
-        })
-        .unwrap()
+    fn best_header(&self) -> HeaderExt<Header> {
+        let (_, hash) = self.0.best_header;
+        self.0.headers.get(&hash).cloned().unwrap()
     }
 }
 
 impl MockStorage {
     // hack to adjust the solution range
-    pub(crate) fn override_solution_range(hash: HashOf<Header>, solution_range: SolutionRange) {
-        storage_data::with(|data| {
-            let mut header = data.headers.remove(&hash).unwrap();
-            header.derived_solution_range = solution_range;
-            data.headers.insert(hash, header);
-        });
+    pub(crate) fn override_solution_range(
+        &mut self,
+        hash: HashOf<Header>,
+        solution_range: SolutionRange,
+    ) {
+        let mut header = self.0.headers.remove(&hash).unwrap();
+        header.derived_solution_range = solution_range;
+        self.0.headers.insert(hash, header);
     }
 
     // hack to adjust the cumulative weight
-    pub(crate) fn override_cumulative_weight(hash: HashOf<Header>, weight: BlockWeight) {
-        storage_data::with(|data| {
-            let mut header = data.headers.remove(&hash).unwrap();
-            header.total_weight = weight;
-            data.headers.insert(hash, header);
-        });
+    pub(crate) fn override_cumulative_weight(&mut self, hash: HashOf<Header>, weight: BlockWeight) {
+        let mut header = self.0.headers.remove(&hash).unwrap();
+        header.total_weight = weight;
+        self.0.headers.insert(hash, header);
+    }
+
+    pub(crate) fn headers_at(&self, number: NumberOf<Header>) -> Vec<HeaderExt<Header>> {
+        println!("{:?}", self.0.number_to_hashes);
+        self.0
+            .number_to_hashes
+            .get(&number)
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|hash| self.0.headers.get(hash).cloned().unwrap())
+            .collect()
     }
 }
 
 pub(crate) struct MockImporter;
-impl HeaderImporter<Header> for MockImporter {
-    type Storage = MockStorage;
-}
-
-pub(crate) fn with_empty_storage<F: FnOnce()>(f: F) {
-    let mut initial_data = Default::default();
-    storage_data::using(&mut initial_data, f)
-}
+impl HeaderImporter<Header, MockStorage> for MockImporter {}

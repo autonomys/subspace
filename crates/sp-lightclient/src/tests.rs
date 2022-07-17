@@ -1,4 +1,4 @@
-use crate::mock::{with_empty_storage, Header, MockImporter, MockStorage, NumberOf};
+use crate::mock::{Header, MockImporter, MockStorage, NumberOf};
 use crate::{
     calculate_block_weight, extract_header_digests, verify_header_digest_with_parent, HashOf,
     HeaderExt, HeaderImporter, ImportError, SolutionRange, Storage,
@@ -180,6 +180,7 @@ fn valid_header(
 }
 
 fn import_blocks_until(
+    store: &mut MockStorage,
     number: NumberOf<Header>,
     start_slot: u64,
     keypair: &Keypair,
@@ -191,13 +192,16 @@ fn import_blocks_until(
         let (randomness, salt) = default_randomness_and_salt();
         parent_hash = header.hash();
         slot += 1;
-        MockStorage::store_header(HeaderExt {
-            header,
-            derived_global_randomness: randomness,
-            derived_solution_range: solution_range,
-            derived_salt: salt,
-            total_weight: 0,
-        });
+        store.store_header(
+            HeaderExt {
+                header,
+                derived_global_randomness: randomness,
+                derived_solution_range: solution_range,
+                derived_salt: salt,
+                total_weight: 0,
+            },
+            true,
+        );
     }
 
     (parent_hash, slot)
@@ -205,95 +209,92 @@ fn import_blocks_until(
 
 #[test]
 fn test_header_import_missing_parent() {
-    with_empty_storage(|| {
-        let keypair = Keypair::generate();
-        let slot = 1;
-        let (header, _) = valid_header(Default::default(), 0, slot, &keypair);
-        let hash = header.hash();
-        let res = MockImporter::import_header(header);
-        assert_err!(res, ImportError::MissingParent(hash));
-    })
+    let mut store = MockStorage::default();
+    let keypair = Keypair::generate();
+    let slot = 1;
+    let (header, _) = valid_header(Default::default(), 0, slot, &keypair);
+    let hash = header.hash();
+    let res = MockImporter::import_header(&mut store, header);
+    assert_err!(res, ImportError::MissingParent(hash));
 }
 
-fn header_import_reorg(new_header_weight: Ordering) {
-    with_empty_storage(|| {
-        let keypair = Keypair::generate();
-        let (parent_hash, next_slot) = import_blocks_until(2, 1, &keypair);
-        let best_header = MockStorage::best_header();
-        assert_eq!(best_header.header.hash(), parent_hash);
+fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
+    let mut store = MockStorage::default();
+    let keypair = Keypair::generate();
+    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
+    let best_header = store.best_header();
+    assert_eq!(best_header.header.hash(), parent_hash);
 
-        // import block 3
-        let (header, solution_range) = valid_header(parent_hash, 3, next_slot, &keypair);
-        MockStorage::override_solution_range(parent_hash, solution_range);
-        let res = MockImporter::import_header(header.clone());
-        assert_ok!(res);
-        let best_header = MockStorage::best_header();
-        assert_eq!(best_header.header, header);
+    // import block 3
+    let (header, solution_range) = valid_header(parent_hash, 3, next_slot, &keypair);
+    store.override_solution_range(parent_hash, solution_range);
+    let res = MockImporter::import_header(&mut store, header.clone());
+    assert_ok!(res);
+    let best_header_ext = store.best_header();
+    assert_eq!(best_header_ext.header, header);
+    let mut best_header = header;
 
-        // try an import another block at 3 with lower cumulative weight
-        let (header, solution_range) = valid_header(parent_hash, 3, next_slot + 1, &keypair);
-        let (randomness, _, _) = extract_header_digests(&header).unwrap();
-        let pre_digest = find_pre_digest(&header).unwrap();
-        let new_weight = calculate_block_weight(&randomness.global_randomness, &pre_digest);
-        MockStorage::override_solution_range(parent_hash, solution_range);
-        match new_header_weight {
-            Ordering::Less => {
-                MockStorage::override_cumulative_weight(best_header.header.hash(), new_weight + 1);
-                let res = MockImporter::import_header(header);
-                assert_err!(res, ImportError::NonCanonicalHeader)
-            }
-            Ordering::Equal => {
-                MockStorage::override_cumulative_weight(best_header.header.hash(), new_weight);
-                let res = MockImporter::import_header(header);
-                assert_err!(res, ImportError::NonCanonicalHeader)
-            }
-            Ordering::Greater => {
-                MockStorage::override_cumulative_weight(best_header.header.hash(), new_weight - 1);
-                let res = MockImporter::import_header(header.clone());
-                assert_ok!(res);
-                let best_header = MockStorage::best_header();
-                assert_eq!(best_header.header, header);
-            }
+    // try an import another fork at 3
+    let (header, solution_range) = valid_header(parent_hash, 3, next_slot + 1, &keypair);
+    let (randomness, _, _) = extract_header_digests(&header).unwrap();
+    let pre_digest = find_pre_digest(&header).unwrap();
+    let new_weight = calculate_block_weight(&randomness.global_randomness, &pre_digest);
+    store.override_solution_range(parent_hash, solution_range);
+    match new_header_weight {
+        Ordering::Less => {
+            store.override_cumulative_weight(best_header_ext.header.hash(), new_weight + 1);
         }
-    });
+        Ordering::Equal => {
+            store.override_cumulative_weight(best_header_ext.header.hash(), new_weight);
+        }
+        Ordering::Greater => {
+            store.override_cumulative_weight(best_header_ext.header.hash(), new_weight - 1);
+            best_header = header.clone();
+        }
+    };
+    let res = MockImporter::import_header(&mut store, header);
+    assert_ok!(res);
+    let best_header_ext = store.best_header();
+    assert_eq!(best_header_ext.header, best_header);
+    // we still track the forks
+    assert_eq!(store.headers_at(3).len(), 2);
 }
 
 #[test]
 fn test_header_import_non_canonical() {
-    header_import_reorg(Ordering::Less)
+    header_import_reorg_at_same_height(Ordering::Less)
 }
 
 #[test]
 fn test_header_import_canonical() {
-    header_import_reorg(Ordering::Greater)
+    header_import_reorg_at_same_height(Ordering::Greater)
 }
 
 #[test]
 fn test_header_import_non_canonical_with_equal_block_weight() {
-    header_import_reorg(Ordering::Equal)
+    header_import_reorg_at_same_height(Ordering::Equal)
 }
 
 #[test]
 fn test_header_import_success() {
-    with_empty_storage(|| {
-        let keypair = Keypair::generate();
-        let (parent_hash, next_slot) = import_blocks_until(2, 1, &keypair);
-        let best_header = MockStorage::best_header();
-        assert_eq!(best_header.header.hash(), parent_hash);
+    let mut store = MockStorage::default();
+    let keypair = Keypair::generate();
+    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
+    let best_header = store.best_header();
+    assert_eq!(best_header.header.hash(), parent_hash);
 
-        // verify and import next headers
-        let mut slot = next_slot;
-        let mut parent_hash = parent_hash;
-        for number in 3..=10 {
-            let (header, solution_range) = valid_header(parent_hash, number, slot, &keypair);
-            MockStorage::override_solution_range(parent_hash, solution_range);
-            let res = MockImporter::import_header(header.clone());
-            assert_ok!(res);
-            // best header should be correct
-            let best_header = MockStorage::best_header();
-            assert_eq!(best_header.header, header);
-            slot += 1;
-            parent_hash = header.hash();
-        }
-    })
+    // verify and import next headers
+    let mut slot = next_slot;
+    let mut parent_hash = parent_hash;
+    for number in 3..=10 {
+        let (header, solution_range) = valid_header(parent_hash, number, slot, &keypair);
+        store.override_solution_range(parent_hash, solution_range);
+        let res = MockImporter::import_header(&mut store, header.clone());
+        assert_ok!(res);
+        // best header should be correct
+        let best_header = store.best_header();
+        assert_eq!(best_header.header, header);
+        slot += 1;
+        parent_hash = header.hash();
+    }
 }
