@@ -25,10 +25,7 @@ pub mod offence;
 #[cfg(test)]
 mod tests;
 
-use crate::digests::{
-    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor,
-};
+use crate::digests::{CompatibleDigestItem, PreDigest};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::time::Duration;
 use scale_info::TypeInfo;
@@ -94,13 +91,13 @@ pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Heade
 enum ConsensusLog {
     /// Global randomness for this block/interval.
     #[codec(index = 1)]
-    GlobalRandomness(GlobalRandomnessDescriptor),
+    GlobalRandomness(Randomness),
     /// Solution range for this block/era.
     #[codec(index = 2)]
-    SolutionRange(SolutionRangeDescriptor),
+    SolutionRange(u64),
     /// Salt for this block/eon.
     #[codec(index = 3)]
-    Salt(SaltDescriptor),
+    Salt(Salt),
 }
 
 /// Farmer vote.

@@ -62,8 +62,8 @@ use sp_consensus::{
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
-    find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
-    find_solution_range_descriptor, Error as DigestError, PreDigest,
+    extract_global_randomness, extract_pre_digest, extract_salt, extract_solution_range,
+    Error as DigestError, PreDigest,
 };
 use sp_consensus_subspace::{
     check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
@@ -671,7 +671,7 @@ where
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
-        let pre_digest = find_pre_digest(&block.header)?;
+        let pre_digest = extract_pre_digest(&block.header)?;
 
         // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
         if *block.header.number() <= 33_581_u32.into()
@@ -721,17 +721,14 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            let global_randomness = find_global_randomness_descriptor(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?
-                .global_randomness;
+            let global_randomness = extract_global_randomness(&block.header)?
+                .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?;
 
-            let solution_range = find_solution_range_descriptor(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?
-                .solution_range;
+            let solution_range = extract_solution_range(&block.header)?
+                .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?;
 
-            let salt = find_salt_descriptor(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingSalt(hash))?
-                .salt;
+            let salt =
+                extract_salt(&block.header)?.ok_or(Error::<Block::Header>::MissingSalt(hash))?;
 
             // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
             if *block.header.number() >= 33_672_u32.into()
@@ -930,9 +927,8 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let global_randomness = find_global_randomness_descriptor(&header)?
-            .ok_or(Error::MissingGlobalRandomness(block_hash))?
-            .global_randomness;
+        let global_randomness = extract_global_randomness(&header)?
+            .ok_or(Error::MissingGlobalRandomness(block_hash))?;
         let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
             self.client.as_ref(),
             &parent_block_id,
@@ -941,18 +937,15 @@ where
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
-        let solution_range = find_solution_range_descriptor(&header)?
-            .ok_or(Error::MissingSolutionRange(block_hash))?
-            .solution_range;
+        let solution_range =
+            extract_solution_range(&header)?.ok_or(Error::MissingSolutionRange(block_hash))?;
         let (correct_solution_range, _) =
             slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id)?;
         if solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let salt = find_salt_descriptor(&header)?
-            .ok_or(Error::MissingSalt(block_hash))?
-            .salt;
+        let salt = extract_salt(&header)?.ok_or(Error::MissingSalt(block_hash))?;
         let correct_salt =
             slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?.0;
         if salt != correct_salt {
@@ -1006,7 +999,7 @@ where
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
-        let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
+        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
 
         // Make sure that slot number is strictly increasing
         if pre_digest.slot <= parent_slot {
@@ -1103,7 +1096,7 @@ where
             Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
         }
 
-        let pre_digest = find_pre_digest::<Block::Header>(&block.header)
+        let pre_digest = extract_pre_digest::<Block::Header>(&block.header)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         self.block_import_verification(
@@ -1130,10 +1123,9 @@ where
         };
 
         let added_weight = {
-            let global_randomness = find_global_randomness_descriptor(&block.header)
+            let global_randomness = extract_global_randomness(&block.header)
                 .expect("Verification of the header was done before this; qed")
-                .expect("Verification of the header was done before this; qed")
-                .global_randomness;
+                .expect("Verification of the header was done before this; qed");
             let global_challenge =
                 derive_global_challenge(&global_randomness, pre_digest.slot.into());
 

@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    find_pre_digest, NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink,
+    extract_pre_digest, NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -333,7 +333,7 @@ where
 
     fn should_backoff(&self, slot: Slot, chain_head: &Block::Header) -> bool {
         if let Some(ref strategy) = self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = find_pre_digest(chain_head).map(|digest| digest.slot) {
+            if let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot) {
                 return strategy.should_backoff(
                     *chain_head.number(),
                     chain_head_slot,
@@ -367,7 +367,9 @@ where
     }
 
     fn proposing_remaining_duration(&self, slot_info: &SlotInfo<Block>) -> std::time::Duration {
-        let parent_slot = find_pre_digest(&slot_info.chain_head).ok().map(|d| d.slot);
+        let parent_slot = extract_pre_digest(&slot_info.chain_head)
+            .ok()
+            .map(|d| d.slot);
 
         sc_consensus_slots::proposing_remaining_duration(
             parent_slot,
