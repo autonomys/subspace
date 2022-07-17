@@ -1,7 +1,6 @@
 //! Simple bootstrap node implementation
 
 use clap::Parser;
-use env_logger::Env;
 use libp2p::identity::sr25519::Keypair;
 use libp2p::Multiaddr;
 use std::sync::Arc;
@@ -29,7 +28,7 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init_from_env(Env::new().default_filter_or("info"));
+    tracing_subscriber::fmt::init();
 
     let command: Command = Command::parse();
 

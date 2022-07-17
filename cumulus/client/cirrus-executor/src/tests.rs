@@ -40,7 +40,7 @@ async fn test_executor_full_node_catching_up() {
         .await;
 
     // Bob is able to sync blocks.
-    futures::future::join(alice.wait_for_blocks(10), bob.wait_for_blocks(10)).await;
+    futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
 
     assert_eq!(
         ferdie.client.info().best_number,
@@ -50,11 +50,11 @@ async fn test_executor_full_node_catching_up() {
 
     let alice_block_hash = alice
         .client
-        .expect_block_hash_from_id(&BlockId::Number(8))
+        .expect_block_hash_from_id(&BlockId::Number(2))
         .unwrap();
     let bob_block_hash = bob
         .client
-        .expect_block_hash_from_id(&BlockId::Number(8))
+        .expect_block_hash_from_id(&BlockId::Number(2))
         .unwrap();
     assert_eq!(
         alice_block_hash, bob_block_hash,
@@ -214,14 +214,24 @@ async fn set_new_code_should_work() {
 
     let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
+    let best_number = alice.client.info().best_number;
+    let primary_number = best_number + 1;
+    // Although we're processing the bundle manually, the original bundle processor still works in
+    // the meanwhile, it's possible the executor alice already processed this primary block, expecting next
+    // primary block, in which case we use a dummy primary hash instead.
+    //
+    // Nice to disable the built-in bundle processor and have a full control of the executor block
+    // production manually.
+    let primary_hash = ferdie
+        .client
+        .hash(primary_number)
+        .unwrap()
+        .unwrap_or_else(Hash::random);
     alice
         .executor
         .clone()
         .process_bundles(
-            (
-                ferdie.client.info().best_hash,
-                ferdie.client.info().best_number,
-            ),
+            (primary_hash, primary_number),
             Default::default(),
             BlakeTwo256::hash_of(&[1u8; 64]).into(),
             Some(new_runtime_wasm_blob.clone().into()),
@@ -270,9 +280,9 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
         .build(Role::Full)
         .await;
 
-    alice.wait_for_blocks(3).await;
+    alice.wait_for_blocks(2).await;
 
-    // Wait for one more block to make sure the execution receipts of block 1,2,3 are
+    // Wait for one more block to make sure the execution receipts of block 1,2 are
     // able to be written to the database.
     alice.wait_for_blocks(1).await;
 
@@ -316,16 +326,6 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
         }
     };
 
-    let tx1 = create_and_send_submit_execution_receipt(1)
-        .await
-        .expect("Submit receipt successfully");
-    let tx2 = create_and_send_submit_execution_receipt(2)
-        .await
-        .expect("Submit receipt successfully");
-    let tx3 = create_and_send_submit_execution_receipt(3)
-        .await
-        .expect("Best block receipt must be able to be included in the next block");
-
     let ready_txs = || {
         ferdie
             .transaction_pool
@@ -336,13 +336,22 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(vec![tx1, tx2, tx3], ready_txs());
+    let (tx1, tx2) = futures::join!(
+        create_and_send_submit_execution_receipt(1),
+        create_and_send_submit_execution_receipt(2),
+    );
+    assert_eq!(vec![tx1.unwrap(), tx2.unwrap()], ready_txs());
 
-    // Wait for a few more blocks to ensure the ready txs can be consumed.
-    alice.wait_for_blocks(5).await;
+    // Wait for up to 5 blocks to ensure the ready txs can be consumed.
+    for _ in 0..5 {
+        alice.wait_for_blocks(1).await;
+        if ready_txs().is_empty() {
+            break;
+        }
+    }
     assert!(ready_txs().is_empty());
 
-    alice.wait_for_blocks(4).await;
+    alice.wait_for_blocks(2).await;
 
     let future_txs = || {
         ferdie
@@ -354,23 +363,15 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
             .map(|(tx_hash, _)| tx_hash)
             .collect::<HashSet<_>>()
     };
-    // best execution chain number is 3, receipt for #5 will be put into the futures queue.
-    let tx5 = create_and_send_submit_execution_receipt(5)
+    // best execution chain number is 2, receipt for #4 will be put into the futures queue.
+    let tx4 = create_and_send_submit_execution_receipt(4)
         .await
         .expect("Submit a future receipt successfully");
-    assert_eq!(HashSet::from([tx5]), future_txs());
+    assert_eq!(HashSet::from([tx4]), future_txs());
 
-    let tx6 = create_and_send_submit_execution_receipt(6)
-        .await
-        .expect("Submit a future receipt successfully");
-    let tx7 = create_and_send_submit_execution_receipt(7)
-        .await
-        .expect("Submit a future receipt successfully");
-    assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
-
-    // max drift is 4, hence the max allowed receipt number is 3 + 4, 8 will be rejected as being
+    // max drift is 2, hence the max allowed receipt number is 2 + 2, 5 will be rejected as being
     // too far.
-    match create_and_send_submit_execution_receipt(8)
+    match create_and_send_submit_execution_receipt(5)
         .await
         .unwrap_err()
     {
@@ -383,19 +384,19 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
         e => panic!("Unexpected error while submitting execution receipt: {e}"),
     }
 
-    // Wait for a few more blocks to ensure the ready txs can be consumed.
-    alice.wait_for_blocks(5).await;
-    assert!(ready_txs().is_empty());
-    assert_eq!(HashSet::from([tx5, tx6, tx7]), future_txs());
-
-    let tx4 = create_and_send_submit_execution_receipt(4)
+    let tx3 = create_and_send_submit_execution_receipt(3)
         .await
-        .expect("Submit receipt successfully");
+        .expect("Submit receipt 3 successfully");
     // All future txs become ready once the required tx is ready.
-    assert_eq!(vec![tx4, tx5, tx6, tx7], ready_txs());
+    assert_eq!(vec![tx3, tx4], ready_txs());
     assert!(future_txs().is_empty());
 
-    // Wait for a few more blocks to ensure the ready txs can be consumed.
-    alice.wait_for_blocks(5).await;
+    // Wait for up to 5 blocks to ensure the ready txs can be consumed.
+    for _ in 0..5 {
+        alice.wait_for_blocks(1).await;
+        if ready_txs().is_empty() {
+            break;
+        }
+    }
     assert!(ready_txs().is_empty());
 }

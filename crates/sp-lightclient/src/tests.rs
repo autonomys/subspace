@@ -1,13 +1,11 @@
 use crate::mock::{Header, MockImporter, MockStorage, NumberOf};
 use crate::{
-    calculate_block_weight, extract_header_digests, verify_header_digest_with_parent, HashOf,
-    HeaderExt, HeaderImporter, ImportError, SolutionRange, Storage,
+    calculate_block_weight, HashOf, HeaderExt, HeaderImporter, ImportError, SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use schnorrkel::Keypair;
 use sp_consensus_subspace::digests::{
-    find_pre_digest, CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor,
+    extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::app_crypto::UncheckedFrom;
@@ -18,95 +16,6 @@ use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
     derive_target, REWARD_SIGNING_CONTEXT,
 };
-
-#[test]
-fn test_header_digest_extraction() {
-    let mut header = Header {
-        parent_hash: [0u8; 32].into(),
-        number: 1,
-        state_root: Default::default(),
-        extrinsics_root: Default::default(),
-        digest: Default::default(),
-    };
-
-    let res = extract_header_digests(&header);
-    assert_err!(res, ImportError::InvalidGlobalRandomnessDigest);
-
-    let randomness = GlobalRandomnessDescriptor {
-        global_randomness: Default::default(),
-    };
-    header
-        .digest
-        .logs
-        .push(DigestItem::global_randomness_descriptor(randomness));
-    let res = extract_header_digests(&header);
-    assert_err!(res, ImportError::InvalidSolutionRangeDigest);
-
-    let solution_range = SolutionRangeDescriptor { solution_range: 0 };
-    header
-        .digest
-        .logs
-        .push(DigestItem::solution_range_descriptor(solution_range));
-    let res = extract_header_digests(&header);
-    assert_err!(res, ImportError::InvalidSaltDigest);
-
-    let salt = SaltDescriptor {
-        salt: Default::default(),
-    };
-    header.digest.logs.push(DigestItem::salt_descriptor(salt));
-    let res = extract_header_digests(&header);
-    assert_ok!(res);
-}
-
-#[test]
-fn verify_header_digests() {
-    let expected_randomness = [1u8; 32];
-    let expected_solution_range = 0;
-    let expected_salt = [2u8; 8];
-
-    let parent_header_ext = HeaderExt {
-        header: Header {
-            parent_hash: Default::default(),
-            number: 0,
-            state_root: Default::default(),
-            extrinsics_root: Default::default(),
-            digest: Default::default(),
-        },
-        derived_global_randomness: expected_randomness,
-        derived_solution_range: expected_solution_range,
-        derived_salt: expected_salt,
-        total_weight: 0,
-    };
-
-    let mut header = Header {
-        parent_hash: parent_header_ext.header.parent_hash,
-        number: 1,
-        state_root: Default::default(),
-        extrinsics_root: Default::default(),
-        digest: Default::default(),
-    };
-    let randomness = GlobalRandomnessDescriptor {
-        global_randomness: expected_randomness,
-    };
-    header
-        .digest
-        .logs
-        .push(DigestItem::global_randomness_descriptor(randomness));
-    let solution_range = SolutionRangeDescriptor {
-        solution_range: expected_solution_range,
-    };
-    header
-        .digest
-        .logs
-        .push(DigestItem::solution_range_descriptor(solution_range));
-    let salt = SaltDescriptor {
-        salt: expected_salt,
-    };
-    header.digest.logs.push(DigestItem::salt_descriptor(salt));
-
-    let res = verify_header_digest_with_parent(&parent_header_ext, &header);
-    assert_ok!(res);
-}
 
 fn default_randomness_and_salt() -> (Randomness, Salt) {
     let randomness = [1u8; 32];
@@ -142,11 +51,9 @@ fn valid_header(
     let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
 
     let digests = vec![
-        DigestItem::global_randomness_descriptor(GlobalRandomnessDescriptor {
-            global_randomness: randomness,
-        }),
-        DigestItem::solution_range_descriptor(SolutionRangeDescriptor { solution_range }),
-        DigestItem::salt_descriptor(SaltDescriptor { salt }),
+        DigestItem::global_randomness(randomness),
+        DigestItem::solution_range(solution_range),
+        DigestItem::salt(salt),
         DigestItem::subspace_pre_digest(&PreDigest {
             slot: slot.into(),
             solution: Solution {
@@ -236,9 +143,9 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
 
     // try an import another fork at 3
     let (header, solution_range) = valid_header(parent_hash, 3, next_slot + 1, &keypair);
-    let (randomness, _, _) = extract_header_digests(&header).unwrap();
-    let pre_digest = find_pre_digest(&header).unwrap();
-    let new_weight = calculate_block_weight(&randomness.global_randomness, &pre_digest);
+    let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
+        extract_subspace_digest_items(&header).unwrap();
+    let new_weight = calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
     store.override_solution_range(parent_hash, solution_range);
     match new_header_weight {
         Ordering::Less => {

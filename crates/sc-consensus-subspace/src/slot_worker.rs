@@ -15,9 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{
-    find_pre_digest, NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink,
-};
+use crate::{NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink};
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
@@ -33,7 +31,7 @@ use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
@@ -333,7 +331,7 @@ where
 
     fn should_backoff(&self, slot: Slot, chain_head: &Block::Header) -> bool {
         if let Some(ref strategy) = self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = find_pre_digest(chain_head).map(|digest| digest.slot) {
+            if let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot) {
                 return strategy.should_backoff(
                     *chain_head.number(),
                     chain_head_slot,
@@ -367,7 +365,9 @@ where
     }
 
     fn proposing_remaining_duration(&self, slot_info: &SlotInfo<Block>) -> std::time::Duration {
-        let parent_slot = find_pre_digest(&slot_info.chain_head).ok().map(|d| d.slot);
+        let parent_slot = extract_pre_digest(&slot_info.chain_head)
+            .ok()
+            .map(|d| d.slot);
 
         sc_consensus_slots::proposing_remaining_duration(
             parent_slot,

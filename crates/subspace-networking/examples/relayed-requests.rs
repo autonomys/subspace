@@ -1,4 +1,3 @@
-use env_logger::Env;
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
@@ -9,7 +8,7 @@ use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, P
 
 #[tokio::main]
 async fn main() {
-    env_logger::init_from_env(Env::new().default_filter_or("info"));
+    tracing_subscriber::fmt::init();
 
     // NODE 1 - Relay
     let config_1 = Config {

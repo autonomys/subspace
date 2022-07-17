@@ -22,11 +22,10 @@
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_subspace::digests::{
-    find_global_randomness_descriptor, find_pre_digest, find_salt_descriptor,
-    find_solution_range_descriptor, CompatibleDigestItem, Error as DigestError,
-    GlobalRandomnessDescriptor, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
+    extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
+    PreDigest, SubspaceDigestItems,
 };
-use sp_consensus_subspace::FarmerPublicKey;
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
 use sp_std::cmp::Ordering;
 use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt};
@@ -143,11 +142,13 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
         // TODO(ved): check for farmer equivocation
 
         // verify global randomness, solution range, and salt from the parent header
-        let (global_randomness, solution_range, salt) =
-            verify_header_digest_with_parent(&parent_header, &header)?;
-
-        // extract subspace pre digest that contains the solution
-        let pre_digest = find_pre_digest(&header).map_err(|_| ImportError::InvalidPreDigest)?;
+        let SubspaceDigestItems {
+            pre_digest,
+            signature: _,
+            global_randomness,
+            solution_range,
+            salt,
+        } = verify_header_digest_with_parent(&parent_header, &header)?;
 
         // slot must be strictly increasing from the parent header
         verify_slot(&parent_header.header, &pre_digest)?;
@@ -160,17 +161,16 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
             &pre_digest.solution,
             pre_digest.slot.into(),
             VerifySolutionParams {
-                global_randomness: &global_randomness.global_randomness,
-                solution_range: solution_range.solution_range,
-                salt: salt.salt,
+                global_randomness: &global_randomness,
+                solution_range,
+                salt,
                 // TODO(ved): verify POAS once we have access to record root
                 piece_check_params: None,
             },
         )
         .map_err(ImportError::InvalidSolution)?;
 
-        let block_weight =
-            calculate_block_weight(&global_randomness.global_randomness, &pre_digest);
+        let block_weight = calculate_block_weight(&global_randomness, &pre_digest);
         let total_weight = parent_header.total_weight + block_weight;
 
         // last best header should ideally be parent header. if not check for forks and pick the best chain
@@ -200,9 +200,9 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
         // store header
         let header_ext = HeaderExt {
             header,
-            derived_global_randomness: global_randomness.global_randomness,
-            derived_solution_range: solution_range.solution_range,
-            derived_salt: salt.salt,
+            derived_global_randomness: global_randomness,
+            derived_solution_range: solution_range,
+            derived_salt: salt,
             total_weight,
         };
 
@@ -211,52 +211,27 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
     }
 }
 
-fn extract_header_digests<Header: HeaderT>(
-    header: &Header,
-) -> Result<
-    (
-        GlobalRandomnessDescriptor,
-        SolutionRangeDescriptor,
-        SaltDescriptor,
-    ),
-    ImportError<HashOf<Header>>,
-> {
-    let randomness = find_global_randomness_descriptor(header)?
-        .ok_or(ImportError::InvalidGlobalRandomnessDigest)?;
-
-    let solution_range =
-        find_solution_range_descriptor(header)?.ok_or(ImportError::InvalidSolutionRangeDigest)?;
-
-    let salt = find_salt_descriptor(header)?.ok_or(ImportError::InvalidSaltDigest)?;
-
-    Ok((randomness, solution_range, salt))
-}
-
 fn verify_header_digest_with_parent<Header: HeaderT>(
     parent_header: &HeaderExt<Header>,
     header: &Header,
 ) -> Result<
-    (
-        GlobalRandomnessDescriptor,
-        SolutionRangeDescriptor,
-        SaltDescriptor,
-    ),
+    SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
     ImportError<HashOf<Header>>,
 > {
-    let (global_randomness, solution_range, salt) = extract_header_digests(header)?;
-    if global_randomness.global_randomness != parent_header.derived_global_randomness {
+    let pre_digest_items = extract_subspace_digest_items(header)?;
+    if pre_digest_items.global_randomness != parent_header.derived_global_randomness {
         return Err(ImportError::InvalidGlobalRandomnessDigest);
     }
 
-    if solution_range.solution_range != parent_header.derived_solution_range {
+    if pre_digest_items.solution_range != parent_header.derived_solution_range {
         return Err(ImportError::InvalidSolutionRangeDigest);
     }
 
-    if salt.salt != parent_header.derived_salt {
+    if pre_digest_items.salt != parent_header.derived_salt {
         return Err(ImportError::InvalidSaltDigest);
     }
 
-    Ok((global_randomness, solution_range, salt))
+    Ok(pre_digest_items)
 }
 
 fn verify_slot<Header: HeaderT>(
@@ -264,7 +239,7 @@ fn verify_slot<Header: HeaderT>(
     pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
 ) -> Result<(), ImportError<HashOf<Header>>> {
     let parent_pre_digest =
-        find_pre_digest(parent_header).map_err(|_| ImportError::InvalidPreDigest)?;
+        extract_pre_digest(parent_header).map_err(|_| ImportError::InvalidPreDigest)?;
 
     if pre_digest.slot <= parent_pre_digest.slot {
         return Err(ImportError::InvalidSlot);

@@ -39,7 +39,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         .await;
 
     // Bob is able to sync blocks.
-    futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
+    futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
 
     let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
         &alice.client,
@@ -364,7 +364,7 @@ async fn invalid_execution_proof_should_not_work() {
         .await;
 
     // Bob is able to sync blocks.
-    futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
+    futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
 
     let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
         &alice.client,
