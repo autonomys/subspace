@@ -4,8 +4,12 @@ use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{
+    Config, ObjectMappingsRequest, ObjectMappingsResponse, PiecesByRangeRequest,
+    PiecesByRangeResponse, PiecesToPlot,
+};
 
 #[tokio::main]
 async fn main() {
@@ -31,6 +35,16 @@ async fn main() {
             Some(PiecesByRangeResponse {
                 pieces,
                 next_piece_index_hash: None,
+            })
+        }),
+        object_mappings_request_handler: Arc::new(|req| {
+            println!("Request handler for request: {:?}", req);
+
+            Some(ObjectMappingsResponse {
+                object_mapping: Some(GlobalObject::V0 {
+                    piece_index: u64::MAX,
+                    offset: u16::MAX,
+                }),
             })
         }),
         ..Config::with_generated_keypair()
@@ -88,6 +102,17 @@ async fn main() {
             )
             .await
             .unwrap();
+
+        let resp = node_2
+            .send_object_mappings_request(
+                node_1.id(),
+                ObjectMappingsRequest {
+                    object_hash: Default::default(),
+                },
+            )
+            .await;
+
+        println!("Response: {:?}", resp);
     });
 
     tokio::time::sleep(Duration::from_secs(5)).await;

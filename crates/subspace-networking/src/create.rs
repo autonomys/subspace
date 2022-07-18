@@ -2,9 +2,9 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
-use crate::pieces_by_range_handler::{
-    ExternalPiecesByRangeRequestHandler, PiecesByRangeRequestHandler,
-};
+use crate::request_handlers::object_mappings::{self, ExternalObjectMappingsRequestHandler};
+use crate::request_handlers::pieces_by_range::{self, ExternalPiecesByRangeRequestHandler};
+use crate::request_responses::RequestResponseInstanceConfig;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -73,6 +73,8 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
+    /// Defines a handler for the object mappings protocol.
+    pub object_mappings_request_handler: ExternalObjectMappingsRequestHandler,
 }
 
 impl fmt::Debug for Config {
@@ -129,6 +131,7 @@ impl Config {
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             pieces_by_range_request_handler: Arc::new(|_| None),
+            object_mappings_request_handler: Arc::new(|_| None),
             relay_server_address: None,
             parent_node: None,
         }
@@ -170,6 +173,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         pieces_by_range_request_handler,
         relay_server_address,
         parent_node,
+        object_mappings_request_handler,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
@@ -200,7 +204,10 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             .collect::<Result<_, CreationError>>()?;
 
         let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
-            PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
+            pieces_by_range::new(pieces_by_range_request_handler);
+
+        let (object_mappings_request_handler, object_mappings_protocol_config) =
+            object_mappings::new(object_mappings_request_handler);
 
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
 
@@ -211,8 +218,16 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             kademlia,
             gossipsub,
             value_getter,
-            pieces_by_range_protocol_config,
-            pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
+            request_response_protocols: vec![
+                RequestResponseInstanceConfig {
+                    config: pieces_by_range_protocol_config,
+                    handler: Box::new(pieces_by_range_request_handler),
+                },
+                RequestResponseInstanceConfig {
+                    config: object_mappings_protocol_config,
+                    handler: Box::new(object_mappings_request_handler),
+                },
+            ],
             is_relay_server,
             relay_client,
         });

@@ -17,8 +17,8 @@
 //! Helper for incoming object mappings requests.
 //!
 //! Handle (i.e. answer) incoming object mappings requests from a remote peer received via
-//! `crate::request_responses::RequestResponsesBehaviour` with
-//! [`ObjectMappingsRequestHandler`](ObjectMappingsRequestHandler).
+//! `crate::request_responses::RequestResponsesBehaviour` with generic
+//! [`RequestHandler`](RequestHandler).
 
 use super::generic_request_handler::{
     ExternalRequestHandler, RequestHandler, RequestHandlerConfig,
