@@ -66,6 +66,7 @@ mod fraud_proof;
 mod merkle_tree;
 #[cfg(test)]
 mod tests;
+mod unsigned_submitter;
 mod worker;
 
 use crate::bundle_processor::BundleProcessor;
