@@ -23,7 +23,7 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
-    PreDigest, SubspaceDigestItems,
+    ErrorDigestType, PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
@@ -99,14 +99,8 @@ pub enum ImportError<Hash> {
     MissingParent(Hash),
     /// Error while extracting digests from header
     DigestExtractionError(DigestError),
-    /// Invalid global randomness digest
-    InvalidGlobalRandomnessDigest,
-    /// Invalid solution range digest
-    InvalidSolutionRangeDigest,
-    /// Invalid salt digest
-    InvalidSaltDigest,
-    /// Invalid predigest
-    InvalidPreDigest,
+    /// Invalid digest in the header
+    InvalidDigest(ErrorDigestType),
     /// Invalid slot when compared with parent header
     InvalidSlot,
     /// Block signature is invalid
@@ -220,15 +214,17 @@ fn verify_header_digest_with_parent<Header: HeaderT>(
 > {
     let pre_digest_items = extract_subspace_digest_items(header)?;
     if pre_digest_items.global_randomness != parent_header.derived_global_randomness {
-        return Err(ImportError::InvalidGlobalRandomnessDigest);
+        return Err(ImportError::InvalidDigest(
+            ErrorDigestType::GlobalRandomness,
+        ));
     }
 
     if pre_digest_items.solution_range != parent_header.derived_solution_range {
-        return Err(ImportError::InvalidSolutionRangeDigest);
+        return Err(ImportError::InvalidDigest(ErrorDigestType::SolutionRange));
     }
 
     if pre_digest_items.salt != parent_header.derived_salt {
-        return Err(ImportError::InvalidSaltDigest);
+        return Err(ImportError::InvalidDigest(ErrorDigestType::Salt));
     }
 
     Ok(pre_digest_items)
@@ -238,8 +234,7 @@ fn verify_slot<Header: HeaderT>(
     parent_header: &Header,
     pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
 ) -> Result<(), ImportError<HashOf<Header>>> {
-    let parent_pre_digest =
-        extract_pre_digest(parent_header).map_err(|_| ImportError::InvalidPreDigest)?;
+    let parent_pre_digest = extract_pre_digest(parent_header)?;
 
     if pre_digest.slot <= parent_pre_digest.slot {
         return Err(ImportError::InvalidSlot);
@@ -256,11 +251,13 @@ fn verify_block_signature<Header: HeaderT>(
     let seal = header
         .digest_mut()
         .pop()
-        .ok_or(ImportError::InvalidBlockSignature)?;
+        .ok_or(ImportError::DigestExtractionError(DigestError::Missing(
+            ErrorDigestType::Seal,
+        )))?;
 
     let signature = seal
         .as_subspace_seal()
-        .ok_or(ImportError::InvalidBlockSignature)?;
+        .ok_or(ImportError::InvalidDigest(ErrorDigestType::Seal))?;
 
     // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();

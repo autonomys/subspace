@@ -72,7 +72,6 @@ impl MockStorage {
     }
 
     pub(crate) fn headers_at(&self, number: NumberOf<Header>) -> Vec<HeaderExt<Header>> {
-        println!("{:?}", self.0.number_to_hashes);
         self.0
             .number_to_hashes
             .get(&number)
