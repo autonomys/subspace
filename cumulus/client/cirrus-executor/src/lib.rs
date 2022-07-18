@@ -72,6 +72,7 @@ mod worker;
 use crate::bundle_processor::BundleProcessor;
 use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::unsigned_submitter::UnsignedSubmitter;
 use crate::worker::BlockInfo;
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
@@ -223,6 +224,11 @@ where
             code_executor,
         );
 
+        let unsigned_submitter = UnsignedSubmitter::new::<Block, PBlock, PClient>(
+            primary_chain_client.clone(),
+            spawner.clone(),
+        );
+
         let bundle_processor = BundleProcessor::new(
             primary_chain_client.clone(),
             primary_network,
@@ -233,6 +239,7 @@ where
             keystore,
             spawner.clone(),
             fraud_proof_generator.clone(),
+            unsigned_submitter,
         );
 
         spawn_essential.spawn_essential_blocking(

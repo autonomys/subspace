@@ -1,9 +1,10 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
+use crate::unsigned_submitter::{UnsignedMessage, UnsignedSubmitter};
 use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor, TransactionFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::FutureExt;
+use parking_lot::Mutex;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -101,6 +102,8 @@ where
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+    pending_unsigned: Arc<Mutex<Option<UnsignedMessage>>>,
+    unsigned_submitter: UnsignedSubmitter,
     _phantom_data: PhantomData<PBlock>,
 }
 
@@ -121,6 +124,8 @@ where
             keystore: self.keystore.clone(),
             spawner: self.spawner.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
+            pending_unsigned: self.pending_unsigned.clone(),
+            unsigned_submitter: self.unsigned_submitter.clone(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -163,6 +168,7 @@ where
         keystore: SyncCryptoStorePtr,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+        unsigned_submitter: UnsignedSubmitter,
     ) -> Self {
         Self {
             primary_chain_client,
@@ -174,6 +180,8 @@ where
             keystore,
             spawner,
             fraud_proof_generator,
+            pending_unsigned: Arc::new(Mutex::new(None)),
+            unsigned_submitter,
             _phantom_data: PhantomData::default(),
         }
     }
@@ -185,6 +193,24 @@ where
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            if let Some(msg) = pending_unsigned.as_mut() {
+                match self.unsigned_submitter.try_submit(msg.clone()) {
+                    Ok(()) => {
+                        *pending_unsigned = None;
+                    }
+                    Err(_msg) => {
+                        tracing::debug!(
+                            target: LOG_TARGET,
+                            "Too many unsigned extrinsics, skip processing bundles"
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
 
@@ -626,32 +652,13 @@ where
     }
 
     fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-fraud-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting fraud proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_fraud_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        fraud_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit fraud proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(msg) = self
+            .unsigned_submitter
+            .try_submit(UnsignedMessage::Fraud(fraud_proof))
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            pending_unsigned.replace(msg);
+        }
     }
 
     fn try_sign_and_send_receipt(
