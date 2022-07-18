@@ -72,12 +72,13 @@ mod worker;
 use crate::bundle_processor::BundleProcessor;
 use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
-use crate::unsigned_submitter::UnsignedSubmitter;
+use crate::unsigned_submitter::{UnsignedMessage, UnsignedSubmitter};
 use crate::worker::BlockInfo;
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{FutureExt, Stream};
+use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -117,6 +118,8 @@ where
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
     bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    pending_unsigned: Arc<Mutex<Option<UnsignedMessage>>>,
+    unsigned_submitter: UnsignedSubmitter,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -134,6 +137,8 @@ where
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             bundle_processor: self.bundle_processor.clone(),
+            pending_unsigned: self.pending_unsigned.clone(),
+            unsigned_submitter: self.unsigned_submitter.clone(),
         }
     }
 }
@@ -239,7 +244,7 @@ where
             keystore,
             spawner.clone(),
             fraud_proof_generator.clone(),
-            unsigned_submitter,
+            unsigned_submitter.clone(),
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -265,6 +270,8 @@ where
             backend,
             fraud_proof_generator,
             bundle_processor,
+            pending_unsigned: Arc::new(Mutex::new(None)),
+            unsigned_submitter,
         })
     }
 
@@ -332,90 +339,37 @@ where
     }
 
     fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-bundle-equivocation-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting bundle equivocation proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_bundle_equivocation_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        bundle_equivocation_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit bundle equivocation proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(msg) = self
+            .unsigned_submitter
+            .try_submit(UnsignedMessage::BundleEquivocation(
+                bundle_equivocation_proof,
+            ))
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            pending_unsigned.replace(msg);
+        }
     }
 
     fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-fraud-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting fraud proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_fraud_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        fraud_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit fraud proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(msg) = self
+            .unsigned_submitter
+            .try_submit(UnsignedMessage::Fraud(fraud_proof))
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            pending_unsigned.replace(msg);
+        }
     }
 
     fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-invalid-transaction-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting invalid transaction proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_invalid_transaction_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        invalid_transaction_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit invalid transaction proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(msg) = self
+            .unsigned_submitter
+            .try_submit(UnsignedMessage::InvalidTransaction(
+                invalid_transaction_proof,
+            ))
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            pending_unsigned.replace(msg);
+        }
     }
 
     /// The background is that a receipt received from the network points to a future block
@@ -577,6 +531,24 @@ where
             signer,
         }: &SignedBundle<Block::Extrinsic>,
     ) -> Result<Action, Self::Error> {
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            if let Some(msg) = pending_unsigned.as_mut() {
+                match self.unsigned_submitter.try_submit(msg.clone()) {
+                    Ok(()) => {
+                        *pending_unsigned = None;
+                    }
+                    Err(_msg) => {
+                        tracing::debug!(
+                            target: LOG_TARGET,
+                            "Too many unsigned extrinsics, skip processing gossiped SignedBundle"
+                        );
+                        return Ok(Action::Empty);
+                    }
+                }
+            }
+        }
+
         let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
             // TODO: check bundle equivocation
             let bundle_is_an_equivocation = false;
@@ -645,6 +617,24 @@ where
         &self,
         signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
     ) -> Result<Action, Self::Error> {
+        {
+            let mut pending_unsigned = self.pending_unsigned.lock();
+            if let Some(msg) = pending_unsigned.as_mut() {
+                match self.unsigned_submitter.try_submit(msg.clone()) {
+                    Ok(()) => {
+                        *pending_unsigned = None;
+                    }
+                    Err(_msg) => {
+                        tracing::debug!(
+                            target: LOG_TARGET,
+                            "Too many unsigned extrinsics, skip processing gossiped SignedExecutionReceipt"
+                        );
+                        return Ok(Action::Empty);
+                    }
+                }
+            }
+        }
+
         let signed_receipt_hash = signed_execution_receipt.hash();
 
         let SignedExecutionReceipt {
