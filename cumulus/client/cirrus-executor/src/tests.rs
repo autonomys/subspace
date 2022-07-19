@@ -1,9 +1,9 @@
 use cirrus_primitives::{BlockNumber, Hash, SecondaryApi};
 use cirrus_test_service::run_primary_chain_validator_node;
-use cirrus_test_service::runtime::Header;
+use cirrus_test_service::runtime::{Header, UncheckedExtrinsic};
 use cirrus_test_service::Keyring::{Alice, Bob, Ferdie};
-use codec::Encode;
-use sc_client_api::{Backend, HeaderBackend, StateBackend};
+use codec::{Decode, Encode};
+use sc_client_api::{Backend, BlockBackend, HeaderBackend, StateBackend};
 use sc_service::Role;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
@@ -246,17 +246,27 @@ async fn set_new_code_should_work() {
     let trie_backend = state.as_trie_backend().unwrap();
     let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
-    assert_eq!(runtime_code, new_runtime_wasm_blob);
-    assert_eq!(
-        alice
+    let logs = alice
+        .client
+        .header(&BlockId::Hash(best_hash))
+        .unwrap()
+        .unwrap()
+        .digest
+        .logs;
+    if logs != vec![DigestItem::RuntimeEnvironmentUpdated] {
+        let extrinsics = alice
             .client
-            .header(&BlockId::Hash(best_hash))
+            .block_body(&BlockId::Hash(best_hash))
             .unwrap()
             .unwrap()
-            .digest
-            .logs,
-        vec![DigestItem::RuntimeEnvironmentUpdated]
-    );
+            .into_iter()
+            .map(|encoded_extrinsic| {
+                UncheckedExtrinsic::decode(&mut encoded_extrinsic.encode().as_slice()).unwrap()
+            })
+            .collect::<Vec<_>>();
+        panic!("`set_code` not executed, extrinsics in the block: {extrinsics:?}")
+    }
+    assert_eq!(runtime_code, new_runtime_wasm_blob);
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
