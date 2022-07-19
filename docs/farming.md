@@ -35,11 +35,11 @@ Install [Polkadot.js extension](https://polkadot.js.org/extension/) into your br
 The address of your account will be necessary at the last step.
 
 ## Required ports
-Currently, TCP port `30333` needs to be exposed for node to work properly.
+Currently, TCP ports `30333` and `40333` need to be exposed for node and farmer to work properly.
 
-If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP port `30333` for incoming connections.
+If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP ports `30333` and `40333` for incoming connections.
 
-On the desktop side if you have a router in front of your computer, you'll need to forward TCP port `30333` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
+On the desktop side if you have a router in front of your computer, you'll need to forward TCP ports `30333` and `40333` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
 If you're connected directly without any router, then again nothing needs to be done in such case.
 
 ## 🖼️ Windows Instructions
@@ -278,12 +278,16 @@ services:
     volumes:
       - farmer-data:/var/subspace:rw
 #      - /path/to/subspace-farmer:/var/subspace:rw
+# If port 40333 is already occupied by something else, replace all
+# occurrences of `40333` in this file with another value
+      - "0.0.0.0:40333:40333"
     restart: unless-stopped
     command: [
       "--base-path", "/var/subspace",
       "farm",
       "--node-rpc-url", "ws://node:9944",
       "--ws-server-listen-addr", "0.0.0.0:9955",
+      "--listen-on", "/ip4/0.0.0.0/tcp/40333",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
