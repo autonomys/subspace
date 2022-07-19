@@ -62,18 +62,16 @@ use sp_consensus::{
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, GlobalRandomnessDescriptor, PreDigest, SaltDescriptor,
-    SolutionRangeDescriptor,
+    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
     check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
     VerificationParams,
 };
-use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{One, Zero};
+use sp_runtime::traits::One;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
@@ -155,21 +153,12 @@ where
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
 pub enum Error<Header: HeaderT> {
-    /// Multiple Subspace pre-runtime digests
-    #[error("Multiple Subspace pre-runtime digests, rejecting!")]
-    MultiplePreRuntimeDigests,
+    /// Error during digest item extraction
+    #[error("Digest item error: {0}")]
+    DigestItemError(#[from] DigestError),
     /// No Subspace pre-runtime digest found
     #[error("No Subspace pre-runtime digest found")]
     NoPreRuntimeDigest,
-    /// Multiple Subspace global randomness digests
-    #[error("Multiple Subspace global randomness digests, rejecting!")]
-    MultipleGlobalRandomnessDigests,
-    /// Multiple Subspace solution range digests
-    #[error("Multiple Subspace solution range digests, rejecting!")]
-    MultipleSolutionRangeDigests,
-    /// Multiple Subspace salt digests
-    #[error("Multiple Subspace salt digests, rejecting!")]
-    MultipleSaltDigests,
     /// Header rejected: too far in the future
     #[error("Header {0:?} rejected: too far in the future")]
     TooFarInFuture(Header::Hash),
@@ -209,21 +198,12 @@ pub enum Error<Header: HeaderT> {
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
-    /// Block has no associated global randomness
-    #[error("Missing global randomness for block {0}")]
-    MissingGlobalRandomness(Header::Hash),
     /// Block has invalid associated global randomness
     #[error("Invalid global randomness for block {0}")]
     InvalidGlobalRandomness(Header::Hash),
-    /// Block has no associated solution range
-    #[error("Missing solution range for block {0}")]
-    MissingSolutionRange(Header::Hash),
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
-    /// Block has no associated salt
-    #[error("Missing salt for block {0}")]
-    MissingSalt(Header::Hash),
     /// Block has invalid associated salt
     #[error("Invalid salt for block {0}")]
     InvalidSalt(Header::Hash),
@@ -483,104 +463,6 @@ impl Future for SubspaceWorker {
     }
 }
 
-/// Extract the Subspace pre digest from the given header. Pre-runtime digests are mandatory, the
-/// function will return `Err` if none is found.
-pub fn find_pre_digest<Header>(
-    header: &Header,
-) -> Result<PreDigest<FarmerPublicKey, FarmerPublicKey>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    // genesis block doesn't contain a pre digest so let's generate a
-    // dummy one to not break any invariants in the rest of the code
-    if header.number().is_zero() {
-        return Ok(PreDigest {
-            slot: Slot::from(0),
-            solution: Solution::genesis_solution(
-                FarmerPublicKey::unchecked_from([0u8; 32]),
-                FarmerPublicKey::unchecked_from([0u8; 32]),
-            ),
-        });
-    }
-
-    let mut pre_digest = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
-        match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(Error::MultiplePreRuntimeDigests),
-            (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
-            (s, false) => pre_digest = s,
-        }
-    }
-    pre_digest.ok_or(Error::NoPreRuntimeDigest)
-}
-
-/// Extract the Subspace global randomness descriptor from the given header.
-fn find_global_randomness_descriptor<Header>(
-    header: &Header,
-) -> Result<Option<GlobalRandomnessDescriptor>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    let mut global_randomness_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for global randomness digest.", log);
-        match (
-            log.as_global_randomness_descriptor(),
-            global_randomness_descriptor.is_some(),
-        ) {
-            (Some(_), true) => return Err(Error::MultipleGlobalRandomnessDigests),
-            (Some(global_randomness), false) => {
-                global_randomness_descriptor = Some(global_randomness)
-            }
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(global_randomness_descriptor)
-}
-
-/// Extract the Subspace solution range descriptor from the given header.
-fn find_solution_range_descriptor<Header>(
-    header: &Header,
-) -> Result<Option<SolutionRangeDescriptor>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    let mut solution_range_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for solution range digest.", log);
-        match (
-            log.as_solution_range_descriptor(),
-            solution_range_descriptor.is_some(),
-        ) {
-            (Some(_), true) => return Err(Error::MultipleSolutionRangeDigests),
-            (Some(solution_range), false) => solution_range_descriptor = Some(solution_range),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(solution_range_descriptor)
-}
-
-/// Extract the Subspace salt descriptor from the given header.
-fn find_salt_descriptor<Header>(header: &Header) -> Result<Option<SaltDescriptor>, Error<Header>>
-where
-    Header: HeaderT,
-{
-    let mut salt_descriptor = None;
-    for log in header.digest().logs() {
-        trace!(target: "subspace", "Checking log {:?}, looking for salt digest.", log);
-        match (log.as_salt_descriptor(), salt_descriptor.is_some()) {
-            (Some(_), true) => return Err(Error::MultipleSaltDigests),
-            (Some(salt), false) => salt_descriptor = Some(salt),
-            _ => trace!(target: "subspace", "Ignoring digest not meant for us"),
-        }
-    }
-
-    Ok(salt_descriptor)
-}
-
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
@@ -755,7 +637,14 @@ where
 
         debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
 
-        let pre_digest = find_pre_digest(&block.header)?;
+        let subspace_digest_items = extract_subspace_digest_items::<
+            Block::Header,
+            FarmerPublicKey,
+            FarmerPublicKey,
+            FarmerSignature,
+        >(&block.header)
+        .map_err(Error::<Block::Header>::from)?;
+        let pre_digest = subspace_digest_items.pre_digest;
 
         // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
         if *block.header.number() <= 33_581_u32.into()
@@ -805,22 +694,10 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            let global_randomness = find_global_randomness_descriptor(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingGlobalRandomness(hash))?
-                .global_randomness;
-
-            let solution_range = find_solution_range_descriptor(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingSolutionRange(hash))?
-                .solution_range;
-
-            let salt = find_salt_descriptor(&block.header)?
-                .ok_or(Error::<Block::Header>::MissingSalt(hash))?
-                .salt;
-
             // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
             if *block.header.number() >= 33_672_u32.into()
                 && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
-                && solution_range == 12_009_599_006_321_322_u64
+                && subspace_digest_items.solution_range == 12_009_599_006_321_322_u64
             {
                 debug!(
                     target: "subspace",
@@ -840,9 +717,9 @@ where
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
                     verify_solution_params: VerifySolutionParams {
-                        global_randomness: &global_randomness,
-                        solution_range,
-                        salt,
+                        global_randomness: &subspace_digest_items.global_randomness,
+                        solution_range: subspace_digest_items.solution_range,
+                        salt: subspace_digest_items.salt,
                         piece_check_params: None,
                     },
                     reward_signing_context: &self.reward_signing_context,
@@ -975,10 +852,16 @@ where
         origin: BlockOrigin,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
-        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        subspace_digest_items: &SubspaceDigestItems<
+            FarmerPublicKey,
+            FarmerPublicKey,
+            FarmerSignature,
+        >,
     ) -> Result<(), Error<Block::Header>> {
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
+
+        let pre_digest = &subspace_digest_items.pre_digest;
 
         let maybe_root_plot_public_key = self
             .client
@@ -1014,32 +897,23 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let global_randomness = find_global_randomness_descriptor(&header)?
-            .ok_or(Error::MissingGlobalRandomness(block_hash))?
-            .global_randomness;
         let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
             self.client.as_ref(),
             &parent_block_id,
         )?;
-        if global_randomness != correct_global_randomness {
+        if subspace_digest_items.global_randomness != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
-        let solution_range = find_solution_range_descriptor(&header)?
-            .ok_or(Error::MissingSolutionRange(block_hash))?
-            .solution_range;
         let (correct_solution_range, _) =
             slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id)?;
-        if solution_range != correct_solution_range {
+        if subspace_digest_items.solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let salt = find_salt_descriptor(&header)?
-            .ok_or(Error::MissingSalt(block_hash))?
-            .salt;
         let correct_salt =
             slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?.0;
-        if salt != correct_salt {
+        if subspace_digest_items.salt != correct_salt {
             return Err(Error::InvalidSalt(block_hash));
         }
 
@@ -1090,7 +964,7 @@ where
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
-        let parent_slot = find_pre_digest(&parent_header).map(|d| d.slot)?;
+        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
 
         // Make sure that slot number is strictly increasing
         if pre_digest.slot <= parent_slot {
@@ -1187,7 +1061,7 @@ where
             Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
         }
 
-        let pre_digest = find_pre_digest::<Block::Header>(&block.header)
+        let subspace_digest_items = extract_subspace_digest_items(&block.header)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
         self.block_import_verification(
@@ -1195,10 +1069,12 @@ where
             block.origin,
             block.header.clone(),
             block.body.clone(),
-            &pre_digest,
+            &subspace_digest_items,
         )
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+
+        let pre_digest = subspace_digest_items.pre_digest;
 
         let parent_weight = if block_number.is_one() {
             0
@@ -1214,12 +1090,10 @@ where
         };
 
         let added_weight = {
-            let global_randomness = find_global_randomness_descriptor(&block.header)
-                .expect("Verification of the header was done before this; qed")
-                .expect("Verification of the header was done before this; qed")
-                .global_randomness;
-            let global_challenge =
-                derive_global_challenge(&global_randomness, pre_digest.slot.into());
+            let global_challenge = derive_global_challenge(
+                &subspace_digest_items.global_randomness,
+                pre_digest.slot.into(),
+            );
 
             // Verification of the local challenge was done before this
             let target = u64::from_be_bytes(

@@ -37,9 +37,7 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, GlobalRandomnessDescriptor, SaltDescriptor, SolutionRangeDescriptor,
-};
+use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
     EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
@@ -887,21 +885,15 @@ impl<T: Config> Pallet<T> {
         PorRandomness::<T>::put(por_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
-        frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness_descriptor(
-            GlobalRandomnessDescriptor {
-                global_randomness: GlobalRandomnesses::<T>::get().current,
-            },
+        frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness(
+            GlobalRandomnesses::<T>::get().current,
         ));
         // Deposit solution range data such that light client can validate blocks later.
-        frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range_descriptor(
-            SolutionRangeDescriptor {
-                solution_range: SolutionRanges::<T>::get().current,
-            },
+        frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range(
+            SolutionRanges::<T>::get().current,
         ));
         // Deposit salt data such that light client can validate blocks later.
-        frame_system::Pallet::<T>::deposit_log(DigestItem::salt_descriptor(SaltDescriptor {
-            salt: Salts::<T>::get().current,
-        }));
+        frame_system::Pallet::<T>::deposit_log(DigestItem::salt(Salts::<T>::get().current));
 
         let next_salt_reveal = Self::current_eon_start()
             .checked_add(T::EonNextSaltReveal::get())

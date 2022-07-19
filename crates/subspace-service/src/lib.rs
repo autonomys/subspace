@@ -347,6 +347,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 pub async fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
+    block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
@@ -463,7 +464,7 @@ where
             backoff_authoring_blocks,
             subspace_link,
             can_author_with: CanAuthorWithNativeVersion::new(client.executor().clone()),
-            block_proposal_slot_portion: SlotProportion::new(2f32 / 3f32),
+            block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
         };

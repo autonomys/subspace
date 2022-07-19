@@ -19,8 +19,11 @@ use subspace_core_primitives::{PublicKey, Salt, Solution};
 use subspace_rpc_primitives::{
     RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
+use subspace_verification::is_within_solution_range;
 use thiserror::Error;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+
+const TAGS_SEARCH_LIMIT: usize = 10;
 
 #[derive(Debug, Error)]
 pub enum FarmingError {
@@ -188,19 +191,40 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
                 // Try to first find a block authoring solution, then if not found try to find a
                 // vote
-                let maybe_tag = commitments
-                    .find_by_range(target, slot_info.solution_range, slot_info.salt)
-                    .or_else(|| {
-                        if slot_info.solution_range == slot_info.voting_solution_range {
-                            return None;
-                        }
+                let voting_tags = commitments.find_by_range(
+                    target,
+                    slot_info.voting_solution_range,
+                    slot_info.salt,
+                    TAGS_SEARCH_LIMIT,
+                );
 
-                        commitments.find_by_range(
-                            target,
-                            slot_info.voting_solution_range,
-                            slot_info.salt,
-                        )
-                    });
+                let maybe_tag = if voting_tags.len() < TAGS_SEARCH_LIMIT {
+                    // We found all tags within voting solution range
+                    voting_tags.into_iter().next()
+                } else {
+                    let (tag, piece_offset) = voting_tags
+                        .into_iter()
+                        .next()
+                        .expect("Due to if condition vector is not empty; qed");
+
+                    if is_within_solution_range(target, tag, slot_info.solution_range) {
+                        // Found a tag within solution range for blocks
+                        Some((tag, piece_offset))
+                    } else {
+                        // There might be something that is within solution range for blocks
+                        commitments
+                            .find_by_range(
+                                target,
+                                slot_info.solution_range,
+                                slot_info.salt,
+                                TAGS_SEARCH_LIMIT,
+                            )
+                            .into_iter()
+                            .next()
+                            .or(Some((tag, piece_offset)))
+                    }
+                };
+
                 match maybe_tag {
                     Some((tag, piece_offset)) => {
                         let (encoding, piece_index) = plot

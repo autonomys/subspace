@@ -245,24 +245,26 @@ where
             .import_block(block_import_params, Default::default())
             .await?;
 
-        // TODO: handle the import result properly.
         match import_result {
             ImportResult::Imported(..) => {}
             ImportResult::AlreadyInChain => {}
             ImportResult::KnownBad => {
-                panic!("Bad block {}: {:?}", header_number, header_hash);
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Bad block #{header_number}({header_hash:?})"
+                ))
+                .into());
             }
             ImportResult::UnknownParent => {
-                panic!(
-                    "Block with unknown parent {}: {:?}, parent: {:?}",
-                    header_number, header_hash, parent_hash
-                );
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Block #{header_number}({header_hash:?}) has an unknown parent: {parent_hash:?}"
+                ))
+                .into());
             }
             ImportResult::MissingState => {
-                panic!(
-                    "Parent state is missing for {}: {:?}, parent: {:?}",
-                    header_number, header_hash, parent_hash
-                );
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Parent state of block #{header_number}({header_hash:?}) is missing, parent: {parent_hash:?}"
+                ))
+                .into());
             }
         }
 
@@ -483,6 +485,8 @@ where
             .runtime_api()
             .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
+        let mut bad_receipts_to_write = vec![];
+
         for signed_receipt in signed_receipts.iter() {
             let secondary_hash = signed_receipt.execution_receipt.secondary_hash;
             match crate::aux_schema::load_execution_receipt::<
@@ -496,12 +500,11 @@ where
                     if let Some(trace_mismatch_index) =
                         find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
                     {
-                        crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
-                            &*self.client,
+                        bad_receipts_to_write.push((
                             signed_receipt.execution_receipt.primary_number,
                             signed_receipt.hash(),
                             (trace_mismatch_index, secondary_hash),
-                        )?;
+                        ));
                     }
                 }
                 None => {
@@ -523,12 +526,11 @@ where
 
                     // The receipt of a prior block must exist, otherwise it means the receipt included
                     // on the primary chain points to an invalid secondary block.
-                    crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
-                        &*self.client,
+                    bad_receipts_to_write.push((
                         signed_receipt.execution_receipt.primary_number,
                         signed_receipt.hash(),
                         (0u32, block_hash),
-                    )?;
+                    ));
                 }
             }
         }
@@ -538,23 +540,47 @@ where
             .runtime_api()
             .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
 
-        for fraud_proof in fraud_proofs {
-            let bad_receipt_number = fraud_proof.parent_number + 1;
-            // TODO: There is a chance that the fraud proof and the bad receipt are included
-            // in the same block, especially when multiple receipts are included in one block,
-            // which means it's possible we're deleting a receipt which was just inserted above,
-            // so it's more efficient we collect all the write&delete changes before operating
-            // the database.
+        let bad_receipts_to_delete = fraud_proofs
+            .into_iter()
+            .filter_map(|fraud_proof| {
+                let bad_receipt_number = fraud_proof.parent_number + 1;
+                let bad_receipt_hash = fraud_proof.bad_signed_receipt_hash;
+
+                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
+                // in case the bad receipt and corresponding farud proof are included in the same block.
+                if let Some(index) = bad_receipts_to_write
+                    .iter()
+                    .map(|(_, hash, _)| hash)
+                    .position(|v| *v == bad_receipt_hash)
+                {
+                    bad_receipts_to_write.swap_remove(index);
+                    None
+                } else {
+                    Some((bad_receipt_number, bad_receipt_hash))
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for (bad_receipt_number, bad_signed_receipt_hash, mismatch_info) in bad_receipts_to_write {
+            crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
+                &*self.client,
+                bad_receipt_number,
+                bad_signed_receipt_hash,
+                mismatch_info,
+            )?;
+        }
+
+        for (bad_receipt_number, bad_signed_receipt_hash) in bad_receipts_to_delete {
             if let Err(e) = crate::aux_schema::delete_bad_receipt(
                 &*self.client,
                 bad_receipt_number,
-                fraud_proof.bad_signed_receipt_hash,
+                bad_signed_receipt_hash,
             ) {
                 tracing::error!(
                     target: LOG_TARGET,
                     error = ?e,
                     ?bad_receipt_number,
-                    bad_signed_receipt_hash = ?fraud_proof.bad_signed_receipt_hash,
+                    ?bad_signed_receipt_hash,
                     "Failed to delete bad receipt",
                 );
             }

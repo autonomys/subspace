@@ -18,7 +18,7 @@
 //! PoC testsuite
 
 use crate::{
-    find_pre_digest, start_subspace, Config, NewSlotNotification, SubspaceLink, SubspaceParams,
+    extract_pre_digest, start_subspace, Config, NewSlotNotification, SubspaceLink, SubspaceParams,
     SubspaceVerifier,
 };
 use codec::Encode;
@@ -50,9 +50,7 @@ use sp_consensus::{
     NoNetwork as DummyOracle, Proposal, Proposer,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
-use sp_consensus_subspace::digests::{
-    CompatibleDigestItem, PreDigest, SaltDescriptor, SolutionRangeDescriptor,
-};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
@@ -173,15 +171,11 @@ impl DummyProposer {
         };
 
         {
-            let digest = DigestItem::solution_range_descriptor(SolutionRangeDescriptor {
-                solution_range: u64::MAX,
-            });
+            let digest = DigestItem::solution_range(u64::MAX);
             block.header.digest_mut().push(digest);
         }
         {
-            let digest = DigestItem::salt_descriptor(SaltDescriptor {
-                salt: 0u64.to_le_bytes(),
-            });
+            let digest = DigestItem::salt(0u64.to_le_bytes());
             block.header.digest_mut().push(digest);
         }
 
@@ -754,7 +748,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     let mut proposer = futures::executor::block_on(proposer_factory.init(parent)).unwrap();
 
     let slot = slot.unwrap_or_else(|| {
-        let parent_pre_digest = find_pre_digest::<TestHeader>(parent).unwrap();
+        let parent_pre_digest = extract_pre_digest::<TestHeader>(parent).unwrap();
         parent_pre_digest.slot + 1
     });
 
