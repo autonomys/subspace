@@ -357,7 +357,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<Vec<PeerId>, GetClosestPeersError> {
-        trace!(key=?key, "Starting 'GetClosestPeers' request.");
+        trace!(?key, "Starting 'GetClosestPeers' request.");
 
         let (result_sender, result_receiver) = oneshot::channel();
 
