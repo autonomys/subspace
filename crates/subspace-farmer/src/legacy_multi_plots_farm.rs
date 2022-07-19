@@ -3,7 +3,7 @@ use crate::object_mappings::LegacyObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
-use crate::utils::{get_plot_sizes, get_usable_plot_space};
+use crate::utils::get_plot_sizes;
 use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
 use rayon::prelude::*;
@@ -67,8 +67,7 @@ impl LegacyMultiPlotsFarm {
             enable_farming,
             relay_server_node,
         } = options;
-        let usable_space = get_usable_plot_space(allocated_space);
-        let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
+        let plot_sizes = get_plot_sizes(allocated_space, farmer_protocol_info.max_plot_size);
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.

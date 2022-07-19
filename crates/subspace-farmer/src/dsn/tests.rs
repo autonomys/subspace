@@ -335,8 +335,7 @@ async fn test_dsn_sync() {
     )
     .await
     .unwrap();
-    // HACK: farmer reserves 8% for its own needs, so we need to update piece count here
-    let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
+
     let syncer_max_piece_count = syncer_max_plot_size / PIECE_SIZE as u64;
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_piece_count * pieces_per_request;

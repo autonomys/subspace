@@ -1,3 +1,4 @@
+use crate::utils::get_usable_plot_space;
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -289,6 +290,7 @@ pub(crate) async fn farm_legacy(
 
     trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
+    let usable_space = get_usable_plot_space(plot_size.as_u64());
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory,
@@ -303,7 +305,7 @@ pub(crate) async fn farm_legacy(
             enable_farming: !disable_farming,
             relay_server_node,
         },
-        plot_size.as_u64(),
+        usable_space,
         move |options: PlotFactoryOptions<'_>| {
             Plot::open_or_create(
                 options.single_plot_farm_id,
