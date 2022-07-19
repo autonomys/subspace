@@ -681,8 +681,8 @@ impl<T: Config> Pallet<T> {
         *diff >= T::EonDuration::get()
     }
 
-    /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
-    /// returned `true`, and the caller is the only caller of this function.
+    /// DANGEROUS: Enact update of global randomness. Should be done on every block where `should_update_global_randomness`
+    /// has returned `true`, and the caller is the only caller of this function.
     fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
         GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
             global_randomnesses.next = Some(por_randomness);
