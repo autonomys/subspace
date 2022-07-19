@@ -19,7 +19,7 @@ pub struct BenchRpcClient {
 
 #[derive(Debug)]
 pub struct Inner {
-    metadata: FarmerProtocolInfo,
+    farmer_protocol_info: FarmerProtocolInfo,
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
     acknowledge_archived_segment_sender: mpsc::Sender<u64>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
@@ -39,7 +39,7 @@ pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
 impl BenchRpcClient {
     /// Create a new instance of [`BenchRpcClient`].
     pub fn new(
-        metadata: FarmerProtocolInfo,
+        farmer_protocol_info: FarmerProtocolInfo,
         slot_info_receiver: mpsc::Receiver<SlotInfo>,
         mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
         acknowledge_archived_segment_sender: mpsc::Sender<u64>,
@@ -59,7 +59,7 @@ impl BenchRpcClient {
 
         Self {
             inner: Arc::new(Inner {
-                metadata,
+                farmer_protocol_info,
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 archived_segments_receiver: Arc::new(Mutex::new(inner_archived_segments_receiver)),
                 acknowledge_archived_segment_sender,
@@ -72,7 +72,7 @@ impl BenchRpcClient {
 #[async_trait]
 impl RpcClient for BenchRpcClient {
     async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, Error> {
-        Ok(self.inner.metadata)
+        Ok(self.inner.farmer_protocol_info)
     }
 
     async fn subscribe_slot_info(

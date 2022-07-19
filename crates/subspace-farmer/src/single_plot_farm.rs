@@ -276,6 +276,7 @@ impl SinglePlotPlotter {
     }
 }
 
+#[derive(Debug)]
 pub struct PlotFactoryOptions<'a> {
     pub single_plot_farm_id: &'a SinglePlotFarmId,
     pub public_key: PublicKey,
