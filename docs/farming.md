@@ -372,6 +372,42 @@ Archival node is useful if you run an RPC node and want to support querying olde
 NOTE: You can't switch between full and archival node without wiping it, so if you need that, follow steps in
 [Switching to a new snapshot](#switching-to-a-new-snapshot) section above.
 
+## [Advanced] Support for multiple disks (including HDD/SSD separation)
+
+Farmer has an advanced set of parameters that allow using multiple disks, including separate HDD/SSD for different kinds of data farmer stores.
+
+To use this advanced parameters you need to replace this command:
+```
+./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+```
+
+With this:
+```
+./FARMER_FILE_NAME --farm hdd=/hdd1,ssd=/ssd,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
+```
+
+`/hdd` is path to the HDD (or SSD if you'd like) that will store large amount of data, up to `PLOT_SIZE`.
+`/ssd` is path to the SSD (or HDD if you'd like, can even be the same as path to HDD if you don't have a separate SSD, it is fine too), farmer will store up to 8% of `PLOT_SIZE` worth of data there, make sure to have enough space.
+
+NOTE: `PLOT_SIZE` has a different notion here, it doesn't include amount of data stored on SSD!
+
+Multiple farms are supported too, for example:
+```
+./FARMER_FILE_NAME \
+    --farm hdd=/media/hdd1,ssd=/media/hdd1,size=100GiB \
+    --farm hdd=/media/hdd2,ssd=/media/ssd1,size=10T \
+    --farm hdd=/media/hdd3,ssd=/media/ssd1,size=10T \
+    farm --reward-address WALLET_ADDRESS
+```
+
+In above example `/media/hdd1` will store everything for the first farm and will occupy up to `100GiB+8%=108GiB` of space.
+`/media/hdd2` and `/media/hdd3` will store `10T` each and `/media/ssd1` will store up to `10TB*8%+10TB*8%=1.6TB` of data.
+
+You can also print info about farms with `info` command:
+```
+./FARMER_FILE_NAME --farm hdd=/hdd1,ssd=/ssd,size=PLOT_SIZE info
+```
+
 ## [Advanced] Build from source (Linux)
 
 If you're running unsupported Linux distribution or CPU architecture, you may try to build binaries yourself from source.
