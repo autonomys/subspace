@@ -278,29 +278,46 @@ impl Commitments {
         Ok(())
     }
 
-    /// Finds the commitment falling in the range of the challenge
+    /// Finds the commitment falling in the range of the challenge, the first one in the list is the
+    /// closest one to the target
     pub(crate) fn find_by_range(
         &self,
         target: Tag,
         range: u64,
         salt: Salt,
-    ) -> Option<(Tag, PieceOffset)> {
-        let db_entry = self.get_db_entry(salt)?;
+        limit: usize,
+    ) -> Vec<(Tag, PieceOffset)> {
+        let db_entry = match self.get_db_entry(salt) {
+            Some(db_entry) => db_entry,
+            None => {
+                return Vec::new();
+            }
+        };
 
-        let db_guard = db_entry.try_lock()?;
-        let db = db_guard.clone()?;
+        let db_guard = match db_entry.try_lock() {
+            Some(db_guard) => db_guard,
+            None => {
+                return Vec::new();
+            }
+        };
+        let db = match db_guard.as_ref() {
+            Some(db) => db,
+            None => {
+                return Vec::new();
+            }
+        };
         let iter = db.raw_iterator();
 
         // Take the best out of 10 solutions
         let mut solutions = SolutionIterator::new(iter, target, range)
-            .take(10)
+            .take(limit)
             .collect::<Vec<_>>();
         let target = u64::from_be_bytes(target);
         solutions.sort_by_key(|(tag, _)| {
             let tag = u64::from_be_bytes(*tag);
             subspace_core_primitives::bidirectional_distance(&target, &tag)
         });
-        solutions.into_iter().next()
+        solutions
     }
 
     pub fn on_status_change(

@@ -246,9 +246,9 @@ async fn plotting_piece_eviction() {
                     subspace_codec.decode(&mut read_piece, piece_index).unwrap();
 
                     // Must be able to find correct tag in the database
-                    assert!(commitments
-                        .find_by_range(correct_tag, u64::MIN, salt)
-                        .is_some());
+                    assert!(!commitments
+                        .find_by_range(correct_tag, u64::MIN, salt, 1)
+                        .is_empty());
 
                     assert!(
                         read_piece.as_ref() == piece,

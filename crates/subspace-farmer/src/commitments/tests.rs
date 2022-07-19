@@ -6,6 +6,8 @@ use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use tempfile::TempDir;
 
+const TAGS_SEARCH_LIMIT: usize = 10;
+
 fn init() {
     let _ = tracing_subscriber::fmt::try_init();
 }
@@ -34,7 +36,9 @@ fn create() {
     commitments.create(salt, plot).unwrap();
 
     let (tag, _) = commitments
-        .find_by_range(correct_tag, solution_range, salt)
+        .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)
+        .into_iter()
+        .next()
         .unwrap();
     assert_eq!(correct_tag, tag);
 }
@@ -71,7 +75,9 @@ fn find_by_tag() {
         let solution_range = u64::from_be_bytes([0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
         // This is probabilistic, but should be fine most of the time
         let (solution, _) = commitments
-            .find_by_range(target, solution_range, salt)
+            .find_by_range(target, solution_range, salt, TAGS_SEARCH_LIMIT)
+            .into_iter()
+            .next()
             .unwrap();
         // Wraps around
         let lower = u64::from_be_bytes(target).wrapping_sub(solution_range / 2);
@@ -91,7 +97,9 @@ fn find_by_tag() {
         let solution_range = u64::from_be_bytes([0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
         // This is probabilistic, but should be fine most of the time
         let (solution, _) = commitments
-            .find_by_range(target, solution_range, salt)
+            .find_by_range(target, solution_range, salt, TAGS_SEARCH_LIMIT)
+            .into_iter()
+            .next()
             .unwrap();
         // Wraps around
         let lower = u64::from_be_bytes(target) - solution_range / 2;
@@ -111,7 +119,9 @@ fn find_by_tag() {
         let solution_range = u64::from_be_bytes([0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
         // This is probabilistic, but should be fine most of the time
         let (solution, _) = commitments
-            .find_by_range(target, solution_range, salt)
+            .find_by_range(target, solution_range, salt, TAGS_SEARCH_LIMIT)
+            .into_iter()
+            .next()
             .unwrap();
         let lower = u64::from_be_bytes(target) - solution_range / 2;
         let upper = u64::from_be_bytes(target) + solution_range / 2;
@@ -150,7 +160,9 @@ fn remove_commitments() {
     commitments.create(salt, plot.clone()).unwrap();
 
     let (_, offset) = commitments
-        .find_by_range(correct_tag, solution_range, salt)
+        .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)
+        .into_iter()
+        .next()
         .unwrap();
 
     commitments
@@ -158,6 +170,8 @@ fn remove_commitments() {
         .unwrap();
 
     assert!(commitments
-        .find_by_range(correct_tag, solution_range, salt)
+        .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)
+        .into_iter()
+        .next()
         .is_none());
 }

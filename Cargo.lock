@@ -7259,6 +7259,7 @@ name = "sp-consensus-subspace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "log",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
@@ -7952,6 +7953,7 @@ dependencies = [
  "subspace-networking",
  "subspace-rpc-primitives",
  "subspace-solving",
+ "subspace-verification",
  "substrate-bip39",
  "tempfile",
  "thiserror",
@@ -7998,7 +8000,6 @@ dependencies = [
  "bytes",
  "clap 3.1.18",
  "derive_more",
- "env_logger",
  "event-listener-primitives",
  "futures 0.3.21",
  "generic-array 0.14.5",
