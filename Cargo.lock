@@ -7487,6 +7487,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-lightclient"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "parity-scale-codec",
+ "scale-info",
+ "schnorrkel",
+ "sp-arithmetic",
+ "sp-consensus-subspace",
+ "sp-runtime",
+ "sp-std",
+ "subspace-core-primitives",
+ "subspace-solving",
+ "subspace-verification",
+]
+
+[[package]]
 name = "sp-maybe-compressed-blob"
 version = "4.1.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4#b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4"
