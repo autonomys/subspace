@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use futures::channel::mpsc::{self, UnboundedSender};
+use futures::channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use futures::future::Fuse;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 pub use json::JsonNetworkingParametersProvider;
 use libp2p::multiaddr::Protocol;
@@ -7,16 +8,14 @@ use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use std::collections::HashSet;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use tokio::time::{sleep, Sleep};
 use tracing::trace;
 
 // Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: usize = 100;
-// Max bootstrap addresses to preload.
-const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
 // Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 
@@ -75,6 +74,17 @@ impl NetworkingParameters {
 pub trait NetworkingParametersRegistry {
     /// Registers a peer ID and associated addresses
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
+
+    /// Returns bootstrap addresses from networking parameters DB. It optionally removes p2p-protocol
+    /// suffix. Peer number parameter limits peers to process.
+    fn bootstrap_addresses(
+        &self,
+        remove_p2p_protocol_suffix: bool,
+        peer_number: usize,
+    ) -> Vec<(PeerId, Multiaddr)>;
+
+    /// Drive async work in the persistence provider
+    async fn run(&mut self);
 }
 
 /// Defines networking parameters persistence operations
@@ -88,81 +98,68 @@ pub trait NetworkingParametersProvider: Send {
 
 /// Handles networking parameters. It manages network parameters set and its persistence.
 pub struct NetworkingParametersManager<P: NetworkingParametersProvider> {
-    // A handle for the cache operator job.
-    stop_handle: JoinHandle<()>,
     // Sends data to the cache operator job.
     tx: UnboundedSender<(PeerId, HashSet<Multiaddr>)>,
-    // Contains preloaded initial bootstrap addresses. Doesn't change after the initialization.
-    initial_bootstrap_addresses: Vec<(PeerId, Multiaddr)>,
+    // Receives data from the cache operator job.
+    rx: UnboundedReceiver<(PeerId, HashSet<Multiaddr>)>,
+    // Persistence provider for the networking parameters.
+    network_parameters_persistence_handler: NetworkingParametersHandler,
+    // Networking paramters working cache.
+    networking_params: NetworkingParameters,
+    // Period between networking parameters saves.
+    networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     // Defines `NetworkingParametersProvider` implementation.
     _persistence_marker: PhantomData<P>,
 }
 
-impl<P: NetworkingParametersProvider> Drop for NetworkingParametersManager<P> {
-    fn drop(&mut self) {
-        self.stop_handle.abort();
-    }
-}
-
-impl<P: NetworkingParametersProvider + Clone + Send + 'static> NetworkingParametersManager<P> {
+impl<P: NetworkingParametersProvider + Send> NetworkingParametersManager<P> {
     /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
     /// On object creation it starts a job for networking parameters cache handling.
     pub fn new(
         network_parameters_persistence_handler: NetworkingParametersHandler,
     ) -> NetworkingParametersManager<P> {
-        let (tx, mut rx) = mpsc::unbounded();
+        let (tx, rx) = mpsc::unbounded();
 
         let networking_params = network_parameters_persistence_handler
             .load()
             .unwrap_or_else(|_| NetworkingParameters::new(PEER_CACHE_SIZE));
 
-        let delay_duration = Duration::from_secs(DATA_FLUSH_DURATION_SECS);
-
-        let initial_bootstrap_addresses =
-            networking_params.get_known_peer_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER);
-
-        let stop_handle = tokio::spawn(async move {
-            let mut params_cache = networking_params;
-            let mut delay = sleep(delay_duration).boxed().fuse();
-            loop {
-                select! {
-                    _ = delay => {
-                        if let Err(err) = network_parameters_persistence_handler.save(
-                            &params_cache.clone()
-                        ) {
-                            trace!(error=%err, "Error on saving network parameters");
-                        }
-
-                        // restart the delay future
-                        delay = sleep(delay_duration).boxed().fuse();
-                    },
-                    data = rx.next() => {
-                        if let Some((peer_id, addr_set)) = data {
-                            trace!("New networking parameters received: {:?}", (peer_id, &addr_set));
-
-                            params_cache.add_known_peer(peer_id, addr_set);
-                        }
-                    }
-                }
-            }
-        });
-
         NetworkingParametersManager {
             tx,
-            stop_handle,
-            initial_bootstrap_addresses,
+            rx,
+            network_parameters_persistence_handler,
+            networking_params,
+            networking_parameters_save_delay: Self::default_delay(),
             _persistence_marker: PhantomData,
         }
     }
 
-    /// Returns preloaded bootstrap addresses from networking parameters DB with removed p2p-protocol
-    /// suffix. Preload addresses don't change after initialization.
-    pub fn initial_bootstrap_addresses(
+    // Create default delay for networking parameters.
+    fn default_delay() -> Pin<Box<Fuse<Sleep>>> {
+        Box::pin(sleep(Duration::from_secs(DATA_FLUSH_DURATION_SECS)).fuse())
+    }
+}
+
+#[async_trait]
+impl<P: NetworkingParametersProvider + Send> NetworkingParametersRegistry
+    for NetworkingParametersManager<P>
+{
+    async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
+        let addr_set = addresses.iter().cloned().collect::<HashSet<_>>();
+
+        // Ignore the send result.
+        let _ = self.tx.send((peer_id, addr_set)).await;
+    }
+
+    /// Returns bootstrap addresses from networking parameters DB. It optionally removes p2p-protocol
+    /// suffix.
+    fn bootstrap_addresses(
         &self,
         remove_p2p_protocol_suffix: bool,
+        peer_number: usize,
     ) -> Vec<(PeerId, Multiaddr)> {
-        self.initial_bootstrap_addresses
-            .clone()
+        self.networking_params
+            .get_known_peer_addresses(peer_number)
             .into_iter()
             .map(|(peer_id, addr)| {
                 remove_p2p_protocol_suffix
@@ -181,24 +178,31 @@ impl<P: NetworkingParametersProvider + Clone + Send + 'static> NetworkingParamet
             })
             .collect()
     }
-}
 
-#[async_trait]
-impl<P: NetworkingParametersProvider + Send> NetworkingParametersRegistry
-    for NetworkingParametersManager<P>
-{
-    async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
-        let addr_set = addresses.iter().cloned().collect::<HashSet<_>>();
+    async fn run(&mut self) {
+        select! {
+            _ = &mut self.networking_parameters_save_delay => {
+                if let Err(err) = self.network_parameters_persistence_handler.save(
+                    &self.networking_params.clone()
+                ) {
+                    trace!(error=%err, "Error on saving network parameters");
+                }
+                self.networking_parameters_save_delay = NetworkingParametersManager::<P>::default_delay();
+            },
+            data = self.rx.next() => {
+                if let Some((peer_id, addr_set)) = data {
+                    trace!("New networking parameters received: {:?}", (peer_id, &addr_set));
 
-        // Ignore the send result.
-        let _ = self.tx.send((peer_id, addr_set)).await;
+                    self.networking_params.add_known_peer(peer_id, addr_set);
+                }
+            }
+        };
     }
 }
 
 mod json {
     use super::{NetworkingParameters, NetworkingParametersProvider, PEER_CACHE_SIZE};
     use anyhow::Context;
-    use derive_new::new;
     use libp2p::{Multiaddr, PeerId};
     use lru::LruCache;
     use serde::{Deserialize, Serialize};
@@ -238,10 +242,19 @@ mod json {
     }
 
     /// JSON implementation for the networking parameters provider.
-    #[derive(Clone, new)]
+    #[derive(Clone)]
     pub struct JsonNetworkingParametersProvider {
         /// JSON file path
         path: PathBuf,
+    }
+
+    impl JsonNetworkingParametersProvider {
+        /// Constructor
+        pub fn new(path: PathBuf) -> Self {
+            trace!(?path, "JSON networking parameters created.");
+
+            JsonNetworkingParametersProvider { path }
+        }
     }
 
     impl NetworkingParametersProvider for JsonNetworkingParametersProvider {

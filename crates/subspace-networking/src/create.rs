@@ -1,6 +1,7 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::persistent_parameters::{
     NetworkingParametersHandler, NetworkingParametersManager, NetworkingParametersProviderStub,
+    NetworkingParametersRegistry,
 };
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
@@ -32,10 +33,12 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::crypto;
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, trace};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
+// Max bootstrap addresses to preload.
+const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -186,8 +189,19 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let networking_parameters_manager =
         NetworkingParametersManager::new(network_parameters_persistence_handler);
-    let cached_bootstrap_addresses =
-        networking_parameters_manager.initial_bootstrap_addresses(true);
+    let cached_bootstrap_addresses = networking_parameters_manager
+        .bootstrap_addresses(true, INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
+        .iter()
+        .cloned()
+        .filter(|(_, addr)| {
+            // filter Memory addresses
+            !addr
+                .into_iter()
+                .any(|protocol| matches!(protocol, Protocol::Memory(..)))
+        })
+        .collect::<Vec<_>>();
+
+    trace!(peer_id=?local_peer_id, "Cached bootstrap addresses: {:?}", cached_bootstrap_addresses);
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {

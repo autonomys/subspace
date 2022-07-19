@@ -96,8 +96,10 @@ impl<P: NetworkingParametersProvider> NodeRunner<P> {
                 _ = &mut self.random_query_timeout => {
                     self.handle_random_query_interval();
                     // Increase interval 2x, but to at most 60 seconds.
-                    self.random_query_timeout = Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
-                    self.next_random_query_interval = (self.next_random_query_interval * 2).min(Duration::from_secs(60));
+                    self.random_query_timeout =
+                        Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
+                    self.next_random_query_interval =
+                        (self.next_random_query_interval * 2).min(Duration::from_secs(60));
                 },
                 swarm_event = self.swarm.next() => {
                     if let Some(swarm_event) = swarm_event {
@@ -113,6 +115,9 @@ impl<P: NetworkingParametersProvider> NodeRunner<P> {
                         break;
                     }
                 },
+                _ = self.networking_parameters_manager.run().fuse() => {
+                    // no actions here
+                }
             }
         }
     }
