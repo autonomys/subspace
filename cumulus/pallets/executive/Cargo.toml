@@ -12,25 +12,25 @@ description = "Cirrus executives engine"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false, features = ["derive"] }
-frame-executive = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-frame-support = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-frame-system = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
-sp-core = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-io = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-std = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-tracing = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
+codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
+frame-executive = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+frame-support = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+frame-system = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+sp-io = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+sp-std = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+sp-tracing = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
 
 [dev-dependencies]
 hex-literal = "0.3.4"
-pallet-balances = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-pallet-transaction-payment = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-core = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-inherents = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-io = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-version = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+pallet-balances = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+pallet-transaction-payment = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-inherents = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-io = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-version = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 
 [features]
 default = ["std"]

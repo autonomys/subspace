@@ -12,26 +12,26 @@ description = "Subspace fraud proof utilities"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.1.5", features = ["derive"] }
 hash-db = "0.15.2"
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sp-executor = { version = "0.1.0", path = "../sp-executor" }
-sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-state-machine = { version = "0.12.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-trie = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-tracing = "0.1.34"
+sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-state-machine = { version = "0.12.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-trie = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+tracing = "0.1.35"
 
 [dev-dependencies]
 cirrus-block-builder = { version = "0.1.0", path = "../../cumulus/client/block-builder" }
 cirrus-primitives = { version = "0.1.0", path = "../../cumulus/primitives" }
 cirrus-test-service = { version = "0.1.0", path = "../../cumulus/test/service" }
 futures = "0.3.21"
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-keyring = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-tokio = "1.18.2"
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false }
+sp-keyring = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+tokio = "1.20.0"

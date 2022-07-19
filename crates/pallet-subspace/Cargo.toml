@@ -13,18 +13,18 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 log = { version = "0.4.17", default-features = false }
-pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
+pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
-sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-io = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-io = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-solving = { version = "0.1.0", default-features = false, path = "../subspace-solving" }
@@ -32,10 +32,10 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 
 [dev-dependencies]
 env_logger = "0.9.0"
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 pallet-offences-subspace = { version = "0.1.0", path = "../pallet-offences-subspace" }
 rand = { version = "0.8.5", features = ["min_const_gen"] }
-sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 
 [features]

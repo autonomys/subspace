@@ -6,10 +6,10 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.53"
-sc-consensus = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-consensus = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-core = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+async-trait = "0.1.56"
+sc-consensus = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-consensus = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
