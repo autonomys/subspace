@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+pub use db::DbNetworkingParametersProvider;
 use futures::channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use futures::future::Fuse;
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -6,7 +7,8 @@ pub use json::JsonNetworkingParametersProvider;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -200,46 +202,42 @@ impl<P: NetworkingParametersProvider + Send> NetworkingParametersRegistry
     }
 }
 
+// Helper struct for NetworkingPersistence implementations (data transfer object).
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct NetworkingParametersDto {
+    pub known_peers: HashMap<PeerId, HashSet<Multiaddr>>,
+}
+
+impl From<&NetworkingParameters> for NetworkingParametersDto {
+    fn from(cache: &NetworkingParameters) -> Self {
+        Self {
+            known_peers: cache
+                .known_peers
+                .iter()
+                .map(|(peer_id, addresses)| (*peer_id, addresses.clone()))
+                .collect(),
+        }
+    }
+}
+
+impl From<NetworkingParametersDto> for NetworkingParameters {
+    fn from(params: NetworkingParametersDto) -> Self {
+        let mut known_peers = LruCache::<PeerId, HashSet<Multiaddr>>::new(PEER_CACHE_SIZE);
+
+        for (peer_id, addresses) in params.known_peers.iter() {
+            known_peers.push(*peer_id, addresses.clone());
+        }
+
+        Self { known_peers }
+    }
+}
+
 mod json {
-    use super::{NetworkingParameters, NetworkingParametersProvider, PEER_CACHE_SIZE};
+    use super::{NetworkingParameters, NetworkingParametersDto, NetworkingParametersProvider};
     use anyhow::Context;
-    use libp2p::{Multiaddr, PeerId};
-    use lru::LruCache;
-    use serde::{Deserialize, Serialize};
-    use std::collections::{HashMap, HashSet};
     use std::fs;
     use std::path::PathBuf;
     use tracing::trace;
-
-    // Helper struct for JsonNetworkingPersistence
-    #[derive(Default, Debug, Serialize, Deserialize)]
-    struct JsonNetworkingParameters {
-        pub known_peers: HashMap<PeerId, HashSet<Multiaddr>>,
-    }
-
-    impl From<&NetworkingParameters> for JsonNetworkingParameters {
-        fn from(cache: &NetworkingParameters) -> Self {
-            Self {
-                known_peers: cache
-                    .known_peers
-                    .iter()
-                    .map(|(peer_id, addresses)| (*peer_id, addresses.clone()))
-                    .collect(),
-            }
-        }
-    }
-
-    impl From<JsonNetworkingParameters> for NetworkingParameters {
-        fn from(params: JsonNetworkingParameters) -> Self {
-            let mut known_peers = LruCache::<PeerId, HashSet<Multiaddr>>::new(PEER_CACHE_SIZE);
-
-            for (peer_id, addresses) in params.known_peers.iter() {
-                known_peers.push(*peer_id, addresses.clone());
-            }
-
-            Self { known_peers }
-        }
-    }
 
     /// JSON implementation for the networking parameters provider.
     #[derive(Clone)]
@@ -261,7 +259,7 @@ mod json {
         fn load(&self) -> anyhow::Result<NetworkingParameters> {
             let data = fs::read(&self.path).context("Unable to read file")?;
 
-            let result: JsonNetworkingParameters = serde_json::from_slice(&data)
+            let result: NetworkingParametersDto = serde_json::from_slice(&data)
                 .context("Cannot deserialize networking parameters to JSON")?;
 
             trace!("Networking parameters loaded from JSON file");
@@ -270,7 +268,7 @@ mod json {
         }
 
         fn save(&self, params: &NetworkingParameters) -> anyhow::Result<()> {
-            let params: JsonNetworkingParameters = params.into();
+            let params: NetworkingParametersDto = params.into();
             let data = serde_json::to_string(&params)
                 .context("Cannot serialize networking parameters to JSON")?;
 
@@ -278,6 +276,83 @@ mod json {
                 .context("Unable to write file with networking parameters")?;
 
             trace!("Networking parameters saved to JSON file");
+
+            Ok(())
+        }
+    }
+}
+
+mod db {
+    use super::{NetworkingParameters, NetworkingParametersProvider};
+    use crate::behavior::persistent_parameters::{NetworkingParametersDto, PEER_CACHE_SIZE};
+    use anyhow::Context;
+    use parity_db::{Db, Options};
+    use std::path::Path;
+    use std::sync::Arc;
+    use tracing::trace;
+
+    /// Parity DB implementation for the networking parameters provider.
+    #[derive(Clone)]
+    pub struct DbNetworkingParametersProvider {
+        // Parity DB instance
+        db: Arc<Db>,
+        // Column ID to persist parameters
+        column_id: u8,
+        // Key to persistent parameters
+        object_id: &'static [u8],
+    }
+
+    impl DbNetworkingParametersProvider {
+        /// Opens or creates a new object mappings database
+        pub fn new(path: &Path) -> anyhow::Result<Self> {
+            trace!(?path, "Networking parameters DB created.");
+
+            let mut options = Options::with_columns(path, 1);
+            // We don't use stats
+            options.stats = false;
+            // Remove salt to avoid mangling of keys
+            options.salt = Some([0u8; 32]);
+
+            let db = Db::open_or_create(&options)?;
+
+            Ok(Self {
+                db: Arc::new(db),
+                column_id: 0u8,
+                object_id: b"global_networking_parameters_key",
+            })
+        }
+    }
+
+    impl NetworkingParametersProvider for DbNetworkingParametersProvider {
+        fn load(&self) -> anyhow::Result<NetworkingParameters> {
+            let result = self
+                .db
+                .get(self.column_id, self.object_id)?
+                .map(|data| {
+                    let result = serde_json::from_slice::<NetworkingParametersDto>(&data)
+                        .context("Cannot deserialize networking parameters to JSON")
+                        .map(NetworkingParameters::from);
+
+                    if result.is_ok() {
+                        trace!("Networking parameters loaded from DB");
+                    }
+
+                    result
+                })
+                .unwrap_or_else(|| Ok(NetworkingParameters::new(PEER_CACHE_SIZE)))?;
+
+            anyhow::Ok(result)
+        }
+
+        fn save(&self, params: &NetworkingParameters) -> anyhow::Result<()> {
+            let dto: NetworkingParametersDto = params.into();
+            let data = serde_json::to_vec(&dto)
+                .context("Cannot serialize networking parameters to JSON")?;
+
+            let tx = vec![(self.column_id, self.object_id, Some(data))];
+            self.db.commit(tx)?;
+
+            trace!("Networking parameters saved to DB");
 
             Ok(())
         }

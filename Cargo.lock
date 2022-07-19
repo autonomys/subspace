@@ -8025,6 +8025,7 @@ dependencies = [
  "lru",
  "nohash-hasher",
  "once_cell",
+ "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.0",
  "pin-project",
