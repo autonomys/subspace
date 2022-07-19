@@ -13,13 +13,14 @@ repository = "https://github.com/paritytech/substrate/"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-std = "1.11.0"
+async-std = "1.12.0"
+async-trait = "0.1.56"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 log = "0.4.17"
-parking_lot = "0.12.0"
+parking_lot = "0.12.1"
 futures = "0.3.21"
 futures-timer = "3.0.1"
 rand = "0.8.5"
@@ -35,4 +36,3 @@ substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-r
 substrate-test-runtime = { version = "2.0.0", path = "../substrate-test-runtime" }
 sp-tracing = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-service = { version = "0.10.0-dev", default-features = false, features = ["test-helpers"],  git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
-async-trait = "0.1.53"

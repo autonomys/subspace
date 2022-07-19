@@ -22,7 +22,7 @@ frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/subs
 futures = "0.3.21"
 jsonrpsee = { version = "0.14.0", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
-parity-scale-codec = "3.1.2"
+parity-scale-codec = "3.1.5"
 parity-util-mem = { version = "0.11.0", default-features = false, features = ["primitive-types"] }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
@@ -60,7 +60,7 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 thiserror = "1.0.31"
-tracing = "0.1"
+tracing = "0.1.35"
 
 sp-session = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }

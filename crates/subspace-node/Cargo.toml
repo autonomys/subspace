@@ -22,13 +22,13 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 cirrus-node = { version = "0.1.0", path = "../../cumulus/node" }
 cirrus-runtime = { version = "0.1.0", path = "../../cumulus/runtime" }
-clap = { version = "3.1.18", features = ["derive"] }
+clap = { version = "3.2.12", features = ["derive"] }
 dirs = "4.0.0"
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false, features = ["runtime-benchmarks"] }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 futures = "0.3.21"
 log = "0.4.17"
-parity-scale-codec = "3.1.2"
+parity-scale-codec = "3.1.5"
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false, features = ["wasmtime"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
@@ -38,8 +38,8 @@ sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/subst
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", default-features = false, features = ["wasmtime"] }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
-serde = "1.0.137"
-serde_json = "1.0.81"
+serde = "1.0.139"
+serde_json = "1.0.82"
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sp-executor = { version = "0.1.0", path = "../sp-executor" }

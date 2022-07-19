@@ -14,14 +14,14 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.53"
-codec = { package = "parity-scale-codec", version = "3.1.2", features = ["derive"] }
+async-trait = "0.1.56"
+codec = { package = "parity-scale-codec", version = "3.1.5", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 futures = "0.3.21"
 futures-timer = "3.0.2"
 log = "0.4.17"
-lru = "0.7.5"
-parking_lot = "0.12.0"
+lru = "0.7.8"
+parking_lot = "0.12.1"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf", version = "0.10.0-dev" }
 rand = "0.8.5"
 schnorrkel = "0.9.1"
@@ -30,7 +30,7 @@ sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspac
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
-serde = { version = "1.0.137", features = ["derive"] }
+serde = { version = "1.0.139", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
 sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
