@@ -2,8 +2,7 @@ pub(crate) mod custom_record_store;
 
 use crate::create::ValueGetter;
 use crate::request_responses::{
-    Event as RequestResponseEvent, ProtocolConfig as RequestResponseConfig,
-    RequestResponseHandlerRunner, RequestResponseInstanceConfig, RequestResponsesBehaviour,
+    Event as RequestResponseEvent, RequestResponseInstanceConfig, RequestResponsesBehaviour,
 };
 use crate::shared::IdendityHash;
 use custom_record_store::CustomRecordStore;
@@ -42,9 +41,7 @@ pub(crate) struct BehaviorConfig {
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub(crate) value_getter: ValueGetter,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
-    pub(crate) pieces_by_range_protocol_config: RequestResponseConfig,
-    /// The pieces-by-range request handler.
-    pub(crate) pieces_by_range_request_handler: Box<dyn RequestResponseHandlerRunner + Send>,
+    pub(crate) request_response_protocols: Vec<RequestResponseInstanceConfig>,
     /// Whether node can serve as relay server.
     pub(crate) is_relay_server: bool,
     /// Circuit relay client.
@@ -113,11 +110,7 @@ impl Behavior {
             gossipsub,
             ping: Ping::default(),
             request_response: RequestResponsesBehaviour::new(
-                vec![RequestResponseInstanceConfig {
-                    config: config.pieces_by_range_protocol_config,
-                    handler: config.pieces_by_range_request_handler,
-                }]
-                .into_iter(),
+                config.request_response_protocols.into_iter(),
             )
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
