@@ -30,13 +30,13 @@ parking_lot = "0.12.0"
 pin-project = "1.0.10"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.31"
-tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
+tokio = { version = "1.20.0", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
 tracing = "0.1"
 typenum = "1.15.0"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
 [dependencies.libp2p]
-version = "0.45.1"
+version = "0.46.1"
 default-features = false
 features = [
     "dns-tokio",

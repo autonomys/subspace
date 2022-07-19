@@ -37,7 +37,6 @@ use sc_consensus::{
     ImportResult, Verifier,
 };
 use sc_consensus_slots::{BackoffAuthoringOnFinalizedHeadLagging, SlotProportion};
-use sc_network::config::ProtocolConfig;
 use sc_network_test::{
     BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
     TestClientBuilderExt, TestNetFactory,
@@ -268,6 +267,7 @@ where
 
 type SubspacePeer = Peer<Option<PeerData>, SubspaceBlockImport>;
 
+#[derive(Default)]
 pub struct SubspaceTestNet {
     peers: Vec<SubspacePeer>,
 }
@@ -325,12 +325,6 @@ impl TestNetFactory for SubspaceTestNet {
     type PeerData = Option<PeerData>;
     type BlockImport = SubspaceBlockImport;
 
-    /// Create new test network with peers and given config.
-    fn from_config(_config: &ProtocolConfig) -> Self {
-        debug!(target: "subspace", "Creating test network from config");
-        SubspaceTestNet { peers: Vec::new() }
-    }
-
     fn make_block_import(
         &self,
         client: PeersClient,
@@ -379,12 +373,7 @@ impl TestNetFactory for SubspaceTestNet {
         )
     }
 
-    fn make_verifier(
-        &self,
-        client: PeersClient,
-        _cfg: &ProtocolConfig,
-        _maybe_link: &Option<PeerData>,
-    ) -> Self::Verifier {
+    fn make_verifier(&self, client: PeersClient, _maybe_link: &Option<PeerData>) -> Self::Verifier {
         use substrate_test_runtime_client::DefaultTestClientBuilderExt;
 
         let client = client.as_client();

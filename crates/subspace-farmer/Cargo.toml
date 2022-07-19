@@ -50,7 +50,7 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
-tokio = { version = "1.18.2", features = ["macros", "parking_lot", "rt-multi-thread"] }
+tokio = { version = "1.20.0", features = ["macros", "parking_lot", "rt-multi-thread"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ulid = { version = "0.6.0", features = ["serde"] }
