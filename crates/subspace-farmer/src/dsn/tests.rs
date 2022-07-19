@@ -4,13 +4,14 @@ use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmi
 use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{LegacyObjectMappings, Plot};
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use parking_lot::Mutex;
 use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PieceIndex, PieceIndexHash,
@@ -149,10 +150,10 @@ async fn test_dsn_sync() {
 
     let seeder_base_directory = TempDir::new().unwrap();
 
-    let (_slot_info_sender, slot_info_receiver) = mpsc::channel(10);
+    let (_slot_info_sender, slot_info_receiver) = mpsc::channel(0);
     let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(0);
-    let (acknowledge_archived_segment_sender, _acknowledge_archived_segment_receiver) =
-        mpsc::channel(1);
+    let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
+        mpsc::channel(0);
     let farmer_protocol_info = {
         let mut farmer_protocol_info = BENCH_FARMER_PROTOCOL_INFO;
         farmer_protocol_info.total_pieces = seeder_max_piece_count;
@@ -272,6 +273,7 @@ async fn test_dsn_sync() {
                 .send(archived_segment)
                 .await
                 .unwrap();
+            acknowledge_archived_segment_receiver.next().await.unwrap();
             last_archived_block.set_complete();
         }
 
@@ -288,6 +290,19 @@ async fn test_dsn_sync() {
                 .id()
                 .into(),
         ));
+
+    // Acknowledgements are sent optimistically, wait for everything to be actually plotted
+    for _ in 0..20 {
+        if seeder_max_piece_count
+            == seeder_multi_farming.single_plot_farms()[0]
+                .plot()
+                .piece_count()
+        {
+            break;
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 
     tokio::spawn(async move {
         if let Err(error) = seeder_multi_farming.wait().await {

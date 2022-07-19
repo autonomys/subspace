@@ -115,7 +115,7 @@ impl RpcClient for BenchRpcClient {
     async fn subscribe_archived_segments(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, Error> {
-        let (mut sender, receiver) = mpsc::channel(10);
+        let (mut sender, receiver) = mpsc::channel(0);
         let archived_segments_receiver = self.inner.archived_segments_receiver.clone();
         tokio::spawn(async move {
             while let Some(archived_segment) = archived_segments_receiver.lock().await.next().await
