@@ -7,7 +7,7 @@ use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
     Config, ObjectMappingsRequest, ObjectMappingsResponse, PiecesByRangeRequest,
-    PiecesByRangeResponse, PiecesToPlot,
+    PiecesByRangeResponse, PiecesToPlot, RpcProtocol,
 };
 
 #[tokio::main]
@@ -21,31 +21,33 @@ async fn main() {
             Some(key.digest().iter().copied().rev().collect())
         }),
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(|req| {
-            println!("Request handler for request: {:?}", req);
+        request_response_protocols: vec![
+            RpcProtocol::PiecesByRange(Some(Arc::new(|req| {
+                println!("Request handler for request: {:?}", req);
 
-            let piece_bytes: Vec<u8> = Piece::default().into();
-            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-            let pieces = PiecesToPlot {
-                piece_indexes: vec![1],
-                pieces: flat_pieces,
-            };
+                let piece_bytes: Vec<u8> = Piece::default().into();
+                let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+                let pieces = PiecesToPlot {
+                    piece_indexes: vec![1],
+                    pieces: flat_pieces,
+                };
 
-            Some(PiecesByRangeResponse {
-                pieces,
-                next_piece_index_hash: None,
-            })
-        }),
-        object_mappings_request_handler: Arc::new(|req| {
-            println!("Request handler for request: {:?}", req);
+                Some(PiecesByRangeResponse {
+                    pieces,
+                    next_piece_index_hash: None,
+                })
+            }))),
+            RpcProtocol::ObjectMappings(Some(Arc::new(|req| {
+                println!("Request handler for request: {:?}", req);
 
-            Some(ObjectMappingsResponse {
-                object_mapping: Some(GlobalObject::V0 {
-                    piece_index: u64::MAX,
-                    offset: u16::MAX,
-                }),
-            })
-        }),
+                Some(ObjectMappingsResponse {
+                    object_mapping: Some(GlobalObject::V0 {
+                        piece_index: u64::MAX,
+                        offset: u16::MAX,
+                    }),
+                })
+            }))),
+        ],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
@@ -77,6 +79,10 @@ async fn main() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![
+            RpcProtocol::PiecesByRange(None),
+            RpcProtocol::ObjectMappings(None),
+        ],
         ..Config::with_generated_keypair()
     };
 

@@ -1,4 +1,4 @@
-use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot, RpcProtocol};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use libp2p::multiaddr::Protocol;
@@ -32,11 +32,13 @@ async fn pieces_by_range_protocol_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(move |req| {
-            assert_eq!(*req, expected_request);
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(Some(Arc::new(
+            move |req| {
+                assert_eq!(*req, expected_request);
 
-            Some(expected_response.clone())
-        }),
+                Some(expected_response.clone())
+            },
+        )))],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
@@ -66,6 +68,7 @@ async fn pieces_by_range_protocol_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
         ..Config::with_generated_keypair()
     };
 
@@ -112,29 +115,31 @@ async fn get_pieces_by_range_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(move |req| {
-            let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(Some(Arc::new(
+            move |req| {
+                let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
 
-            // Only two responses
-            if request_index == 2 {
-                return None;
-            }
+                // Only two responses
+                if request_index == 2 {
+                    return None;
+                }
 
-            if request_index == 0 {
-                Some(PiecesByRangeResponse {
-                    pieces: response_data[request_index].clone(),
-                    next_piece_index_hash: Some(piece_index_continue),
-                })
-            } else {
-                // New request starts from from the previous response.
-                assert_eq!(req.from, piece_index_continue);
+                if request_index == 0 {
+                    Some(PiecesByRangeResponse {
+                        pieces: response_data[request_index].clone(),
+                        next_piece_index_hash: Some(piece_index_continue),
+                    })
+                } else {
+                    // New request starts from from the previous response.
+                    assert_eq!(req.from, piece_index_continue);
 
-                Some(PiecesByRangeResponse {
-                    pieces: response_data[request_index].clone(),
-                    next_piece_index_hash: None,
-                })
-            }
-        }),
+                    Some(PiecesByRangeResponse {
+                        pieces: response_data[request_index].clone(),
+                        next_piece_index_hash: None,
+                    })
+                }
+            },
+        )))],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
@@ -164,6 +169,7 @@ async fn get_pieces_by_range_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
         ..Config::with_generated_keypair()
     };
 

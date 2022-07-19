@@ -10,7 +10,6 @@ mod tests;
 use super::generic_request_handler::{
     ExternalRequestHandler, RequestHandler, RequestHandlerConfig,
 };
-use crate::request_responses::ProtocolConfig;
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash};
 
@@ -54,10 +53,7 @@ pub type ExternalPiecesByRangeRequestHandler =
 /// Create a new object-mappings request handler.
 pub(crate) fn new(
     request_handler: ExternalPiecesByRangeRequestHandler,
-) -> (
-    RequestHandler<PiecesByRangeRequest, PiecesByRangeResponse>,
-    ProtocolConfig,
-) {
+) -> RequestHandler<PiecesByRangeRequest, PiecesByRangeResponse> {
     RequestHandler::new(RequestHandlerConfig {
         protocol_name: PROTOCOL_NAME,
         log_target: LOG_TARGET,

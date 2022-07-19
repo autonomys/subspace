@@ -7,7 +7,6 @@
 use super::generic_request_handler::{
     ExternalRequestHandler, RequestHandler, RequestHandlerConfig,
 };
-use crate::request_responses::ProtocolConfig;
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::Sha256Hash;
@@ -37,10 +36,7 @@ pub type ExternalObjectMappingsRequestHandler =
 /// Create a new object-mappings request handler.
 pub(crate) fn new(
     request_handler: ExternalObjectMappingsRequestHandler,
-) -> (
-    RequestHandler<ObjectMappingsRequest, ObjectMappingsResponse>,
-    ProtocolConfig,
-) {
+) -> RequestHandler<ObjectMappingsRequest, ObjectMappingsResponse> {
     RequestHandler::new(RequestHandlerConfig {
         protocol_name: PROTOCOL_NAME,
         log_target: LOG_TARGET,

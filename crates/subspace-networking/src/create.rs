@@ -2,9 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
-use crate::request_handlers::object_mappings::{self, ExternalObjectMappingsRequestHandler};
-use crate::request_handlers::pieces_by_range::{self, ExternalPiecesByRangeRequestHandler};
-use crate::request_responses::RequestResponseInstanceConfig;
+use crate::request_handlers::RpcProtocol;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -62,8 +60,6 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// Defines a handler for the pieces-by-range protocol.
-    pub pieces_by_range_request_handler: ExternalPiecesByRangeRequestHandler,
     /// Circuit relay server address.
     ///
     /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
@@ -73,8 +69,8 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
-    /// Defines a handler for the object mappings protocol.
-    pub object_mappings_request_handler: ExternalObjectMappingsRequestHandler,
+    /// The configuration for the [`RequestResponsesBehaviour`] protocol.
+    pub request_response_protocols: Vec<RpcProtocol>,
 }
 
 impl fmt::Debug for Config {
@@ -130,10 +126,9 @@ impl Config {
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            pieces_by_range_request_handler: Arc::new(|_| None),
-            object_mappings_request_handler: Arc::new(|_| None),
             relay_server_address: None,
             parent_node: None,
+            request_response_protocols: Vec::new(),
         }
     }
 }
@@ -170,10 +165,9 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        pieces_by_range_request_handler,
         relay_server_address,
         parent_node,
-        object_mappings_request_handler,
+        request_response_protocols,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
@@ -203,11 +197,10 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             })
             .collect::<Result<_, CreationError>>()?;
 
-        let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
-            pieces_by_range::new(pieces_by_range_request_handler);
-
-        let (object_mappings_request_handler, object_mappings_protocol_config) =
-            object_mappings::new(object_mappings_request_handler);
+        let protocol_handlers = request_response_protocols
+            .into_iter()
+            .map(|protocol| protocol.into_request_response_handler())
+            .collect();
 
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
 
@@ -218,16 +211,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             kademlia,
             gossipsub,
             value_getter,
-            request_response_protocols: vec![
-                RequestResponseInstanceConfig {
-                    config: pieces_by_range_protocol_config,
-                    handler: Box::new(pieces_by_range_request_handler),
-                },
-                RequestResponseInstanceConfig {
-                    config: object_mappings_protocol_config,
-                    handler: Box::new(object_mappings_request_handler),
-                },
-            ],
+            request_response_protocols: protocol_handlers,
             is_relay_server,
             relay_client,
         });

@@ -64,19 +64,17 @@ use tracing::{debug, error, warn};
 
 const LOG_TARGET: &str = "request-response-protocols";
 
+/// Defines a handler for the request-response protocol factory.
 #[async_trait]
-/// Runs the underlying protocol handler.
-pub trait RequestResponseHandlerRunner {
+pub trait RequestResponseHandlerRunner: Send {
+    /// Runs the underlying protocol handler.
     async fn run(&mut self);
-}
 
-/// A container for the ProtocolConfig instance and an associated protocol handler.
-pub struct RequestResponseInstanceConfig {
-    /// Request-Response protocol config.
-    pub config: ProtocolConfig,
+    /// Returns a config for the request-response protocol factory.
+    fn protocol_config(&self) -> ProtocolConfig;
 
-    /// Request-Response protocol instance runner.
-    pub handler: Box<dyn RequestResponseHandlerRunner + Send>,
+    /// Returns a protocol name.
+    fn protocol_name(&self) -> Cow<'static, str>;
 }
 
 /// Configuration for a single request-response protocol.
@@ -290,7 +288,7 @@ pub struct RequestResponsesBehaviour {
     message_request: Option<MessageRequest>,
 
     /// Request-Response protocol handlers configured for this protocol factory.
-    protocol_handlers: Vec<Box<dyn RequestResponseHandlerRunner + Send>>,
+    protocol_handlers: Vec<Box<dyn RequestResponseHandlerRunner>>,
 }
 
 // This is a state of processing incoming request Message.
@@ -315,20 +313,18 @@ impl RequestResponsesBehaviour {
     /// Creates a new behaviour. Must be passed a list of supported protocols. Returns an error if
     /// the same protocol is passed twice.
     pub fn new(
-        list: impl IntoIterator<Item = RequestResponseInstanceConfig>,
+        list: impl IntoIterator<Item = Box<dyn RequestResponseHandlerRunner>>,
     ) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
         let mut protocol_handlers = Vec::new();
-        for RequestResponseInstanceConfig {
-            config: protocol,
-            handler,
-        } in list
-        {
+        for handler in list {
+            let config = handler.protocol_config();
+
             let mut cfg = RequestResponseConfig::default();
             cfg.set_connection_keep_alive(Duration::from_secs(10));
-            cfg.set_request_timeout(protocol.request_timeout);
+            cfg.set_request_timeout(config.request_timeout);
 
-            let protocol_support = if protocol.inbound_queue.is_some() {
+            let protocol_support = if config.inbound_queue.is_some() {
                 ProtocolSupport::Full
             } else {
                 ProtocolSupport::Outbound
@@ -336,15 +332,15 @@ impl RequestResponsesBehaviour {
 
             let rq_rp = RequestResponse::new(
                 GenericCodec {
-                    max_request_size: protocol.max_request_size,
-                    max_response_size: protocol.max_response_size,
+                    max_request_size: config.max_request_size,
+                    max_response_size: config.max_response_size,
                 },
-                iter::once((protocol.name.as_bytes().to_vec(), protocol_support)),
+                iter::once((config.name.as_bytes().to_vec(), protocol_support)),
                 cfg,
             );
 
-            match protocols.entry(protocol.name) {
-                Entry::Vacant(e) => e.insert((rq_rp, protocol.inbound_queue)),
+            match protocols.entry(config.name) {
+                Entry::Vacant(e) => e.insert((rq_rp, config.inbound_queue)),
                 Entry::Occupied(e) => {
                     return Err(RegisterError::DuplicateProtocol(e.key().clone()))
                 }

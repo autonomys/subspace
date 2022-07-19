@@ -22,6 +22,7 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
+use std::borrow::Cow;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
@@ -47,24 +48,23 @@ pub(crate) struct RequestHandler<Req, Resp> {
     request_handler: ExternalRequestHandler<Req, Resp>,
     log_target: &'static str,
     protocol_name: &'static str,
+    protocol_config: ProtocolConfig,
 }
 
 impl<Req: Decode, Resp: Encode + Default> RequestHandler<Req, Resp> {
-    pub fn new(handler_config: RequestHandlerConfig<Req, Resp>) -> (Self, ProtocolConfig) {
+    pub fn new(handler_config: RequestHandlerConfig<Req, Resp>) -> Self {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
         let mut protocol_config = ProtocolConfig::new(handler_config.protocol_name.into());
         protocol_config.inbound_queue = Some(request_sender);
 
-        (
-            Self {
-                request_receiver,
-                request_handler: handler_config.request_handler,
-                log_target: handler_config.log_target,
-                protocol_name: handler_config.protocol_name,
-            },
+        Self {
+            request_receiver,
+            request_handler: handler_config.request_handler,
+            log_target: handler_config.log_target,
+            protocol_name: handler_config.protocol_name,
             protocol_config,
-        )
+        }
     }
 
     // Invokes external protocol handler.
@@ -138,6 +138,14 @@ impl<Req: Decode, Resp: Encode + Default> RequestResponseHandlerRunner
                 }
             }
         }
+    }
+
+    fn protocol_config(&self) -> ProtocolConfig {
+        self.protocol_config.clone()
+    }
+
+    fn protocol_name(&self) -> Cow<'static, str> {
+        self.protocol_name.into()
     }
 }
 

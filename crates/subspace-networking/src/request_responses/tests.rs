@@ -1,7 +1,6 @@
 use crate::request_responses::{
     Event, IfDisconnected, IncomingRequest, OutboundFailure, OutgoingResponse, ProtocolConfig,
-    RequestFailure, RequestResponseHandlerRunner, RequestResponseInstanceConfig,
-    RequestResponsesBehaviour,
+    RequestFailure, RequestResponseHandlerRunner, RequestResponsesBehaviour,
 };
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
@@ -13,14 +12,24 @@ use libp2p::core::upgrade;
 use libp2p::identity::Keypair;
 use libp2p::swarm::{Swarm, SwarmEvent};
 use libp2p::{noise, Multiaddr};
+use std::borrow::Cow;
 use std::iter;
 use std::time::Duration;
 
-struct MockRunner;
+#[derive(Clone)]
+struct MockRunner(ProtocolConfig);
 
 #[async_trait]
 impl RequestResponseHandlerRunner for MockRunner {
     async fn run(&mut self) {}
+
+    fn protocol_config(&self) -> ProtocolConfig {
+        self.0.clone()
+    }
+
+    fn protocol_name(&self) -> Cow<'static, str> {
+        self.0.name.clone()
+    }
 }
 
 fn build_swarm(
@@ -40,10 +49,7 @@ fn build_swarm(
 
     let configs = list
         .into_iter()
-        .map(|config| {
-            let handler = Box::new(MockRunner);
-            RequestResponseInstanceConfig { config, handler }
-        })
+        .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestResponseHandlerRunner>)
         .collect::<Vec<_>>();
     let behaviour = RequestResponsesBehaviour::new(configs).unwrap();
 

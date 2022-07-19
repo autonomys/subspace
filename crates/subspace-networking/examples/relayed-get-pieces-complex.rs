@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot, RpcProtocol};
 
 #[tokio::main]
 async fn main() {
@@ -70,16 +70,18 @@ async fn main() {
         let config = Config {
             bootstrap_nodes: bootstrap_nodes.clone(),
             allow_non_globals_in_dht: true,
-            pieces_by_range_request_handler: Arc::new(move |_| {
-                if i != EXPECTED_NODE_INDEX {
-                    return None;
-                }
+            request_response_protocols: vec![RpcProtocol::PiecesByRange(Some(Arc::new(
+                move |_| {
+                    if i != EXPECTED_NODE_INDEX {
+                        return None;
+                    }
 
-                println!("Sending response from Node Index {}... ", i);
+                    println!("Sending response from Node Index {}... ", i);
 
-                std::thread::sleep(Duration::from_secs(1));
-                Some(local_response.clone())
-            }),
+                    std::thread::sleep(Duration::from_secs(1));
+                    Some(local_response.clone())
+                },
+            )))],
             ..Config::with_generated_keypair()
         };
         let (node, mut node_runner) = relay_node.spawn(config).await.unwrap();
