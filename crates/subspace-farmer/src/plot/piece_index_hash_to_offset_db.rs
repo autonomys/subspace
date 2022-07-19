@@ -61,6 +61,7 @@ impl IndexHashToOffsetDB {
         let mut options = Options::default();
         options.create_if_missing(true);
         options.create_missing_column_families(true);
+        options.set_use_fsync(true);
         let inner = DB::open_cf(&options, path, &["default", Self::METADATA_COLUMN_FAMILY])
             .map_err(PlotError::IndexDbOpen)?;
         let mut me = Self {
