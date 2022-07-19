@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::trace;
 
@@ -92,10 +93,10 @@ pub trait NetworkingParametersRegistry {
 /// Defines networking parameters persistence operations
 pub trait NetworkingParametersProvider: Send {
     /// Loads networking parameters from the underlying DB implementation.
-    fn load(&self) -> anyhow::Result<NetworkingParameters>;
+    fn load(&self) -> Result<NetworkingParameters, NetworkParametersPersistenceError>;
 
     /// Saves networking to the underlying DB implementation.
-    fn save(&self, params: &NetworkingParameters) -> anyhow::Result<()>;
+    fn save(&self, params: &NetworkingParameters) -> Result<(), NetworkParametersPersistenceError>;
 }
 
 /// Handles networking parameters. It manages network parameters set and its persistence.
@@ -234,7 +235,7 @@ impl From<NetworkingParametersDto> for NetworkingParameters {
 
 mod json {
     use super::{NetworkingParameters, NetworkingParametersDto, NetworkingParametersProvider};
-    use anyhow::Context;
+    use crate::behavior::persistent_parameters::NetworkParametersPersistenceError;
     use std::fs;
     use std::path::PathBuf;
     use tracing::trace;
@@ -256,24 +257,24 @@ mod json {
     }
 
     impl NetworkingParametersProvider for JsonNetworkingParametersProvider {
-        fn load(&self) -> anyhow::Result<NetworkingParameters> {
-            let data = fs::read(&self.path).context("Unable to read file")?;
+        fn load(&self) -> Result<NetworkingParameters, NetworkParametersPersistenceError> {
+            let data = fs::read(&self.path)?;
 
-            let result: NetworkingParametersDto = serde_json::from_slice(&data)
-                .context("Cannot deserialize networking parameters to JSON")?;
+            let result: NetworkingParametersDto = serde_json::from_slice(&data)?;
 
             trace!("Networking parameters loaded from JSON file");
 
             Ok(result.into())
         }
 
-        fn save(&self, params: &NetworkingParameters) -> anyhow::Result<()> {
+        fn save(
+            &self,
+            params: &NetworkingParameters,
+        ) -> Result<(), NetworkParametersPersistenceError> {
             let params: NetworkingParametersDto = params.into();
-            let data = serde_json::to_string(&params)
-                .context("Cannot serialize networking parameters to JSON")?;
+            let data = serde_json::to_string(&params)?;
 
-            fs::write(&self.path, data)
-                .context("Unable to write file with networking parameters")?;
+            fs::write(&self.path, data)?;
 
             trace!("Networking parameters saved to JSON file");
 
@@ -284,8 +285,9 @@ mod json {
 
 mod db {
     use super::{NetworkingParameters, NetworkingParametersProvider};
-    use crate::behavior::persistent_parameters::{NetworkingParametersDto, PEER_CACHE_SIZE};
-    use anyhow::Context;
+    use crate::behavior::persistent_parameters::{
+        NetworkParametersPersistenceError, NetworkingParametersDto, PEER_CACHE_SIZE,
+    };
     use parity_db::{Db, Options};
     use std::path::Path;
     use std::sync::Arc;
@@ -304,7 +306,7 @@ mod db {
 
     impl DbNetworkingParametersProvider {
         /// Opens or creates a new object mappings database
-        pub fn new(path: &Path) -> anyhow::Result<Self> {
+        pub fn new(path: &Path) -> Result<Self, NetworkParametersPersistenceError> {
             trace!(?path, "Networking parameters DB created.");
 
             let mut options = Options::with_columns(path, 1);
@@ -324,13 +326,12 @@ mod db {
     }
 
     impl NetworkingParametersProvider for DbNetworkingParametersProvider {
-        fn load(&self) -> anyhow::Result<NetworkingParameters> {
+        fn load(&self) -> Result<NetworkingParameters, NetworkParametersPersistenceError> {
             let result = self
                 .db
                 .get(self.column_id, self.object_id)?
                 .map(|data| {
                     let result = serde_json::from_slice::<NetworkingParametersDto>(&data)
-                        .context("Cannot deserialize networking parameters to JSON")
                         .map(NetworkingParameters::from);
 
                     if result.is_ok() {
@@ -341,13 +342,15 @@ mod db {
                 })
                 .unwrap_or_else(|| Ok(NetworkingParameters::new(PEER_CACHE_SIZE)))?;
 
-            anyhow::Ok(result)
+            Ok(result)
         }
 
-        fn save(&self, params: &NetworkingParameters) -> anyhow::Result<()> {
+        fn save(
+            &self,
+            params: &NetworkingParameters,
+        ) -> Result<(), NetworkParametersPersistenceError> {
             let dto: NetworkingParametersDto = params.into();
-            let data = serde_json::to_vec(&dto)
-                .context("Cannot serialize networking parameters to JSON")?;
+            let data = serde_json::to_vec(&dto)?;
 
             let tx = vec![(self.column_id, self.object_id, Some(data))];
             self.db.commit(tx)?;
@@ -365,15 +368,27 @@ mod db {
 pub struct NetworkingParametersProviderStub;
 
 impl NetworkingParametersProvider for NetworkingParametersProviderStub {
-    fn load(&self) -> anyhow::Result<NetworkingParameters> {
+    fn load(&self) -> Result<NetworkingParameters, NetworkParametersPersistenceError> {
         trace!("Default network parameters used");
 
         Ok(NetworkingParameters::new(PEER_CACHE_SIZE))
     }
 
-    fn save(&self, _: &NetworkingParameters) -> anyhow::Result<()> {
+    fn save(&self, _: &NetworkingParameters) -> Result<(), NetworkParametersPersistenceError> {
         trace!("Network parameters saving skipped.");
 
         Ok(())
     }
+}
+
+#[derive(Debug, Error)]
+pub enum NetworkParametersPersistenceError {
+    #[error("DB error: {0}")]
+    Db(#[from] parity_db::Error),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("JSON serialization error: {0}")]
+    JsonSerialization(#[from] serde_json::Error),
 }
