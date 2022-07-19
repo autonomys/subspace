@@ -22,7 +22,7 @@ mod create;
 pub mod multimess;
 mod node;
 mod node_runner;
-mod pieces_by_range_handler;
+mod request_handlers;
 mod request_responses;
 mod shared;
 mod utils;
@@ -35,7 +35,10 @@ pub use create::{create, Config, CreationError};
 pub use libp2p;
 use libp2p::gossipsub::Sha256Topic;
 use once_cell::sync::Lazy;
-pub use pieces_by_range_handler::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+pub use request_handlers::object_mappings::{ObjectMappingsRequest, ObjectMappingsResponse};
+pub use request_handlers::pieces_by_range::{
+    PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+};
 
 // TODO: Move this out of the networking crate into separate crate.
 pub static PUB_SUB_ARCHIVING_TOPIC: Lazy<Sha256Topic> =
