@@ -21,6 +21,7 @@
 
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
     ErrorDigestType, PreDigest, SubspaceDigestItems,
@@ -70,6 +71,7 @@ pub struct HeaderExt<Header> {
 }
 
 type HashOf<T> = <T as HeaderT>::Hash;
+type NumberOf<T> = <T as HeaderT>::Number;
 
 /// Storage responsible for storing headers
 pub trait Storage<Header: HeaderT> {
@@ -79,15 +81,131 @@ pub trait Storage<Header: HeaderT> {
     /// Segment size
     fn segment_size(&self) -> SegmentSize;
 
+    /// K depth
+    fn k_depth(&self) -> NumberOf<Header>;
+
     /// Queries a header at a specific block number or block hash
-    fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>>;
+    fn header(&self, hash: HashOf<Header>) -> Option<HeaderExt<Header>>;
 
     /// Stores the extended header.
     /// as_best_header signifies of the header we are importing is considered best
     fn store_header(&mut self, header_ext: HeaderExt<Header>, as_best_header: bool);
 
-    /// Returns the best known tip of the chain
+    /// Returns the best known tip of the canonical chain
     fn best_header(&self) -> HeaderExt<Header>;
+
+    /// Finalizes the header, prunes and returns all the fork headers at that number
+    fn finalize_header(&mut self, hash: HashOf<Header>) -> Vec<HeaderExt<Header>>;
+
+    /// Finalized number and hash of the header
+    /// Genesis head is always finalized since the beginning
+    fn finalized_head(&self) -> (NumberOf<Header>, HashOf<Header>);
+
+    /// Returns the total heads present at the number.
+    fn heads_at_number(&self, number: NumberOf<Header>) -> Vec<HashOf<Header>>;
+
+    /// Prunes the headers at number whose parent matches with provided parents
+    fn prune_headers_with_parents_at_number(
+        &mut self,
+        number: NumberOf<Header>,
+        parents: Vec<HashOf<Header>>,
+    ) -> Vec<HeaderExt<Header>>;
+
+    /// Returns the ancestor of the header at depth provided
+    fn ancestor_of_header_at_depth(
+        &self,
+        depth: NumberOf<Header>,
+        header: &HeaderExt<Header>,
+    ) -> Option<HeaderExt<Header>> {
+        if *header.header.number() <= depth {
+            return None;
+        }
+
+        // start tree route till the ancestor
+        let mut header = header.to_owned();
+        while *header.header.number() > depth {
+            header = self.header(*header.header.parent_hash())?;
+        }
+
+        Some(header)
+    }
+
+    /// Finalize the block at k-depth from the best block and prune remaining forks if any.
+    /// Note: at the moment, it is assumed that light client must always begin with genesis
+    /// But with some minor changes, we can introduce some trusted checkpoint so that light client
+    /// is synced with the chain much faster.
+    fn finalize_and_prune_forks(&mut self) -> Result<(), ImportError<HashOf<Header>>> {
+        let k_depth = self.k_depth();
+        let best_header = self.best_header();
+        let current_finalized_number = self.finalized_head().0;
+
+        // ensure we have imported at least k-depth number of headers
+        let number_to_finalize = match best_header.header.number().checked_sub(&k_depth) {
+            // we have not progressed that far to finalize yet.
+            None => {
+                // explicitly set finalized head to genesis if it is not genesis.
+                // this could happen when the re-org happens and a heavier smaller chain becomes canonical and
+                // previous fork was long enough to have finalized some heads.
+                if current_finalized_number > Zero::zero() {
+                    self.finalize_header(self.heads_at_number(Zero::zero())[0]);
+                }
+                return Ok(());
+            }
+            Some(number) => number,
+        };
+
+        // we want to finalize the header from the current finalized header until the k-depth number of the best.
+        // 1. An ideal scenario, the current finalized head is one number less than number to be finalized but
+        // 2. if there was a re-org to longer chain when new header was imported, we do not want to miss
+        //    pruning fork headers between current and to be finalized number. So we go number by number and prune fork headers.
+        // 3. if there was a re-rg to a shorter chain when the new header was imported, then as per k-depth
+        //    we would have finalized more headers and, unfortunately, would have pruned any valid forks
+        //    There is not much we can do at this point then to just move the finalized head back and proceed.
+        match number_to_finalize.cmp(&current_finalized_number) {
+            // move the finalized head back to the expected head and return
+            Ordering::Less => {
+                let head_hash = self.heads_at_number(number_to_finalize)[0];
+                self.finalize_header(head_hash);
+            }
+            // nothing to do as we finalized the header already.
+            Ordering::Equal => (),
+            // move step by step from current to expected and prune all fork headers
+            Ordering::Greater => {
+                let mut current_finalized_number = current_finalized_number;
+
+                while current_finalized_number < number_to_finalize {
+                    current_finalized_number = current_finalized_number
+                        .checked_add(&One::one())
+                        .expect("should not overflow");
+
+                    // find the ancestor of the best header at k-depth
+                    let ancestor_header = self
+                        .ancestor_of_header_at_depth(current_finalized_number, &best_header)
+                        .expect("ancestor must exist at this point in time");
+
+                    // finalize the ancestor
+                    let mut number = *ancestor_header.header.number();
+                    let mut pruned_headers = self.finalize_header(ancestor_header.header.hash());
+
+                    // start pruning descendants of the forks at the finalized number
+                    while !pruned_headers.is_empty() {
+                        number = number
+                            .checked_add(&One::one())
+                            .expect("should not overflow");
+                        pruned_headers = self.prune_headers_with_parents_at_number(
+                            number,
+                            pruned_headers
+                                .into_iter()
+                                .map(|header| header.header.hash())
+                                .collect(),
+                        );
+                    }
+                }
+            }
+        };
+
+        Ok(())
+    }
 }
 
 /// Error during the header import.
@@ -95,6 +213,8 @@ pub trait Storage<Header: HeaderT> {
 pub enum ImportError<Hash> {
     /// Header already imported.
     HeaderAlreadyImported,
+    /// Header we are trying to import is not part of the canonical chain
+    NonCanonicalHeader,
     /// Missing parent header
     MissingParent(Hash),
     /// Error while extracting digests from header
@@ -127,6 +247,11 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
             None => Ok(()),
         }?;
+
+        // only try and import headers above the finalized height
+        if *header.number() <= store.finalized_head().0 {
+            return Err(ImportError::NonCanonicalHeader);
+        }
 
         // fetch parent header
         let parent_header = store
@@ -187,9 +312,6 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
         // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
-        // TODO(ved):
-        //      at the moment, we cannot prune the fork headers due to the probabilistic nature of the chain
-        //      Once we have some form of finality to the chain, we should prune the forks then
 
         // store header
         let header_ext = HeaderExt {
@@ -201,6 +323,12 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
         };
 
         store.store_header(header_ext, is_best_header);
+
+        // finalize and prune forks if the chain has progressed
+        if is_best_header {
+            store.finalize_and_prune_forks()?;
+        }
+
         Ok(())
     }
 }

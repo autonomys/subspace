@@ -29,6 +29,7 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 
 [dev-dependencies]
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "752980bf4a16488f0b37a4741bdefdd2f90e93bf" }
+rand_core = "0.6.3"
 
 [features]
 default = ["std"]

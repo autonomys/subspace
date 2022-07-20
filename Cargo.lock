@@ -7508,6 +7508,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
+ "rand_core 0.6.3",
  "scale-info",
  "schnorrkel",
  "sp-arithmetic",
