@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PieceIndex, PieceIndexHash,
-    RootBlock, Sha256Hash, PIECE_SIZE, U256,
+    bidirectional_distance, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece,
+    PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::PiecesToPlot;
@@ -207,6 +207,7 @@ async fn test_dsn_sync() {
 
     let seeder_plot = seeder_multi_farming.single_plot_farms()[0].plot().clone();
     let seeder_node = seeder_multi_farming.single_plot_farms()[0].node().clone();
+    let seeder_public_key = *seeder_multi_farming.single_plot_farms()[0].public_key();
 
     tokio::spawn(async move {
         if let Err(error) = seeder_multi_farming.wait().await {
@@ -296,17 +297,7 @@ async fn test_dsn_sync() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    let syncer_base_directory = TempDir::new().unwrap();
-
-    let object_mappings = tokio::task::spawn_blocking({
-        let path = syncer_base_directory.as_ref().join("object-mappings");
-
-        move || LegacyObjectMappings::open_or_create(path)
-    })
-    .await
-    .unwrap()
-    .unwrap();
-
+    let mut syncer_base_directory = TempDir::new().unwrap();
     let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
             options.single_plot_farm_id,
@@ -317,26 +308,53 @@ async fn test_dsn_sync() {
         )
     };
 
-    let syncer_multi_farming = LegacyMultiPlotsFarm::new(
-        MultiFarmingOptions {
-            base_directory: syncer_base_directory.as_ref().to_owned(),
-            farmer_protocol_info,
-            archiving_client: rpc_client.clone(),
-            farming_client: rpc_client.clone(),
-            object_mappings: object_mappings.clone(),
-            reward_address: subspace_core_primitives::PublicKey::default(),
-            bootstrap_nodes: vec![seeder_multiaddr],
-            listen_on: vec![],
-            enable_dsn_sync: false,
-            enable_dsn_archiving: false,
-            enable_farming: false,
-            relay_server_node: None,
-        },
-        syncer_max_plot_size,
-        plot_factory,
-    )
-    .await
-    .unwrap();
+    let syncer_multi_farming = loop {
+        {
+            let object_mappings = tokio::task::spawn_blocking({
+                let path = syncer_base_directory.as_ref().join("object-mappings");
+
+                move || LegacyObjectMappings::open_or_create(path)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+            let syncer_multi_farming = LegacyMultiPlotsFarm::new(
+                MultiFarmingOptions {
+                    base_directory: syncer_base_directory.as_ref().to_owned(),
+                    farmer_protocol_info,
+                    archiving_client: rpc_client.clone(),
+                    farming_client: rpc_client.clone(),
+                    object_mappings: object_mappings.clone(),
+                    reward_address: subspace_core_primitives::PublicKey::default(),
+                    bootstrap_nodes: vec![seeder_multiaddr.clone()],
+                    listen_on: vec![],
+                    enable_dsn_sync: false,
+                    enable_dsn_archiving: false,
+                    enable_farming: false,
+                    relay_server_node: None,
+                },
+                syncer_max_plot_size,
+                plot_factory,
+            )
+            .await
+            .unwrap();
+
+            let syncer_public_key = *syncer_multi_farming.single_plot_farms()[0].public_key();
+
+            // Make sure seeder and syncer are close enough to each other
+            if bidirectional_distance(
+                &U256::from_be_bytes(seeder_public_key.into()),
+                &U256::from_be_bytes(syncer_public_key.into()),
+            ) < U256::MAX / U256::from(seeder_max_plot_size / syncer_max_plot_size)
+            {
+                break syncer_multi_farming;
+            }
+        }
+
+        // Remove old directory so that everything is deleted and identity re-created
+        syncer_base_directory = TempDir::new().unwrap();
+    };
 
     let syncer_max_piece_count = syncer_max_plot_size / PIECE_SIZE as u64;
 

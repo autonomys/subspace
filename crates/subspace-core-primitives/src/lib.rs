@@ -679,6 +679,13 @@ impl U256 {
     pub const MAX: Self = Self(private_u256::U256::MAX);
 }
 
+// Necessary for division derive
+impl From<U256> for private_u256::U256 {
+    fn from(number: U256) -> Self {
+        number.0
+    }
+}
+
 impl WrappingAdd for U256 {
     fn wrapping_add(&self, other: &Self) -> Self {
         Self(self.0.overflowing_add(other.0).0)
