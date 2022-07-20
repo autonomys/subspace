@@ -91,6 +91,7 @@ async fn main() {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
         ..Config::with_generated_keypair()
     };
 

@@ -8,6 +8,7 @@ use crate::request_responses::RequestFailure;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
+use futures::channel::oneshot::Sender;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream};
 use libp2p::core::multihash::{Code, Multihash};
@@ -153,9 +154,35 @@ pub struct Node {
     relay_server_memory_port: Arc<Mutex<Option<u64>>>,
 }
 
-// Type alias for the command creation function for sending generic requests.
-type BehaviourCommandCreator =
-    Box<dyn FnOnce(oneshot::Sender<Result<Vec<u8>, RequestFailure>>) -> Command + Send>;
+// Request-response protocol helper to support generic request handling.
+enum RpcRequest {
+    ObjectMappings {
+        peer_id: PeerId,
+        request: ObjectMappingsRequest,
+    },
+    PiecesByRange {
+        peer_id: PeerId,
+        request: PiecesByRangeRequest,
+    },
+}
+
+impl RpcRequest {
+    // Converts request-response requests to node commands.
+    fn into_node_command(self, sender: Sender<Result<Vec<u8>, RequestFailure>>) -> Command {
+        match self {
+            RpcRequest::ObjectMappings { peer_id, request } => Command::ObjectMappingsRequest {
+                peer_id,
+                request,
+                result_sender: sender,
+            },
+            RpcRequest::PiecesByRange { peer_id, request } => Command::PiecesByRangeRequest {
+                peer_id,
+                request,
+                result_sender: sender,
+            },
+        }
+    }
+}
 
 impl Node {
     pub(crate) fn new(shared: Arc<Shared>, is_relay_server: bool) -> Self {
@@ -299,15 +326,9 @@ impl Node {
         peer_id: PeerId,
         request: PiecesByRangeRequest,
     ) -> Result<PiecesByRangeResponse, SendRequestError> {
-        let command_creator = move |result_sender| Command::PiecesByRangeRequest {
-            request,
-            result_sender,
-            peer_id,
-        };
-
-        self.send_generic_request::<PiecesByRangeRequest, PiecesByRangeResponse>(Box::new(
-            command_creator,
-        ))
+        self.send_generic_request::<PiecesByRangeRequest, PiecesByRangeResponse>(
+            RpcRequest::PiecesByRange { peer_id, request },
+        )
         .await
     }
 
@@ -317,25 +338,19 @@ impl Node {
         peer_id: PeerId,
         request: ObjectMappingsRequest,
     ) -> Result<ObjectMappingsResponse, SendRequestError> {
-        let command_creator = move |result_sender| Command::ObjectMappingsRequest {
-            request,
-            result_sender,
-            peer_id,
-        };
-
-        self.send_generic_request::<ObjectMappingsRequest, ObjectMappingsResponse>(Box::new(
-            command_creator,
-        ))
+        self.send_generic_request::<ObjectMappingsRequest, ObjectMappingsResponse>(
+            RpcRequest::ObjectMappings { peer_id, request },
+        )
         .await
     }
 
     // Sends the generic request to the peer and awaits the result.
     async fn send_generic_request<Req, Resp: Decode>(
         &self,
-        command_creator: BehaviourCommandCreator,
+        request_type: RpcRequest,
     ) -> Result<Resp, SendRequestError> {
         let (result_sender, result_receiver) = oneshot::channel();
-        let command = command_creator(result_sender);
+        let command = request_type.into_node_command(result_sender);
 
         self.shared
             .command_sender
