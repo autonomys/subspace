@@ -296,13 +296,16 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) farming_client: RC,
     pub(crate) plot_factory: &'a PF,
+    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
+    /// List of [`Multiaddr`] on which to listen for incoming connections.
+    pub(crate) listen_on: Vec<Multiaddr>,
     pub(crate) single_disk_semaphore: SingleDiskSemaphore,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
     pub(crate) enable_dsn_archiving: bool,
     pub(crate) enable_dsn_sync: bool,
-    pub(crate) relay_server_node: Node,
+    pub(crate) relay_server_node: Option<Node>,
 }
 
 /// Single plot farm abstraction is a container for everything necessary to plot/farm with a single
@@ -338,6 +341,7 @@ impl SinglePlotFarm {
             farming_client,
             plot_factory,
             bootstrap_nodes,
+            listen_on,
             single_disk_semaphore,
             enable_farming,
             reward_address,
@@ -412,8 +416,9 @@ impl SinglePlotFarm {
         let commitments = Commitments::new(metadata_directory.join("commitments"))?;
 
         let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
-        let child_node_config = Config {
+        let network_node_config = Config {
             bootstrap_nodes,
+            listen_on,
             // TODO: Do we still need it?
             value_getter: Arc::new({
                 let plot = plot.clone();
@@ -487,8 +492,13 @@ impl SinglePlotFarm {
             ))
         };
 
-        let create_networking_fut = relay_server_node.spawn(child_node_config);
-        let (node, node_runner) = Handle::current().block_on(create_networking_fut)?;
+        let (node, node_runner) = Handle::current().block_on(async move {
+            if let Some(relay_server_node) = relay_server_node {
+                relay_server_node.spawn(network_node_config).await
+            } else {
+                subspace_networking::create(network_node_config).await
+            }
+        })?;
 
         info!("Network peer ID {}", node.id());
 

@@ -117,6 +117,7 @@ pub(crate) async fn farm_multi_disk(
             farming_client,
             reward_address,
             bootstrap_nodes: bootstrap_nodes.clone(),
+            listen_on: vec![],
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
@@ -129,7 +130,7 @@ pub(crate) async fn farm_multi_disk(
                     options.max_plot_size,
                 )
             },
-            relay_server_node: relay_server_node.clone(),
+            relay_server_node: Some(relay_server_node.clone()),
         })
         .await?;
 
@@ -300,10 +301,11 @@ pub(crate) async fn farm_legacy(
             object_mappings: object_mappings.clone(),
             reward_address,
             bootstrap_nodes,
+            listen_on: vec![],
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
-            relay_server_node,
+            relay_server_node: Some(relay_server_node.clone()),
         },
         usable_space,
         move |options: PlotFactoryOptions<'_>| {

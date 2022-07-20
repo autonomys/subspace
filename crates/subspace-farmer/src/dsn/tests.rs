@@ -18,7 +18,7 @@ use subspace_core_primitives::{
     RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{Config, PiecesToPlot};
+use subspace_networking::PiecesToPlot;
 use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -139,7 +139,6 @@ async fn no_sync_test() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_dsn_sync() {
     init();
 
@@ -185,40 +184,6 @@ async fn test_dsn_sync() {
         )
     };
 
-    // Starting the relay server node.
-    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
-        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
-        allow_non_globals_in_dht: true,
-        ..Config::with_generated_keypair()
-    })
-    .await
-    .unwrap();
-
-    let (relay_server_address_sender, relay_server_address_receiver) = oneshot::channel();
-    let on_new_listener_handler = relay_server_node.on_new_listener(Arc::new({
-        let relay_server_address_sender = Mutex::new(Some(relay_server_address_sender));
-
-        move |address| {
-            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                if let Some(relay_server_address_sender) = relay_server_address_sender.lock().take()
-                {
-                    relay_server_address_sender.send(address.clone()).unwrap();
-                }
-            }
-        }
-    }));
-
-    tokio::spawn(async move {
-        relay_node_runner.run().await;
-    });
-
-    let relay_server_multiaddr = relay_server_address_receiver
-        .await
-        .unwrap()
-        .with(Protocol::P2p(relay_server_node.id().into()));
-
-    drop(on_new_listener_handler);
-
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
@@ -227,17 +192,57 @@ async fn test_dsn_sync() {
             farming_client: rpc_client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
+            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             bootstrap_nodes: vec![],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
-            relay_server_node: relay_server_node.clone(),
+            relay_server_node: None,
         },
         seeder_max_plot_size,
         plot_factory,
     )
     .await
     .unwrap();
+
+    let seeder_plot = seeder_multi_farming.single_plot_farms()[0].plot().clone();
+    let seeder_node = seeder_multi_farming.single_plot_farms()[0].node().clone();
+
+    tokio::spawn(async move {
+        if let Err(error) = seeder_multi_farming.wait().await {
+            eprintln!("Seeder exited with error: {error}");
+        }
+    });
+
+    let (seeder_address_sender, seeder_address_receiver) = oneshot::channel();
+    let seeder_address_sender = Arc::new(Mutex::new(Some(seeder_address_sender)));
+
+    let on_new_listener_handler = seeder_node.on_new_listener(Arc::new({
+        let seeder_address_sender = Arc::clone(&seeder_address_sender);
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(seeder_address_sender) = seeder_address_sender.lock().take() {
+                    seeder_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
+    for address in seeder_node.listeners() {
+        if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+            if let Some(seeder_address_sender) = seeder_address_sender.lock().take() {
+                seeder_address_sender.send(address.clone()).unwrap();
+            }
+        }
+    }
+
+    let seeder_multiaddr = seeder_address_receiver
+        .await
+        .unwrap()
+        .with(Protocol::P2p(seeder_node.id().into()));
+
+    drop(on_new_listener_handler);
 
     let piece_index_hashes = {
         let pieces_per_segment = u64::from(
@@ -282,33 +287,14 @@ async fn test_dsn_sync() {
             .collect::<BTreeMap<_, _>>()
     };
 
-    let seeder_multiaddr = relay_server_multiaddr
-        .with(Protocol::P2pCircuit)
-        .with(Protocol::P2p(
-            seeder_multi_farming.single_plot_farms()[0]
-                .node()
-                .id()
-                .into(),
-        ));
-
     // Acknowledgements are sent optimistically, wait for everything to be actually plotted
     for _ in 0..20 {
-        if seeder_max_piece_count
-            == seeder_multi_farming.single_plot_farms()[0]
-                .plot()
-                .piece_count()
-        {
+        if seeder_max_piece_count == seeder_plot.piece_count() {
             break;
         }
 
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-
-    tokio::spawn(async move {
-        if let Err(error) = seeder_multi_farming.wait().await {
-            eprintln!("Seeder exited with error: {error}");
-        }
-    });
 
     let syncer_base_directory = TempDir::new().unwrap();
 
@@ -340,10 +326,11 @@ async fn test_dsn_sync() {
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             bootstrap_nodes: vec![seeder_multiaddr],
+            listen_on: vec![],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
-            relay_server_node,
+            relay_server_node: None,
         },
         syncer_max_plot_size,
         plot_factory,

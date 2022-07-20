@@ -26,12 +26,15 @@ pub struct Options<C> {
     pub farming_client: C,
     pub object_mappings: LegacyObjectMappings,
     pub reward_address: PublicKey,
+    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
     pub bootstrap_nodes: Vec<Multiaddr>,
+    /// List of [`Multiaddr`] on which to listen for incoming connections.
+    pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
-    pub relay_server_node: Node,
+    pub relay_server_node: Option<Node>,
 }
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
@@ -62,6 +65,7 @@ impl LegacyMultiPlotsFarm {
             object_mappings,
             reward_address,
             bootstrap_nodes,
+            listen_on,
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
@@ -86,6 +90,7 @@ impl LegacyMultiPlotsFarm {
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
+                    let listen_on = listen_on.clone();
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
                     let span = info_span!("single_plot_farm", %plot_index);
@@ -100,6 +105,7 @@ impl LegacyMultiPlotsFarm {
                         farming_client,
                         plot_factory: &plot_factory,
                         bootstrap_nodes,
+                        listen_on,
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,
