@@ -1,8 +1,7 @@
 //! Helper for incoming object mappings requests.
 //!
 //! Handle (i.e. answer) incoming object mappings requests from a remote peer received via
-//! `crate::request_responses::RequestResponsesBehaviour` with generic
-//! [`RequestHandler`](RequestHandler).
+//! `RequestResponsesBehaviour` with generic [`GenericRequestHandler`].
 
 use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};

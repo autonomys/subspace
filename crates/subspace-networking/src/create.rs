@@ -69,7 +69,7 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
-    /// The configuration for the [`RequestResponsesBehaviour`] protocol.
+    /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
 }
 

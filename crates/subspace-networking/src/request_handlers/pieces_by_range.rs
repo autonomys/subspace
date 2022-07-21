@@ -1,8 +1,7 @@
 //! Helper for incoming pieces-by-range requests.
 //!
 //! Handle (i.e. answer) incoming pieces-by-range requests from a remote peer received via
-//! `crate::request_responses::RequestResponsesBehaviour` with generic
-//! [`RequestHandler`](RequestHandler).
+//! `RequestResponsesBehaviour` with generic [`GenericRequestHandler`].
 
 #[cfg(test)]
 mod tests;
