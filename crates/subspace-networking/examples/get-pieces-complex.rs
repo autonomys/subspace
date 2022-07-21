@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
-    new_piece_by_range_request_handler, Config, PiecesByRangeResponse, PiecesToPlot,
+    Config, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 
 #[tokio::main]
@@ -40,7 +40,7 @@ async fn main() {
             bootstrap_nodes: bootstrap_nodes.clone(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_globals_in_dht: true,
-            request_response_protocols: vec![new_piece_by_range_request_handler(move |_| {
+            request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |_| {
                 if i != EXPECTED_NODE_INDEX {
                     return None;
                 }
@@ -91,7 +91,7 @@ async fn main() {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![new_piece_by_range_request_handler(|_request| None)],
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 

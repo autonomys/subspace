@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
-    new_piece_by_range_request_handler, Config, PiecesByRangeResponse, PiecesToPlot,
+    Config, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 
 #[tokio::main]
@@ -19,7 +19,7 @@ async fn main() {
             // Return the reversed digest as a value
             Some(key.digest().iter().copied().rev().collect())
         }),
-        request_response_protocols: vec![new_piece_by_range_request_handler(|req| {
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|req| {
             println!("Request handler for request: {:?}", req);
 
             let piece_bytes: Vec<u8> = Piece::default().into();

@@ -4,12 +4,8 @@
 //! `crate::request_responses::RequestResponsesBehaviour` with generic
 //! [`RequestHandler`](RequestHandler).
 
-use crate::request_handlers::generic_request_handler::{
-    GenericRequest, GenericRequestHandler, GenericRequestHandlerConfig,
-};
-use crate::request_responses::RequestResponseHandler;
+use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
-use std::sync::Arc;
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::Sha256Hash;
 
@@ -38,11 +34,4 @@ pub struct ObjectMappingsResponse {
 }
 
 /// Create a new object-mappings request handler.
-pub fn new_object_mappings_request_handler<F>(request_handler: F) -> Box<dyn RequestResponseHandler>
-where
-    F: (Fn(&ObjectMappingsRequest) -> Option<ObjectMappingsResponse>) + Send + Sync + 'static,
-{
-    Box::new(GenericRequestHandler::new(GenericRequestHandlerConfig {
-        request_handler: Arc::new(request_handler),
-    }))
-}
+pub type ObjectMappingsRequestHandler = GenericRequestHandler<ObjectMappingsRequest>;

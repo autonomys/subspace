@@ -6,9 +6,8 @@ use std::time::Duration;
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
-    new_object_mappings_request_handler, new_piece_by_range_request_handler, Config,
-    ObjectMappingsRequest, ObjectMappingsResponse, PiecesByRangeRequest, PiecesByRangeResponse,
-    PiecesToPlot,
+    Config, ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
+    PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 
 #[tokio::main]
@@ -23,7 +22,7 @@ async fn main() {
         }),
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![
-            new_piece_by_range_request_handler(|req| {
+            PiecesByRangeRequestHandler::create(|req| {
                 println!("Request handler for request: {:?}", req);
 
                 let piece_bytes: Vec<u8> = Piece::default().into();
@@ -38,7 +37,7 @@ async fn main() {
                     next_piece_index_hash: None,
                 })
             }),
-            new_object_mappings_request_handler(|req| {
+            ObjectMappingsRequestHandler::create(|req| {
                 println!("Request handler for request: {:?}", req);
 
                 Some(ObjectMappingsResponse {
@@ -81,8 +80,8 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![
-            new_piece_by_range_request_handler(|_request| None),
-            new_object_mappings_request_handler(|_request| None),
+            PiecesByRangeRequestHandler::create(|_request| None),
+            ObjectMappingsRequestHandler::create(|_request| None),
         ],
         ..Config::with_generated_keypair()
     };

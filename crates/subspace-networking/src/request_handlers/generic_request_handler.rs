@@ -14,9 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::request_responses::{
-    IncomingRequest, OutgoingResponse, ProtocolConfig, RequestResponseHandler,
-};
+use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig, RequestHandler};
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::prelude::*;
@@ -37,35 +35,30 @@ pub trait GenericRequest: Encode + Decode + 'static {
     type Response: Encode + Decode + 'static;
 }
 
-/// Defines a config for the generic request handler for the request-response protocol.
-pub struct GenericRequestHandlerConfig<Request: GenericRequest> {
-    /// Actual request-response handler.
-    pub request_handler: ExternalRequestHandler<Request>,
-}
-
-/// Type alias for the actual external request handler.
-pub type ExternalRequestHandler<Request> = Arc<
-    dyn (Fn(&Request) -> Option<<Request as GenericRequest>::Response>) + Send + Sync + 'static,
->;
-
-pub(crate) struct GenericRequestHandler<Request: GenericRequest> {
+pub struct GenericRequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
-    request_handler: ExternalRequestHandler<Request>,
+    #[allow(clippy::type_complexity)]
+    request_handler: Arc<
+        dyn (Fn(&Request) -> Option<<Request as GenericRequest>::Response>) + Send + Sync + 'static,
+    >,
     protocol_config: ProtocolConfig,
 }
 
 impl<Request: GenericRequest> GenericRequestHandler<Request> {
-    pub fn new(handler_config: GenericRequestHandlerConfig<Request>) -> Self {
+    pub fn create<F>(request_handler: F) -> Box<dyn RequestHandler>
+    where
+        F: (Fn(&Request) -> Option<Request::Response>) + Send + Sync + 'static,
+    {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
         let mut protocol_config = ProtocolConfig::new(Cow::Borrowed(Request::PROTOCOL_NAME));
         protocol_config.inbound_queue = Some(request_sender);
 
-        Self {
+        Box::new(Self {
             request_receiver,
-            request_handler: handler_config.request_handler,
+            request_handler: Arc::new(request_handler),
             protocol_config,
-        }
+        })
     }
 
     // Invokes external protocol handler.
@@ -84,7 +77,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
 }
 
 #[async_trait]
-impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<Request> {
+impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> {
     /// Run [`RequestHandler`].
     async fn run(&mut self) {
         while let Some(request) = self.request_receiver.next().await {
@@ -146,10 +139,17 @@ impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<R
         Cow::Borrowed(Request::PROTOCOL_NAME)
     }
 
-    fn clone_box(&self) -> Box<dyn RequestResponseHandler> {
-        Box::new(Self::new(GenericRequestHandlerConfig {
+    fn clone_box(&self) -> Box<dyn RequestHandler> {
+        let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
+
+        let mut protocol_config = ProtocolConfig::new(Cow::Borrowed(Request::PROTOCOL_NAME));
+        protocol_config.inbound_queue = Some(request_sender);
+
+        Box::new(Self {
+            request_receiver,
             request_handler: Arc::clone(&self.request_handler),
-        }))
+            protocol_config,
+        })
     }
 }
 

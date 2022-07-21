@@ -27,7 +27,7 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    new_piece_by_range_request_handler, Config, Node, NodeRunner, PiecesByRangeRequest,
+    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeRequestHandler,
     PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
@@ -440,7 +440,7 @@ impl SinglePlotFarm {
                         .map(|piece| piece.to_vec())
                 }
             }),
-            request_response_protocols: vec![new_piece_by_range_request_handler({
+            request_response_protocols: vec![PiecesByRangeRequestHandler::create({
                 let plot = plot.clone();
                 let codec = codec.clone();
 

@@ -7,12 +7,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::request_handlers::generic_request_handler::{
-    GenericRequest, GenericRequestHandler, GenericRequestHandlerConfig,
-};
-use crate::request_responses::RequestResponseHandler;
+use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
-use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash};
 
 /// Pieces-by-range-protocol name.
@@ -54,12 +50,5 @@ pub struct PiecesByRangeResponse {
     pub next_piece_index_hash: Option<PieceIndexHash>,
 }
 
-/// Create a new object-mappings request handler.
-pub fn new_piece_by_range_request_handler<F>(request_handler: F) -> Box<dyn RequestResponseHandler>
-where
-    F: (Fn(&PiecesByRangeRequest) -> Option<PiecesByRangeResponse>) + Send + Sync + 'static,
-{
-    Box::new(GenericRequestHandler::new(GenericRequestHandlerConfig {
-        request_handler: Arc::new(request_handler),
-    }))
-}
+/// Create a new pieces-by-range request handler.
+pub type PiecesByRangeRequestHandler = GenericRequestHandler<PiecesByRangeRequest>;

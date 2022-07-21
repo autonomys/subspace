@@ -1,6 +1,6 @@
 use crate::request_responses::{
     Event, IfDisconnected, IncomingRequest, OutboundFailure, OutgoingResponse, ProtocolConfig,
-    RequestFailure, RequestResponseHandler, RequestResponsesBehaviour,
+    RequestFailure, RequestHandler, RequestResponsesBehaviour,
 };
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
@@ -20,7 +20,7 @@ use std::time::Duration;
 struct MockRunner(ProtocolConfig);
 
 #[async_trait]
-impl RequestResponseHandler for MockRunner {
+impl RequestHandler for MockRunner {
     async fn run(&mut self) {}
 
     fn protocol_config(&self) -> ProtocolConfig {
@@ -31,7 +31,7 @@ impl RequestResponseHandler for MockRunner {
         self.0.name.clone()
     }
 
-    fn clone_box(&self) -> Box<dyn RequestResponseHandler> {
+    fn clone_box(&self) -> Box<dyn RequestHandler> {
         Box::new(Self(self.0.clone()))
     }
 }
@@ -53,7 +53,7 @@ fn build_swarm(
 
     let configs = list
         .into_iter()
-        .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestResponseHandler>)
+        .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestHandler>)
         .collect::<Vec<_>>();
     let behaviour = RequestResponsesBehaviour::new(configs).unwrap();
 

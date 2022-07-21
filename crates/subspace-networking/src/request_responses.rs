@@ -65,7 +65,7 @@ const LOG_TARGET: &str = "request-response-protocols";
 
 /// Defines a handler for the request-response protocol factory.
 #[async_trait]
-pub trait RequestResponseHandler: Send {
+pub trait RequestHandler: Send {
     /// Runs the underlying protocol handler.
     async fn run(&mut self);
 
@@ -76,10 +76,10 @@ pub trait RequestResponseHandler: Send {
     fn protocol_name(&self) -> Cow<'static, str>;
 
     /// Clone boxed value.
-    fn clone_box(&self) -> Box<dyn RequestResponseHandler>;
+    fn clone_box(&self) -> Box<dyn RequestHandler>;
 }
 
-impl Clone for Box<dyn RequestResponseHandler> {
+impl Clone for Box<dyn RequestHandler> {
     fn clone(&self) -> Self {
         self.clone_box()
     }
@@ -296,7 +296,7 @@ pub struct RequestResponsesBehaviour {
     message_request: Option<MessageRequest>,
 
     /// Request-Response protocol handlers configured for this protocol factory.
-    protocol_handlers: Vec<Box<dyn RequestResponseHandler>>,
+    protocol_handlers: Vec<Box<dyn RequestHandler>>,
 }
 
 // This is a state of processing incoming request Message.
@@ -321,7 +321,7 @@ impl RequestResponsesBehaviour {
     /// Creates a new behaviour. Must be passed a list of supported protocols. Returns an error if
     /// the same protocol is passed twice.
     pub fn new(
-        list: impl IntoIterator<Item = Box<dyn RequestResponseHandler>>,
+        list: impl IntoIterator<Item = Box<dyn RequestHandler>>,
     ) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
         let mut protocol_handlers = Vec::new();

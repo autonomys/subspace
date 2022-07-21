@@ -1,6 +1,5 @@
 use crate::{
-    new_piece_by_range_request_handler, Config, PiecesByRangeRequest, PiecesByRangeResponse,
-    PiecesToPlot,
+    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
@@ -35,7 +34,7 @@ async fn pieces_by_range_protocol_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![new_piece_by_range_request_handler(move |req| {
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
             assert_eq!(*req, expected_request);
 
             Some(expected_response.clone())
@@ -69,7 +68,7 @@ async fn pieces_by_range_protocol_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![new_piece_by_range_request_handler(|_request| None)],
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 
@@ -116,7 +115,7 @@ async fn get_pieces_by_range_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![new_piece_by_range_request_handler(move |req| {
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
             let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
 
             // Only two responses
@@ -168,7 +167,7 @@ async fn get_pieces_by_range_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![new_piece_by_range_request_handler(|_request| None)],
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 
