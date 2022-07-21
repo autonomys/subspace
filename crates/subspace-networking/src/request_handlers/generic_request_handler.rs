@@ -29,30 +29,37 @@ use tracing::{debug, trace};
 // Could be changed after the production feedback.
 const REQUESTS_BUFFER_SIZE: usize = 50;
 
+/// Generic request with associated response
+pub trait GenericRequest: Encode + Decode + 'static {
+    /// Response type that corresponds to this request
+    type Response: Encode + Decode + 'static;
+}
+
 /// Defines a config for the generic request handler for the request-response protocol.
-pub struct RequestHandlerConfig<Req, Resp> {
+pub struct RequestHandlerConfig<Request: GenericRequest> {
     /// Tracing log target
     pub log_target: &'static str,
     /// Request-response protocol name
     pub protocol_name: &'static str,
     /// Actual request-response handler.
-    pub request_handler: ExternalRequestHandler<Req, Resp>,
+    pub request_handler: ExternalRequestHandler<Request>,
 }
 
 /// Type alias for the actual external request handler.
-pub type ExternalRequestHandler<Req, Resp> =
-    Arc<dyn (Fn(&Req) -> Option<Resp>) + Send + Sync + 'static>;
+pub type ExternalRequestHandler<Request> = Arc<
+    dyn (Fn(&Request) -> Option<<Request as GenericRequest>::Response>) + Send + Sync + 'static,
+>;
 
-pub(crate) struct RequestHandler<Req, Resp> {
+pub(crate) struct RequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
-    request_handler: ExternalRequestHandler<Req, Resp>,
+    request_handler: ExternalRequestHandler<Request>,
     log_target: &'static str,
     protocol_name: &'static str,
     protocol_config: ProtocolConfig,
 }
 
-impl<Req: Decode, Resp: Encode + Default> RequestHandler<Req, Resp> {
-    pub fn new(handler_config: RequestHandlerConfig<Req, Resp>) -> Self {
+impl<Request: GenericRequest> RequestHandler<Request> {
+    pub fn new(handler_config: RequestHandlerConfig<Request>) -> Self {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
         let mut protocol_config = ProtocolConfig::new(handler_config.protocol_name.into());
@@ -74,19 +81,16 @@ impl<Req: Decode, Resp: Encode + Default> RequestHandler<Req, Resp> {
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, RequestHandlerError> {
         trace!(%peer, protocol=self.protocol_name, "Handling request...");
-        let request = Req::decode(&mut payload.as_slice())
+        let request = Request::decode(&mut payload.as_slice())
             .map_err(|_| RequestHandlerError::InvalidRequestFormat)?;
         let response = (self.request_handler)(&request);
 
-        // Return the result with treating None as an empty(default) response.
-        Ok(response.unwrap_or_default().encode())
+        Ok(response.ok_or(RequestHandlerError::NoResponse)?.encode())
     }
 }
 
 #[async_trait]
-impl<Req: Decode, Resp: Encode + Default> RequestResponseHandlerRunner
-    for RequestHandler<Req, Resp>
-{
+impl<Request: GenericRequest> RequestResponseHandlerRunner for RequestHandler<Request> {
     /// Run [`RequestHandler`].
     async fn run(&mut self) {
         while let Some(request) = self.request_receiver.next().await {
@@ -156,4 +160,7 @@ enum RequestHandlerError {
 
     #[error("Incorrect request format.")]
     InvalidRequestFormat,
+
+    #[error("No response.")]
+    NoResponse,
 }

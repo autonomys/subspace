@@ -4,8 +4,8 @@
 //! `crate::request_responses::RequestResponsesBehaviour` with generic
 //! [`RequestHandler`](RequestHandler).
 
-use super::generic_request_handler::{
-    ExternalRequestHandler, RequestHandler, RequestHandlerConfig,
+use crate::request_handlers::generic_request_handler::{
+    ExternalRequestHandler, GenericRequest, RequestHandler, RequestHandlerConfig,
 };
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::objects::GlobalObject;
@@ -22,21 +22,24 @@ pub struct ObjectMappingsRequest {
     pub object_hash: Sha256Hash,
 }
 
+impl GenericRequest for ObjectMappingsRequest {
+    type Response = ObjectMappingsResponse;
+}
+
 /// Object-mapping protocol request.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Encode, Decode)]
+#[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
 pub struct ObjectMappingsResponse {
     /// Returned data.
     pub object_mapping: Option<GlobalObject>,
 }
 
 /// Type alias for the actual external request handler.
-pub type ExternalObjectMappingsRequestHandler =
-    ExternalRequestHandler<ObjectMappingsRequest, ObjectMappingsResponse>;
+pub type ExternalObjectMappingsRequestHandler = ExternalRequestHandler<ObjectMappingsRequest>;
 
 /// Create a new object-mappings request handler.
 pub(crate) fn new(
     request_handler: ExternalObjectMappingsRequestHandler,
-) -> RequestHandler<ObjectMappingsRequest, ObjectMappingsResponse> {
+) -> RequestHandler<ObjectMappingsRequest> {
     RequestHandler::new(RequestHandlerConfig {
         protocol_name: PROTOCOL_NAME,
         log_target: LOG_TARGET,
