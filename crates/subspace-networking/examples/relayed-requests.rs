@@ -5,7 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
-    Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot, RpcProtocol,
+    new_piece_by_range_request_handler, Config, PiecesByRangeRequest, PiecesByRangeResponse,
+    PiecesToPlot,
 };
 
 #[tokio::main]
@@ -48,7 +49,7 @@ async fn main() {
 
     let config_2 = Config {
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![RpcProtocol::PiecesByRange(Some(Arc::new(|req| {
+        request_response_protocols: vec![new_piece_by_range_request_handler(|req| {
             println!("Request handler for request: {:?}", req);
 
             let piece_bytes: Vec<u8> = Piece::default().into();
@@ -62,8 +63,7 @@ async fn main() {
                 pieces,
                 next_piece_index_hash: None,
             })
-        })))
-        .into()],
+        })],
         ..Config::with_generated_keypair()
     };
     let (node_2, mut node_runner_2) = node_1.spawn(config_2).await.unwrap();

@@ -5,9 +5,11 @@
 //! [`RequestHandler`](RequestHandler).
 
 use crate::request_handlers::generic_request_handler::{
-    ExternalRequestHandler, GenericRequest, GenericRequestHandler, RequestHandlerConfig,
+    GenericRequest, GenericRequestHandler, RequestHandlerConfig,
 };
+use crate::request_responses::RequestResponseHandler;
 use parity_scale_codec::{Decode, Encode};
+use std::sync::Arc;
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::Sha256Hash;
 
@@ -33,16 +35,14 @@ pub struct ObjectMappingsResponse {
     pub object_mapping: Option<GlobalObject>,
 }
 
-/// Type alias for the actual external request handler.
-pub type ExternalObjectMappingsRequestHandler = ExternalRequestHandler<ObjectMappingsRequest>;
-
 /// Create a new object-mappings request handler.
-pub(crate) fn new(
-    request_handler: ExternalObjectMappingsRequestHandler,
-) -> GenericRequestHandler<ObjectMappingsRequest> {
-    GenericRequestHandler::new(RequestHandlerConfig {
+pub fn new_object_mappings_request_handler<F>(request_handler: F) -> Box<dyn RequestResponseHandler>
+where
+    F: (Fn(&ObjectMappingsRequest) -> Option<ObjectMappingsResponse>) + Send + Sync + 'static,
+{
+    Box::new(GenericRequestHandler::new(RequestHandlerConfig {
         protocol_name: PROTOCOL_NAME,
         log_target: LOG_TARGET,
-        request_handler,
-    })
+        request_handler: Arc::new(request_handler),
+    }))
 }

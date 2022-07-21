@@ -6,8 +6,9 @@ use std::time::Duration;
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
-    Config, ObjectMappingsRequest, ObjectMappingsResponse, PiecesByRangeRequest,
-    PiecesByRangeResponse, PiecesToPlot, RpcProtocol,
+    new_object_mappings_request_handler, new_piece_by_range_request_handler, Config,
+    ObjectMappingsRequest, ObjectMappingsResponse, PiecesByRangeRequest, PiecesByRangeResponse,
+    PiecesToPlot,
 };
 
 #[tokio::main]
@@ -22,7 +23,7 @@ async fn main() {
         }),
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![
-            RpcProtocol::PiecesByRange(Some(Arc::new(|req| {
+            new_piece_by_range_request_handler(|req| {
                 println!("Request handler for request: {:?}", req);
 
                 let piece_bytes: Vec<u8> = Piece::default().into();
@@ -36,9 +37,8 @@ async fn main() {
                     pieces,
                     next_piece_index_hash: None,
                 })
-            })))
-            .into(),
-            RpcProtocol::ObjectMappings(Some(Arc::new(|req| {
+            }),
+            new_object_mappings_request_handler(|req| {
                 println!("Request handler for request: {:?}", req);
 
                 Some(ObjectMappingsResponse {
@@ -47,8 +47,7 @@ async fn main() {
                         offset: u16::MAX,
                     }),
                 })
-            })))
-            .into(),
+            }),
         ],
         ..Config::with_generated_keypair()
     };
@@ -82,8 +81,8 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![
-            RpcProtocol::PiecesByRange(None).into(),
-            RpcProtocol::ObjectMappings(None).into(),
+            new_piece_by_range_request_handler(|_request| None),
+            new_object_mappings_request_handler(|_request| None),
         ],
         ..Config::with_generated_keypair()
     };
