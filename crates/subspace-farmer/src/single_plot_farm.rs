@@ -479,7 +479,8 @@ impl SinglePlotFarm {
                         next_piece_index_hash,
                     })
                 }
-            })))],
+            })))
+            .into()],
             allow_non_globals_in_dht: true,
             ..Config::with_keypair(sr25519::Keypair::from(
                 sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())

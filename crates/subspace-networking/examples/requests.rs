@@ -36,7 +36,8 @@ async fn main() {
                     pieces,
                     next_piece_index_hash: None,
                 })
-            }))),
+            })))
+            .into(),
             RpcProtocol::ObjectMappings(Some(Arc::new(|req| {
                 println!("Request handler for request: {:?}", req);
 
@@ -46,7 +47,8 @@ async fn main() {
                         offset: u16::MAX,
                     }),
                 })
-            }))),
+            })))
+            .into(),
         ],
         ..Config::with_generated_keypair()
     };
@@ -80,8 +82,8 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![
-            RpcProtocol::PiecesByRange(None),
-            RpcProtocol::ObjectMappings(None),
+            RpcProtocol::PiecesByRange(None).into(),
+            RpcProtocol::ObjectMappings(None).into(),
         ],
         ..Config::with_generated_keypair()
     };

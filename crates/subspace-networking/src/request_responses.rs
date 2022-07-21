@@ -75,6 +75,15 @@ pub trait RequestResponseHandlerRunner: Send {
 
     /// Returns a protocol name.
     fn protocol_name(&self) -> Cow<'static, str>;
+
+    /// Clone boxed value.
+    fn clone_box(&self) -> Box<dyn RequestResponseHandlerRunner>;
+}
+
+impl Clone for Box<dyn RequestResponseHandlerRunner> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
 }
 
 /// Configuration for a single request-response protocol.

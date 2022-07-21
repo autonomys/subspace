@@ -50,7 +50,7 @@ pub type ExternalRequestHandler<Request> = Arc<
     dyn (Fn(&Request) -> Option<<Request as GenericRequest>::Response>) + Send + Sync + 'static,
 >;
 
-pub(crate) struct RequestHandler<Request: GenericRequest> {
+pub(crate) struct GenericRequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
     request_handler: ExternalRequestHandler<Request>,
     log_target: &'static str,
@@ -58,7 +58,7 @@ pub(crate) struct RequestHandler<Request: GenericRequest> {
     protocol_config: ProtocolConfig,
 }
 
-impl<Request: GenericRequest> RequestHandler<Request> {
+impl<Request: GenericRequest> GenericRequestHandler<Request> {
     pub fn new(handler_config: RequestHandlerConfig<Request>) -> Self {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
@@ -90,7 +90,7 @@ impl<Request: GenericRequest> RequestHandler<Request> {
 }
 
 #[async_trait]
-impl<Request: GenericRequest> RequestResponseHandlerRunner for RequestHandler<Request> {
+impl<Request: GenericRequest> RequestResponseHandlerRunner for GenericRequestHandler<Request> {
     /// Run [`RequestHandler`].
     async fn run(&mut self) {
         while let Some(request) = self.request_receiver.next().await {
@@ -150,6 +150,14 @@ impl<Request: GenericRequest> RequestResponseHandlerRunner for RequestHandler<Re
 
     fn protocol_name(&self) -> Cow<'static, str> {
         self.protocol_name.into()
+    }
+
+    fn clone_box(&self) -> Box<dyn RequestResponseHandlerRunner> {
+        Box::new(Self::new(RequestHandlerConfig {
+            log_target: self.log_target,
+            protocol_name: self.protocol_name,
+            request_handler: Arc::clone(&self.request_handler),
+        }))
     }
 }
 

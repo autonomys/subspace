@@ -16,12 +16,9 @@ pub enum RpcProtocol {
     PiecesByRange(Option<ExternalPiecesByRangeRequestHandler>),
 }
 
-impl RpcProtocol {
-    // Returns an instantiated request-response handler reference for the request-response protocol
-    // factory. It treats an empty inner protocol handler (None) as the default one (returns None on
-    // each request).
-    pub(crate) fn into_request_response_handler(self) -> Box<dyn RequestResponseHandlerRunner> {
-        match self {
+impl From<RpcProtocol> for Box<dyn RequestResponseHandlerRunner> {
+    fn from(protocol: RpcProtocol) -> Self {
+        match protocol {
             RpcProtocol::ObjectMappings(handler) => Box::new(object_mappings::new(
                 handler.unwrap_or_else(|| Arc::new(|_| None)),
             )),

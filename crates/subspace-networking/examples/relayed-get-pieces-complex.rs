@@ -81,7 +81,8 @@ async fn main() {
                     std::thread::sleep(Duration::from_secs(1));
                     Some(local_response.clone())
                 },
-            )))],
+            )))
+            .into()],
             ..Config::with_generated_keypair()
         };
         let (node, mut node_runner) = relay_node.spawn(config).await.unwrap();
@@ -116,7 +117,7 @@ async fn main() {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(None).into()],
         ..Config::with_generated_keypair()
     };
 

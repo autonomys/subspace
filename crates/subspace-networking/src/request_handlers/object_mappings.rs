@@ -5,7 +5,7 @@
 //! [`RequestHandler`](RequestHandler).
 
 use crate::request_handlers::generic_request_handler::{
-    ExternalRequestHandler, GenericRequest, RequestHandler, RequestHandlerConfig,
+    ExternalRequestHandler, GenericRequest, GenericRequestHandler, RequestHandlerConfig,
 };
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::objects::GlobalObject;
@@ -39,8 +39,8 @@ pub type ExternalObjectMappingsRequestHandler = ExternalRequestHandler<ObjectMap
 /// Create a new object-mappings request handler.
 pub(crate) fn new(
     request_handler: ExternalObjectMappingsRequestHandler,
-) -> RequestHandler<ObjectMappingsRequest> {
-    RequestHandler::new(RequestHandlerConfig {
+) -> GenericRequestHandler<ObjectMappingsRequest> {
+    GenericRequestHandler::new(RequestHandlerConfig {
         protocol_name: PROTOCOL_NAME,
         log_target: LOG_TARGET,
         request_handler,

@@ -30,6 +30,10 @@ impl RequestResponseHandlerRunner for MockRunner {
     fn protocol_name(&self) -> Cow<'static, str> {
         self.0.name.clone()
     }
+
+    fn clone_box(&self) -> Box<dyn RequestResponseHandlerRunner> {
+        Box::new(Self(self.0.clone()))
+    }
 }
 
 fn build_swarm(

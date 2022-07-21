@@ -36,7 +36,8 @@ async fn pieces_by_range_protocol_smoke() {
             assert_eq!(*req, expected_request);
 
             Some(expected_response.clone())
-        })))],
+        })))
+        .into()],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
@@ -66,7 +67,7 @@ async fn pieces_by_range_protocol_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(None).into()],
         ..Config::with_generated_keypair()
     };
 
@@ -135,7 +136,8 @@ async fn get_pieces_by_range_smoke() {
                     next_piece_index_hash: None,
                 })
             }
-        })))],
+        })))
+        .into()],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
@@ -165,7 +167,7 @@ async fn get_pieces_by_range_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
+        request_response_protocols: vec![RpcProtocol::PiecesByRange(None).into()],
         ..Config::with_generated_keypair()
     };
 

@@ -36,7 +36,8 @@ async fn main() {
 
             std::thread::sleep(Duration::from_secs(1));
             response
-        })))],
+        })))
+        .into()],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };

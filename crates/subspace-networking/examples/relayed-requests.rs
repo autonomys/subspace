@@ -62,7 +62,8 @@ async fn main() {
                 pieces,
                 next_piece_index_hash: None,
             })
-        })))],
+        })))
+        .into()],
         ..Config::with_generated_keypair()
     };
     let (node_2, mut node_runner_2) = node_1.spawn(config_2).await.unwrap();
