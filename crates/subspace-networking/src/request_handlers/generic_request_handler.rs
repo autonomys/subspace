@@ -20,7 +20,6 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
-use std::borrow::Cow;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
@@ -51,7 +50,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
     {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
-        let mut protocol_config = ProtocolConfig::new(Cow::Borrowed(Request::PROTOCOL_NAME));
+        let mut protocol_config = ProtocolConfig::new(Request::PROTOCOL_NAME);
         protocol_config.inbound_queue = Some(request_sender);
 
         Box::new(Self {
@@ -135,14 +134,14 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
         self.protocol_config.clone()
     }
 
-    fn protocol_name(&self) -> Cow<'static, str> {
-        Cow::Borrowed(Request::PROTOCOL_NAME)
+    fn protocol_name(&self) -> &'static str {
+        Request::PROTOCOL_NAME
     }
 
     fn clone_box(&self) -> Box<dyn RequestHandler> {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
-        let mut protocol_config = ProtocolConfig::new(Cow::Borrowed(Request::PROTOCOL_NAME));
+        let mut protocol_config = ProtocolConfig::new(Request::PROTOCOL_NAME);
         protocol_config.inbound_queue = Some(request_sender);
 
         Box::new(Self {

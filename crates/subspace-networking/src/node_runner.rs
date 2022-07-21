@@ -485,7 +485,7 @@ impl NodeRunner {
             } => {
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
-                    &protocol_name,
+                    protocol_name,
                     request,
                     result_sender,
                     IfDisconnected::TryConnect,

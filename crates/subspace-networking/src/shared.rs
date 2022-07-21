@@ -15,7 +15,6 @@ use libp2p::kad::record;
 use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::borrow::Cow;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::sha256_hash;
@@ -55,7 +54,7 @@ pub(crate) enum Command {
     },
     GenericRequest {
         peer_id: PeerId,
-        protocol_name: Cow<'static, str>,
+        protocol_name: &'static str,
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },

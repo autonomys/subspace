@@ -17,7 +17,6 @@ use libp2p::multihash::MultihashDigest;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use parking_lot::Mutex;
-use std::borrow::Cow;
 use std::ops::Div;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, U256};
@@ -301,7 +300,7 @@ impl Node {
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,
-            protocol_name: Cow::Borrowed(Request::PROTOCOL_NAME),
+            protocol_name: Request::PROTOCOL_NAME,
             request: request.encode(),
             result_sender,
         };
