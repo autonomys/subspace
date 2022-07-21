@@ -9,7 +9,7 @@ use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::Sha256Hash;
 
 /// Pieces-by-range-protocol name.
-pub const PROTOCOL_NAME: &str = "/subspace/object-mappings/0.1.0";
+const PROTOCOL_NAME: &str = "/subspace/object-mappings/0.1.0";
 const LOG_TARGET: &str = "object-mappings-request-response-handler";
 
 /// Object-mapping protocol request.

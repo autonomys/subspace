@@ -11,7 +11,7 @@ use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash};
 
 /// Pieces-by-range-protocol name.
-pub const PROTOCOL_NAME: &str = "/subspace/sync/pieces-by-range/0.1.0";
+const PROTOCOL_NAME: &str = "/subspace/sync/pieces-by-range/0.1.0";
 const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
 
 //TODO: A candidate for migrating to a separate crate.
