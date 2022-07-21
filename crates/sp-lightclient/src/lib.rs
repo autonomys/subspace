@@ -29,9 +29,11 @@ use sp_consensus_subspace::digests::{
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
 use sp_std::cmp::Ordering;
-use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt};
+use subspace_core_primitives::{Randomness, RewardSignature, Salt};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use subspace_verification::{
+    check_reward_signature, derive_randomness, verify_solution, VerifySolutionParams,
+};
 
 #[cfg(test)]
 mod tests;
@@ -65,20 +67,22 @@ pub struct HeaderExt<Header> {
 }
 
 impl<Header: HeaderT> HeaderExt<Header> {
-    pub(crate) fn derive_digest_items<PublicKey, RewardAddress, Signature>(
+    pub(crate) fn derive_digest_items(
         &self,
-    ) -> Result<SubspaceDigestItems<PublicKey, RewardAddress, Signature>, ImportError<HashOf<Header>>>
-    where
-        PublicKey: Decode,
-        RewardAddress: Decode,
-        Signature: Decode,
-    {
+        global_randomness_interval: NumberOf<Header>,
+    ) -> Result<
+        SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
+        ImportError<HashOf<Header>>,
+    > {
         let mut digest_items = extract_subspace_digest_items(&self.header)
             .map_err(ImportError::DigestExtractionError)?;
 
         // derive global randomness if interval is met
-        digest_items.global_randomness =
-            self.derive_global_randomness(digest_items.global_randomness);
+        digest_items.global_randomness = self.derive_global_randomness(
+            global_randomness_interval,
+            &digest_items.pre_digest,
+            digest_items.global_randomness,
+        )?;
 
         // derive solution range if interval is met
         digest_items.solution_range = self.derive_solution_range(digest_items.solution_range);
@@ -89,8 +93,22 @@ impl<Header: HeaderT> HeaderExt<Header> {
         Ok(digest_items)
     }
 
-    fn derive_global_randomness(&self, current_randomness: Randomness) -> Randomness {
-        current_randomness
+    fn derive_global_randomness(
+        &self,
+        global_randomness_interval: NumberOf<Header>,
+        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        current_randomness: Randomness,
+    ) -> Result<Randomness, ImportError<HashOf<Header>>> {
+        if *self.header.number() % global_randomness_interval == Zero::zero() {
+            derive_randomness(
+                &Into::<subspace_core_primitives::PublicKey>::into(&pre_digest.solution.public_key),
+                pre_digest.solution.tag,
+                &pre_digest.solution.tag_signature,
+            )
+            .map_err(|_err| ImportError::DigestDerivationError(ErrorDigestType::GlobalRandomness))
+        } else {
+            Ok(current_randomness)
+        }
     }
 
     fn derive_solution_range(&self, current_solution_range: SolutionRange) -> SolutionRange {
@@ -120,6 +138,9 @@ pub trait Storage<Header: HeaderT> {
 
     /// K depth
     fn k_depth(&self) -> NumberOf<Header>;
+
+    /// Randomness update interval
+    fn randomness_update_interval(&self) -> NumberOf<Header>;
 
     /// Queries a header at a specific block number or block hash
     fn header(&self, hash: HashOf<Header>) -> Option<HeaderExt<Header>>;
@@ -264,6 +285,8 @@ pub enum ImportError<Hash> {
     InvalidBlockSignature,
     /// Invalid solution
     InvalidSolution(subspace_verification::Error),
+    /// Digest derivation error
+    DigestDerivationError(ErrorDigestType),
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -304,7 +327,11 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
             global_randomness,
             solution_range,
             salt,
-        } = verify_header_digest_with_parent(&parent_header, &header)?;
+        } = verify_header_digest_with_parent(
+            store.randomness_update_interval(),
+            &parent_header,
+            &header,
+        )?;
 
         // slot must be strictly increasing from the parent header
         verify_slot(&parent_header.header, &pre_digest)?;
@@ -370,6 +397,7 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
 }
 
 fn verify_header_digest_with_parent<Header: HeaderT>(
+    global_randomness_interval: NumberOf<Header>,
     parent_header: &HeaderExt<Header>,
     header: &Header,
 ) -> Result<
@@ -377,8 +405,7 @@ fn verify_header_digest_with_parent<Header: HeaderT>(
     ImportError<HashOf<Header>>,
 > {
     let pre_digest_items = extract_subspace_digest_items(header)?;
-    let parent_digest_items =
-        parent_header.derive_digest_items::<FarmerPublicKey, FarmerPublicKey, FarmerSignature>()?;
+    let parent_digest_items = parent_header.derive_digest_items(global_randomness_interval)?;
     if pre_digest_items.global_randomness != parent_digest_items.global_randomness {
         return Err(ImportError::InvalidDigest(
             ErrorDigestType::GlobalRandomness,
@@ -432,7 +459,7 @@ fn verify_block_signature<Header: HeaderT>(
     check_reward_signature(
         pre_hash.as_ref(),
         &Into::<RewardSignature>::into(&signature),
-        &Into::<PublicKey>::into(public_key),
+        &Into::<subspace_core_primitives::PublicKey>::into(public_key),
         &schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
     )
     .map_err(|_| ImportError::InvalidBlockSignature)?;

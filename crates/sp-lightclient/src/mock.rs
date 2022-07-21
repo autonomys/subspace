@@ -12,6 +12,7 @@ pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
 #[derive(Debug, Default)]
 struct StorageData {
+    global_randomness_interval: NumberOf<Header>,
     k_depth: NumberOf<Header>,
     headers: HashMap<HashOf<Header>, HeaderExt<Header>>,
     number_to_hashes: HashMap<NumberOf<Header>, Vec<HashOf<Header>>>,
@@ -37,6 +38,10 @@ impl Storage<Header> for MockStorage {
 
     fn k_depth(&self) -> NumberOf<Header> {
         self.0.k_depth
+    }
+
+    fn randomness_update_interval(&self) -> NumberOf<Header> {
+        self.0.global_randomness_interval
     }
 
     fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>> {
@@ -148,8 +153,12 @@ impl Storage<Header> for MockStorage {
 }
 
 impl MockStorage {
-    pub(crate) fn new(k_depth: NumberOf<Header>) -> Self {
+    pub(crate) fn new(
+        global_randomness_interval: NumberOf<Header>,
+        k_depth: NumberOf<Header>,
+    ) -> Self {
         Self(StorageData {
+            global_randomness_interval,
             k_depth,
             ..Default::default()
         })
