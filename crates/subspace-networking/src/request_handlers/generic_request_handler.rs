@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::request_responses::{
-    IncomingRequest, OutgoingResponse, ProtocolConfig, RequestResponseHandlerRunner,
+    IncomingRequest, OutgoingResponse, ProtocolConfig, RequestResponseHandler,
 };
 use async_trait::async_trait;
 use futures::channel::mpsc;
@@ -90,7 +90,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
 }
 
 #[async_trait]
-impl<Request: GenericRequest> RequestResponseHandlerRunner for GenericRequestHandler<Request> {
+impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<Request> {
     /// Run [`RequestHandler`].
     async fn run(&mut self) {
         while let Some(request) = self.request_receiver.next().await {
@@ -152,7 +152,7 @@ impl<Request: GenericRequest> RequestResponseHandlerRunner for GenericRequestHan
         self.protocol_name.into()
     }
 
-    fn clone_box(&self) -> Box<dyn RequestResponseHandlerRunner> {
+    fn clone_box(&self) -> Box<dyn RequestResponseHandler> {
         Box::new(Self::new(RequestHandlerConfig {
             log_target: self.log_target,
             protocol_name: self.protocol_name,

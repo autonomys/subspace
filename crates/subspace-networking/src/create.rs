@@ -2,7 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
-use crate::request_responses::RequestResponseHandlerRunner;
+use crate::request_responses::RequestResponseHandler;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -70,7 +70,7 @@ pub struct Config {
     /// receive incoming connections.
     pub parent_node: Option<Node>,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
-    pub request_response_protocols: Vec<Box<dyn RequestResponseHandlerRunner>>,
+    pub request_response_protocols: Vec<Box<dyn RequestResponseHandler>>,
 }
 
 impl fmt::Debug for Config {

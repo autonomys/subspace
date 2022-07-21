@@ -42,7 +42,6 @@ use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 use libp2p::core::connection::{ConnectionId, ListenerId};
 use libp2p::core::{ConnectedPoint, Multiaddr, PeerId};
-use libp2p::request_response::handler::RequestResponseHandler;
 pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use libp2p::request_response::{
     ProtocolSupport, RequestResponse, RequestResponseCodec, RequestResponseConfig,
@@ -66,7 +65,7 @@ const LOG_TARGET: &str = "request-response-protocols";
 
 /// Defines a handler for the request-response protocol factory.
 #[async_trait]
-pub trait RequestResponseHandlerRunner: Send {
+pub trait RequestResponseHandler: Send {
     /// Runs the underlying protocol handler.
     async fn run(&mut self);
 
@@ -77,10 +76,10 @@ pub trait RequestResponseHandlerRunner: Send {
     fn protocol_name(&self) -> Cow<'static, str>;
 
     /// Clone boxed value.
-    fn clone_box(&self) -> Box<dyn RequestResponseHandlerRunner>;
+    fn clone_box(&self) -> Box<dyn RequestResponseHandler>;
 }
 
-impl Clone for Box<dyn RequestResponseHandlerRunner> {
+impl Clone for Box<dyn RequestResponseHandler> {
     fn clone(&self) -> Self {
         self.clone_box()
     }
@@ -297,7 +296,7 @@ pub struct RequestResponsesBehaviour {
     message_request: Option<MessageRequest>,
 
     /// Request-Response protocol handlers configured for this protocol factory.
-    protocol_handlers: Vec<Box<dyn RequestResponseHandlerRunner>>,
+    protocol_handlers: Vec<Box<dyn RequestResponseHandler>>,
 }
 
 // This is a state of processing incoming request Message.
@@ -322,7 +321,7 @@ impl RequestResponsesBehaviour {
     /// Creates a new behaviour. Must be passed a list of supported protocols. Returns an error if
     /// the same protocol is passed twice.
     pub fn new(
-        list: impl IntoIterator<Item = Box<dyn RequestResponseHandlerRunner>>,
+        list: impl IntoIterator<Item = Box<dyn RequestResponseHandler>>,
     ) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
         let mut protocol_handlers = Vec::new();
@@ -413,27 +412,6 @@ impl RequestResponsesBehaviour {
                 protocol_name,
             );
         }
-    }
-
-    fn new_handler_with_replacement(
-        &mut self,
-        protocol: String,
-        handler: RequestResponseHandler<GenericCodec>,
-    ) -> <RequestResponsesBehaviour as NetworkBehaviour>::ConnectionHandler {
-        let mut handlers: HashMap<_, _> = self
-            .protocols
-            .iter_mut()
-            .map(|(p, (r, _))| (p.to_string(), NetworkBehaviour::new_handler(r)))
-            .collect();
-
-        if let Some(h) = handlers.get_mut(&protocol) {
-            *h = handler
-        }
-
-        MultiHandler::try_from_iter(handlers).expect(
-            "Protocols are in a HashMap and there can be at most one handler per protocol name, \
-			 which is the only possible error; qed",
-        )
     }
 }
 
@@ -658,8 +636,8 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                 target: LOG_TARGET,
                                 %request_id,
                                 "Failed to send response for request on protocol {} due to a \
-                                 timeout or due to the connection to the peer being closed. \
-                                 Dropping response",
+                                timeout or due to the connection to the peer being closed. \
+                                Dropping response",
                                 protocol_name,
                             );
                         } else if let Some(sent_feedback) = sent_feedback {
@@ -688,11 +666,30 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                         NetworkBehaviourAction::Dial { opts, handler } => {
                             if opts.get_peer_id().is_none() {
                                 error!(
-									"The request-response isn't supposed to start dialing addresses"
-								);
+                                    "The request-response isn't supposed to start dialing \
+                                    addresses"
+                                );
                             }
                             let protocol = protocol.to_string();
-                            let handler = self.new_handler_with_replacement(protocol, handler);
+                            let handler = {
+                                let mut handlers: HashMap<_, _> = self
+                                    .protocols
+                                    .iter_mut()
+                                    .map(|(p, (r, _))| {
+                                        (p.to_string(), NetworkBehaviour::new_handler(r))
+                                    })
+                                    .collect();
+
+                                if let Some(h) = handlers.get_mut(&protocol) {
+                                    *h = handler
+                                }
+
+                                MultiHandler::try_from_iter(handlers).expect(
+                                    "Protocols are in a HashMap and there can be at most one \
+                                    handler per protocol name, which is the only possible error; \
+                                    qed",
+                                )
+                            };
                             return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler });
                         }
                         NetworkBehaviourAction::NotifyHandler {
