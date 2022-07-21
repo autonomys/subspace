@@ -4,7 +4,6 @@ use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor, TransactionFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use parking_lot::Mutex;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -20,7 +19,7 @@ use sp_consensus::BlockOrigin;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::ByteArray;
 use sp_executor::{
-    ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, FraudProof, OpaqueBundle,
+    ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
     SignedExecutionReceipt,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
@@ -33,6 +32,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, Randomness};
+use tokio::sync::mpsc::Permit;
 
 const LOG_TARGET: &str = "bundle-processor";
 
@@ -102,7 +102,6 @@ where
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
-    pending_unsigned: Arc<Mutex<Option<UnsignedMessage>>>,
     unsigned_submitter: UnsignedSubmitter,
     _phantom_data: PhantomData<PBlock>,
 }
@@ -124,7 +123,6 @@ where
             keystore: self.keystore.clone(),
             spawner: self.spawner.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
-            pending_unsigned: self.pending_unsigned.clone(),
             unsigned_submitter: self.unsigned_submitter.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -180,7 +178,6 @@ where
             keystore,
             spawner,
             fraud_proof_generator,
-            pending_unsigned: Arc::new(Mutex::new(None)),
             unsigned_submitter,
             _phantom_data: PhantomData::default(),
         }
@@ -193,23 +190,11 @@ where
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            if let Some(msg) = pending_unsigned.as_mut() {
-                match self.unsigned_submitter.try_submit(msg.clone()) {
-                    Ok(()) => {
-                        *pending_unsigned = None;
-                    }
-                    Err(_msg) => {
-                        tracing::debug!(
-                            target: LOG_TARGET,
-                            "Too many unsigned extrinsics, skip processing bundles"
-                        );
-                        return Ok(());
-                    }
-                }
-            }
-        }
+        let fraud_proof_permit = self.unsigned_submitter.try_reserve().map_err(|_| {
+            sp_blockchain::Error::Application(Box::from(
+                "Channel for submitting unsigned extrinsics is full",
+            ))
+        })?;
 
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
@@ -380,7 +365,7 @@ where
             .runtime_api()
             .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
-        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
+        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(fraud_proof_permit)?;
 
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
@@ -617,6 +602,7 @@ where
 
     fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
+        fraud_proof_permit: Permit<'_, UnsignedMessage>,
     ) -> Result<(), sp_blockchain::Error> {
         if let Some((bad_signed_receipt_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
@@ -645,20 +631,12 @@ where
                     )))
                 })?;
 
-            self.submit_fraud_proof(fraud_proof);
+            fraud_proof_permit.send(UnsignedMessage::Fraud(fraud_proof));
+        } else {
+            drop(fraud_proof_permit);
         }
 
         Ok(())
-    }
-
-    fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        if let Err(msg) = self
-            .unsigned_submitter
-            .try_submit(UnsignedMessage::Fraud(fraud_proof))
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            pending_unsigned.replace(msg);
-        }
     }
 
     fn try_sign_and_send_receipt(

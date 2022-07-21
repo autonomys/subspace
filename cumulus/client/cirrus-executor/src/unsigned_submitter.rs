@@ -7,9 +7,8 @@ use sp_executor::{BundleEquivocationProof, ExecutorApi, FraudProof, InvalidTrans
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self, Permit, Sender};
 
 const UNSIGNED_MESSAGE_BUFFER_SIZE: usize = 128;
 
@@ -27,15 +26,16 @@ pub(crate) struct UnsignedSubmitter {
 }
 
 impl UnsignedSubmitter {
-    pub(crate) fn new<Block, PBlock, PClient>(
+    pub(crate) fn new<Block, PBlock, PClient, Spawner>(
         primary_chain_client: Arc<PClient>,
-        spawner: Box<dyn SpawnNamed + Send + Sync>,
+        spawner: &Spawner,
     ) -> Self
     where
         Block: BlockT,
         PBlock: BlockT,
         PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
         PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+        Spawner: SpawnNamed + ?Sized,
     {
         let (sender, mut receiver) = mpsc::channel(UNSIGNED_MESSAGE_BUFFER_SIZE);
 
@@ -94,18 +94,7 @@ impl UnsignedSubmitter {
         Self { sender }
     }
 
-    pub(crate) fn try_submit(&self, msg: UnsignedMessage) -> Result<(), UnsignedMessage> {
-        self.sender
-            .try_send(msg)
-            .map_err(|try_send_error| match try_send_error {
-                TrySendError::Full(msg) => msg,
-                TrySendError::Closed(msg) => {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        "Channel closed unexpectedly, this should not happen"
-                    );
-                    msg
-                }
-            })
+    pub(crate) fn try_reserve(&self) -> Result<Permit<'_, UnsignedMessage>, TrySendError<()>> {
+        self.sender.try_reserve()
     }
 }

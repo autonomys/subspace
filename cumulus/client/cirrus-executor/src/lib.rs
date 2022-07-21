@@ -56,6 +56,7 @@
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
+//! [`FraudProof`]: ../sp_executor/struct.FraudProof.html
 
 #![feature(drain_filter)]
 
@@ -78,7 +79,6 @@ use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{FutureExt, Stream};
-use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -88,7 +88,7 @@ use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_executor::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId, FraudProof,
+    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
     InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -118,7 +118,6 @@ where
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
     bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    pending_unsigned: Arc<Mutex<Option<UnsignedMessage>>>,
     unsigned_submitter: UnsignedSubmitter,
 }
 
@@ -137,7 +136,6 @@ where
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             bundle_processor: self.bundle_processor.clone(),
-            pending_unsigned: self.pending_unsigned.clone(),
             unsigned_submitter: self.unsigned_submitter.clone(),
         }
     }
@@ -229,9 +227,9 @@ where
             code_executor,
         );
 
-        let unsigned_submitter = UnsignedSubmitter::new::<Block, PBlock, PClient>(
+        let unsigned_submitter = UnsignedSubmitter::new::<Block, PBlock, PClient, _>(
             primary_chain_client.clone(),
-            spawner.clone(),
+            spawner.as_ref(),
         );
 
         let bundle_processor = BundleProcessor::new(
@@ -270,7 +268,6 @@ where
             backend,
             fraud_proof_generator,
             bundle_processor,
-            pending_unsigned: Arc::new(Mutex::new(None)),
             unsigned_submitter,
         })
     }
@@ -335,40 +332,6 @@ where
                 );
                 false
             }
-        }
-    }
-
-    fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-        if let Err(msg) = self
-            .unsigned_submitter
-            .try_submit(UnsignedMessage::BundleEquivocation(
-                bundle_equivocation_proof,
-            ))
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            pending_unsigned.replace(msg);
-        }
-    }
-
-    fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        if let Err(msg) = self
-            .unsigned_submitter
-            .try_submit(UnsignedMessage::Fraud(fraud_proof))
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            pending_unsigned.replace(msg);
-        }
-    }
-
-    fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-        if let Err(msg) = self
-            .unsigned_submitter
-            .try_submit(UnsignedMessage::InvalidTransaction(
-                invalid_transaction_proof,
-            ))
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            pending_unsigned.replace(msg);
         }
     }
 
@@ -463,6 +426,8 @@ pub enum GossipMessageError {
     RecvError(#[from] crossbeam::channel::RecvError),
     #[error("Failed to send local receipt result because the channel is disconnected")]
     SendError,
+    #[error("Channel for submitting unsigned extrinsics is full")]
+    UnsignedChannelIsFull,
     #[error("The signature of bundle is invalid")]
     BadBundleSignature,
     #[error("Invalid bundle author, got: {got}, expected: {expected}")]
@@ -531,23 +496,10 @@ where
             signer,
         }: &SignedBundle<Block::Extrinsic>,
     ) -> Result<Action, Self::Error> {
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            if let Some(msg) = pending_unsigned.as_mut() {
-                match self.unsigned_submitter.try_submit(msg.clone()) {
-                    Ok(()) => {
-                        *pending_unsigned = None;
-                    }
-                    Err(_msg) => {
-                        tracing::debug!(
-                            target: LOG_TARGET,
-                            "Too many unsigned extrinsics, skip processing gossiped SignedBundle"
-                        );
-                        return Ok(Action::Empty);
-                    }
-                }
-            }
-        }
+        let equivocation_proof_permit = self
+            .unsigned_submitter
+            .try_reserve()
+            .map_err(|_| Self::Error::UnsignedChannelIsFull)?;
 
         let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
             // TODO: check bundle equivocation
@@ -561,8 +513,11 @@ where
 
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {
-            self.submit_bundle_equivocation_proof(equivocation_proof);
+            // `send` always succeeds without waiting as a slot has been reserved above.
+            equivocation_proof_permit.send(UnsignedMessage::BundleEquivocation(equivocation_proof));
             return Err(GossipMessageError::BundleEquivocation);
+        } else {
+            drop(equivocation_proof_permit);
         }
 
         let bundle_exists = false;
@@ -602,7 +557,14 @@ where
                     // if illegal => illegal tx proof
                     let invalid_transaction_proof = InvalidTransactionProof;
 
-                    self.submit_invalid_transaction_proof(invalid_transaction_proof);
+                    self.unsigned_submitter
+                        .try_reserve()
+                        .map(|permit| {
+                            permit.send(UnsignedMessage::InvalidTransaction(
+                                invalid_transaction_proof,
+                            ));
+                        })
+                        .map_err(|_| Self::Error::UnsignedChannelIsFull)?;
                 }
             }
 
@@ -617,23 +579,10 @@ where
         &self,
         signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
     ) -> Result<Action, Self::Error> {
-        {
-            let mut pending_unsigned = self.pending_unsigned.lock();
-            if let Some(msg) = pending_unsigned.as_mut() {
-                match self.unsigned_submitter.try_submit(msg.clone()) {
-                    Ok(()) => {
-                        *pending_unsigned = None;
-                    }
-                    Err(_msg) => {
-                        tracing::debug!(
-                            target: LOG_TARGET,
-                            "Too many unsigned extrinsics, skip processing gossiped SignedExecutionReceipt"
-                        );
-                        return Ok(Action::Empty);
-                    }
-                }
-            }
-        }
+        let fraud_proof_permit = self
+            .unsigned_submitter
+            .try_reserve()
+            .map_err(|_| Self::Error::UnsignedChannelIsFull)?;
 
         let signed_receipt_hash = signed_execution_receipt.hash();
 
@@ -723,11 +672,13 @@ where
                 &local_receipt,
                 signed_receipt_hash,
             )?;
-
-            self.submit_fraud_proof(fraud_proof);
+            // `send` always succeeds without waiting as a slot has been reserved above.
+            fraud_proof_permit.send(UnsignedMessage::Fraud(fraud_proof));
 
             Ok(Action::Empty)
         } else {
+            drop(fraud_proof_permit);
+
             Ok(Action::RebroadcastExecutionReceipt)
         }
     }
