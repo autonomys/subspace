@@ -1,6 +1,6 @@
 use crate::{
-    BlockWeight, HashOf, HeaderExt, HeaderImporter, NumberOf, RecordSize, SegmentSize,
-    SolutionRange, Storage,
+    BlockWeight, ChainConstants, HashOf, HeaderExt, HeaderImporter, NumberOf, SolutionRange,
+    Storage,
 };
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -10,10 +10,9 @@ use std::collections::HashMap;
 
 pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct StorageData {
-    global_randomness_interval: NumberOf<Header>,
-    k_depth: NumberOf<Header>,
+    constants: ChainConstants<Header>,
     headers: HashMap<HashOf<Header>, HeaderExt<Header>>,
     number_to_hashes: HashMap<NumberOf<Header>, Vec<HashOf<Header>>>,
     best_header: (NumberOf<Header>, HashOf<Header>),
@@ -28,20 +27,8 @@ pub(crate) struct TestOverrides {
 #[derive(Debug)]
 pub(crate) struct MockStorage(StorageData);
 impl Storage<Header> for MockStorage {
-    fn record_size(&self) -> RecordSize {
-        Default::default()
-    }
-
-    fn segment_size(&self) -> SegmentSize {
-        Default::default()
-    }
-
-    fn k_depth(&self) -> NumberOf<Header> {
-        self.0.k_depth
-    }
-
-    fn randomness_update_interval(&self) -> NumberOf<Header> {
-        self.0.global_randomness_interval
+    fn constants(&self) -> ChainConstants<Header> {
+        self.0.constants.clone()
     }
 
     fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>> {
@@ -155,12 +142,21 @@ impl Storage<Header> for MockStorage {
 impl MockStorage {
     pub(crate) fn new(
         global_randomness_interval: NumberOf<Header>,
+        era_duration: NumberOf<Header>,
         k_depth: NumberOf<Header>,
+        slot_probability: (u64, u64),
     ) -> Self {
         Self(StorageData {
-            global_randomness_interval,
-            k_depth,
-            ..Default::default()
+            constants: ChainConstants {
+                k_depth,
+                era_duration,
+                randomness_interval: global_randomness_interval,
+                slot_probability,
+            },
+            headers: Default::default(),
+            number_to_hashes: Default::default(),
+            best_header: (Default::default(), Default::default()),
+            finalized_head: None,
         })
     }
 

@@ -18,7 +18,7 @@ use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
     derive_target, REWARD_SIGNING_CONTEXT,
 };
-use subspace_verification::derive_randomness;
+use subspace_verification::{derive_next_solution_range, derive_randomness};
 
 fn default_randomness_and_salt() -> (Randomness, Salt) {
     let randomness = [1u8; 32];
@@ -122,7 +122,7 @@ fn import_blocks_until(
 
 #[test]
 fn test_header_import_missing_parent() {
-    let mut store = MockStorage::new(10, 7);
+    let mut store = MockStorage::new(10, 10, 7, (1, 6));
     let keypair = Keypair::generate();
     let (_parent_hash, next_slot) = import_blocks_until(&mut store, 0, 0, &keypair);
     let (header, _) = valid_header(Default::default(), 1, next_slot, &keypair);
@@ -132,7 +132,7 @@ fn test_header_import_missing_parent() {
 }
 
 fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
-    let mut store = MockStorage::new(10, 7);
+    let mut store = MockStorage::new(10, 10, 7, (1, 6));
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();
@@ -189,7 +189,7 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
 
 #[test]
 fn test_header_import_success() {
-    let mut store = MockStorage::new(10, 7);
+    let mut store = MockStorage::new(10, 10, 7, (1, 6));
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();
@@ -217,13 +217,15 @@ fn test_header_import_success() {
     // header count at the finalized head must be 1
     ensure_finalized_heads_have_no_forks(&store, 3);
 
-    // check for updated global randomness at block number 10
     let header = store.header(store.heads_at_number(10)[0]).unwrap();
     let digest_items =
         extract_subspace_digest_items::<Header, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
             &header.header,
         )
         .unwrap();
+    let derived_items = header.derive_digest_items(&store).unwrap();
+
+    // check for updated global randomness at block number 10
     let expected_global_randomness = derive_randomness(
         &Into::<subspace_core_primitives::PublicKey>::into(
             &digest_items.pre_digest.solution.public_key,
@@ -233,10 +235,28 @@ fn test_header_import_success() {
     )
     .unwrap();
     assert_ne!(expected_global_randomness, digest_items.global_randomness);
-    let derived_items = header
-        .derive_digest_items(store.randomness_update_interval())
-        .unwrap();
     assert_eq!(expected_global_randomness, derived_items.global_randomness);
+
+    // check for updated solution range at block 10
+    let ancestor_header = store.header(store.heads_at_number(1)[0]).unwrap();
+    let ancestor_digests =
+        extract_subspace_digest_items::<Header, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &ancestor_header.header,
+        )
+        .unwrap();
+    let expected_solution_range = derive_next_solution_range(
+        u64::from(ancestor_digests.pre_digest.slot),
+        u64::from(digest_items.pre_digest.slot),
+        store.constants().slot_probability,
+        digest_items.solution_range,
+        store
+            .constants()
+            .era_duration
+            .try_into()
+            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+    );
+    assert_ne!(expected_solution_range, digest_items.solution_range);
+    assert_eq!(expected_solution_range, derived_items.solution_range);
 }
 
 fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: NumberOf<Header>) {
@@ -288,7 +308,7 @@ fn create_fork_chain_from(
 
 #[test]
 fn test_finalized_chain_reorg_to_longer_chain() {
-    let mut store = MockStorage::new(10, 4);
+    let mut store = MockStorage::new(10, 10, 4, (1, 6));
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 3, 1, &keypair);
     let best_header = store.best_header();
@@ -334,7 +354,7 @@ fn test_finalized_chain_reorg_to_longer_chain() {
 
 #[test]
 fn test_reorg_to_heavier_smaller_chain() {
-    let mut store = MockStorage::new(10, 4);
+    let mut store = MockStorage::new(10, 10, 4, (1, 6));
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();

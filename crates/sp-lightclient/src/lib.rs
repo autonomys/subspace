@@ -22,6 +22,7 @@
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
+use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
     ErrorDigestType, PreDigest, SubspaceDigestItems,
@@ -32,7 +33,8 @@ use sp_std::cmp::Ordering;
 use subspace_core_primitives::{Randomness, RewardSignature, Salt};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
-    check_reward_signature, derive_randomness, verify_solution, VerifySolutionParams,
+    check_reward_signature, derive_next_solution_range, derive_randomness, verify_solution,
+    VerifySolutionParams,
 };
 
 #[cfg(test)]
@@ -44,12 +46,6 @@ mod mock;
 // TODO(ved): move them to consensus primitives and change usages across
 /// Type of solution range
 type SolutionRange = u64;
-
-/// The size of data in one piece (in bytes).
-type RecordSize = u32;
-
-/// The size of encoded and plotted piece in segments of this size (in bytes).
-type SegmentSize = u32;
 
 /// BlockWeight type for fork choice rules
 type BlockWeight = u128;
@@ -67,25 +63,32 @@ pub struct HeaderExt<Header> {
 }
 
 impl<Header: HeaderT> HeaderExt<Header> {
-    pub(crate) fn derive_digest_items(
+    pub(crate) fn derive_digest_items<Store: Storage<Header>>(
         &self,
-        global_randomness_interval: NumberOf<Header>,
+        store: &Store,
     ) -> Result<
         SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
         ImportError<HashOf<Header>>,
     > {
+        let constants = store.constants();
         let mut digest_items = extract_subspace_digest_items(&self.header)
             .map_err(ImportError::DigestExtractionError)?;
 
         // derive global randomness if interval is met
         digest_items.global_randomness = self.derive_global_randomness(
-            global_randomness_interval,
+            constants.randomness_interval,
             &digest_items.pre_digest,
             digest_items.global_randomness,
         )?;
 
         // derive solution range if interval is met
-        digest_items.solution_range = self.derive_solution_range(digest_items.solution_range);
+        digest_items.solution_range = self.derive_solution_range(
+            store,
+            constants.era_duration,
+            constants.slot_probability,
+            digest_items.solution_range,
+            digest_items.pre_digest.slot,
+        )?;
 
         // derive salt if interval is met
         digest_items.salt = self.derive_salt(digest_items.salt);
@@ -111,13 +114,63 @@ impl<Header: HeaderT> HeaderExt<Header> {
         }
     }
 
-    fn derive_solution_range(&self, current_solution_range: SolutionRange) -> SolutionRange {
+    fn derive_solution_range<Store: Storage<Header>>(
+        &self,
+        store: &Store,
+        era_duration: NumberOf<Header>,
+        slot_probability: (u64, u64),
+        current_solution_range: SolutionRange,
+        current_slot: Slot,
+    ) -> Result<SolutionRange, ImportError<HashOf<Header>>> {
         #[cfg(test)]
         if self.overrides.solution_range.is_some() {
-            return self.overrides.solution_range.unwrap();
+            return Ok(self.overrides.solution_range.unwrap());
         }
 
-        current_solution_range
+        if *self.header.number() % era_duration == Zero::zero() {
+            // Era start slot is slot at (current number - Era duration) block
+            let mut ancestor_number = self
+                .header
+                .number()
+                .checked_sub(&era_duration)
+                .expect("should not under flow due to the check above");
+
+            // if the ancestor we are looking for is Genesis block, we need to adjust that
+            // since the Genesis block will not have any slot. So we fallback to Block #1
+            if ancestor_number == Zero::zero() {
+                ancestor_number = One::one();
+            }
+
+            // fetch the ancestor
+            let ancestor = store
+                .ancestor_of_header_at_depth(ancestor_number, self)
+                .ok_or(ImportError::DigestDerivationError(
+                    ErrorDigestType::SolutionRange,
+                ))?;
+
+            // extract ancestor's digests
+            let ancestor_digests = extract_subspace_digest_items::<
+                Header,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&ancestor.header)?;
+            let era_start_slot = u64::from(ancestor_digests.pre_digest.slot);
+            let current_slot = u64::from(current_slot);
+
+            // derive solution range
+            Ok(derive_next_solution_range(
+                era_start_slot,
+                current_slot,
+                slot_probability,
+                current_solution_range,
+                era_duration
+                    .try_into()
+                    .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+            ))
+        } else {
+            Ok(current_solution_range)
+        }
     }
 
     fn derive_salt(&self, current_salt: Salt) -> Salt {
@@ -128,19 +181,23 @@ impl<Header: HeaderT> HeaderExt<Header> {
 type HashOf<T> = <T as HeaderT>::Hash;
 type NumberOf<T> = <T as HeaderT>::Number;
 
+/// Chain constants
+#[derive(Debug, Clone)]
+pub struct ChainConstants<Header: HeaderT> {
+    /// Interval at which randomness is updated
+    pub randomness_interval: NumberOf<Header>,
+    /// Era duration
+    pub era_duration: NumberOf<Header>,
+    /// K Depth at which we finalize the heads
+    pub k_depth: NumberOf<Header>,
+    /// Slot probability of the chain
+    pub slot_probability: (u64, u64),
+}
+
 /// Storage responsible for storing headers
 pub trait Storage<Header: HeaderT> {
-    /// Record size
-    fn record_size(&self) -> RecordSize;
-
-    /// Segment size
-    fn segment_size(&self) -> SegmentSize;
-
-    /// K depth
-    fn k_depth(&self) -> NumberOf<Header>;
-
-    /// Randomness update interval
-    fn randomness_update_interval(&self) -> NumberOf<Header>;
+    /// Chain constants
+    fn constants(&self) -> ChainConstants<Header>;
 
     /// Queries a header at a specific block number or block hash
     fn header(&self, hash: HashOf<Header>) -> Option<HeaderExt<Header>>;
@@ -179,6 +236,12 @@ pub trait Storage<Header: HeaderT> {
             return None;
         }
 
+        // short circuit if the depth is at the same or lower number than finalized head
+        let (finalized_number, _) = self.finalized_head();
+        if depth.le(&finalized_number) {
+            return self.header(self.heads_at_number(depth)[0]);
+        }
+
         // start tree route till the ancestor
         let mut header = header.to_owned();
         while *header.header.number() > depth {
@@ -193,7 +256,7 @@ pub trait Storage<Header: HeaderT> {
     /// But with some minor changes, we can introduce some trusted checkpoint so that light client
     /// is synced with the chain much faster.
     fn finalize_and_prune_forks(&mut self) -> Result<(), ImportError<HashOf<Header>>> {
-        let k_depth = self.k_depth();
+        let k_depth = self.constants().k_depth;
         let best_header = self.best_header();
         let current_finalized_number = self.finalized_head().0;
 
@@ -327,11 +390,7 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
             global_randomness,
             solution_range,
             salt,
-        } = verify_header_digest_with_parent(
-            store.randomness_update_interval(),
-            &parent_header,
-            &header,
-        )?;
+        } = verify_header_digest_with_parent(store, &parent_header, &header)?;
 
         // slot must be strictly increasing from the parent header
         verify_slot(&parent_header.header, &pre_digest)?;
@@ -396,8 +455,8 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
     }
 }
 
-fn verify_header_digest_with_parent<Header: HeaderT>(
-    global_randomness_interval: NumberOf<Header>,
+fn verify_header_digest_with_parent<Header: HeaderT, Store: Storage<Header>>(
+    store: &Store,
     parent_header: &HeaderExt<Header>,
     header: &Header,
 ) -> Result<
@@ -405,7 +464,7 @@ fn verify_header_digest_with_parent<Header: HeaderT>(
     ImportError<HashOf<Header>>,
 > {
     let pre_digest_items = extract_subspace_digest_items(header)?;
-    let parent_digest_items = parent_header.derive_digest_items(global_randomness_interval)?;
+    let parent_digest_items = parent_header.derive_digest_items(store)?;
     if pre_digest_items.global_randomness != parent_digest_items.global_randomness {
         return Err(ImportError::InvalidDigest(
             ErrorDigestType::GlobalRandomness,
