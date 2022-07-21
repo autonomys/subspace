@@ -36,7 +36,7 @@ use thiserror::Error;
 use tracing::{info, trace};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
-const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
+const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Max bootstrap addresses to preload.
 const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
 
@@ -108,7 +108,7 @@ impl Config {
         yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
         let gossipsub = GossipsubConfigBuilder::default()
-            .protocol_id_prefix(GOSSIPSUB_PROTOCOL)
+            .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
             // TODO: Do we want message signing?
             .validation_mode(ValidationMode::None)
             // To content-address message, we can take the hash of message and use it as an ID.
