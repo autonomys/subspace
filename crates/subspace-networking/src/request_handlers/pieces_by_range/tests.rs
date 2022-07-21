@@ -80,7 +80,7 @@ async fn pieces_by_range_protocol_smoke() {
     let (mut result_sender, mut result_receiver) = mpsc::unbounded();
     tokio::spawn(async move {
         let resp = node_2
-            .send_pieces_by_range_request(node_1.id(), request)
+            .send_generic_request(node_1.id(), request)
             .await
             .unwrap();
 

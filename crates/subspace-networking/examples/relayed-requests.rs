@@ -96,7 +96,7 @@ async fn main() {
 
     tokio::spawn(async move {
         node_3
-            .send_pieces_by_range_request(
+            .send_generic_request(
                 node_2.id(),
                 PiecesByRangeRequest {
                     from: PieceIndexHash::from([1u8; 32]),

@@ -98,7 +98,7 @@ async fn main() {
 
     tokio::spawn(async move {
         node_2
-            .send_pieces_by_range_request(
+            .send_generic_request(
                 node_1.id(),
                 PiecesByRangeRequest {
                     from: PieceIndexHash::from([1u8; 32]),
@@ -109,7 +109,7 @@ async fn main() {
             .unwrap();
 
         let resp = node_2
-            .send_object_mappings_request(
+            .send_generic_request(
                 node_1.id(),
                 ObjectMappingsRequest {
                     object_hash: Default::default(),

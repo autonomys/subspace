@@ -1,9 +1,8 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
-use crate::request_handlers::pieces_by_range::PiecesByRangeRequest;
+use crate::node::Node;
 use crate::request_responses::RequestFailure;
-use crate::{Node, ObjectMappingsRequest};
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -16,6 +15,7 @@ use libp2p::kad::record;
 use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, Multiaddr, PeerId};
 use parking_lot::Mutex;
+use std::borrow::Cow;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::sha256_hash;
@@ -53,14 +53,10 @@ pub(crate) enum Command {
         key: Multihash,
         result_sender: oneshot::Sender<Vec<PeerId>>,
     },
-    PiecesByRangeRequest {
+    GenericRequest {
         peer_id: PeerId,
-        request: PiecesByRangeRequest,
-        result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
-    },
-    ObjectMappingsRequest {
-        peer_id: PeerId,
-        request: ObjectMappingsRequest,
+        protocol_name: Cow<'static, str>,
+        request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
 }
