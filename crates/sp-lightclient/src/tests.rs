@@ -103,17 +103,14 @@ fn import_blocks_until(
     let mut parent_hash = Default::default();
     let mut slot = start_slot;
     for block_number in 0..=number {
-        let (header, solution_range) = valid_header(parent_hash, block_number, slot, keypair);
-        let (randomness, salt) = default_randomness_and_salt();
+        let (header, _solution_range) = valid_header(parent_hash, block_number, slot, keypair);
         parent_hash = header.hash();
         slot += 1;
         store.store_header(
             HeaderExt {
                 header,
-                derived_global_randomness: randomness,
-                derived_solution_range: solution_range,
-                derived_salt: salt,
                 total_weight: 0,
+                overrides: Default::default(),
             },
             true,
         );

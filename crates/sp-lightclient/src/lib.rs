@@ -57,17 +57,54 @@ type BlockWeight = u128;
 pub struct HeaderExt<Header> {
     /// Actual header of the subspace block chain at a specific height
     pub header: Header,
-    /// Global randomness after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_global_randomness: Randomness,
-    /// Solution range after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_solution_range: SolutionRange,
-    /// Salt after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_salt: Salt,
     /// Cumulative weight of chain until this header
     pub total_weight: BlockWeight,
+
+    #[cfg(test)]
+    pub(crate) overrides: mock::TestOverrides,
+}
+
+impl<Header: HeaderT> HeaderExt<Header> {
+    pub(crate) fn derive_digest_items<PublicKey, RewardAddress, Signature>(
+        &self,
+    ) -> Result<SubspaceDigestItems<PublicKey, RewardAddress, Signature>, ImportError<HashOf<Header>>>
+    where
+        PublicKey: Decode,
+        RewardAddress: Decode,
+        Signature: Decode,
+    {
+        let mut digest_items = extract_subspace_digest_items(&self.header)
+            .map_err(ImportError::DigestExtractionError)?;
+
+        // derive global randomness if interval is met
+        digest_items.global_randomness =
+            self.derive_global_randomness(digest_items.global_randomness);
+
+        // derive solution range if interval is met
+        digest_items.solution_range = self.derive_solution_range(digest_items.solution_range);
+
+        // derive salt if interval is met
+        digest_items.salt = self.derive_salt(digest_items.salt);
+
+        Ok(digest_items)
+    }
+
+    fn derive_global_randomness(&self, current_randomness: Randomness) -> Randomness {
+        current_randomness
+    }
+
+    fn derive_solution_range(&self, current_solution_range: SolutionRange) -> SolutionRange {
+        #[cfg(test)]
+        if self.overrides.solution_range.is_some() {
+            return self.overrides.solution_range.unwrap();
+        }
+
+        current_solution_range
+    }
+
+    fn derive_salt(&self, current_salt: Salt) -> Salt {
+        current_salt
+    }
 }
 
 type HashOf<T> = <T as HeaderT>::Hash;
@@ -309,17 +346,16 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
             }
         };
 
-        // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
         // store header
         let header_ext = HeaderExt {
             header,
-            derived_global_randomness: global_randomness,
-            derived_solution_range: solution_range,
-            derived_salt: salt,
             total_weight,
+
+            #[cfg(test)]
+            overrides: Default::default(),
         };
 
         store.store_header(header_ext, is_best_header);
@@ -341,17 +377,19 @@ fn verify_header_digest_with_parent<Header: HeaderT>(
     ImportError<HashOf<Header>>,
 > {
     let pre_digest_items = extract_subspace_digest_items(header)?;
-    if pre_digest_items.global_randomness != parent_header.derived_global_randomness {
+    let parent_digest_items =
+        parent_header.derive_digest_items::<FarmerPublicKey, FarmerPublicKey, FarmerSignature>()?;
+    if pre_digest_items.global_randomness != parent_digest_items.global_randomness {
         return Err(ImportError::InvalidDigest(
             ErrorDigestType::GlobalRandomness,
         ));
     }
 
-    if pre_digest_items.solution_range != parent_header.derived_solution_range {
+    if pre_digest_items.solution_range != parent_digest_items.solution_range {
         return Err(ImportError::InvalidDigest(ErrorDigestType::SolutionRange));
     }
 
-    if pre_digest_items.salt != parent_header.derived_salt {
+    if pre_digest_items.salt != parent_digest_items.salt {
         return Err(ImportError::InvalidDigest(ErrorDigestType::Salt));
     }
 
