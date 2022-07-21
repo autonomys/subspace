@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::{
-    Config, DbNetworkingParametersProvider, PiecesByRangeResponse, PiecesToPlot,
+    Config, NetworkingParametersManager, PiecesByRangeResponse, PiecesToPlot,
 };
 
 #[tokio::main]
@@ -89,19 +89,17 @@ async fn main() {
         nodes.push(node);
     }
 
+    let db_path = std::env::temp_dir().join("database2").into_boxed_path();
+
+    println!("Networking parameters database path used: {:?}", db_path);
+
     let config = Config {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        network_parameters_persistence_handler: Arc::new(
-            DbNetworkingParametersProvider::new(
-                std::env::temp_dir()
-                    .join("database")
-                    .into_boxed_path()
-                    .as_ref(),
-            )
-            .unwrap(),
-        ),
+        networking_parameters_registry: NetworkingParametersManager::new(db_path.as_ref())
+            .unwrap()
+            .boxed(),
         ..Config::with_generated_keypair()
     };
 

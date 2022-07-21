@@ -27,10 +27,7 @@ mod request_responses;
 mod shared;
 mod utils;
 
-pub use crate::behavior::persistent_parameters::{
-    DbNetworkingParametersProvider, JsonNetworkingParametersProvider, NetworkingParametersManager,
-    NetworkingParametersProviderStub,
-};
+pub use crate::behavior::persistent_parameters::NetworkingParametersManager;
 pub use crate::node::{
     CircuitRelayClientError, GetPiecesByRangeError, Node, SubscribeError, TopicSubscription,
 };

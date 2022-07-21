@@ -1,7 +1,4 @@
-use crate::behavior::persistent_parameters::{
-    NetworkingParametersManager, NetworkingParametersProvider, NetworkingParametersProviderStub,
-    NetworkingParametersRegistry,
-};
+use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
 use crate::pieces_by_range_handler::{self};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
@@ -43,7 +40,7 @@ enum QueryResultSender {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<P: NetworkingParametersProvider = NetworkingParametersProviderStub> {
+pub struct NodeRunner {
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
     is_relay_server: bool,
@@ -61,10 +58,10 @@ pub struct NodeRunner<P: NetworkingParametersProvider = NetworkingParametersProv
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
-    networking_parameters_manager: NetworkingParametersManager<P>,
+    networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
 }
 
-impl<P: NetworkingParametersProvider> NodeRunner<P> {
+impl NodeRunner {
     pub(crate) fn new(
         allow_non_globals_in_dht: bool,
         is_relay_server: bool,
@@ -72,7 +69,7 @@ impl<P: NetworkingParametersProvider> NodeRunner<P> {
         swarm: Swarm<Behavior>,
         shared_weak: Weak<Shared>,
         initial_random_query_interval: Duration,
-        networking_parameters_manager: NetworkingParametersManager<P>,
+        networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
@@ -86,7 +83,7 @@ impl<P: NetworkingParametersProvider> NodeRunner<P> {
             topic_subscription_senders: HashMap::default(),
             // We'll make the first query right away and continue at the interval.
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
-            networking_parameters_manager,
+            networking_parameters_registry,
         }
     }
 
@@ -115,8 +112,8 @@ impl<P: NetworkingParametersProvider> NodeRunner<P> {
                         break;
                     }
                 },
-                _ = self.networking_parameters_manager.run().fuse() => {
-                    // no actions here
+                _ = self.networking_parameters_registry.run().fuse() => {
+                    trace!("Network parameters registry runner exited.")
                 }
             }
         }
@@ -188,7 +185,7 @@ impl<P: NetworkingParametersProvider> NodeRunner<P> {
                 shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
 
                 if let ConnectedPoint::Dialer { address, .. } = endpoint {
-                    self.networking_parameters_manager
+                    self.networking_parameters_registry
                         .add_known_peer(peer_id, vec![address])
                         .await;
                 }

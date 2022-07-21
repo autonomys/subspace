@@ -1,7 +1,6 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::persistent_parameters::{
-    NetworkingParametersHandler, NetworkingParametersManager, NetworkingParametersProviderStub,
-    NetworkingParametersRegistry,
+    NetworkingParametersRegistry, NetworkingParametersRegistryStub,
 };
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
@@ -79,8 +78,8 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
-    /// A reference to the `NetworkingParametersProvider` implementation.
-    pub network_parameters_persistence_handler: NetworkingParametersHandler,
+    /// A reference to the `NetworkingParametersRegistry` implementation.
+    pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
 }
 
 impl fmt::Debug for Config {
@@ -139,7 +138,7 @@ impl Config {
             pieces_by_range_request_handler: Arc::new(|_| None),
             relay_server_address: None,
             parent_node: None,
-            network_parameters_persistence_handler: Arc::new(NetworkingParametersProviderStub),
+            networking_parameters_registry: Box::new(NetworkingParametersRegistryStub),
         }
     }
 }
@@ -179,7 +178,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         pieces_by_range_request_handler,
         relay_server_address,
         parent_node,
-        network_parameters_persistence_handler,
+        networking_parameters_registry,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
     // Create relay client transport and client.
@@ -187,10 +186,9 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
-    let networking_parameters_manager =
-        NetworkingParametersManager::new(network_parameters_persistence_handler);
-    let cached_bootstrap_addresses = networking_parameters_manager
-        .bootstrap_addresses(true, INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
+    let cached_bootstrap_addresses = networking_parameters_registry
+        .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
+        .await
         .iter()
         .cloned()
         .filter(|(_, addr)| {
@@ -289,7 +287,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             swarm,
             shared_weak,
             initial_random_query_interval,
-            networking_parameters_manager,
+            networking_parameters_registry,
         );
 
         Ok((node, node_runner))
