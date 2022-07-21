@@ -31,16 +31,14 @@ const REQUESTS_BUFFER_SIZE: usize = 50;
 
 /// Generic request with associated response
 pub trait GenericRequest: Encode + Decode + 'static {
+    const PROTOCOL_NAME: &'static str;
+    const LOG_TARGET: &'static str;
     /// Response type that corresponds to this request
     type Response: Encode + Decode + 'static;
 }
 
 /// Defines a config for the generic request handler for the request-response protocol.
-pub struct RequestHandlerConfig<Request: GenericRequest> {
-    /// Tracing log target
-    pub log_target: &'static str,
-    /// Request-response protocol name
-    pub protocol_name: &'static str,
+pub struct GenericRequestHandlerConfig<Request: GenericRequest> {
     /// Actual request-response handler.
     pub request_handler: ExternalRequestHandler<Request>,
 }
@@ -53,23 +51,19 @@ pub type ExternalRequestHandler<Request> = Arc<
 pub(crate) struct GenericRequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
     request_handler: ExternalRequestHandler<Request>,
-    log_target: &'static str,
-    protocol_name: &'static str,
     protocol_config: ProtocolConfig,
 }
 
 impl<Request: GenericRequest> GenericRequestHandler<Request> {
-    pub fn new(handler_config: RequestHandlerConfig<Request>) -> Self {
+    pub fn new(handler_config: GenericRequestHandlerConfig<Request>) -> Self {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
-        let mut protocol_config = ProtocolConfig::new(handler_config.protocol_name.into());
+        let mut protocol_config = ProtocolConfig::new(Cow::Borrowed(Request::PROTOCOL_NAME));
         protocol_config.inbound_queue = Some(request_sender);
 
         Self {
             request_receiver,
             request_handler: handler_config.request_handler,
-            log_target: handler_config.log_target,
-            protocol_name: handler_config.protocol_name,
             protocol_config,
         }
     }
@@ -80,7 +74,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         peer: PeerId,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, RequestHandlerError> {
-        trace!(%peer, protocol=self.protocol_name, "Handling request...");
+        trace!(%peer, protocol=Request::LOG_TARGET, "Handling request...");
         let request = Request::decode(&mut payload.as_slice())
             .map_err(|_| RequestHandlerError::InvalidRequestFormat)?;
         let response = (self.request_handler)(&request);
@@ -108,10 +102,10 @@ impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<R
                     };
 
                     match pending_response.send(response) {
-                        Ok(()) => trace!(target = self.log_target, %peer, "Handled request",),
+                        Ok(()) => trace!(target = Request::LOG_TARGET, %peer, "Handled request",),
                         Err(_) => debug!(
-                            target = self.log_target,
-                            protocol = self.protocol_name,
+                            target = Request::LOG_TARGET,
+                            protocol = Request::PROTOCOL_NAME,
                             %peer,
                             "Failed to handle request: {}",
                             RequestHandlerError::SendResponse
@@ -120,8 +114,8 @@ impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<R
                 }
                 Err(e) => {
                     debug!(
-                        target = self.log_target,
-                        protocol = self.protocol_name,
+                        target = Request::LOG_TARGET,
+                        protocol = Request::PROTOCOL_NAME,
                         %e,
                         "Failed to handle request.",
                     );
@@ -133,8 +127,8 @@ impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<R
 
                     if pending_response.send(response).is_err() {
                         debug!(
-                            target = self.log_target,
-                            protocol = self.protocol_name,
+                            target = Request::LOG_TARGET,
+                            protocol = Request::PROTOCOL_NAME,
                             %peer,
                             "Failed to handle request: {}", RequestHandlerError::SendResponse
                         );
@@ -149,13 +143,11 @@ impl<Request: GenericRequest> RequestResponseHandler for GenericRequestHandler<R
     }
 
     fn protocol_name(&self) -> Cow<'static, str> {
-        self.protocol_name.into()
+        Cow::Borrowed(Request::PROTOCOL_NAME)
     }
 
     fn clone_box(&self) -> Box<dyn RequestResponseHandler> {
-        Box::new(Self::new(RequestHandlerConfig {
-            log_target: self.log_target,
-            protocol_name: self.protocol_name,
+        Box::new(Self::new(GenericRequestHandlerConfig {
             request_handler: Arc::clone(&self.request_handler),
         }))
     }

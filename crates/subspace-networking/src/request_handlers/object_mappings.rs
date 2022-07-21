@@ -5,7 +5,7 @@
 //! [`RequestHandler`](RequestHandler).
 
 use crate::request_handlers::generic_request_handler::{
-    GenericRequest, GenericRequestHandler, RequestHandlerConfig,
+    GenericRequest, GenericRequestHandler, GenericRequestHandlerConfig,
 };
 use crate::request_responses::RequestResponseHandler;
 use parity_scale_codec::{Decode, Encode};
@@ -25,6 +25,8 @@ pub struct ObjectMappingsRequest {
 }
 
 impl GenericRequest for ObjectMappingsRequest {
+    const PROTOCOL_NAME: &'static str = PROTOCOL_NAME;
+    const LOG_TARGET: &'static str = LOG_TARGET;
     type Response = ObjectMappingsResponse;
 }
 
@@ -40,9 +42,7 @@ pub fn new_object_mappings_request_handler<F>(request_handler: F) -> Box<dyn Req
 where
     F: (Fn(&ObjectMappingsRequest) -> Option<ObjectMappingsResponse>) + Send + Sync + 'static,
 {
-    Box::new(GenericRequestHandler::new(RequestHandlerConfig {
-        protocol_name: PROTOCOL_NAME,
-        log_target: LOG_TARGET,
+    Box::new(GenericRequestHandler::new(GenericRequestHandlerConfig {
         request_handler: Arc::new(request_handler),
     }))
 }

@@ -8,7 +8,7 @@
 mod tests;
 
 use crate::request_handlers::generic_request_handler::{
-    GenericRequest, GenericRequestHandler, RequestHandlerConfig,
+    GenericRequest, GenericRequestHandler, GenericRequestHandlerConfig,
 };
 use crate::request_responses::RequestResponseHandler;
 use parity_scale_codec::{Decode, Encode};
@@ -39,6 +39,8 @@ pub struct PiecesByRangeRequest {
 }
 
 impl GenericRequest for PiecesByRangeRequest {
+    const PROTOCOL_NAME: &'static str = PROTOCOL_NAME;
+    const LOG_TARGET: &'static str = LOG_TARGET;
     type Response = PiecesByRangeResponse;
 }
 
@@ -57,9 +59,7 @@ pub fn new_piece_by_range_request_handler<F>(request_handler: F) -> Box<dyn Requ
 where
     F: (Fn(&PiecesByRangeRequest) -> Option<PiecesByRangeResponse>) + Send + Sync + 'static,
 {
-    Box::new(GenericRequestHandler::new(RequestHandlerConfig {
-        protocol_name: PROTOCOL_NAME,
-        log_target: LOG_TARGET,
+    Box::new(GenericRequestHandler::new(GenericRequestHandlerConfig {
         request_handler: Arc::new(request_handler),
     }))
 }
