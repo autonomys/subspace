@@ -14,23 +14,23 @@ codec = { package = "parity-scale-codec", version = "3.0.0", default-features = 
 finality-grandpa = { version = "0.16.0", default-features = false }
 log = { version = "0.4.17", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
-scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
-serde = { version = "1.0.137", optional = true }
+scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
+serde = { version = "1.0.139", optional = true }
 
 # Substrate Dependencies
 
-frame-support = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-frame-system = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-core = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-finality-grandpa = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-std = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-trie = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
+frame-support = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+frame-system = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+sp-core = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+sp-finality-grandpa = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+sp-std = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+sp-trie = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
 
 [dev-dependencies]
 ed25519-dalek = { version = "1.0", default-features = false, features = ["u64_backend"] }
-sp-io = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-application-crypto = { git = "https://github.com/subspace/substrate", rev="b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-io = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-application-crypto = { git = "https://github.com/subspace/substrate", rev="1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 
 [features]
 default = ["std"]

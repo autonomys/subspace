@@ -1,6 +1,6 @@
 // This file is part of Substrate.
 
-// Copyright (C) 2017-2021 Parity Technologies (UK) Ltd.
+// Copyright (C) 2017-2022 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 
 // This program is free software: you can redistribute it and/or modify
@@ -48,16 +48,18 @@ use sc_consensus::{
 };
 pub use sc_network::config::EmptyTransactionPool;
 use sc_network::{
-	block_request_handler::BlockRequestHandler,
 	config::{
-		MultiaddrWithPeerId, NetworkConfiguration, NonDefaultSetConfig, NonReservedPeerMode,
-		ProtocolConfig, Role, SyncMode, TransportConfig,
+		MultiaddrWithPeerId, NetworkConfiguration, NonDefaultSetConfig, NonReservedPeerMode, Role,
+		SyncMode, TransportConfig,
 	},
-	light_client_requests::handler::LightClientRequestHandler,
-	state_request_handler::StateRequestHandler,
 	Multiaddr, NetworkService, NetworkWorker,
 };
 pub use sc_network_common::config::ProtocolId;
+use sc_network_light::light_client_requests::handler::LightClientRequestHandler;
+use sc_network_sync::{
+	block_request_handler::BlockRequestHandler, state_request_handler::StateRequestHandler,
+	ChainSync,
+};
 use sc_service::client::Client;
 use sp_blockchain::{
 	well_known_cache_keys::{self, Id as CacheKeyId},
@@ -84,7 +86,6 @@ pub use substrate_test_runtime_client::{
 #[derive(Clone)]
 pub struct PassThroughVerifier {
 	finalized: bool,
-	fork_choice: ForkChoiceStrategy,
 }
 
 impl PassThroughVerifier {
@@ -92,15 +93,7 @@ impl PassThroughVerifier {
 	///
 	/// Every verified block will use `finalized` for the `BlockImportParams`.
 	pub fn new(finalized: bool) -> Self {
-		Self { finalized, fork_choice: ForkChoiceStrategy::LongestChain }
-	}
-
-	/// Create a new instance.
-	///
-	/// Every verified block will use `finalized` for the `BlockImportParams` and
-	/// the given [`ForkChoiceStrategy`].
-	pub fn new_with_fork_choice(finalized: bool, fork_choice: ForkChoiceStrategy) -> Self {
-		Self { finalized, fork_choice }
+		Self { finalized }
 	}
 }
 
@@ -115,11 +108,14 @@ impl<B: BlockT> Verifier<B> for PassThroughVerifier {
 			.header
 			.digest()
 			.log(|l| {
-				l.try_as_raw(OpaqueDigestItemId::Consensus(b"SUB_"))
+				l.try_as_raw(OpaqueDigestItemId::Consensus(b"aura"))
+					.or_else(|| l.try_as_raw(OpaqueDigestItemId::Consensus(b"babe")))
 			})
 			.map(|blob| vec![(well_known_cache_keys::AUTHORITIES, blob.to_vec())]);
+		if block.fork_choice.is_none() {
+			block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+		};
 		block.finalized = self.finalized;
-		block.fork_choice = Some(self.fork_choice);
 		Ok((block, maybe_keys))
 	}
 }
@@ -306,13 +302,40 @@ where
 			false,
 			true,
 			true,
+			ForkChoiceStrategy::LongestChain,
+		)
+	}
+
+	/// Add blocks to the peer -- edit the block before adding and use custom fork choice rule.
+	pub fn generate_blocks_with_fork_choice<F>(
+		&mut self,
+		count: usize,
+		origin: BlockOrigin,
+		edit_block: F,
+		fork_choice: ForkChoiceStrategy,
+	) -> H256
+	where
+		F: FnMut(
+			BlockBuilder<Block, PeersFullClient, substrate_test_runtime_client::Backend>,
+		) -> Block,
+	{
+		let best_hash = self.client.info().best_hash;
+		self.generate_blocks_at(
+			BlockId::Hash(best_hash),
+			count,
+			origin,
+			edit_block,
+			false,
+			true,
+			true,
+			fork_choice,
 		)
 	}
 
 	/// Add blocks to the peer -- edit the block before adding. The chain will
 	/// start at the given block iD.
 	#[allow(clippy::too_many_arguments)]
-	fn generate_blocks_at<F>(
+	pub fn generate_blocks_at<F>(
 		&mut self,
 		at: BlockId<Block>,
 		count: usize,
@@ -321,6 +344,7 @@ where
 		headers_only: bool,
 		inform_sync_about_new_best_block: bool,
 		announce_block: bool,
+		fork_choice: ForkChoiceStrategy,
 	) -> H256
 	where
 		F: FnMut(
@@ -344,6 +368,7 @@ where
 			let header = block.header.clone();
 			let mut import_block = BlockImportParams::new(origin, header.clone());
 			import_block.body = if headers_only { None } else { Some(block.extrinsics) };
+			import_block.fork_choice = Some(fork_choice);
 			let (import_block, cache) =
 				futures::executor::block_on(self.verifier.verify(import_block)).unwrap();
 			let cache = if let Some(cache) = cache {
@@ -440,6 +465,7 @@ where
 				headers_only,
 				inform_sync_about_new_best_block,
 				announce_block,
+				ForkChoiceStrategy::LongestChain,
 			)
 		} else {
 			self.generate_blocks_at(
@@ -450,6 +476,7 @@ where
 				headers_only,
 				inform_sync_about_new_best_block,
 				announce_block,
+				ForkChoiceStrategy::LongestChain,
 			)
 		}
 	}
@@ -606,6 +633,8 @@ impl<B: BlockT> VerifierAdapter<B> {
 #[derive(Default)]
 pub struct FullPeerConfig {
 	/// Pruning window size.
+	///
+	/// NOTE: only finalized blocks are subject for removal!
 	pub keep_blocks: Option<u32>,
 	/// Block announce validator.
 	pub block_announce_validator: Option<Box<dyn BlockAnnounceValidator<Block> + Send + Sync>>,
@@ -623,7 +652,7 @@ pub struct FullPeerConfig {
 	pub storage_chain: bool,
 }
 
-pub trait TestNetFactory: Sized
+pub trait TestNetFactory: Default + Sized
 where
 	<Self::BlockImport as BlockImport<Block>>::Transaction: Send,
 {
@@ -631,14 +660,8 @@ where
 	type BlockImport: BlockImport<Block, Error = ConsensusError> + Clone + Send + Sync + 'static;
 	type PeerData: Default;
 
-	/// These two need to be implemented!
-	fn from_config(config: &ProtocolConfig) -> Self;
-	fn make_verifier(
-		&self,
-		client: PeersClient,
-		config: &ProtocolConfig,
-		peer_data: &Self::PeerData,
-	) -> Self::Verifier;
+	/// This one needs to be implemented!
+	fn make_verifier(&self, client: PeersClient, peer_data: &Self::PeerData) -> Self::Verifier;
 
 	/// Get reference to peer.
 	fn peer(&mut self, i: usize) -> &mut Peer<Self::PeerData, Self::BlockImport>;
@@ -658,15 +681,10 @@ where
 		Self::PeerData,
 	);
 
-	fn default_config() -> ProtocolConfig {
-		ProtocolConfig::default()
-	}
-
 	/// Create new test network with this many peers.
 	fn new(n: usize) -> Self {
 		trace!(target: "test_network", "Creating test network");
-		let config = Self::default_config();
-		let mut net = Self::from_config(&config);
+		let mut net = Self::default();
 
 		for i in 0..n {
 			trace!(target: "test_network", "Adding peer {}", i);
@@ -687,7 +705,7 @@ where
 			(Some(keep_blocks), false) => TestClientBuilder::with_pruning_window(keep_blocks),
 			(None, false) => TestClientBuilder::with_default_backend(),
 		};
-		if matches!(config.sync_mode, SyncMode::Fast { .. }) {
+		if matches!(config.sync_mode, SyncMode::Fast { .. } | SyncMode::Warp) {
 			test_client_builder = test_client_builder.set_no_genesis();
 		}
 		let backend = test_client_builder.backend();
@@ -697,11 +715,8 @@ where
 		let (block_import, justification_import, data) = self
 			.make_block_import(PeersClient { client: client.clone(), backend: backend.clone() });
 
-		let verifier = self.make_verifier(
-			PeersClient { client: client.clone(), backend: backend.clone() },
-			&Default::default(),
-			&data,
-		);
+		let verifier = self
+			.make_verifier(PeersClient { client: client.clone(), backend: backend.clone() }, &data);
 		let verifier = VerifierAdapter::new(verifier);
 
 		let import_queue = Box::new(BasicQueue::new(
@@ -766,6 +781,10 @@ where
 			protocol_config
 		};
 
+		let max_parallel_downloads = network_config.max_parallel_downloads;
+		let block_announce_validator = config
+			.block_announce_validator
+			.unwrap_or_else(|| Box::new(DefaultBlockAnnounceValidator));
 		let network = NetworkWorker::new(sc_network::config::Params {
 			role: if config.is_authority { Role::Authority } else { Role::Full },
 			executor: None,
@@ -777,9 +796,18 @@ where
 			transaction_pool: Arc::new(EmptyTransactionPool),
 			protocol_id,
 			import_queue,
-			block_announce_validator: config
-				.block_announce_validator
-				.unwrap_or_else(|| Box::new(DefaultBlockAnnounceValidator)),
+			create_chain_sync: Box::new(move |sync_mode, chain, warp_sync_provider| {
+				match ChainSync::new(
+					sync_mode,
+					chain,
+					block_announce_validator,
+					max_parallel_downloads,
+					warp_sync_provider,
+				) {
+					Ok(chain_sync) => Ok(Box::new(chain_sync)),
+					Err(error) => Err(Box::new(error).into()),
+				}
+			}),
 			metrics_registry: None,
 			block_request_protocol_config,
 			state_request_protocol_config,
@@ -792,10 +820,8 @@ where
 
 		self.mut_peers(move |peers| {
 			for peer in peers.iter_mut() {
-				peer.network.add_known_address(
-					*network.service().local_peer_id(),
-					listen_addr.clone(),
-				);
+				peer.network
+					.add_known_address(*network.service().local_peer_id(), listen_addr.clone());
 			}
 
 			let imported_blocks_stream = Box::pin(client.import_notification_stream().fuse());
@@ -924,14 +950,10 @@ where
 					peer.network.service().announce_block(notification.hash, None);
 				}
 
-				// We poll `finality_notification_stream`, but we only take the last event.
-				let mut last = None;
-				while let Poll::Ready(Some(item)) =
+				// We poll `finality_notification_stream`.
+				while let Poll::Ready(Some(notification)) =
 					peer.finality_notification_stream.as_mut().poll_next(cx)
 				{
-					last = Some(item);
-				}
-				if let Some(notification) = last {
 					peer.network.on_block_finalized(notification.hash, notification.header);
 				}
 			}
@@ -939,16 +961,9 @@ where
 	}
 }
 
+#[derive(Default)]
 pub struct TestNet {
 	peers: Vec<Peer<(), PeersClient>>,
-	fork_choice: ForkChoiceStrategy,
-}
-
-impl TestNet {
-	/// Create a `TestNet` that used the given fork choice rule.
-	pub fn with_fork_choice(fork_choice: ForkChoiceStrategy) -> Self {
-		Self { peers: Vec::new(), fork_choice }
-	}
 }
 
 impl TestNetFactory for TestNet {
@@ -956,18 +971,8 @@ impl TestNetFactory for TestNet {
 	type PeerData = ();
 	type BlockImport = PeersClient;
 
-	/// Create new test network with peers and given config.
-	fn from_config(_config: &ProtocolConfig) -> Self {
-		TestNet { peers: Vec::new(), fork_choice: ForkChoiceStrategy::LongestChain }
-	}
-
-	fn make_verifier(
-		&self,
-		_client: PeersClient,
-		_config: &ProtocolConfig,
-		_peer_data: &(),
-	) -> Self::Verifier {
-		PassThroughVerifier::new_with_fork_choice(false, self.fork_choice)
+	fn make_verifier(&self, _client: PeersClient, _peer_data: &()) -> Self::Verifier {
+		PassThroughVerifier::new(false)
 	}
 
 	fn make_block_import(
@@ -1016,6 +1021,7 @@ impl JustificationImport<Block> for ForceFinalized {
 	}
 }
 
+#[derive(Default)]
 pub struct JustificationTestNet(TestNet);
 
 impl TestNetFactory for JustificationTestNet {
@@ -1023,17 +1029,8 @@ impl TestNetFactory for JustificationTestNet {
 	type PeerData = ();
 	type BlockImport = PeersClient;
 
-	fn from_config(config: &ProtocolConfig) -> Self {
-		JustificationTestNet(TestNet::from_config(config))
-	}
-
-	fn make_verifier(
-		&self,
-		client: PeersClient,
-		config: &ProtocolConfig,
-		peer_data: &(),
-	) -> Self::Verifier {
-		self.0.make_verifier(client, config, peer_data)
+	fn make_verifier(&self, client: PeersClient, peer_data: &()) -> Self::Verifier {
+		self.0.make_verifier(client, peer_data)
 	}
 
 	fn peer(&mut self, i: usize) -> &mut Peer<Self::PeerData, Self::BlockImport> {

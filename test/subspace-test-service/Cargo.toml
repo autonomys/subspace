@@ -15,29 +15,29 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-frame-system = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+frame-system = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 futures = "0.3.21"
 rand = "0.8.5"
-pallet-balances = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-pallet-transaction-payment = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-client-api = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-consensus-slots = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-executor = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-network = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-service = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false, features = ["wasmtime"] }
-sc-tracing = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-arithmetic = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-keyring = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+pallet-balances = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+pallet-transaction-payment = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-client-api = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-consensus-slots = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-executor = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-network = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-service = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false, features = ["wasmtime"] }
+sc-tracing = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-arithmetic = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-keyring = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-test-client = { path = "../subspace-test-client" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
-substrate-test-client = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-tokio = "1.18.2"
+substrate-test-client = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+tokio = "1.20.0"
 
 [dev-dependencies]
-sc-cli = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4", default-features = false }
-sp-keyring = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-substrate-test-utils = { git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sc-cli = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", default-features = false }
+sp-keyring = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+substrate-test-utils = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }

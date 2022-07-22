@@ -18,7 +18,7 @@ use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
 use libp2p::swarm::SwarmBuilder;
-use libp2p::tcp::TokioTcpConfig;
+use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
@@ -276,8 +276,12 @@ async fn build_transport(
     relay_transport: ClientTransport,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
-        let dns_tcp = TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?;
-        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?);
+        let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
+            GenTcpConfig::default().nodelay(true),
+        ))?;
+        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpTransport::new(
+            GenTcpConfig::default().nodelay(true),
+        ))?);
         let transport = dns_tcp.or_transport(ws);
 
         // Add MemoryTransport to the chain to enable in-memory relay configurations.

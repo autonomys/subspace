@@ -1,12 +1,12 @@
 [package]
-name = "subspace-verification"
+name = "sp-lightclient"
 version = "0.1.0"
 authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
-description = "Verification primitives for Subspace"
+description = "Light client substrate primitives for Subspace"
 include = [
     "/src",
     "/Cargo.toml",
@@ -16,28 +16,31 @@ include = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false }
-merlin = { version = "2.0.1", default-features = false }
-scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false }
+scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-arithmetic = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace", default-features = false }
+sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
-subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.31", optional = true }
+subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
+subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
+
+[dev-dependencies]
+frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 
 [features]
 default = ["std"]
 std = [
     "codec/std",
-    "merlin/std",
     "scale-info/std",
     "schnorrkel/std",
     "sp-arithmetic/std",
+    "sp-consensus-subspace/std",
+    "sp-runtime/std",
     "sp-std/std",
-    "subspace-archiving/std",
     "subspace-core-primitives/std",
     "subspace-solving/std",
-    "thiserror"
+    "subspace-verification/std"
 ]

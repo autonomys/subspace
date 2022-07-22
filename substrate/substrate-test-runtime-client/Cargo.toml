@@ -12,15 +12,15 @@ publish = false
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-substrate-test-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+substrate-test-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 substrate-test-runtime = { version = "2.0.0", path = "../substrate-test-runtime" }
-sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
-codec = { package = "parity-scale-codec", version = "3.1.2" }
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "b49d8ee54f4bd6e4b5b48f45d08f75705fad95b4" }
+sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+codec = { package = "parity-scale-codec", version = "3.1.5" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 futures = "0.3.21"

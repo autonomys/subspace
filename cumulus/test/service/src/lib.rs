@@ -107,10 +107,6 @@ async fn run_executor(
     RpcHandlers,
     Executor,
 )> {
-    if matches!(secondary_chain_config.role, Role::Light) {
-        return Err("Light client not supported!".into());
-    }
-
     let primary_chain_full_node = {
         let span = tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
