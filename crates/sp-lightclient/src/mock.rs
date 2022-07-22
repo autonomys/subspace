@@ -140,21 +140,9 @@ impl Storage<Header> for MockStorage {
 }
 
 impl MockStorage {
-    pub(crate) fn new(
-        global_randomness_interval: NumberOf<Header>,
-        era_duration: NumberOf<Header>,
-        k_depth: NumberOf<Header>,
-        slot_probability: (u64, u64),
-        eon_duration: u64,
-    ) -> Self {
+    pub(crate) fn new(constants: ChainConstants<Header>) -> Self {
         Self(StorageData {
-            constants: ChainConstants {
-                k_depth,
-                era_duration,
-                randomness_interval: global_randomness_interval,
-                slot_probability,
-                eon_duration,
-            },
+            constants,
             headers: Default::default(),
             number_to_hashes: Default::default(),
             best_header: (Default::default(), Default::default()),

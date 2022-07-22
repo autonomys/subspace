@@ -1,7 +1,7 @@
 use crate::mock::{Header, MockImporter, MockStorage};
 use crate::{
-    calculate_block_weight, derive_next_eon_index, HashOf, HeaderExt, HeaderImporter, ImportError,
-    NumberOf, SolutionRange, Storage,
+    calculate_block_weight, derive_next_eon_index, ChainConstants, HashOf, HeaderExt,
+    HeaderImporter, ImportError, NumberOf, SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use rand_core::RngCore;
@@ -39,13 +39,24 @@ fn random_piece() -> Piece {
     data.into()
 }
 
-fn valid_header(
+fn valid_header_with_default_randomness_and_salt(
     parent_hash: HashOf<Header>,
     number: NumberOf<Header>,
     slot: u64,
     keypair: &Keypair,
 ) -> (Header, SolutionRange) {
     let (randomness, salt) = default_randomness_and_salt();
+    valid_header(parent_hash, number, slot, keypair, randomness, salt)
+}
+
+fn valid_header(
+    parent_hash: HashOf<Header>,
+    number: NumberOf<Header>,
+    slot: u64,
+    keypair: &Keypair,
+    randomness: Randomness,
+    salt: Salt,
+) -> (Header, SolutionRange) {
     let encoding = random_piece();
     let tag: Tag = create_tag(encoding.as_ref(), salt);
     let global_challenge = derive_global_challenge(&randomness, slot);
@@ -104,55 +115,79 @@ fn import_blocks_until(
 ) -> (HashOf<Header>, u64) {
     let mut parent_hash = Default::default();
     let mut slot = start_slot;
-    let mut next_eon_index = 0;
+    let mut parent_header = None;
     let genesis_slot = start_slot;
     for block_number in 0..=number {
-        let (header, _solution_range) = valid_header(parent_hash, block_number, slot, keypair);
+        let (header, _solution_range) =
+            valid_header_with_default_randomness_and_salt(parent_hash, block_number, slot, keypair);
         parent_hash = header.hash();
         slot += 1;
-        store.store_header(
-            HeaderExt {
-                header,
-                total_weight: 0,
-                eon_index: next_eon_index,
-                overrides: Default::default(),
-            },
-            true,
-        );
+        let eon_index = if let Some(parent_header) = parent_header {
+            derive_next_eon_index(
+                eon_duration,
+                &parent_header,
+                &header,
+                slot.into(),
+                genesis_slot.into(),
+            )
+            .unwrap()
+        } else {
+            0
+        };
 
-        next_eon_index = derive_next_eon_index(
-            next_eon_index,
-            eon_duration,
-            genesis_slot.into(),
-            slot.into(),
-        )
+        let header_ext = HeaderExt {
+            header,
+            total_weight: 0,
+            eon_index,
+            should_update_salt: false,
+            next_salt: None,
+            overrides: Default::default(),
+        };
+        parent_header = Some(header_ext.clone());
+        store.store_header(header_ext, true);
     }
 
     (parent_hash, slot)
 }
 
+fn default_test_constants() -> ChainConstants<Header> {
+    ChainConstants {
+        randomness_interval: 10,
+        era_duration: 10,
+        k_depth: 7,
+        slot_probability: (1, 6),
+        eon_duration: 10,
+        next_salt_reveal_duration: 4,
+    }
+}
+
 #[test]
 fn test_header_import_missing_parent() {
-    let eon_duration = 10;
-    let mut store = MockStorage::new(10, 10, 7, (1, 6), eon_duration);
+    let constants = default_test_constants();
+    let mut store = MockStorage::new(constants.clone());
     let keypair = Keypair::generate();
-    let (_parent_hash, next_slot) = import_blocks_until(&mut store, 0, 0, eon_duration, &keypair);
-    let (header, _) = valid_header(Default::default(), 1, next_slot, &keypair);
-    let hash = header.hash();
-    let res = MockImporter::import_header(&mut store, header);
-    assert_err!(res, ImportError::MissingParent(hash));
+    let (_parent_hash, next_slot) =
+        import_blocks_until(&mut store, 0, 0, constants.eon_duration, &keypair);
+    let (header, _) =
+        valid_header_with_default_randomness_and_salt(Default::default(), 1, next_slot, &keypair);
+    assert_err!(
+        MockImporter::import_header(&mut store, header.clone()),
+        ImportError::MissingParent(header.hash())
+    );
 }
 
 fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
-    let eon_duration = 10;
-    let mut store = MockStorage::new(10, 10, 7, (1, 6), eon_duration);
+    let constants = default_test_constants();
+    let mut store = MockStorage::new(constants.clone());
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, eon_duration, &keypair);
+    let (parent_hash, next_slot) =
+        import_blocks_until(&mut store, 2, 1, constants.eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
     // import block 3
-    let (header, solution_range) = valid_header(parent_hash, 3, next_slot, &keypair);
+    let (header, solution_range) =
+        valid_header_with_default_randomness_and_salt(parent_hash, 3, next_slot, &keypair);
     store.override_solution_range(parent_hash, solution_range);
     assert_ok!(MockImporter::import_header(&mut store, header.clone()));
     let best_header_ext = store.best_header();
@@ -160,7 +195,8 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
     let mut best_header = header;
 
     // try an import another fork at 3
-    let (header, solution_range) = valid_header(parent_hash, 3, next_slot + 1, &keypair);
+    let (header, solution_range) =
+        valid_header_with_default_randomness_and_salt(parent_hash, 3, next_slot + 1, &keypair);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
         extract_subspace_digest_items(&header).unwrap();
     let new_weight = calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
@@ -177,8 +213,7 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
             best_header = header.clone();
         }
     };
-    let res = MockImporter::import_header(&mut store, header);
-    assert_ok!(res);
+    assert_ok!(MockImporter::import_header(&mut store, header));
     let best_header_ext = store.best_header();
     assert_eq!(best_header_ext.header, best_header);
     // we still track the forks
@@ -202,10 +237,12 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
 
 #[test]
 fn test_header_import_success() {
-    let eon_duration = 9;
-    let mut store = MockStorage::new(10, 10, 7, (1, 6), eon_duration);
+    let mut constants = default_test_constants();
+    constants.eon_duration = 9;
+    let mut store = MockStorage::new(constants.clone());
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, eon_duration, &keypair);
+    let (parent_hash, next_slot) =
+        import_blocks_until(&mut store, 2, 1, constants.eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
@@ -213,7 +250,8 @@ fn test_header_import_success() {
     let mut slot = next_slot;
     let mut parent_hash = parent_hash;
     for number in 3..=10 {
-        let (header, solution_range) = valid_header(parent_hash, number, slot, &keypair);
+        let (header, solution_range) =
+            valid_header_with_default_randomness_and_salt(parent_hash, number, slot, &keypair);
         store.override_solution_range(parent_hash, solution_range);
         let res = MockImporter::import_header(&mut store, header.clone());
         assert_ok!(res);
@@ -224,7 +262,7 @@ fn test_header_import_success() {
         parent_hash = header.hash();
     }
 
-    // finalized head must be best - 7 = 3
+    // finalized head must be best 10 - 7 = 3
     let (number, _) = store.finalized_head();
     assert_eq!(number, 3);
 
@@ -272,13 +310,75 @@ fn test_header_import_success() {
     assert_ne!(expected_solution_range, digest_items.solution_range);
     assert_eq!(expected_solution_range, derived_items.solution_range);
 
-    // eon index should be 1 at block #10
     // eon index should be 0 at block #9
     assert_eq!(
         store.header(header.header.parent_hash).unwrap().eon_index,
         0
     );
+    assert!(
+        !store
+            .header(header.header.parent_hash)
+            .unwrap()
+            .should_update_salt
+    );
+    // eon index should be 1 at block #10
     assert_eq!(header.eon_index, 1);
+    assert!(header.should_update_salt);
+
+    // next salt should not be derived at Block #3. Salt reveal edge
+    assert_eq!(
+        store.header(store.heads_at_number(3)[0]).unwrap().next_salt,
+        None
+    );
+    assert!(
+        !store
+            .header(store.heads_at_number(3)[0])
+            .unwrap()
+            .should_update_salt
+    );
+
+    // next salt is revealed at Block #5
+    assert!(store
+        .header(store.heads_at_number(5)[0])
+        .unwrap()
+        .next_salt
+        .is_some());
+    let expected_salt = store
+        .header(store.heads_at_number(5)[0])
+        .unwrap()
+        .next_salt
+        .unwrap();
+    assert!(
+        !store
+            .header(store.heads_at_number(5)[0])
+            .unwrap()
+            .should_update_salt
+    );
+
+    // next salt is used in block #11
+    assert_ne!(expected_salt, digest_items.salt);
+    assert_eq!(expected_salt, derived_items.salt);
+
+    // import Block #11 with expected randomness and salt
+    let parent_hash = header.header.hash();
+    let (header, solution_range) = valid_header(
+        parent_hash,
+        11,
+        slot,
+        &keypair,
+        expected_global_randomness,
+        expected_salt,
+    );
+    store.override_solution_range(parent_hash, solution_range);
+    let res = MockImporter::import_header(&mut store, header.clone());
+    assert_ok!(res);
+    // best header should be correct
+    let best_header = store.best_header();
+    assert_eq!(best_header.header, header);
+
+    // next salt should be empty
+    assert_eq!(best_header.next_salt, None);
+    assert!(!best_header.should_update_salt);
 }
 
 fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: NumberOf<Header>) {
@@ -309,7 +409,8 @@ fn create_fork_chain_from(
     let mut parent_hash = parent_hash;
     let mut next_slot = slot + 1;
     for number in from..=until {
-        let (header, solution_range) = valid_header(parent_hash, number, next_slot, keypair);
+        let (header, solution_range) =
+            valid_header_with_default_randomness_and_salt(parent_hash, number, next_slot, keypair);
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
         let new_weight = calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
@@ -319,8 +420,7 @@ fn create_fork_chain_from(
         store.override_cumulative_weight(parent_hash, 0);
         parent_hash = header.hash();
         next_slot += 1;
-        let res = MockImporter::import_header(store, header);
-        assert_ok!(res);
+        assert_ok!(MockImporter::import_header(store, header));
         // best header should not change
         assert_eq!(store.best_header().header, best_header_ext.header);
     }
@@ -330,15 +430,18 @@ fn create_fork_chain_from(
 
 #[test]
 fn test_finalized_chain_reorg_to_longer_chain() {
-    let eon_duration = 10;
-    let mut store = MockStorage::new(10, 10, 4, (1, 6), eon_duration);
+    let mut constants = default_test_constants();
+    constants.k_depth = 4;
+    let mut store = MockStorage::new(constants.clone());
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 3, 1, eon_duration, &keypair);
+    let (parent_hash, next_slot) =
+        import_blocks_until(&mut store, 3, 1, constants.eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
     // add new best header at 4
-    let (header, solution_range) = valid_header(parent_hash, 4, next_slot, &keypair);
+    let (header, solution_range) =
+        valid_header_with_default_randomness_and_salt(parent_hash, 4, next_slot, &keypair);
     store.override_solution_range(parent_hash, solution_range);
     let res = MockImporter::import_header(&mut store, header.clone());
     assert_ok!(res);
@@ -359,7 +462,12 @@ fn test_finalized_chain_reorg_to_longer_chain() {
     assert_eq!(store.finalized_head().0, 0);
 
     // import a new head to the fork chain and make it the best.
-    let (header, solution_range) = valid_header(fork_parent_hash, 8, fork_next_slot, &keypair);
+    let (header, solution_range) = valid_header_with_default_randomness_and_salt(
+        fork_parent_hash,
+        8,
+        fork_next_slot,
+        &keypair,
+    );
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
         extract_subspace_digest_items(&header).unwrap();
     let new_weight = calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
@@ -377,10 +485,12 @@ fn test_finalized_chain_reorg_to_longer_chain() {
 
 #[test]
 fn test_reorg_to_heavier_smaller_chain() {
-    let eon_duration = 10;
-    let mut store = MockStorage::new(10, 10, 4, (1, 6), eon_duration);
+    let mut constants = default_test_constants();
+    constants.k_depth = 4;
+    let mut store = MockStorage::new(constants.clone());
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, eon_duration, &keypair);
+    let (parent_hash, next_slot) =
+        import_blocks_until(&mut store, 2, 1, constants.eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
@@ -389,7 +499,8 @@ fn test_reorg_to_heavier_smaller_chain() {
     let mut parent_hash = parent_hash;
     let fork_parent_hash = parent_hash;
     for number in 3..=5 {
-        let (header, solution_range) = valid_header(parent_hash, number, slot, &keypair);
+        let (header, solution_range) =
+            valid_header_with_default_randomness_and_salt(parent_hash, number, slot, &keypair);
         store.override_solution_range(parent_hash, solution_range);
         let res = MockImporter::import_header(&mut store, header.clone());
         assert_ok!(res);
@@ -408,7 +519,8 @@ fn test_reorg_to_heavier_smaller_chain() {
     ensure_finalized_heads_have_no_forks(&store, 1);
 
     // now import a fork header 3 that becomes canonical
-    let (header, solution_range) = valid_header(fork_parent_hash, 3, next_slot + 1, &keypair);
+    let (header, solution_range) =
+        valid_header_with_default_randomness_and_salt(fork_parent_hash, 3, next_slot + 1, &keypair);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
         extract_subspace_digest_items(&header).unwrap();
     let new_weight = calculate_block_weight(&digests.global_randomness, &digests.pre_digest);

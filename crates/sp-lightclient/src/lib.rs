@@ -33,8 +33,8 @@ use sp_std::cmp::Ordering;
 use subspace_core_primitives::{Randomness, RewardSignature, Salt};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
-    check_reward_signature, derive_next_solution_range, derive_randomness, verify_solution,
-    VerifySolutionParams,
+    check_reward_signature, derive_next_salt_from_randomness, derive_next_solution_range,
+    derive_randomness, verify_solution, VerifySolutionParams,
 };
 
 #[cfg(test)]
@@ -62,6 +62,10 @@ pub struct HeaderExt<Header> {
     pub total_weight: BlockWeight,
     /// Current Eon index
     pub eon_index: EonIndex,
+    /// Indicates if the derived salt should be used in the next block
+    pub should_update_salt: bool,
+    /// Derived next salt that is used after eon change
+    pub next_salt: Option<Salt>,
 
     #[cfg(test)]
     pub(crate) overrides: mock::TestOverrides,
@@ -95,8 +99,8 @@ impl<Header: HeaderT> HeaderExt<Header> {
             digest_items.pre_digest.slot,
         )?;
 
-        // derive salt if interval is met
-        digest_items.salt = self.derive_salt(digest_items.salt);
+        // use derived salt if eon has changed
+        digest_items.salt = self.fetch_next_salt(digest_items.salt);
 
         Ok(digest_items)
     }
@@ -108,14 +112,19 @@ impl<Header: HeaderT> HeaderExt<Header> {
         current_randomness: Randomness,
     ) -> Result<Randomness, ImportError<HashOf<Header>>> {
         if *self.header.number() % global_randomness_interval == Zero::zero() {
-            derive_randomness(
-                &Into::<subspace_core_primitives::PublicKey>::into(&pre_digest.solution.public_key),
-                pre_digest.solution.tag,
-                &pre_digest.solution.tag_signature,
-            )
-            .map_err(|_err| ImportError::DigestDerivationError(ErrorDigestType::GlobalRandomness))
+            derive_por_randomness(pre_digest).map_err(|_err| {
+                ImportError::DigestDerivationError(ErrorDigestType::GlobalRandomness)
+            })
         } else {
             Ok(current_randomness)
+        }
+    }
+
+    fn fetch_next_salt(&self, current_salt: Salt) -> Salt {
+        if self.should_update_salt && self.next_salt.is_some() {
+            self.next_salt.unwrap()
+        } else {
+            current_salt
         }
     }
 
@@ -177,10 +186,6 @@ impl<Header: HeaderT> HeaderExt<Header> {
             Ok(current_solution_range)
         }
     }
-
-    fn derive_salt(&self, current_salt: Salt) -> Salt {
-        current_salt
-    }
 }
 
 type HashOf<T> = <T as HeaderT>::Hash;
@@ -199,6 +204,8 @@ pub struct ChainConstants<Header: HeaderT> {
     pub slot_probability: (u64, u64),
     /// Eon duration
     pub eon_duration: u64,
+    /// Salt reveal duration from the current eon start
+    pub next_salt_reveal_duration: u64,
 }
 
 /// Storage responsible for storing headers
@@ -243,10 +250,14 @@ pub trait Storage<Header: HeaderT> {
             return None;
         }
 
+        let heads_at_depth = self.heads_at_number(depth);
+
         // short circuit if the depth is at the same or lower number than finalized head
+        // or
+        // short circuit if there are no forks at the depth
         let (finalized_number, _) = self.finalized_head();
-        if depth.le(&finalized_number) {
-            return self.header(self.heads_at_number(depth)[0]);
+        if depth.le(&finalized_number) || heads_at_depth.len() == 1 {
+            return self.header(heads_at_depth[0]);
         }
 
         // start tree route till the ancestor
@@ -442,33 +453,45 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
-        // derive eon index
-        let next_eon_index = if *header.number() == One::one() {
-            // since this is the first block, just return the eon index of the parent which is always 0.
-            parent_header.eon_index
-        } else {
-            // since genesis wont have a slot, we take the slot of the block #1
-            let genesis = store
-                .ancestor_of_header_at_depth(One::one(), &parent_header)
-                .expect("ancestor must be present at this time");
-            let genesis_digests = extract_subspace_digest_items::<
-                Header,
-                FarmerPublicKey,
-                FarmerPublicKey,
-                FarmerSignature,
-            >(&genesis.header)?;
-            derive_next_eon_index(
-                parent_header.eon_index,
-                store.constants().eon_duration,
-                genesis_digests.pre_digest.slot,
-                pre_digest.slot,
-            )
-        };
+        let constants = store.constants();
+        let eon_duration = constants.eon_duration;
+        let genesis_slot = fetch_genesis_slot(store, &parent_header)?;
+
+        // derive next salt if salt reveal interval is met
+        let next_salt = derive_next_salt(
+            &parent_header,
+            constants.next_salt_reveal_duration,
+            eon_duration,
+            genesis_slot,
+            &pre_digest,
+        )
+        .map_err(|_err| ImportError::DigestDerivationError(ErrorDigestType::Salt))?;
+
+        // derive next eon index
+        let eon_index = derive_next_eon_index(
+            eon_duration,
+            &parent_header,
+            &header,
+            pre_digest.slot,
+            genesis_slot,
+        )?;
+
+        let mut should_update_salt = parent_header.should_update_salt;
+        // eon has changed, use the next salt in the next block
+        if parent_header.eon_index != eon_index {
+            should_update_salt = true
+        }
+        // if next salt has been used already, then reset
+        if parent_header.should_update_salt && parent_header.next_salt.is_some() {
+            should_update_salt = false
+        }
 
         let header_ext = HeaderExt {
             header,
             total_weight,
-            eon_index: next_eon_index,
+            eon_index,
+            should_update_salt,
+            next_salt,
 
             #[cfg(test)]
             overrides: Default::default(),
@@ -578,26 +601,103 @@ fn calculate_block_weight(
     u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
 }
 
-fn derive_next_eon_index(
-    parent_eon_index: u64,
+fn derive_next_eon_index<Header: HeaderT>(
     eon_duration: u64,
-    genesis_slot: Slot,
+    parent_header: &HeaderExt<Header>,
+    header: &Header,
     current_slot: Slot,
-) -> EonIndex {
+    genesis_slot: Slot,
+) -> Result<EonIndex, ImportError<HashOf<Header>>> {
+    if *header.number() == One::one() {
+        // since this is the first block, just return the eon index of the parent
+        return Ok(parent_header.eon_index);
+    }
+
     // calculate current eon start slot from (eon_index * eon_duration) + genesis_slot
-    let current_eon_start_slot = parent_eon_index
+    let current_eon_start_slot = parent_header
+        .eon_index
         .checked_mul(eon_duration)
         .and_then(|res| res.checked_add(u64::from(genesis_slot)))
         .expect("eon start slot should fit into u64");
 
     let should_eon_change = current_slot.saturating_sub(current_eon_start_slot) >= eon_duration;
-    if should_eon_change {
+    let next_eon_index = if should_eon_change {
         current_slot
             .checked_sub(u64::from(genesis_slot))
             .expect("Current slot is never lower than genesis slot; qed")
             .checked_div(eon_duration)
             .expect("Eon duration is never zero; qed")
     } else {
-        parent_eon_index
+        parent_header.eon_index
+    };
+
+    Ok(next_eon_index)
+}
+
+/// fetches the genesis slot of the chain
+/// Since the genesis wont have any slot in the digest, we fetch the slot of Block #1
+/// header is so that we can trace map to the block #1 from the header in case there exists any forks at #1
+fn fetch_genesis_slot<Header: HeaderT, Store: Storage<Header>>(
+    store: &Store,
+    header: &HeaderExt<Header>,
+) -> Result<Slot, ImportError<HashOf<Header>>> {
+    // since genesis wont have a slot, we take the slot of the block #1
+    let genesis = store
+        .ancestor_of_header_at_depth(One::one(), header)
+        .expect("ancestor must be present at this time");
+    let genesis_digests =
+        extract_subspace_digest_items::<Header, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &genesis.header,
+        )?;
+
+    Ok(genesis_digests.pre_digest.slot)
+}
+
+fn derive_por_randomness(
+    pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+) -> Result<Randomness, schnorrkel::SignatureError> {
+    derive_randomness(
+        &Into::<subspace_core_primitives::PublicKey>::into(&pre_digest.solution.public_key),
+        pre_digest.solution.tag,
+        &pre_digest.solution.tag_signature,
+    )
+}
+
+fn derive_next_salt<Header: HeaderT>(
+    parent_header: &HeaderExt<Header>,
+    next_salt_reveal_duration: u64,
+    eon_duration: u64,
+    genesis_slot: Slot,
+    pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+) -> Result<Option<Salt>, schnorrkel::SignatureError> {
+    match (parent_header.next_salt, parent_header.should_update_salt) {
+        // derived salt is used in this block. so reset the state
+        (Some(_), true) => Ok(None),
+        // next salt is already derived but eon has not changed
+        (Some(next_salt), false) => Ok(Some(next_salt)),
+        // derive the next salt if the salt reveal interval is met
+        (_, _) => {
+            // calculate the eon start slot
+            let next_salt_reveal = next_salt_reveal_duration
+                .checked_add(
+                    parent_header
+                        .eon_index
+                        .checked_mul(eon_duration)
+                        .and_then(|res| res.checked_add(u64::from(genesis_slot)))
+                        .expect("eon start slot should fit into u64"),
+                )
+                .expect("should not overflow");
+
+            // if its time to reveal the salt, then derive it
+            if pre_digest.slot >= next_salt_reveal {
+                let por_randomness = derive_por_randomness(pre_digest)?;
+                Ok(Some(derive_next_salt_from_randomness(
+                    parent_header.eon_index,
+                    &por_randomness,
+                )))
+            } else {
+                Ok(None)
+            }
+        }
     }
 }
