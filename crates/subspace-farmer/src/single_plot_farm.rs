@@ -27,7 +27,8 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeRequestHandler,
+    PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
@@ -439,7 +440,7 @@ impl SinglePlotFarm {
                         .map(|piece| piece.to_vec())
                 }
             }),
-            pieces_by_range_request_handler: Arc::new({
+            request_response_protocols: vec![PiecesByRangeRequestHandler::create({
                 let plot = plot.clone();
                 let codec = codec.clone();
 
@@ -478,7 +479,7 @@ impl SinglePlotFarm {
                         next_piece_index_hash,
                     })
                 }
-            }),
+            })],
             allow_non_globals_in_dht: true,
             ..Config::with_keypair(sr25519::Keypair::from(
                 sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())

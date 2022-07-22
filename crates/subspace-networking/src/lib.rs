@@ -35,9 +35,12 @@ pub use create::{create, Config, CreationError};
 pub use libp2p;
 use libp2p::gossipsub::Sha256Topic;
 use once_cell::sync::Lazy;
-pub use request_handlers::object_mappings::{ObjectMappingsRequest, ObjectMappingsResponse};
+pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
+pub use request_handlers::object_mappings::{
+    ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
+};
 pub use request_handlers::pieces_by_range::{
-    PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+    PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 
 // TODO: Move this out of the networking crate into separate crate.
