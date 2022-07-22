@@ -3,7 +3,7 @@ use crate::object_mappings::LegacyObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
-use crate::utils::{get_plot_sizes, get_usable_plot_space};
+use crate::utils::get_plot_sizes;
 use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
 use rayon::prelude::*;
@@ -26,12 +26,15 @@ pub struct Options<C> {
     pub farming_client: C,
     pub object_mappings: LegacyObjectMappings,
     pub reward_address: PublicKey,
+    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
     pub bootstrap_nodes: Vec<Multiaddr>,
+    /// List of [`Multiaddr`] on which to listen for incoming connections.
+    pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
-    pub relay_server_node: Node,
+    pub relay_server_node: Option<Node>,
 }
 
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
@@ -62,13 +65,13 @@ impl LegacyMultiPlotsFarm {
             object_mappings,
             reward_address,
             bootstrap_nodes,
+            listen_on,
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
             relay_server_node,
         } = options;
-        let usable_space = get_usable_plot_space(allocated_space);
-        let plot_sizes = get_plot_sizes(usable_space, farmer_protocol_info.max_plot_size);
+        let plot_sizes = get_plot_sizes(allocated_space, farmer_protocol_info.max_plot_size);
 
         // Somewhat arbitrary number (we don't know if this is RAID or anything), but at least not
         // unbounded.
@@ -87,6 +90,7 @@ impl LegacyMultiPlotsFarm {
                     let metadata_directory = base_directory.join(format!("plot{plot_index}"));
                     let farming_client = farming_client.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
+                    let listen_on = listen_on.clone();
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
                     let span = info_span!("single_plot_farm", %plot_index);
@@ -101,6 +105,7 @@ impl LegacyMultiPlotsFarm {
                         farming_client,
                         plot_factory: &plot_factory,
                         bootstrap_nodes,
+                        listen_on,
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,

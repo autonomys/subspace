@@ -177,6 +177,7 @@ impl Node {
                 .with(Protocol::P2p(self.id().into()))
                 .with(Protocol::P2pCircuit),
         );
+        config.parent_node.replace(self.clone());
 
         create(config).await
     }

@@ -87,7 +87,7 @@ where
     let sync_sector_size = if total_pieces < max_plot_size / PIECE_SIZE as u64 {
         PieceIndexHashNumber::MAX
     } else {
-        PieceIndexHashNumber::MAX / total_pieces * max_plot_size / PIECE_SIZE as u64
+        PieceIndexHashNumber::MAX / total_pieces * (max_plot_size / PIECE_SIZE as u64)
     };
     let from = public_key.wrapping_sub(&(sync_sector_size / 2));
 
