@@ -2,7 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
-use crate::request_handlers::RpcProtocol;
+use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -69,8 +69,8 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
-    /// The configuration for the [`RequestResponsesBehaviour`] protocol.
-    pub request_response_protocols: Vec<RpcProtocol>,
+    /// The configuration for the `RequestResponsesBehaviour` protocol.
+    pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
 }
 
 impl fmt::Debug for Config {
@@ -197,11 +197,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             })
             .collect::<Result<_, CreationError>>()?;
 
-        let protocol_handlers = request_response_protocols
-            .into_iter()
-            .map(|protocol| protocol.into_request_response_handler())
-            .collect();
-
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
 
         let behaviour = Behavior::new(BehaviorConfig {
@@ -211,7 +206,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             kademlia,
             gossipsub,
             value_getter,
-            request_response_protocols: protocol_handlers,
+            request_response_protocols,
             is_relay_server,
             relay_client,
         });

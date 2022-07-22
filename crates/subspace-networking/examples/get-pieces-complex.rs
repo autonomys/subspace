@@ -6,7 +6,9 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot, RpcProtocol};
+use subspace_networking::{
+    Config, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+};
 
 #[tokio::main]
 async fn main() {
@@ -38,18 +40,16 @@ async fn main() {
             bootstrap_nodes: bootstrap_nodes.clone(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_globals_in_dht: true,
-            request_response_protocols: vec![RpcProtocol::PiecesByRange(Some(Arc::new(
-                move |_| {
-                    if i != EXPECTED_NODE_INDEX {
-                        return None;
-                    }
+            request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |_| {
+                if i != EXPECTED_NODE_INDEX {
+                    return None;
+                }
 
-                    println!("Sending response from Node Index {}... ", i);
+                println!("Sending response from Node Index {}... ", i);
 
-                    std::thread::sleep(Duration::from_secs(1));
-                    Some(local_response.clone())
-                },
-            )))],
+                std::thread::sleep(Duration::from_secs(1));
+                Some(local_response.clone())
+            })],
             ..Config::with_generated_keypair()
         };
         let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
@@ -91,7 +91,7 @@ async fn main() {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![RpcProtocol::PiecesByRange(None)],
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 
