@@ -50,6 +50,9 @@ type SolutionRange = u64;
 /// BlockWeight type for fork choice rules
 type BlockWeight = u128;
 
+/// Eon Index type
+type EonIndex = u64;
+
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct HeaderExt<Header> {
@@ -57,6 +60,8 @@ pub struct HeaderExt<Header> {
     pub header: Header,
     /// Cumulative weight of chain until this header
     pub total_weight: BlockWeight,
+    /// Current Eon index
+    pub eon_index: EonIndex,
 
     #[cfg(test)]
     pub(crate) overrides: mock::TestOverrides,
@@ -192,6 +197,8 @@ pub struct ChainConstants<Header: HeaderT> {
     pub k_depth: NumberOf<Header>,
     /// Slot probability of the chain
     pub slot_probability: (u64, u64),
+    /// Eon duration
+    pub eon_duration: u64,
 }
 
 /// Storage responsible for storing headers
@@ -232,7 +239,7 @@ pub trait Storage<Header: HeaderT> {
         depth: NumberOf<Header>,
         header: &HeaderExt<Header>,
     ) -> Option<HeaderExt<Header>> {
-        if *header.header.number() <= depth {
+        if *header.header.number() < depth {
             return None;
         }
 
@@ -435,15 +442,39 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
-        // store header
+        // derive eon index
+        let next_eon_index = if *header.number() == One::one() {
+            // since this is the first block, just return the eon index of the parent which is always 0.
+            parent_header.eon_index
+        } else {
+            // since genesis wont have a slot, we take the slot of the block #1
+            let genesis = store
+                .ancestor_of_header_at_depth(One::one(), &parent_header)
+                .expect("ancestor must be present at this time");
+            let genesis_digests = extract_subspace_digest_items::<
+                Header,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&genesis.header)?;
+            derive_next_eon_index(
+                parent_header.eon_index,
+                store.constants().eon_duration,
+                genesis_digests.pre_digest.slot,
+                pre_digest.slot,
+            )
+        };
+
         let header_ext = HeaderExt {
             header,
             total_weight,
+            eon_index: next_eon_index,
 
             #[cfg(test)]
             overrides: Default::default(),
         };
 
+        // store header
         store.store_header(header_ext, is_best_header);
 
         // finalize and prune forks if the chain has progressed
@@ -545,4 +576,28 @@ fn calculate_block_weight(
     );
     let tag = u64::from_be_bytes(pre_digest.solution.tag);
     u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
+}
+
+fn derive_next_eon_index(
+    parent_eon_index: u64,
+    eon_duration: u64,
+    genesis_slot: Slot,
+    current_slot: Slot,
+) -> EonIndex {
+    // calculate current eon start slot from (eon_index * eon_duration) + genesis_slot
+    let current_eon_start_slot = parent_eon_index
+        .checked_mul(eon_duration)
+        .and_then(|res| res.checked_add(u64::from(genesis_slot)))
+        .expect("eon start slot should fit into u64");
+
+    let should_eon_change = current_slot.saturating_sub(current_eon_start_slot) >= eon_duration;
+    if should_eon_change {
+        current_slot
+            .checked_sub(u64::from(genesis_slot))
+            .expect("Current slot is never lower than genesis slot; qed")
+            .checked_div(eon_duration)
+            .expect("Eon duration is never zero; qed")
+    } else {
+        parent_eon_index
+    }
 }

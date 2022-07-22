@@ -1,7 +1,7 @@
 use crate::mock::{Header, MockImporter, MockStorage};
 use crate::{
-    calculate_block_weight, HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf,
-    SolutionRange, Storage,
+    calculate_block_weight, derive_next_eon_index, HashOf, HeaderExt, HeaderImporter, ImportError,
+    NumberOf, SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use rand_core::RngCore;
@@ -99,10 +99,13 @@ fn import_blocks_until(
     store: &mut MockStorage,
     number: NumberOf<Header>,
     start_slot: u64,
+    eon_duration: u64,
     keypair: &Keypair,
 ) -> (HashOf<Header>, u64) {
     let mut parent_hash = Default::default();
     let mut slot = start_slot;
+    let mut next_eon_index = 0;
+    let genesis_slot = start_slot;
     for block_number in 0..=number {
         let (header, _solution_range) = valid_header(parent_hash, block_number, slot, keypair);
         parent_hash = header.hash();
@@ -111,10 +114,18 @@ fn import_blocks_until(
             HeaderExt {
                 header,
                 total_weight: 0,
+                eon_index: next_eon_index,
                 overrides: Default::default(),
             },
             true,
         );
+
+        next_eon_index = derive_next_eon_index(
+            next_eon_index,
+            eon_duration,
+            genesis_slot.into(),
+            slot.into(),
+        )
     }
 
     (parent_hash, slot)
@@ -122,9 +133,10 @@ fn import_blocks_until(
 
 #[test]
 fn test_header_import_missing_parent() {
-    let mut store = MockStorage::new(10, 10, 7, (1, 6));
+    let eon_duration = 10;
+    let mut store = MockStorage::new(10, 10, 7, (1, 6), eon_duration);
     let keypair = Keypair::generate();
-    let (_parent_hash, next_slot) = import_blocks_until(&mut store, 0, 0, &keypair);
+    let (_parent_hash, next_slot) = import_blocks_until(&mut store, 0, 0, eon_duration, &keypair);
     let (header, _) = valid_header(Default::default(), 1, next_slot, &keypair);
     let hash = header.hash();
     let res = MockImporter::import_header(&mut store, header);
@@ -132,9 +144,10 @@ fn test_header_import_missing_parent() {
 }
 
 fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
-    let mut store = MockStorage::new(10, 10, 7, (1, 6));
+    let eon_duration = 10;
+    let mut store = MockStorage::new(10, 10, 7, (1, 6), eon_duration);
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
+    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
@@ -189,9 +202,10 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
 
 #[test]
 fn test_header_import_success() {
-    let mut store = MockStorage::new(10, 10, 7, (1, 6));
+    let eon_duration = 9;
+    let mut store = MockStorage::new(10, 10, 7, (1, 6), eon_duration);
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
+    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
@@ -257,6 +271,14 @@ fn test_header_import_success() {
     );
     assert_ne!(expected_solution_range, digest_items.solution_range);
     assert_eq!(expected_solution_range, derived_items.solution_range);
+
+    // eon index should be 1 at block #10
+    // eon index should be 0 at block #9
+    assert_eq!(
+        store.header(header.header.parent_hash).unwrap().eon_index,
+        0
+    );
+    assert_eq!(header.eon_index, 1);
 }
 
 fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: NumberOf<Header>) {
@@ -308,9 +330,10 @@ fn create_fork_chain_from(
 
 #[test]
 fn test_finalized_chain_reorg_to_longer_chain() {
-    let mut store = MockStorage::new(10, 10, 4, (1, 6));
+    let eon_duration = 10;
+    let mut store = MockStorage::new(10, 10, 4, (1, 6), eon_duration);
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 3, 1, &keypair);
+    let (parent_hash, next_slot) = import_blocks_until(&mut store, 3, 1, eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
@@ -354,9 +377,10 @@ fn test_finalized_chain_reorg_to_longer_chain() {
 
 #[test]
 fn test_reorg_to_heavier_smaller_chain() {
-    let mut store = MockStorage::new(10, 10, 4, (1, 6));
+    let eon_duration = 10;
+    let mut store = MockStorage::new(10, 10, 4, (1, 6), eon_duration);
     let keypair = Keypair::generate();
-    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
+    let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, eon_duration, &keypair);
     let best_header = store.best_header();
     assert_eq!(best_header.header.hash(), parent_hash);
 
