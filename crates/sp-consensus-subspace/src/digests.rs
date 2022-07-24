@@ -24,8 +24,9 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::Zero;
 use sp_runtime::DigestItem;
+use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
-use subspace_core_primitives::{Randomness, Salt, Solution};
+use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
@@ -90,6 +91,12 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace next salt, return it.
     fn as_next_salt(&self) -> Option<Salt>;
+
+    /// Construct a digest item which contains records root.
+    fn records_root(segment_index: u64, records_root: Sha256Hash) -> Self;
+
+    /// If this item is a Subspace records root, return it.
+    fn as_records_root(&self) -> Option<(u64, Sha256Hash)>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -208,6 +215,23 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
+
+    fn records_root(segment_index: u64, records_root: Sha256Hash) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::RecordsRoot((segment_index, records_root)).encode(),
+        )
+    }
+
+    fn as_records_root(&self) -> Option<(u64, Sha256Hash)> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::RecordsRoot(records_root) = c {
+                Some(records_root)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Various kinds of digest types used in errors
@@ -229,6 +253,8 @@ pub enum ErrorDigestType {
     NextSolutionRange,
     /// Next salt
     NextSalt,
+    /// Records root
+    RecordsRoot,
     /// Generic consensus
     Consensus,
 }
@@ -260,6 +286,9 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::NextSalt => {
                 write!(f, "NextSalt")
             }
+            ErrorDigestType::RecordsRoot => {
+                write!(f, "RecordsRoot")
+            }
             ErrorDigestType::Consensus => {
                 write!(f, "Consensus")
             }
@@ -280,12 +309,12 @@ pub enum Error {
         error("Failed to decode Subspace {0} digest: {1}")
     )]
     FailedToDecode(ErrorDigestType, codec::Error),
-    /// Multiple Subspace digests
+    /// Duplicate Subspace digests
     #[cfg_attr(
         feature = "thiserror",
-        error("Multiple Subspace {0} digests, rejecting!")
+        error("Duplicate Subspace {0} digests, rejecting!")
     )]
-    Multiple(ErrorDigestType),
+    Duplicate(ErrorDigestType),
 }
 
 #[cfg(feature = "std")]
@@ -313,6 +342,8 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub next_solution_range: Option<u64>,
     /// Next salt
     pub next_salt: Option<Salt>,
+    /// Records roots
+    pub records_roots: BTreeMap<u64, Sha256Hash>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -333,6 +364,7 @@ where
     let mut maybe_next_global_randomness = None;
     let mut maybe_next_solution_range = None;
     let mut maybe_next_salt = None;
+    let mut records_roots = BTreeMap::new();
 
     for log in header.digest().logs() {
         match log {
@@ -348,7 +380,7 @@ where
 
                 match maybe_pre_digest {
                     Some(_) => {
-                        return Err(Error::Multiple(ErrorDigestType::PreDigest));
+                        return Err(Error::Duplicate(ErrorDigestType::PreDigest));
                     }
                     None => {
                         maybe_pre_digest.replace(pre_digest);
@@ -367,7 +399,7 @@ where
                     ConsensusLog::GlobalRandomness(global_randomness) => {
                         match maybe_global_randomness {
                             Some(_) => {
-                                return Err(Error::Multiple(ErrorDigestType::GlobalRandomness));
+                                return Err(Error::Duplicate(ErrorDigestType::GlobalRandomness));
                             }
                             None => {
                                 maybe_global_randomness.replace(global_randomness);
@@ -376,7 +408,7 @@ where
                     }
                     ConsensusLog::SolutionRange(solution_range) => match maybe_solution_range {
                         Some(_) => {
-                            return Err(Error::Multiple(ErrorDigestType::SolutionRange));
+                            return Err(Error::Duplicate(ErrorDigestType::SolutionRange));
                         }
                         None => {
                             maybe_solution_range.replace(solution_range);
@@ -384,7 +416,7 @@ where
                     },
                     ConsensusLog::Salt(salt) => match maybe_salt {
                         Some(_) => {
-                            return Err(Error::Multiple(ErrorDigestType::Salt));
+                            return Err(Error::Duplicate(ErrorDigestType::Salt));
                         }
                         None => {
                             maybe_salt.replace(salt);
@@ -393,7 +425,9 @@ where
                     ConsensusLog::NextGlobalRandomness(global_randomness) => {
                         match maybe_next_global_randomness {
                             Some(_) => {
-                                return Err(Error::Multiple(ErrorDigestType::NextGlobalRandomness));
+                                return Err(Error::Duplicate(
+                                    ErrorDigestType::NextGlobalRandomness,
+                                ));
                             }
                             None => {
                                 maybe_next_global_randomness.replace(global_randomness);
@@ -403,7 +437,7 @@ where
                     ConsensusLog::NextSolutionRange(solution_range) => {
                         match maybe_next_solution_range {
                             Some(_) => {
-                                return Err(Error::Multiple(ErrorDigestType::NextSolutionRange));
+                                return Err(Error::Duplicate(ErrorDigestType::NextSolutionRange));
                             }
                             None => {
                                 maybe_next_solution_range.replace(solution_range);
@@ -412,12 +446,19 @@ where
                     }
                     ConsensusLog::NextSalt(salt) => match maybe_next_salt {
                         Some(_) => {
-                            return Err(Error::Multiple(ErrorDigestType::NextSalt));
+                            return Err(Error::Duplicate(ErrorDigestType::NextSalt));
                         }
                         None => {
                             maybe_next_salt.replace(salt);
                         }
                     },
+                    ConsensusLog::RecordsRoot((segment_index, records_root)) => {
+                        if let Entry::Vacant(entry) = records_roots.entry(segment_index) {
+                            entry.insert(records_root);
+                        } else {
+                            return Err(Error::Duplicate(ErrorDigestType::NextSalt));
+                        }
+                    }
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -430,7 +471,7 @@ where
 
                 match maybe_seal {
                     Some(_) => {
-                        return Err(Error::Multiple(ErrorDigestType::Seal));
+                        return Err(Error::Duplicate(ErrorDigestType::Seal));
                     }
                     None => {
                         maybe_seal.replace(seal);
@@ -457,6 +498,7 @@ where
         next_global_randomness: maybe_next_global_randomness,
         next_solution_range: maybe_next_solution_range,
         next_salt: maybe_next_salt,
+        records_roots,
     })
 }
 
@@ -484,7 +526,7 @@ where
     for log in header.digest().logs() {
         trace!(target: "subspace", "Checking log {:?}, looking for pre runtime digest", log);
         match (log.as_subspace_pre_digest(), pre_digest.is_some()) {
-            (Some(_), true) => return Err(Error::Multiple(ErrorDigestType::PreDigest)),
+            (Some(_), true) => return Err(Error::Duplicate(ErrorDigestType::PreDigest)),
             (None, _) => trace!(target: "subspace", "Ignoring digest not meant for us"),
             (s, false) => pre_digest = s,
         }

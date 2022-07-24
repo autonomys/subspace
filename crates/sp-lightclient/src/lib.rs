@@ -145,6 +145,7 @@ pub trait HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
             next_global_randomness: _,
             next_solution_range: _,
             next_salt: _,
+            records_roots: _,
         } = verify_header_digest_with_parent(&parent_header, &header)?;
 
         // slot must be strictly increasing from the parent header

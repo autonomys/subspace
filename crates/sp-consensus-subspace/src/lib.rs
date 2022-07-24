@@ -109,6 +109,9 @@ enum ConsensusLog {
     /// Salt for next block/eon.
     #[codec(index = 6)]
     NextSalt(Salt),
+    /// Records roots.
+    #[codec(index = 7)]
+    RecordsRoot((u64, Sha256Hash)),
 }
 
 /// Farmer vote.

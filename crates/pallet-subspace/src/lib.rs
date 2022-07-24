@@ -984,6 +984,11 @@ impl<T: Config> Pallet<T> {
     fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
         for root_block in root_blocks {
             RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
+            // Deposit global randomness data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::records_root(
+                root_block.segment_index(),
+                root_block.records_root(),
+            ));
             Self::deposit_event(Event::RootBlockStored { root_block });
         }
         Ok(())
