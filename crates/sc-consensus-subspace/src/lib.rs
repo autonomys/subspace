@@ -913,27 +913,132 @@ where
             ));
         }
 
+        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
+        //  breaking compatibility.
+        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
+
         let parent_header = self
             .client
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-            self.client.as_ref(),
-            &parent_block_id,
-        )?;
+        let (correct_global_randomness, correct_solution_range, correct_salt) =
+            if header.number().is_one() {
+                // Genesis block doesn't contain usual digest items, we need to query runtime API
+                // instead
+                let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+                    self.client.as_ref(),
+                    &parent_block_id,
+                )?;
+                let (correct_solution_range, _) = slot_worker::extract_solution_ranges_for_block(
+                    self.client.as_ref(),
+                    &parent_block_id,
+                )?;
+                let (correct_salt, _) =
+                    slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?;
+
+                (
+                    correct_global_randomness,
+                    correct_solution_range,
+                    correct_salt,
+                )
+            } else {
+                let parent_subspace_digest_items = extract_subspace_digest_items::<
+                    _,
+                    FarmerPublicKey,
+                    FarmerPublicKey,
+                    FarmerSignature,
+                >(&parent_header)?;
+
+                let correct_global_randomness =
+                    match parent_subspace_digest_items.next_global_randomness {
+                        Some(global_randomness) => global_randomness,
+                        None => {
+                            // TODO: Remove `if` branch when breaking protocol
+                            if is_gemini_1b {
+                                match slot_worker::extract_global_randomness_for_block(
+                                    self.client.as_ref(),
+                                    &parent_block_id,
+                                ) {
+                                    Ok(global_randomness) => global_randomness,
+                                    Err(error) => {
+                                        return if skip_runtime_access {
+                                            Ok(())
+                                        } else {
+                                            Err(error.into())
+                                        };
+                                    }
+                                }
+                            } else {
+                                parent_subspace_digest_items.global_randomness
+                            }
+                        }
+                    };
+
+                let correct_solution_range = match parent_subspace_digest_items.next_solution_range
+                {
+                    Some(solution_range) => solution_range,
+                    None => {
+                        // TODO: Remove `if` branch when breaking protocol
+                        if is_gemini_1b {
+                            match slot_worker::extract_solution_ranges_for_block(
+                                self.client.as_ref(),
+                                &parent_block_id,
+                            ) {
+                                Ok((solution_range, _voting_solution_range)) => solution_range,
+                                Err(error) => {
+                                    return if skip_runtime_access {
+                                        Ok(())
+                                    } else {
+                                        Err(error.into())
+                                    };
+                                }
+                            }
+                        } else {
+                            parent_subspace_digest_items.solution_range
+                        }
+                    }
+                };
+
+                let correct_salt = match parent_subspace_digest_items.next_salt {
+                    Some(salt) => salt,
+                    None => {
+                        // TODO: Remove `if` branch when breaking protocol
+                        if is_gemini_1b {
+                            match slot_worker::extract_salt_for_block(
+                                self.client.as_ref(),
+                                &parent_block_id,
+                            ) {
+                                Ok((salt, _next_salt)) => salt,
+                                Err(error) => {
+                                    return if skip_runtime_access {
+                                        Ok(())
+                                    } else {
+                                        Err(error.into())
+                                    };
+                                }
+                            }
+                        } else {
+                            parent_subspace_digest_items.salt
+                        }
+                    }
+                };
+
+                (
+                    correct_global_randomness,
+                    correct_solution_range,
+                    correct_salt,
+                )
+            };
+
         if subspace_digest_items.global_randomness != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
-        let (correct_solution_range, _) =
-            slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id)?;
         if subspace_digest_items.solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let correct_salt =
-            slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?.0;
         if subspace_digest_items.salt != correct_salt {
             return Err(Error::InvalidSalt(block_hash));
         }
@@ -961,12 +1066,7 @@ where
             );
         }
 
-        let records_root = match maybe_records_root {
-            Some(records_root) => records_root,
-            None => {
-                return Err(Error::RecordsRootNotFound(segment_index));
-            }
-        };
+        let records_root = maybe_records_root.ok_or(Error::RecordsRootNotFound(segment_index))?;
 
         // Piece is not checked during initial block verification because it requires access to
         // root block, check it now.
@@ -985,42 +1085,44 @@ where
             return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
         }
 
-        // If the body is passed through, we need to use the runtime to check that the
-        // internally-set timestamp in the inherents actually matches the slot set in the seal
-        // and root blocks in the inherents are set correctly.
-        if let Some(extrinsics) = extrinsics {
-            if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
-                debug!(
-                    target: "subspace",
-                    "Skipping `check_inherents` as authoring version is not compatible: {}",
-                    error,
-                );
-            } else {
-                let create_inherent_data_providers = self
-                    .create_inherent_data_providers
-                    .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
-                    .await
-                    .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+        if !skip_runtime_access {
+            // If the body is passed through, we need to use the runtime to check that the
+            // internally-set timestamp in the inherents actually matches the slot set in the seal
+            // and root blocks in the inherents are set correctly.
+            if let Some(extrinsics) = extrinsics {
+                if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
+                    debug!(
+                        target: "subspace",
+                        "Skipping `check_inherents` as authoring version is not compatible: {}",
+                        error,
+                    );
+                } else {
+                    let create_inherent_data_providers = self
+                        .create_inherent_data_providers
+                        .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+                        .await
+                        .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
 
-                let inherent_data = create_inherent_data_providers
-                    .create_inherent_data()
-                    .map_err(Error::CreateInherents)?;
+                    let inherent_data = create_inherent_data_providers
+                        .create_inherent_data()
+                        .map_err(Error::CreateInherents)?;
 
-                let inherent_res = self.client.runtime_api().check_inherents_with_context(
-                    &parent_block_id,
-                    origin.into(),
-                    Block::new(header, extrinsics),
-                    inherent_data,
-                )?;
+                    let inherent_res = self.client.runtime_api().check_inherents_with_context(
+                        &parent_block_id,
+                        origin.into(),
+                        Block::new(header, extrinsics),
+                        inherent_data,
+                    )?;
 
-                if !inherent_res.ok() {
-                    for (i, e) in inherent_res.into_errors() {
-                        match create_inherent_data_providers
-                            .try_handle_error(&i, &e)
-                            .await
-                        {
-                            Some(res) => res.map_err(Error::CheckInherents)?,
-                            None => return Err(Error::CheckInherentsUnhandled(i)),
+                    if !inherent_res.ok() {
+                        for (i, e) in inherent_res.into_errors() {
+                            match create_inherent_data_providers
+                                .try_handle_error(&i, &e)
+                                .await
+                            {
+                                Some(res) => res.map_err(Error::CheckInherents)?,
+                                None => return Err(Error::CheckInherentsUnhandled(i)),
+                            }
                         }
                     }
                 }

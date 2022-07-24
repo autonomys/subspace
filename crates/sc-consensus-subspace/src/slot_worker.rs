@@ -477,6 +477,7 @@ where
     }
 }
 
+// TODO: Replace with querying parent block header when breaking protocol
 /// Extract global randomness for block, given ID of the parent block.
 pub(crate) fn extract_global_randomness_for_block<Block, Client>(
     client: &Client,
@@ -493,6 +494,7 @@ where
         .map(|randomnesses| randomnesses.next.unwrap_or(randomnesses.current))
 }
 
+// TODO: Replace with querying parent block header when breaking protocol
 /// Extract solution ranges for block and votes, given ID of the parent block.
 pub(crate) fn extract_solution_ranges_for_block<Block, Client>(
     client: &Client,
@@ -516,6 +518,7 @@ where
         })
 }
 
+// TODO: Replace with querying parent block header when breaking protocol
 /// Extract salt and next salt for block, given ID of the parent block.
 pub(crate) fn extract_salt_for_block<Block, Client>(
     client: &Client,
