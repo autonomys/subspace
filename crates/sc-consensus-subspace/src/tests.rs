@@ -43,7 +43,7 @@ use sc_network_test::{
 };
 use sc_service::TaskManager;
 use schnorrkel::Keypair;
-use sp_api::{HeaderT, ProvideRuntimeApi};
+use sp_api::HeaderT;
 use sp_consensus::{
     AlwaysCanAuthor, BlockOrigin, CacheKeyId, DisableProofRecording, Environment,
     NoNetwork as DummyOracle, Proposal, Proposer,
@@ -51,7 +51,7 @@ use sp_consensus::{
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::inherents::InherentDataProvider;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_core::crypto::UncheckedFrom;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
@@ -67,7 +67,10 @@ use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature};
+use subspace_core_primitives::{
+    FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
+};
 use subspace_solving::{
     create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
@@ -429,14 +432,8 @@ fn rejects_empty_block() {
 
 fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
     let genesis_block_id = BlockId::Number(Zero::zero());
-    let runtime_api = client.runtime_api();
 
-    let record_size = runtime_api.record_size(&genesis_block_id).unwrap();
-    let recorded_history_segment_size = runtime_api
-        .recorded_history_segment_size(&genesis_block_id)
-        .unwrap();
-
-    let mut archiver = Archiver::new(record_size as usize, recorded_history_segment_size as usize)
+    let mut archiver = Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
         .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();

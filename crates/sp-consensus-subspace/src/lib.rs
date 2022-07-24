@@ -293,10 +293,14 @@ sp_api::decl_runtime_apis! {
         /// to the client-dependent transaction confirmation depth `k`).
         fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number;
 
+        // TODO: Remove, this is a protocol constant
         /// The size of data in one piece (in bytes).
+        #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
         fn record_size() -> u32;
 
+        // TODO: Remove, this is a protocol constant
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
+        #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
         fn recorded_history_segment_size() -> u32;
 
         /// Maximum number of pieces in each plot

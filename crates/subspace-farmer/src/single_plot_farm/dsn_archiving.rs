@@ -33,7 +33,6 @@ pub(super) async fn start_archiving(
     plotter: SinglePlotPlotter,
     single_disk_semaphore: SingleDiskSemaphore,
 ) -> Result<(), StartDsnArchivingError> {
-    // TODO: This assumes fixed size segments, which might not be the case
     let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
 
     let (archived_segments_sync_sender, archived_segments_sync_receiver) =

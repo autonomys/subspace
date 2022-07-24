@@ -52,7 +52,8 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, PIECE_SIZE,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, MERKLE_NUM_LEAVES, PIECE_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -240,6 +241,7 @@ mod pallet {
         #[pallet::constant]
         type ConfirmationDepthK: Get<Self::BlockNumber>;
 
+        // TODO: Remove when breaking protocol
         /// The size of data in one piece (in bytes).
         #[pallet::constant]
         type RecordSize: Get<u32>;
@@ -248,7 +250,7 @@ mod pallet {
         #[pallet::constant]
         type MaxPlotSize: Get<u64>;
 
-        // TODO: This will probably become configurable later
+        // TODO: Remove when breaking protocol
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
         #[pallet::constant]
         type RecordedHistorySegmentSize: Get<u32>;
@@ -657,9 +659,7 @@ impl<T: Config> Pallet<T> {
 
     /// Total number of pieces in the blockchain
     pub fn total_pieces() -> u64 {
-        // TODO: This assumes fixed size segments, which might not be the case
-        let merkle_num_leaves = T::RecordedHistorySegmentSize::get() / T::RecordSize::get() * 2;
-        u64::from(RecordsRoot::<T>::count()) * u64::from(merkle_num_leaves)
+        u64::from(RecordsRoot::<T>::count()) * u64::from(MERKLE_NUM_LEAVES)
     }
 
     /// Determine whether a randomness update should take place at this block.
@@ -1085,7 +1085,7 @@ impl<T: Config> Pallet<T> {
     pub fn archived_history_size() -> u64 {
         let archived_segments = RecordsRoot::<T>::count();
         // `*2` because we need to include both data and parity pieces
-        let archived_segment_size = T::RecordedHistorySegmentSize::get() / T::RecordSize::get()
+        let archived_segment_size = RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE
             * u32::try_from(PIECE_SIZE)
                 .expect("Piece size is definitely small enough to fit into u32; qed")
             * 2;
@@ -1222,8 +1222,8 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .next
                 .expect("Next salt must always be available if `switch_next_block` is true; qed")
         },
-        record_size: T::RecordSize::get(),
-        recorded_history_segment_size: T::RecordedHistorySegmentSize::get(),
+        record_size: RECORD_SIZE,
+        recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
         max_plot_size: T::MaxPlotSize::get(),
         total_pieces: Pallet::<T>::total_pieces(),
         current_slot: Pallet::<T>::current_slot(),

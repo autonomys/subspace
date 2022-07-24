@@ -79,7 +79,9 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{BlockNumber, RootBlock, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{
+    BlockNumber, RootBlock, Salt, Sha256Hash, Solution, MERKLE_NUM_LEAVES, RECORD_SIZE,
+};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
 
@@ -936,15 +938,8 @@ where
             return Err(Error::InvalidSalt(block_hash));
         }
 
-        // TODO: This assumes fixed size segments, which might not be the case
-        let record_size = self.client.runtime_api().record_size(&parent_block_id)?;
-        let recorded_history_segment_size = self
-            .client
-            .runtime_api()
-            .recorded_history_segment_size(&parent_block_id)?;
-        let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-        let segment_index = pre_digest.solution.piece_index / merkle_num_leaves;
-        let position = pre_digest.solution.piece_index % merkle_num_leaves;
+        let segment_index = pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+        let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
         let mut maybe_records_root = self
             .client
             .runtime_api()
@@ -978,7 +973,7 @@ where
         subspace_verification::check_piece(
             records_root,
             position,
-            record_size,
+            RECORD_SIZE,
             &pre_digest.solution,
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;

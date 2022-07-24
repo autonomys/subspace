@@ -31,7 +31,9 @@ use sp_core::crypto::UncheckedFrom;
 use sp_core::{Decode, Encode};
 use std::sync::Arc;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{FlatPieces, Piece, Solution, Tag};
+use subspace_core_primitives::{
+    FlatPieces, Piece, Solution, Tag, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::{
@@ -140,7 +142,7 @@ async fn start_farming<Client>(
 
     std::thread::spawn({
         move || {
-            let archived_pieces = get_archived_pieces(&client);
+            let archived_pieces = get_archived_pieces(client.as_ref());
             archived_pieces_sender.send(archived_pieces).unwrap();
         }
     });
@@ -185,22 +187,15 @@ async fn start_farming<Client>(
     }
 }
 
-fn get_archived_pieces<Client>(client: &Arc<Client>) -> Vec<FlatPieces>
+fn get_archived_pieces<Client>(client: &Client) -> Vec<FlatPieces>
 where
-    Client: ProvideRuntimeApi<Block> + BlockBackend<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client: BlockBackend<Block>,
 {
     let genesis_block_id = BlockId::Number(sp_runtime::traits::Zero::zero());
-    let runtime_api = client.runtime_api();
-
-    let record_size = runtime_api.record_size(&genesis_block_id).unwrap();
-    let recorded_history_segment_size = runtime_api
-        .recorded_history_segment_size(&genesis_block_id)
-        .unwrap();
 
     let mut archiver = subspace_archiving::archiver::Archiver::new(
-        record_size as usize,
-        recorded_history_segment_size as usize,
+        RECORD_SIZE as usize,
+        RECORDED_HISTORY_SEGMENT_SIZE as usize,
     )
     .expect("Incorrect parameters for archiver");
 
