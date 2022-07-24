@@ -31,6 +31,7 @@ mod tests;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use archiver::start_subspace_archiver;
+use codec::Encode;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
@@ -38,7 +39,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry;
 use sc_client_api::backend::AuxStore;
-use sc_client_api::{BlockchainEvents, ProvideUncles, UsageProvider};
+use sc_client_api::{BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -71,16 +72,18 @@ use sp_consensus_subspace::{
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::One;
+use sp_runtime::traits::{One, Zero};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockNumber, RootBlock, Salt, Sha256Hash, Solution, MERKLE_NUM_LEAVES, RECORD_SIZE,
+    BlockNumber, RootBlock, Salt, Sha256Hash, Solution, MERKLE_NUM_LEAVES,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
@@ -167,6 +170,9 @@ pub enum Error<Header: HeaderT> {
     /// Parent unavailable. Cannot import
     #[error("Parent ({0}) of {1} unavailable. Cannot import")]
     ParentUnavailable(Header::Hash, Header::Hash),
+    /// Genesis block unavailable. Cannot import
+    #[error("Genesis block unavailable. Cannot import")]
+    GenesisUnavailable,
     /// Slot number must increase
     #[error("Slot number must increase: parent slot: {0}, this slot: {1}")]
     SlotMustIncrease(Slot, Slot),
@@ -215,6 +221,9 @@ pub enum Error<Header: HeaderT> {
     /// Stored root block extrinsic was not found
     #[error("Stored root block extrinsic was not found: {0:?}")]
     RootBlocksExtrinsicNotFound(Vec<RootBlock>),
+    /// Duplicated records root
+    #[error("Duplicated records root for segment index {0}, it already exists in aux DB")]
+    DuplicatedRecordsRoot(u64),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
@@ -830,7 +839,7 @@ where
 impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
@@ -1045,25 +1054,37 @@ where
 
         let segment_index = pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
         let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
-        let mut maybe_records_root = self
-            .client
-            .runtime_api()
-            .records_root(&parent_block_id, segment_index)?;
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
-        if maybe_records_root.is_none() && header.number().is_one() {
-            maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
-                |(_block_number, root_blocks)| {
-                    root_blocks.iter().find_map(|root_block| {
-                        if root_block.segment_index() == segment_index {
-                            Some(root_block.records_root())
-                        } else {
-                            None
-                        }
-                    })
-                },
-            );
+        let mut maybe_records_root = if header.number().is_one() {
+            let archived_segments =
+                Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
+                    .expect("Incorrect parameters for archiver")
+                    .add_block(
+                        self.client
+                            .block(&BlockId::Number(Zero::zero()))?
+                            .ok_or(Error::GenesisUnavailable)?
+                            .encode(),
+                        BlockObjectMapping::default(),
+                    );
+            archived_segments.into_iter().find_map(|archived_segment| {
+                if archived_segment.root_block.segment_index() == segment_index {
+                    Some(archived_segment.root_block.records_root())
+                } else {
+                    None
+                }
+            })
+        } else {
+            aux_schema::load_records_root(self.client.as_ref(), segment_index)?
+        };
+
+        // TODO: Remove when breaking protocol
+        if maybe_records_root.is_none() && !skip_runtime_access && is_gemini_1b {
+            maybe_records_root = self
+                .client
+                .runtime_api()
+                .records_root(&parent_block_id, segment_index)?;
         }
 
         let records_root = maybe_records_root.ok_or(Error::RecordsRootNotFound(segment_index))?;
@@ -1142,10 +1163,11 @@ where
         + Send
         + Sync,
     Inner::Error: Into<ConsensusError>,
-    Client: HeaderBackend<Block>
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + AuxStore
-        + ProvideRuntimeApi<Block>
         + Send
         + Sync,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
@@ -1179,6 +1201,7 @@ where
 
         let subspace_digest_items = extract_subspace_digest_items(&block.header)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+        let skip_state_computation = matches!(block.state_action, StateAction::Skip);
 
         self.block_import_verification(
             block_hash,
@@ -1186,7 +1209,7 @@ where
             block.header.clone(),
             block.body.clone(),
             &subspace_digest_items,
-            matches!(block.state_action, StateAction::Skip),
+            skip_state_computation,
         )
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
@@ -1196,7 +1219,7 @@ where
         let parent_weight = if block_number.is_one() {
             0
         } else {
-            aux_schema::load_block_weight(&*self.client, block.header.parent_hash())
+            aux_schema::load_block_weight(self.client.as_ref(), block.header.parent_hash())
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
@@ -1235,6 +1258,23 @@ where
                 .auxiliary
                 .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
         });
+
+        for (&segment_index, records_root) in &subspace_digest_items.records_roots {
+            if aux_schema::load_records_root(self.client.as_ref(), segment_index)
+                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                .is_some()
+            {
+                return Err(ConsensusError::ClientImport(
+                    Error::<Block::Header>::DuplicatedRecordsRoot(segment_index).to_string(),
+                ));
+            }
+
+            aux_schema::write_records_root(segment_index, records_root, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
 
         // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
         // range), if there's a tie we go with the longest chain.
@@ -1311,9 +1351,10 @@ pub fn block_import<Client, Block, I, CAW, CIDP>(
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
-        + AuxStore
+        + BlockBackend<Block>
         + HeaderBackend<Block>
-        + HeaderMetadata<Block, Error = sp_blockchain::Error>,
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
