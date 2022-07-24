@@ -1,3 +1,4 @@
+use crate::dsn::PiecesToPlot;
 use crate::object_mappings::ObjectMappings;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{SinglePlotFarmId, SinglePlotPlotter};
@@ -7,7 +8,7 @@ use std::{io, thread};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
-use subspace_networking::{Node, PiecesToPlot, SubscribeError};
+use subspace_networking::{Node, SubscribeError};
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn, Span};

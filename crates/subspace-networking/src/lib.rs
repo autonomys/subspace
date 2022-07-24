@@ -28,7 +28,8 @@ mod shared;
 mod utils;
 
 pub use crate::node::{
-    CircuitRelayClientError, GetPiecesByRangeError, Node, SubscribeError, TopicSubscription,
+    CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
+    TopicSubscription,
 };
 pub use crate::node_runner::NodeRunner;
 pub use create::{create, Config, CreationError};
@@ -38,9 +39,6 @@ use once_cell::sync::Lazy;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{
     ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
-};
-pub use request_handlers::pieces_by_range::{
-    PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 
 // TODO: Move this out of the networking crate into separate crate.

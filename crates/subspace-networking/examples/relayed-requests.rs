@@ -1,12 +1,22 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{
-    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
-};
+use subspace_networking::{Config, GenericRequest, GenericRequestHandler};
+
+#[derive(Encode, Decode)]
+struct ExampleRequest;
+
+impl GenericRequest for ExampleRequest {
+    const PROTOCOL_NAME: &'static str = "example";
+    const LOG_TARGET: &'static str = "example_request";
+    type Response = ExampleResponse;
+}
+
+#[derive(Encode, Decode, Debug)]
+struct ExampleResponse;
 
 #[tokio::main]
 async fn main() {
@@ -48,20 +58,9 @@ async fn main() {
 
     let config_2 = Config {
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|req| {
-            println!("Request handler for request: {:?}", req);
-
-            let piece_bytes: Vec<u8> = Piece::default().into();
-            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-            let pieces = PiecesToPlot {
-                piece_indexes: vec![1],
-                pieces: flat_pieces,
-            };
-
-            Some(PiecesByRangeResponse {
-                pieces,
-                next_piece_index_hash: None,
-            })
+        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| {
+            println!("Example request handler");
+            Some(ExampleResponse)
         })],
         ..Config::with_generated_keypair()
     };
@@ -94,18 +93,9 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    tokio::spawn(async move {
-        node_3
-            .send_generic_request(
-                node_2.id(),
-                PiecesByRangeRequest {
-                    from: PieceIndexHash::from([1u8; 32]),
-                    to: PieceIndexHash::from([1u8; 32]),
-                },
-            )
-            .await
-            .unwrap();
-    });
-
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    let result = node_3
+        .send_generic_request(node_2.id(), ExampleRequest)
+        .await
+        .unwrap();
+    println!("Received {:?}", result)
 }
