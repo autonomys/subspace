@@ -28,32 +28,32 @@ use sp_blockchain::{Error as ClientError, Result as ClientResult};
 /// The closer solution's tag is to the target, the heavier it is.
 type SubspaceBlockWeight = u128;
 
-/// The aux storage key used to store the block weight of the given block hash.
-fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
-    (b"block_weight", block_hash).encode()
-}
-
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
 where
     B: AuxStore,
     T: Decode,
 {
-    let corrupt = |e: codec::Error| {
-        ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {}", e))
-    };
     match backend.get_aux(key)? {
+        Some(t) => T::decode(&mut &t[..]).map(Some).map_err(|e: codec::Error| {
+            ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {}", e))
+        }),
         None => Ok(None),
-        Some(t) => T::decode(&mut &t[..]).map(Some).map_err(corrupt),
     }
 }
 
+/// The aux storage key used to store the block weight of the given block hash.
+fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
+    (b"block_weight", block_hash).encode()
+}
+
 /// Write the cumulative chain-weight of a block ot aux storage.
-pub(crate) fn write_block_weight<H: Encode, F, R>(
+pub(crate) fn write_block_weight<H, F, R>(
     block_hash: H,
     block_weight: SubspaceBlockWeight,
     write_aux: F,
 ) -> R
 where
+    H: Encode,
     F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
 {
     let key = block_weight_key(block_hash);
