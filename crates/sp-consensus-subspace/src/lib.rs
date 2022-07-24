@@ -100,6 +100,15 @@ enum ConsensusLog {
     /// Salt for this block/eon.
     #[codec(index = 3)]
     Salt(Salt),
+    /// Global randomness for next block/interval.
+    #[codec(index = 4)]
+    NextGlobalRandomness(Randomness),
+    /// Solution range for next block/era.
+    #[codec(index = 5)]
+    NextSolutionRange(u64),
+    /// Salt for next block/eon.
+    #[codec(index = 6)]
+    NextSalt(Salt),
 }
 
 /// Farmer vote.

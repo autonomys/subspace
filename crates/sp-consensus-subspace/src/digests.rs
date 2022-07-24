@@ -72,6 +72,24 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace salt, return it.
     fn as_salt(&self) -> Option<Salt>;
+
+    /// Construct a digest item which contains next global randomness.
+    fn next_global_randomness(global_randomness: Randomness) -> Self;
+
+    /// If this item is a Subspace next global randomness, return it.
+    fn as_next_global_randomness(&self) -> Option<Randomness>;
+
+    /// Construct a digest item which contains next solution range.
+    fn next_solution_range(solution_range: u64) -> Self;
+
+    /// If this item is a Subspace next solution range, return it.
+    fn as_next_solution_range(&self) -> Option<u64>;
+
+    /// Construct a digest item which contains next salt.
+    fn next_salt(salt: Salt) -> Self;
+
+    /// If this item is a Subspace next salt, return it.
+    fn as_next_salt(&self) -> Option<Salt>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -95,7 +113,6 @@ impl CompatibleDigestItem for DigestItem {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 
-    /// Construct a digest item which contains a global randomness.
     fn global_randomness(global_randomness: Randomness) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
@@ -103,7 +120,6 @@ impl CompatibleDigestItem for DigestItem {
         )
     }
 
-    /// If this item is a Subspace global randomness, return it.
     fn as_global_randomness(&self) -> Option<Randomness> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::GlobalRandomness(global_randomness) = c {
@@ -144,6 +160,54 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
+
+    fn next_global_randomness(global_randomness: Randomness) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::NextGlobalRandomness(global_randomness).encode(),
+        )
+    }
+
+    fn as_next_global_randomness(&self) -> Option<Randomness> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::NextGlobalRandomness(global_randomness) = c {
+                Some(global_randomness)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn next_solution_range(solution_range: u64) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::NextSolutionRange(solution_range).encode(),
+        )
+    }
+
+    fn as_next_solution_range(&self) -> Option<u64> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::NextSolutionRange(solution_range) = c {
+                Some(solution_range)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn next_salt(salt: Salt) -> Self {
+        Self::Consensus(SUBSPACE_ENGINE_ID, ConsensusLog::NextSalt(salt).encode())
+    }
+
+    fn as_next_salt(&self) -> Option<Salt> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::NextSalt(salt) = c {
+                Some(salt)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Various kinds of digest types used in errors
@@ -159,6 +223,12 @@ pub enum ErrorDigestType {
     SolutionRange,
     /// Salt
     Salt,
+    /// Next global randomness
+    NextGlobalRandomness,
+    /// Next solution range
+    NextSolutionRange,
+    /// Next salt
+    NextSalt,
     /// Generic consensus
     Consensus,
 }
@@ -180,6 +250,15 @@ impl fmt::Display for ErrorDigestType {
             }
             ErrorDigestType::Salt => {
                 write!(f, "Salt")
+            }
+            ErrorDigestType::NextGlobalRandomness => {
+                write!(f, "NextGlobalRandomness")
+            }
+            ErrorDigestType::NextSolutionRange => {
+                write!(f, "NextSolutionRange")
+            }
+            ErrorDigestType::NextSalt => {
+                write!(f, "NextSalt")
             }
             ErrorDigestType::Consensus => {
                 write!(f, "Consensus")
@@ -228,6 +307,12 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub solution_range: u64,
     /// Salt
     pub salt: Salt,
+    /// Next global randomness
+    pub next_global_randomness: Option<Randomness>,
+    /// Next solution range
+    pub next_solution_range: Option<u64>,
+    /// Next salt
+    pub next_salt: Option<Salt>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -245,6 +330,9 @@ where
     let mut maybe_global_randomness = None;
     let mut maybe_solution_range = None;
     let mut maybe_salt = None;
+    let mut maybe_next_global_randomness = None;
+    let mut maybe_next_solution_range = None;
+    let mut maybe_next_salt = None;
 
     for log in header.digest().logs() {
         match log {
@@ -302,6 +390,34 @@ where
                             maybe_salt.replace(salt);
                         }
                     },
+                    ConsensusLog::NextGlobalRandomness(global_randomness) => {
+                        match maybe_next_global_randomness {
+                            Some(_) => {
+                                return Err(Error::Multiple(ErrorDigestType::NextGlobalRandomness));
+                            }
+                            None => {
+                                maybe_next_global_randomness.replace(global_randomness);
+                            }
+                        }
+                    }
+                    ConsensusLog::NextSolutionRange(solution_range) => {
+                        match maybe_next_solution_range {
+                            Some(_) => {
+                                return Err(Error::Multiple(ErrorDigestType::NextSolutionRange));
+                            }
+                            None => {
+                                maybe_next_solution_range.replace(solution_range);
+                            }
+                        }
+                    }
+                    ConsensusLog::NextSalt(salt) => match maybe_next_salt {
+                        Some(_) => {
+                            return Err(Error::Multiple(ErrorDigestType::NextSalt));
+                        }
+                        None => {
+                            maybe_next_salt.replace(salt);
+                        }
+                    },
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -338,6 +454,9 @@ where
         solution_range: maybe_solution_range
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
         salt: maybe_salt.ok_or(Error::Missing(ErrorDigestType::Salt))?,
+        next_global_randomness: maybe_next_global_randomness,
+        next_solution_range: maybe_next_solution_range,
+        next_salt: maybe_next_salt,
     })
 }
 

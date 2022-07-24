@@ -922,6 +922,29 @@ impl<T: Config> Pallet<T> {
         T::EraChangeTrigger::trigger::<T>(block_number);
         // Enact eon change, if necessary.
         T::EonChangeTrigger::trigger::<T>(block_number);
+
+        if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
+            // Deposit global randomness data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
+                next_global_randomness,
+            ));
+        }
+        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+            // Deposit solution range data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::next_solution_range(
+                next_solution_range,
+            ));
+        }
+        {
+            let salts = Salts::<T>::get();
+            if salts.switch_next_block {
+                if let Some(next_salt) = salts.next {
+                    // Deposit next global randomness data such that light client can validate blocks
+                    // later.
+                    frame_system::Pallet::<T>::deposit_log(DigestItem::next_salt(next_salt));
+                }
+            }
+        }
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
