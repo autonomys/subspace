@@ -1,14 +1,12 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::{Code, MultihashDigest};
-use libp2p::{identity, PeerId};
+use libp2p::multihash::Code;
+use libp2p::PeerId;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, U256};
-use subspace_networking::{
-    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
-};
+use subspace_core_primitives::{crypto, PieceIndexHash, U256};
+use subspace_networking::Config;
 
 #[tokio::main]
 async fn main() {
@@ -52,36 +50,11 @@ async fn main() {
     const TOTAL_NODE_COUNT: usize = 100;
     const EXPECTED_NODE_INDEX: usize = 75;
 
-    let expected_response = {
-        let piece_bytes: Vec<u8> = Piece::default().into();
-        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-        let pieces = PiecesToPlot {
-            piece_indexes: vec![1],
-            pieces: flat_pieces,
-        };
-
-        PiecesByRangeResponse {
-            pieces,
-            next_piece_index_hash: None,
-        }
-    };
-
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
-        let local_response = expected_response.clone();
         let config = Config {
             bootstrap_nodes: bootstrap_nodes.clone(),
             allow_non_globals_in_dht: true,
-            request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |_| {
-                if i != EXPECTED_NODE_INDEX {
-                    return None;
-                }
-
-                println!("Sending response from Node Index {}... ", i);
-
-                std::thread::sleep(Duration::from_secs(1));
-                Some(local_response.clone())
-            })],
             ..Config::with_generated_keypair()
         };
         let (node, mut node_runner) = relay_node.spawn(config).await.unwrap();
@@ -116,7 +89,6 @@ async fn main() {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 
@@ -131,43 +103,13 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let encoding = expected_node_id.as_ref().digest();
-    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
-        .expect("Invalid public key from PeerId.");
-    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
-        pk.encode()
-    } else {
-        panic!("Expected PublicKey::Sr25519")
-    };
-
-    // create a range from expected peer's public key
-    let start = {
-        let mut buf = peer_id_public_key;
-        buf[16] = 0;
-        PieceIndexHash::from(buf)
-    };
-    let end = {
-        let mut buf = peer_id_public_key;
-        buf[16] = 50;
-        PieceIndexHash::from(buf)
-    };
-
-    let middle = (U256::from(start) / 2 + U256::from(end) / 2).to_be_bytes();
-
-    // obtain closest peers to the middle of the range
-    let key = Code::Identity.digest(&middle);
+    let hashed_peer_id = PieceIndexHash::from(crypto::sha256_hash(&expected_node_id.to_bytes()));
+    let key = libp2p::multihash::MultihashDigest::digest(
+        &Code::Identity,
+        &U256::from(hashed_peer_id).to_be_bytes(),
+    );
     let peer_id = node.get_closest_peers(key).await.unwrap()[0];
-    let pieces = node
-        .send_generic_request(peer_id, PiecesByRangeRequest { start, end })
-        .await
-        .ok();
-    if let Some(value) = pieces {
-        if value != expected_response {
-            panic!("UNEXPECTED RESPONSE")
-        }
-
-        println!("Received expected response.");
-    }
+    assert_eq!(peer_id, expected_node_id);
 
     println!("Exiting..");
 }

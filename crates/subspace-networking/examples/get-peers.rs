@@ -4,10 +4,8 @@ use libp2p::multihash::Code;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash, U256};
-use subspace_networking::{
-    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
-};
+use subspace_core_primitives::{crypto, PieceIndexHash, U256};
+use subspace_networking::Config;
 
 #[tokio::main]
 async fn main() {
@@ -19,26 +17,6 @@ async fn main() {
             // Return the reversed digest as a value
             Some(key.digest().iter().copied().rev().collect())
         }),
-        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|req| {
-            println!("Request handler for request: {:?}", req);
-
-            let piece_bytes: Vec<u8> = Piece::default().into();
-            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-            let pieces = PiecesToPlot {
-                piece_indexes: vec![1],
-                pieces: flat_pieces,
-            };
-
-            let response = Some(PiecesByRangeResponse {
-                pieces,
-                next_piece_index_hash: Some(PieceIndexHash::from([0; 32])),
-            });
-
-            println!("Sending response... ");
-
-            std::thread::sleep(Duration::from_secs(1));
-            response
-        })],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };
@@ -85,27 +63,12 @@ async fn main() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let hashed_peer_id = PieceIndexHash::from(crypto::sha256_hash(&node_1.id().to_bytes()));
-
-    // obtain closest peers to the middle of the range
     let key = libp2p::multihash::MultihashDigest::digest(
         &Code::Identity,
         &U256::from(hashed_peer_id).to_be_bytes(),
     );
     let peer_id = node_2.get_closest_peers(key).await.unwrap()[0];
-
-    let pieces = node_2
-        .send_generic_request(
-            peer_id,
-            PiecesByRangeRequest {
-                start: hashed_peer_id,
-                end: hashed_peer_id,
-            },
-        )
-        .await;
-
-    if let Ok(pieces) = pieces {
-        println!("Piece found: {pieces:?}");
-    }
+    assert_eq!(node_1.id(), peer_id);
 
     println!("Exiting..");
 }
