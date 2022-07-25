@@ -250,6 +250,7 @@ async fn main() -> Result<()> {
             ),
         )
         .init();
+    utils::raise_fd_limit();
 
     let command = Command::parse();
 

@@ -29,8 +29,6 @@ pub(crate) async fn farm_multi_disk(
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
 
-    utils::raise_fd_limit();
-
     let FarmingArgs {
         bootstrap_nodes,
         listen_on,
@@ -209,8 +207,6 @@ pub(crate) async fn farm_legacy(
     base_directory: PathBuf,
     farm_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
-    utils::raise_fd_limit();
-
     let FarmingArgs {
         bootstrap_nodes,
         listen_on,
