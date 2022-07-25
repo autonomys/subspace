@@ -183,6 +183,7 @@ where
         }
     }
 
+    // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
