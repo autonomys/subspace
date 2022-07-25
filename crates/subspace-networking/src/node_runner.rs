@@ -53,6 +53,7 @@ pub struct NodeRunner {
     /// present for the same physical subscription).
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
+    stop_receiver: Option<oneshot::Receiver<()>>,
 }
 
 impl NodeRunner {
@@ -63,6 +64,7 @@ impl NodeRunner {
         swarm: Swarm<Behavior>,
         shared_weak: Weak<Shared>,
         initial_random_query_interval: Duration,
+        stop_receiver: oneshot::Receiver<()>,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
@@ -76,10 +78,25 @@ impl NodeRunner {
             topic_subscription_senders: HashMap::default(),
             // We'll make the first query right away and continue at the interval.
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
+            stop_receiver: Some(stop_receiver),
         }
     }
 
     pub async fn run(&mut self) {
+        let mut stop = {
+            let stop = self.stop_receiver.take();
+            Box::pin(
+                async move {
+                    if let Some(stop) = stop {
+                        stop.await.is_ok()
+                    } else {
+                        true
+                    }
+                }
+                .fuse(),
+            )
+        };
+
         loop {
             futures::select! {
                 _ = &mut self.random_query_timeout => {
@@ -102,6 +119,11 @@ impl NodeRunner {
                         break;
                     }
                 },
+                stopped = stop => {
+                    if stopped {
+                        break;
+                    }
+                }
             }
         }
     }

@@ -75,6 +75,8 @@ pub(crate) struct Shared {
     pub(crate) connected_peers_count: AtomicUsize,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
+    /// Sender which would stop the corresponding node runner.
+    pub(crate) stop_sender: Mutex<Option<oneshot::Sender<()>>>,
     /// Parent node instance (if any) to keep alive.
     ///
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
@@ -87,6 +89,7 @@ impl Shared {
         id: PeerId,
         parent_node: Option<Node>,
         command_sender: mpsc::Sender<Command>,
+        stop_sender: oneshot::Sender<()>,
     ) -> Self {
         Self {
             handlers: Handlers::default(),
@@ -94,6 +97,7 @@ impl Shared {
             listeners: Mutex::default(),
             connected_peers_count: AtomicUsize::new(0),
             command_sender,
+            stop_sender: Mutex::new(Some(stop_sender)),
             _parent_node: parent_node,
         }
     }

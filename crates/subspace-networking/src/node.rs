@@ -146,6 +146,13 @@ impl Node {
         self.shared.id
     }
 
+    /// Stops the corresponding node runner.
+    pub fn stop(&self) {
+        if let Some(stop_sender) = self.shared.stop_sender.lock().take() {
+            let _ = stop_sender.send(());
+        }
+    }
+
     /// Configures circuit relay client using this node as circuit relay server. It expects Node
     /// running in the relay server mode (which happens automatically when addresses to listen on
     /// are provided).
@@ -338,5 +345,27 @@ impl Node {
         callback: Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>,
     ) -> HandlerId {
         self.shared.handlers.new_listener.add(callback)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn test_stop() {
+        let (node, mut runner) = crate::create(crate::Config {
+            listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+            allow_non_globals_in_dht: true,
+            ..crate::Config::with_generated_keypair()
+        })
+        .await
+        .unwrap();
+        let (sender, mut receiver) = futures::channel::oneshot::channel();
+        tokio::spawn(async move {
+            runner.run().await;
+            sender.send(()).unwrap();
+        });
+        assert!(receiver.try_recv().unwrap().is_none());
+        node.stop();
+        receiver.await.unwrap();
     }
 }

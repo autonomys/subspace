@@ -4,7 +4,7 @@ use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
-use futures::channel::mpsc;
+use futures::channel::{mpsc, oneshot};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, MemoryTransport, OrTransport};
 use libp2p::dns::TokioDnsConfig;
@@ -245,8 +245,14 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         }
 
         let (command_sender, command_receiver) = mpsc::channel(1);
+        let (stop_sender, stop_receiver) = oneshot::channel();
 
-        let shared = Arc::new(Shared::new(local_peer_id, parent_node, command_sender));
+        let shared = Arc::new(Shared::new(
+            local_peer_id,
+            parent_node,
+            command_sender,
+            stop_sender,
+        ));
         let shared_weak = Arc::downgrade(&shared);
 
         let node = Node::new(shared, is_relay_server);
@@ -257,6 +263,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             swarm,
             shared_weak,
             initial_random_query_interval,
+            stop_receiver,
         );
 
         Ok((node, node_runner))
