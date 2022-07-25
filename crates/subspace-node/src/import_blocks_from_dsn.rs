@@ -29,10 +29,9 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::Piece;
+use subspace_core_primitives::{Piece, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{multimess, Config};
-use subspace_runtime_primitives::{RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 
 type PieceIndex = u64;
 

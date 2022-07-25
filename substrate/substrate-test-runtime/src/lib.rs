@@ -55,7 +55,7 @@ use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::PIECE_SIZE;
+use subspace_core_primitives::{PIECE_SIZE, RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE};
 use trie_db::{Trie, TrieMut};
 // bench on latest state.
 use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
@@ -848,7 +848,7 @@ cfg_if! {
                 }
 
                 fn record_size() -> u32 {
-                    <Self as pallet_subspace::Config>::RecordSize::get()
+                    RECORD_SIZE
                 }
 
                 fn total_pieces() -> u64 {
@@ -856,7 +856,7 @@ cfg_if! {
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+                    RECORDED_HISTORY_SEGMENT_SIZE
                 }
 
                 fn slot_duration() -> core::time::Duration {
@@ -1104,7 +1104,7 @@ cfg_if! {
                 }
 
                 fn record_size() -> u32 {
-                    <Self as pallet_subspace::Config>::RecordSize::get()
+                    RECORD_SIZE
                 }
 
                 fn max_plot_size() -> u64 {
@@ -1116,7 +1116,7 @@ cfg_if! {
                 }
 
                 fn recorded_history_segment_size() -> u32 {
-                    <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+                    RECORDED_HISTORY_SEGMENT_SIZE
                 }
 
                 fn slot_duration() -> core::time::Duration {

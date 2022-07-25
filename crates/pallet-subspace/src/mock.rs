@@ -37,7 +37,7 @@ use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{
     ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
-    Sha256Hash, Solution, Tag, PIECE_SIZE,
+    Sha256Hash, Solution, Tag, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
@@ -347,11 +347,8 @@ pub fn create_root_block(segment_index: u64) -> RootBlock {
 }
 
 pub fn create_archived_segment() -> ArchivedSegment {
-    let mut archiver = Archiver::new(
-        RecordSize::get() as usize,
-        RecordedHistorySegmentSize::get() as usize,
-    )
-    .unwrap();
+    let mut archiver =
+        Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize).unwrap();
 
     let mut block = vec![0u8; 1024 * 1024];
     rand::thread_rng().fill(block.as_mut_slice());

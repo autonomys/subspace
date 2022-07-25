@@ -100,6 +100,18 @@ enum ConsensusLog {
     /// Salt for this block/eon.
     #[codec(index = 3)]
     Salt(Salt),
+    /// Global randomness for next block/interval.
+    #[codec(index = 4)]
+    NextGlobalRandomness(Randomness),
+    /// Solution range for next block/era.
+    #[codec(index = 5)]
+    NextSolutionRange(u64),
+    /// Salt for next block/eon.
+    #[codec(index = 6)]
+    NextSalt(Salt),
+    /// Records roots.
+    #[codec(index = 7)]
+    RecordsRoot((u64, Sha256Hash)),
 }
 
 /// Farmer vote.
@@ -284,10 +296,14 @@ sp_api::decl_runtime_apis! {
         /// to the client-dependent transaction confirmation depth `k`).
         fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number;
 
+        // TODO: Remove, this is a protocol constant
         /// The size of data in one piece (in bytes).
+        #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
         fn record_size() -> u32;
 
+        // TODO: Remove, this is a protocol constant
         /// Recorded history is encoded and plotted in segments of this size (in bytes).
+        #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
         fn recorded_history_segment_size() -> u32;
 
         /// Maximum number of pieces in each plot
