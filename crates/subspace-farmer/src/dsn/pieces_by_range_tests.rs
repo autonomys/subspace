@@ -1,6 +1,4 @@
-use super::{
-    DSNSync, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
-};
+use super::DSNSync;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -8,7 +6,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::Config;
+use subspace_networking::{
+    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+};
 
 #[tokio::test]
 async fn pieces_by_range_protocol_smoke() {

@@ -1,4 +1,3 @@
-use crate::dsn::PiecesToPlot;
 use crate::object_mappings::{LegacyObjectMappings, ObjectMappings};
 use crate::rpc_client::RpcClient;
 use crate::utils::AbortingJoinHandle;
@@ -6,6 +5,7 @@ use futures::StreamExt;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
+use subspace_networking::PiecesToPlot;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use thiserror::Error;
 use tokio::sync::oneshot;

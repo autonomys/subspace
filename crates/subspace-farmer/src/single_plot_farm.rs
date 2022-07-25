@@ -3,10 +3,7 @@ pub mod dsn_archiving;
 mod tests;
 
 use crate::commitments::{CommitmentError, Commitments};
-use crate::dsn::{
-    self, PieceIndexHashNumber, PiecesByRangeRequest, PiecesByRangeRequestHandler,
-    PiecesByRangeResponse, PiecesToPlot, SyncOptions,
-};
+use crate::dsn::{self, PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
@@ -28,7 +25,10 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
-use subspace_networking::{Config, Node, NodeRunner};
+use subspace_networking::{
+    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeRequestHandler,
+    PiecesByRangeResponse, PiecesToPlot,
+};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;

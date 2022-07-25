@@ -40,6 +40,9 @@ pub use request_handlers::generic_request_handler::{GenericRequest, GenericReque
 pub use request_handlers::object_mappings::{
     ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
 };
+pub use request_handlers::pieces_by_range::{
+    PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+};
 
 // TODO: Move this out of the networking crate into separate crate.
 pub static PUB_SUB_ARCHIVING_TOPIC: Lazy<Sha256Topic> =
