@@ -5,7 +5,9 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{Config, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{
+    Config, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+};
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +19,7 @@ async fn main() {
             // Return the reversed digest as a value
             Some(key.digest().iter().copied().rev().collect())
         }),
-        pieces_by_range_request_handler: Arc::new(|req| {
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|req| {
             println!("Request handler for request: {:?}", req);
 
             let piece_bytes: Vec<u8> = Piece::default().into();
@@ -36,7 +38,7 @@ async fn main() {
 
             std::thread::sleep(Duration::from_secs(1));
             response
-        }),
+        })],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };

@@ -1,10 +1,9 @@
 use crate::create::{create, Config, CreationError};
 use crate::node_runner::NodeRunner;
-use crate::request_handlers::object_mappings::{ObjectMappingsRequest, ObjectMappingsResponse};
+use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
 };
-use crate::request_responses::RequestFailure;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -153,10 +152,6 @@ pub struct Node {
     relay_server_memory_port: Arc<Mutex<Option<u64>>>,
 }
 
-// Type alias for the command creation function for sending generic requests.
-type BehaviourCommandCreator =
-    Box<dyn FnOnce(oneshot::Sender<Result<Vec<u8>, RequestFailure>>) -> Command + Send>;
-
 impl Node {
     pub(crate) fn new(shared: Arc<Shared>, is_relay_server: bool) -> Self {
         Self {
@@ -182,6 +177,7 @@ impl Node {
                 .with(Protocol::P2p(self.id().into()))
                 .with(Protocol::P2pCircuit),
         );
+        config.parent_node.replace(self.clone());
 
         create(config).await
     }
@@ -293,49 +289,22 @@ impl Node {
             .map_err(PublishError::Publish)
     }
 
-    // Sends the pieces-by-range request to the peer and awaits the result.
-    pub async fn send_pieces_by_range_request(
-        &self,
-        peer_id: PeerId,
-        request: PiecesByRangeRequest,
-    ) -> Result<PiecesByRangeResponse, SendRequestError> {
-        let command_creator = move |result_sender| Command::PiecesByRangeRequest {
-            request,
-            result_sender,
-            peer_id,
-        };
-
-        self.send_generic_request::<PiecesByRangeRequest, PiecesByRangeResponse>(Box::new(
-            command_creator,
-        ))
-        .await
-    }
-
-    // Sends the object-mappings request to the peer and awaits the result.
-    pub async fn send_object_mappings_request(
-        &self,
-        peer_id: PeerId,
-        request: ObjectMappingsRequest,
-    ) -> Result<ObjectMappingsResponse, SendRequestError> {
-        let command_creator = move |result_sender| Command::ObjectMappingsRequest {
-            request,
-            result_sender,
-            peer_id,
-        };
-
-        self.send_generic_request::<ObjectMappingsRequest, ObjectMappingsResponse>(Box::new(
-            command_creator,
-        ))
-        .await
-    }
-
     // Sends the generic request to the peer and awaits the result.
-    async fn send_generic_request<Req, Resp: Decode>(
+    pub async fn send_generic_request<Request>(
         &self,
-        command_creator: BehaviourCommandCreator,
-    ) -> Result<Resp, SendRequestError> {
+        peer_id: PeerId,
+        request: Request,
+    ) -> Result<Request::Response, SendRequestError>
+    where
+        Request: GenericRequest,
+    {
         let (result_sender, result_receiver) = oneshot::channel();
-        let command = command_creator(result_sender);
+        let command = Command::GenericRequest {
+            peer_id,
+            protocol_name: Request::PROTOCOL_NAME,
+            request: request.encode(),
+            result_sender,
+        };
 
         self.shared
             .command_sender
@@ -349,7 +318,8 @@ impl Node {
             .map_err(|_| SendRequestError::NodeRunnerDropped)?
             .map_err(|_| SendRequestError::ProtocolFailure)?;
 
-        Resp::decode(&mut result.as_slice()).map_err(|_| SendRequestError::IncorrectResponseFormat)
+        Request::Response::decode(&mut result.as_slice())
+            .map_err(|_| SendRequestError::IncorrectResponseFormat)
     }
 
     /// Get closest peers by multihash key using Kademlia DHT.
@@ -357,7 +327,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<Vec<PeerId>, GetClosestPeersError> {
-        trace!(key=?key, "Starting 'GetClosestPeers' request.");
+        trace!(?key, "Starting 'GetClosestPeers' request.");
 
         let (result_sender, result_receiver) = oneshot::channel();
 
@@ -441,7 +411,7 @@ impl Node {
                 );
                 // request data by range
                 let response = node
-                    .send_pieces_by_range_request(
+                    .send_generic_request(
                         peer_id,
                         PiecesByRangeRequest {
                             from: starting_index_hash,

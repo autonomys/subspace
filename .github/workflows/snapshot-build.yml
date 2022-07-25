@@ -120,7 +120,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: nightly-2022-07-09
+          toolchain: nightly-2022-07-22
           target: ${{ matrix.build.target }}
           components: rust-src
           override: true
@@ -129,7 +129,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
         with:
-          toolchain: nightly-2022-07-09
+          toolchain: nightly-2022-07-22
           target: wasm32-unknown-unknown
 
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
@@ -149,7 +149,7 @@ jobs:
         run: sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
-      - name: Build (farmer on Ubuntu or Windows with OpenCL)
+      - name: Build farmer on Ubuntu or Windows with OpenCL
         uses: actions-rs/cargo@v1
         with:
           command: build
@@ -166,11 +166,17 @@ jobs:
           move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl.exe
         if: runner.os == 'Windows'
 
-      - name: Build (farmer and node without OpenCL)
+      - name: Build farmer without OpenCL
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node --bin subspace-farmer
+          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
+
+      - name: Build node
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
 
       - name: Sign Application (macOS)
         run: |

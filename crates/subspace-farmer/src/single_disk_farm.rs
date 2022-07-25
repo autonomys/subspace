@@ -214,12 +214,15 @@ pub struct SingleDiskFarmOptions<RC, PF> {
     /// Factory that'll create/open plot using given options
     pub plot_factory: PF,
     pub reward_address: PublicKey,
+    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
     pub bootstrap_nodes: Vec<Multiaddr>,
+    /// List of [`Multiaddr`] on which to listen for incoming connections.
+    pub listen_on: Vec<Multiaddr>,
     /// Enable DSN subscription for archiving segments.
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
-    pub relay_server_node: Node,
+    pub relay_server_node: Option<Node>,
 }
 
 /// Abstraction on top of `SinglePlotFarm` instances contained within the same physical disk (or
@@ -252,6 +255,7 @@ impl SingleDiskFarm {
             farming_client,
             reward_address,
             bootstrap_nodes,
+            listen_on,
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
@@ -324,6 +328,7 @@ impl SingleDiskFarm {
                         metadata_directory.join(single_plot_farm_id.to_string());
                     let farming_client = farming_client.clone();
                     let bootstrap_nodes = bootstrap_nodes.clone();
+                    let listen_on = listen_on.clone();
                     let single_disk_semaphore = single_disk_semaphore.clone();
 
                     let span = info_span!("single_plot_farm", %single_plot_farm_id);
@@ -338,6 +343,7 @@ impl SingleDiskFarm {
                         farming_client,
                         plot_factory: &plot_factory,
                         bootstrap_nodes,
+                        listen_on,
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,

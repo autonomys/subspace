@@ -11,7 +11,7 @@ use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
-    BuildNetworkParams, Configuration, NetworkStarter, PartialComponents, Role, SpawnTasksParams,
+    BuildNetworkParams, Configuration, NetworkStarter, PartialComponents, SpawnTasksParams,
     TFullBackend, TFullClient, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
@@ -242,10 +242,6 @@ where
         + TransactionPaymentRuntimeApi<Block, Balance>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
-    if matches!(secondary_chain_config.role, Role::Light) {
-        return Err("Light client not supported!".into());
-    }
-
     // TODO: Do we even need block announcement on secondary node?
     // secondary_chain_config.announce_block = false;
 

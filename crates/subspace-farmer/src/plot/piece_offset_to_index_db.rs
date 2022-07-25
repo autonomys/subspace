@@ -19,7 +19,7 @@ impl PieceOffsetToIndexDb {
             .open(path)?;
 
         if let Err(error) = file.preallocate(max_piece_count * PIECE_INDEX_SIZE) {
-            warn!(%error, %max_piece_count, "Failed to pre-allocate plot file");
+            warn!(%error, %max_piece_count, "Failed to pre-allocate piece offset to index db file");
         }
         file.advise_random_access()?;
 
