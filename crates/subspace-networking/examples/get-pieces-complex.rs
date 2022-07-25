@@ -1,13 +1,13 @@
 use futures::channel::oneshot;
-use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
+use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, U256};
 use subspace_networking::{
-    Config, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 
 #[tokio::main]
@@ -116,27 +116,33 @@ async fn main() {
     };
 
     // create a range from expected peer's public key
-    let from = {
+    let start = {
         let mut buf = peer_id_public_key;
         buf[16] = 0;
         PieceIndexHash::from(buf)
     };
-    let to = {
+    let end = {
         let mut buf = peer_id_public_key;
         buf[16] = 50;
         PieceIndexHash::from(buf)
     };
 
-    let stream_future = node.get_pieces_by_range(from, to);
-    let mut stream = stream_future.await.unwrap();
-    if let Some(value) = stream.next().await {
-        if value != expected_response.pieces {
+    let middle = (U256::from(start) / 2 + U256::from(end) / 2).to_be_bytes();
+
+    // obtain closest peers to the middle of the range
+    let key = Code::Identity.digest(&middle);
+    let peer_id = node.get_closest_peers(key).await.unwrap()[0];
+    let pieces = node
+        .send_generic_request(peer_id, PiecesByRangeRequest { start, end })
+        .await
+        .ok();
+    if let Some(value) = pieces {
+        if value != expected_response {
             panic!("UNEXPECTED RESPONSE")
         }
 
         println!("Received expected response.");
     }
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
     println!("Exiting..");
 }
