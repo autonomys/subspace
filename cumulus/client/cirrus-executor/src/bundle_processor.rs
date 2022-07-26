@@ -18,7 +18,7 @@ use sp_consensus::BlockOrigin;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::ByteArray;
 use sp_executor::{
-    ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, FraudProof, OpaqueBundle,
+    ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
     SignedExecutionReceipt,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
@@ -619,27 +619,15 @@ where
                     )))
                 })?;
 
-            self.submit_fraud_proof(fraud_proof);
+            self.primary_chain_client
+                .runtime_api()
+                .submit_fraud_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    fraud_proof,
+                )?;
         }
 
         Ok(())
-    }
-
-    fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        if let Err(error) = self
-            .primary_chain_client
-            .runtime_api()
-            .submit_fraud_proof_unsigned(
-                &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                fraud_proof,
-            )
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to submit fraud proof"
-            );
-        }
     }
 
     fn try_sign_and_send_receipt(

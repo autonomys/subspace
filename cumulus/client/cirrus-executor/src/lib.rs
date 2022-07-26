@@ -56,6 +56,7 @@
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
+//! [`FraudProof`]: ../sp_executor/struct.FraudProof.html
 
 #![feature(drain_filter)]
 
@@ -85,7 +86,7 @@ use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_executor::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId, FraudProof,
+    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
     InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -323,57 +324,6 @@ where
         }
     }
 
-    fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-        if let Err(error) = self
-            .primary_chain_client
-            .runtime_api()
-            .submit_bundle_equivocation_proof_unsigned(
-                &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                bundle_equivocation_proof,
-            )
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to submit bundle equivocation proof"
-            );
-        }
-    }
-
-    fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        if let Err(error) = self
-            .primary_chain_client
-            .runtime_api()
-            .submit_fraud_proof_unsigned(
-                &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                fraud_proof,
-            )
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to submit fraud proof"
-            );
-        }
-    }
-
-    fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-        if let Err(error) = self
-            .primary_chain_client
-            .runtime_api()
-            .submit_invalid_transaction_proof_unsigned(
-                &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                invalid_transaction_proof,
-            )
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to submit invalid transaction proof"
-            );
-        }
-    }
-
     /// The background is that a receipt received from the network points to a future block
     /// from the local view, so we need to wait for the receipt for the block at the same
     /// height to be produced locally in order to check the validity of the external receipt.
@@ -545,7 +495,12 @@ where
 
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {
-            self.submit_bundle_equivocation_proof(equivocation_proof);
+            self.primary_chain_client
+                .runtime_api()
+                .submit_bundle_equivocation_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    equivocation_proof,
+                )?;
             return Err(GossipMessageError::BundleEquivocation);
         }
 
@@ -586,7 +541,12 @@ where
                     // if illegal => illegal tx proof
                     let invalid_transaction_proof = InvalidTransactionProof;
 
-                    self.submit_invalid_transaction_proof(invalid_transaction_proof);
+                    self.primary_chain_client
+                        .runtime_api()
+                        .submit_invalid_transaction_proof_unsigned(
+                            &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                            invalid_transaction_proof,
+                        )?;
                 }
             }
 
@@ -690,7 +650,12 @@ where
                 signed_receipt_hash,
             )?;
 
-            self.submit_fraud_proof(fraud_proof);
+            self.primary_chain_client
+                .runtime_api()
+                .submit_fraud_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    fraud_proof,
+                )?;
 
             Ok(Action::Empty)
         } else {
