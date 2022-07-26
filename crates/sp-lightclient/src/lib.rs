@@ -21,7 +21,7 @@
 
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_arithmetic::traits::{CheckedAdd, One};
+use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
     ErrorDigestType, PreDigest, SubspaceDigestItems,
@@ -48,10 +48,10 @@ type SolutionRange = u64;
 /// BlockWeight type for fork choice rules.
 type BlockWeight = u128;
 
-/// Chain constants
+/// Chain constants.
 #[derive(Debug, Clone)]
 pub struct ChainConstants<Header: HeaderT> {
-    /// K Depth at which we finalize the heads
+    /// K Depth at which we finalize the heads.
     pub k_depth: NumberOf<Header>,
 }
 
@@ -106,11 +106,13 @@ pub trait Storage<Header: HeaderT> {
 
 /// Error during the header import.
 #[derive(Debug, PartialEq, Eq)]
-pub enum ImportError<Hash> {
+pub enum ImportError<Header: HeaderT> {
     /// Header already imported.
     HeaderAlreadyImported,
     /// Missing parent header.
-    MissingParent(Hash),
+    MissingParent(HashOf<Header>),
+    /// Missing ancestor header at the number.
+    MissingAncestorHeader(HashOf<Header>, NumberOf<Header>),
     /// Error while extracting digests from header.
     DigestExtractionError(DigestError),
     /// Invalid digest in the header.
@@ -123,9 +125,13 @@ pub enum ImportError<Hash> {
     InvalidSolution(subspace_verification::Error),
     /// Arithmetic error.
     ArithmeticError(ArithmeticError),
+    /// Switched to different fork beyond archiving depth.
+    SwitchedToForkBelowArchivingDepth,
+    /// Header being imported is below the archiving depth.
+    HeaderIsBelowArchivingDepth,
 }
 
-impl<Hash> From<DigestError> for ImportError<Hash> {
+impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
     fn from(error: DigestError) -> Self {
         ImportError::DigestExtractionError(error)
     }
@@ -137,15 +143,17 @@ pub struct HeaderImporter<Header, Store>(PhantomData<(Header, Store)>);
 
 impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
-    pub fn import_header(
-        store: &mut Store,
-        mut header: Header,
-    ) -> Result<(), ImportError<HashOf<Header>>> {
+    pub fn import_header(store: &mut Store, mut header: Header) -> Result<(), ImportError<Header>> {
         // check if the header is already imported
         match store.header(header.hash()) {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
             None => Ok(()),
         }?;
+
+        // only try and import headers above the finalized number
+        if header.number() <= store.finalized_header().header.number() {
+            return Err(ImportError::HeaderIsBelowArchivingDepth);
+        }
 
         // fetch parent header
         let parent_header = store
@@ -221,6 +229,12 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         };
 
         store.store_header(header_ext, is_best_header);
+
+        // finalize and prune forks if the chain has progressed
+        if is_best_header {
+            Self::finalize_header_at_k_depth(store)?;
+        }
+
         Ok(())
     }
 
@@ -230,7 +244,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         header: &Header,
     ) -> Result<
         SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
-        ImportError<HashOf<Header>>,
+        ImportError<Header>,
     > {
         let pre_digest_items = extract_subspace_digest_items(header)?;
         if pre_digest_items.global_randomness != parent_header.derived_global_randomness {
@@ -254,7 +268,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     fn verify_slot(
         parent_header: &Header,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-    ) -> Result<(), ImportError<HashOf<Header>>> {
+    ) -> Result<(), ImportError<Header>> {
         let parent_pre_digest = extract_pre_digest(parent_header)?;
 
         if pre_digest.slot <= parent_pre_digest.slot {
@@ -268,7 +282,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     fn verify_block_signature(
         header: &mut Header,
         public_key: &FarmerPublicKey,
-    ) -> Result<(), ImportError<HashOf<Header>>> {
+    ) -> Result<(), ImportError<Header>> {
         let seal = header
             .digest_mut()
             .pop()
@@ -280,10 +294,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             .as_subspace_seal()
             .ok_or(ImportError::InvalidDigest(ErrorDigestType::Seal))?;
 
-        // The pre-hash of the header doesn't include the seal and that's what we sign
+        // the pre-hash of the header doesn't include the seal and that's what we sign
         let pre_hash = header.hash();
 
-        // Verify that block is signed properly
+        // verify that block is signed properly
         check_reward_signature(
             pre_hash.as_ref(),
             &Into::<RewardSignature>::into(&signature),
@@ -349,10 +363,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     }
 
     /// Prunes header and its descendant header chain(s).
-    fn prune_chain_from_header(
+    fn prune_header_and_its_descendants(
         store: &mut Store,
         header: HeaderExt<Header>,
-    ) -> Result<(), ImportError<HashOf<Header>>> {
+    ) -> Result<(), ImportError<Header>> {
         // prune the header
         store.prune_header(header.header.hash());
 
@@ -370,8 +384,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .checked_add(&One::one())
                 .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
 
-            // get headers at the current number and
-            // filter the headers descended from the pruned parents
+            // get headers at the current number and filter the headers descended from the pruned parents
             let descendant_header_hashes = store
                 .headers_at_number(current_number)
                 .into_iter()
@@ -390,5 +403,100 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         }
 
         Ok(())
+    }
+
+    /// Finalize the header at K-depth from the best block and prune remaining forks at that number.
+    /// We want to finalize the header from the current finalized header until the K-depth number of the best.
+    /// 1. In an ideal scenario, the current finalized head is one number less than number to be finalized.
+    /// 2. If there was a re-org to longer chain when new header was imported, we do not want to miss
+    ///    pruning fork headers between current and to be finalized number. So we go number by number and prune fork headers.
+    /// 3. If there was a re-org to a shorter chain and to be finalized header was below the current finalized head,
+    ///    fail and let user know.
+    fn finalize_header_at_k_depth(store: &mut Store) -> Result<(), ImportError<Header>> {
+        let k_depth = store.chain_constants().k_depth;
+        let current_finalized_header = store.finalized_header();
+
+        // ensure we have imported at least K-depth number of headers
+        let number_to_finalize = match store.best_header().header.number().checked_sub(&k_depth) {
+            // we have not progressed that far to finalize yet
+            None => {
+                // if the chain re-org happened to smaller chain and if there was any finalized heads,
+                // fail and let the user decide what to do
+                if *current_finalized_header.header.number() > Zero::zero() {
+                    return Err(ImportError::SwitchedToForkBelowArchivingDepth);
+                }
+
+                return Ok(());
+            }
+
+            Some(number) => number,
+        };
+
+        match number_to_finalize.cmp(current_finalized_header.header.number()) {
+            Ordering::Less => Err(ImportError::SwitchedToForkBelowArchivingDepth),
+            // nothing to do as we finalized the header already
+            Ordering::Equal => Ok(()),
+            // finalize heads one after the other and prune any forks
+            Ordering::Greater => {
+                let mut current_finalized_number = *current_finalized_header.header.number();
+
+                while current_finalized_number < number_to_finalize {
+                    let number_to_finalize = current_finalized_number
+                        .checked_add(&One::one())
+                        .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
+
+                    // find the headers at the number to be finalized
+                    let headers_at_number_to_be_finalized =
+                        store.headers_at_number(number_to_finalize);
+                    // if there is just one header at that number, we mark that header as finalized and move one
+                    if headers_at_number_to_be_finalized.len() == 1 {
+                        let header_to_finalize = headers_at_number_to_be_finalized
+                            .into_iter()
+                            .next()
+                            .expect("Safe to unwrap because of the check above.");
+
+                        store.finalize_header(header_to_finalize.header.hash());
+                    } else {
+                        // there are multiple headers at the number to be finalized.
+                        // find the correct ancestor header of the current best header.
+                        // finalize it and prune all the remaining fork headers.
+                        let current_best_header = store.best_header();
+                        let (current_best_hash, current_best_number) = (
+                            current_best_header.header.hash(),
+                            *current_best_header.header.number(),
+                        );
+
+                        let header_to_finalize = Self::find_ancestor_of_header_at_number(
+                            store,
+                            current_best_header,
+                            number_to_finalize,
+                        )
+                        .ok_or(ImportError::MissingAncestorHeader(
+                            current_best_hash,
+                            current_best_number,
+                        ))?;
+
+                        // filter fork headers and prune them
+                        let headers_to_prune = headers_at_number_to_be_finalized
+                            .into_iter()
+                            .filter(|header| {
+                                header.header.hash() != header_to_finalize.header.hash()
+                            })
+                            .collect::<Vec<HeaderExt<Header>>>();
+
+                        for header_to_prune in headers_to_prune {
+                            Self::prune_header_and_its_descendants(store, header_to_prune)?;
+                        }
+
+                        // mark the header as finalized
+                        store.finalize_header(header_to_finalize.header.hash())
+                    }
+
+                    current_finalized_number = number_to_finalize;
+                }
+
+                Ok(())
+            }
+        }
     }
 }
