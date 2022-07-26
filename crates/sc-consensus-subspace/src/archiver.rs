@@ -34,7 +34,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, RootBlock};
+use subspace_core_primitives::{
+    BlockNumber, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 
 const ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -198,14 +200,6 @@ where
     .unwrap_or_else(|_| {
         panic!("Confirmation depth K can't be converted into BlockNumber");
     });
-    let record_size = client
-        .runtime_api()
-        .record_size(&best_block_id)
-        .expect("Failed to get `record_size` from runtime API");
-    let recorded_history_segment_size = client
-        .runtime_api()
-        .recorded_history_segment_size(&best_block_id)
-        .expect("Failed to get `recorded_history_segment_size` from runtime API");
 
     let maybe_last_archived_block = find_last_archived_block(client, best_block_id);
     let have_last_root_block = maybe_last_archived_block.is_some();
@@ -230,8 +224,8 @@ where
         ));
 
         Archiver::with_initial_state(
-            record_size as usize,
-            recorded_history_segment_size as usize,
+            RECORD_SIZE as usize,
+            RECORDED_HISTORY_SEGMENT_SIZE as usize,
             last_root_block,
             &last_archived_block.encode(),
             block_object_mappings,
@@ -240,7 +234,7 @@ where
     } else {
         info!(target: "subspace", "Starting archiving from genesis");
 
-        Archiver::new(record_size as usize, recorded_history_segment_size as usize)
+        Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
             .expect("Incorrect parameters for archiver")
     };
 

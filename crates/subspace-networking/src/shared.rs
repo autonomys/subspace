@@ -1,9 +1,8 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
-use crate::pieces_by_range_handler::PiecesByRangeRequest;
+use crate::node::Node;
 use crate::request_responses::RequestFailure;
-use crate::Node;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -53,9 +52,10 @@ pub(crate) enum Command {
         key: Multihash,
         result_sender: oneshot::Sender<Vec<PeerId>>,
     },
-    PiecesByRangeRequest {
+    GenericRequest {
         peer_id: PeerId,
-        request: PiecesByRangeRequest,
+        protocol_name: &'static str,
+        request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
 }

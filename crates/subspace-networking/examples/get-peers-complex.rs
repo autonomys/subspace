@@ -1,14 +1,10 @@
 use futures::channel::oneshot;
-use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
-use libp2p::{identity, PeerId};
+use libp2p::PeerId;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{
-    Config, NetworkingParametersManager, PiecesByRangeResponse, PiecesToPlot,
-};
+use subspace_networking::{Config, NetworkingParametersManager};
 
 #[tokio::main]
 async fn main() {
@@ -20,37 +16,12 @@ async fn main() {
     const TOTAL_NODE_COUNT: usize = 100;
     const EXPECTED_NODE_INDEX: usize = 75;
 
-    let expected_response = {
-        let piece_bytes: Vec<u8> = Piece::default().into();
-        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-        let pieces = PiecesToPlot {
-            piece_indexes: vec![1],
-            pieces: flat_pieces,
-        };
-
-        PiecesByRangeResponse {
-            pieces,
-            next_piece_index_hash: None,
-        }
-    };
-
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
-        let local_response = expected_response.clone();
         let config = Config {
             bootstrap_nodes: bootstrap_nodes.clone(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_globals_in_dht: true,
-            pieces_by_range_request_handler: Arc::new(move |_| {
-                if i != EXPECTED_NODE_INDEX {
-                    return None;
-                }
-
-                println!("Sending response from Node Index {}... ", i);
-
-                std::thread::sleep(Duration::from_secs(1));
-                Some(local_response.clone())
-            }),
             ..Config::with_generated_keypair()
         };
         let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
@@ -119,37 +90,11 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let encoding = expected_node_id.as_ref().digest();
-    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
-        .expect("Invalid public key from PeerId.");
-    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
-        pk.encode()
-    } else {
-        panic!("Expected PublicKey::Sr25519")
-    };
+    let peer_id = node
+        .get_closest_peers(expected_node_id.into())
+        .await
+        .unwrap()[0];
+    assert_eq!(peer_id, expected_node_id);
 
-    // create a range from expected peer's public key
-    let from = {
-        let mut buf = peer_id_public_key;
-        buf[16] = 0;
-        PieceIndexHash::from(buf)
-    };
-    let to = {
-        let mut buf = peer_id_public_key;
-        buf[16] = 50;
-        PieceIndexHash::from(buf)
-    };
-
-    let stream_future = node.get_pieces_by_range(from, to);
-    let mut stream = stream_future.await.unwrap();
-    if let Some(value) = stream.next().await {
-        if value != expected_response.pieces {
-            panic!("UNEXPECTED RESPONSE")
-        }
-
-        println!("Received expected response.");
-    }
-
-    tokio::time::sleep(Duration::from_secs(6)).await;
     println!("Exiting..");
 }

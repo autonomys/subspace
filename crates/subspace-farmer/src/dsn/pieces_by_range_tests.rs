@@ -1,17 +1,20 @@
-use crate::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use super::DSNSync;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
-use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
+use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::{
+    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+};
 
 #[tokio::test]
 async fn pieces_by_range_protocol_smoke() {
     let request = PiecesByRangeRequest {
-        from: PieceIndexHash::from([1u8; 32]),
-        to: PieceIndexHash::from([1u8; 32]),
+        start: PieceIndexHash::from([1u8; 32]),
+        end: PieceIndexHash::from([1u8; 32]),
     };
 
     let piece_bytes: Vec<u8> = Piece::default().into();
@@ -32,14 +35,14 @@ async fn pieces_by_range_protocol_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(move |req| {
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
             assert_eq!(*req, expected_request);
 
             Some(expected_response.clone())
-        }),
+        })],
         ..Config::with_generated_keypair()
     };
-    let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
     let on_new_listener_handler = node_1.on_new_listener(Arc::new({
@@ -66,10 +69,11 @@ async fn pieces_by_range_protocol_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
@@ -77,7 +81,7 @@ async fn pieces_by_range_protocol_smoke() {
     let (mut result_sender, mut result_receiver) = mpsc::unbounded();
     tokio::spawn(async move {
         let resp = node_2
-            .send_pieces_by_range_request(node_1.id(), request)
+            .send_generic_request(node_1.id(), request)
             .await
             .unwrap();
 
@@ -112,7 +116,7 @@ async fn get_pieces_by_range_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(move |req| {
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
             let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
 
             // Only two responses
@@ -127,17 +131,17 @@ async fn get_pieces_by_range_smoke() {
                 })
             } else {
                 // New request starts from from the previous response.
-                assert_eq!(req.from, piece_index_continue);
+                assert_eq!(req.start, piece_index_continue);
 
                 Some(PiecesByRangeResponse {
                     pieces: response_data[request_index].clone(),
                     next_piece_index_hash: None,
                 })
             }
-        }),
+        })],
         ..Config::with_generated_keypair()
     };
-    let (node_1, mut node_runner_1) = crate::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
     let on_new_listener_handler = node_1.on_new_listener(Arc::new({
@@ -164,16 +168,17 @@ async fn get_pieces_by_range_smoke() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, mut node_runner_2) = crate::create(config_2).await.unwrap();
+    let (mut node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
 
     let mut stream = node_2
-        .get_pieces_by_range(piece_index_from, piece_index_end)
+        .get_pieces(piece_index_from..piece_index_end)
         .await
         .unwrap();
 

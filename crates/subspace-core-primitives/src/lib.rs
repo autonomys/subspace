@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
+#![feature(int_log)]
 
 #[cfg(test)]
 mod tests;
@@ -79,6 +80,28 @@ pub type SlotNumber = u64;
 
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
+
+/// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
+/// Merkle Tree and will result in witness size of `log2(MERKLE_NUM_LEAVES) * SHA256_HASH_SIZE`.
+///
+/// This number is a tradeoff:
+/// * as this number goes up, fewer [`RootBlock`]s are required to be stored for verifying archival
+///   history of the network, which makes sync quicker and more efficient, but also more data in
+///   each [`Piece`] will be occupied with witness, thus wasting space that otherwise could have
+///   been used for storing data (record part of a Piece)
+/// * as this number goes down, witness get smaller leading to better piece utilization, but the
+///   number of root blocks goes up making sync less efficient and less records are needed to be
+///   lost before part of the archived history become unrecoverable, reducing reliability of the
+///   data stored on the network
+pub const MERKLE_NUM_LEAVES: u32 = 256;
+/// Size of witness for a segment record (in bytes).
+pub const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
+/// Size of a segment record given the global piece size (in bytes).
+pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+/// Recorded History Segment Size includes half of the records (just data records) that will later
+/// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
+/// pieces of archival history.
+pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 /// Randomness context
 pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
@@ -677,6 +700,13 @@ impl U256 {
 
     /// Maximum value.
     pub const MAX: Self = Self(private_u256::U256::MAX);
+}
+
+// Necessary for division derive
+impl From<U256> for private_u256::U256 {
+    fn from(number: U256) -> Self {
+        number.0
+    }
 }
 
 impl WrappingAdd for U256 {

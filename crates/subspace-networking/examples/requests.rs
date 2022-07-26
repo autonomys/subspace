@@ -1,10 +1,22 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
+use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash};
-use subspace_networking::{Config, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{Config, GenericRequest, GenericRequestHandler};
+
+#[derive(Encode, Decode)]
+struct ExampleRequest;
+
+impl GenericRequest for ExampleRequest {
+    const PROTOCOL_NAME: &'static str = "example";
+    const LOG_TARGET: &'static str = "example_request";
+    type Response = ExampleResponse;
+}
+
+#[derive(Encode, Decode, Debug)]
+struct ExampleResponse;
 
 #[tokio::main]
 async fn main() {
@@ -17,21 +29,10 @@ async fn main() {
             Some(key.digest().iter().copied().rev().collect())
         }),
         allow_non_globals_in_dht: true,
-        pieces_by_range_request_handler: Arc::new(|req| {
-            println!("Request handler for request: {:?}", req);
-
-            let piece_bytes: Vec<u8> = Piece::default().into();
-            let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
-            let pieces = PiecesToPlot {
-                piece_indexes: vec![1],
-                pieces: flat_pieces,
-            };
-
-            Some(PiecesByRangeResponse {
-                pieces,
-                next_piece_index_hash: None,
-            })
-        }),
+        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| {
+            println!("Request handler for request");
+            Some(ExampleResponse)
+        })],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
@@ -63,6 +64,7 @@ async fn main() {
         bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        request_response_protocols: vec![GenericRequestHandler::create(|ExampleRequest| None)],
         ..Config::with_generated_keypair()
     };
 
@@ -77,16 +79,12 @@ async fn main() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     tokio::spawn(async move {
-        node_2
-            .send_pieces_by_range_request(
-                node_1.id(),
-                PiecesByRangeRequest {
-                    from: PieceIndexHash::from([1u8; 32]),
-                    to: PieceIndexHash::from([1u8; 32]),
-                },
-            )
+        let resp = node_2
+            .send_generic_request(node_1.id(), ExampleRequest)
             .await
             .unwrap();
+
+        println!("Response: {:?}", resp);
     });
 
     tokio::time::sleep(Duration::from_secs(5)).await;

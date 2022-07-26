@@ -41,7 +41,9 @@ use sp_runtime::DigestItem;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Randomness, RewardSignature, Salt, Solution};
+use subspace_core_primitives::{
+    Randomness, RewardSignature, Salt, Solution, MERKLE_NUM_LEAVES, RECORD_SIZE,
+};
 use subspace_solving::{derive_global_challenge, derive_target};
 use subspace_verification::{
     check_reward_signature, is_within_solution_range, verify_solution, PieceCheckParams,
@@ -202,14 +204,9 @@ where
                 continue;
             }
 
-            let record_size = runtime_api.record_size(&parent_block_id).ok()?;
-            let recorded_history_segment_size = runtime_api
-                .recorded_history_segment_size(&parent_block_id)
-                .ok()?;
             let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
-            let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
-            let segment_index = solution.piece_index / merkle_num_leaves;
-            let position = solution.piece_index % merkle_num_leaves;
+            let segment_index = solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+            let position = solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
@@ -254,7 +251,7 @@ where
                     piece_check_params: Some(PieceCheckParams {
                         records_root,
                         position,
-                        record_size,
+                        record_size: RECORD_SIZE,
                         max_plot_size,
                         total_pieces,
                     }),
@@ -480,6 +477,7 @@ where
     }
 }
 
+// TODO: Replace with querying parent block header when breaking protocol
 /// Extract global randomness for block, given ID of the parent block.
 pub(crate) fn extract_global_randomness_for_block<Block, Client>(
     client: &Client,
@@ -496,6 +494,7 @@ where
         .map(|randomnesses| randomnesses.next.unwrap_or(randomnesses.current))
 }
 
+// TODO: Replace with querying parent block header when breaking protocol
 /// Extract solution ranges for block and votes, given ID of the parent block.
 pub(crate) fn extract_solution_ranges_for_block<Block, Client>(
     client: &Client,
@@ -519,6 +518,7 @@ where
         })
 }
 
+// TODO: Replace with querying parent block header when breaking protocol
 /// Extract salt and next salt for block, given ID of the parent block.
 pub(crate) fn extract_salt_for_block<Block, Client>(
     client: &Client,

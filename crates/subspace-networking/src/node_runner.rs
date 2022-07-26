@@ -1,6 +1,5 @@
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
-use crate::pieces_by_range_handler::{self};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
@@ -19,7 +18,6 @@ use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{AddressScore, SwarmEvent};
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
-use parity_scale_codec::Encode;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -497,15 +495,16 @@ impl NodeRunner {
                     },
                 );
             }
-            Command::PiecesByRangeRequest {
+            Command::GenericRequest {
                 peer_id,
+                protocol_name,
                 request,
                 result_sender,
             } => {
                 self.swarm.behaviour_mut().request_response.send_request(
                     &peer_id,
-                    pieces_by_range_handler::PROTOCOL_NAME,
-                    request.encode(),
+                    protocol_name,
+                    request,
                     result_sender,
                     IfDisconnected::TryConnect,
                 );

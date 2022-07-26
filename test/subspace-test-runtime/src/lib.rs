@@ -68,11 +68,14 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
-use subspace_core_primitives::{PublicKey, Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RootBlock, Sha256Hash, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
+};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
-    STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
+    MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 use subspace_verification::derive_randomness;
 
@@ -1009,7 +1012,7 @@ impl_runtime_apis! {
         }
 
         fn record_size() -> u32 {
-            <Self as pallet_subspace::Config>::RecordSize::get()
+            RECORD_SIZE
         }
 
         fn max_plot_size() -> u64 {
@@ -1017,7 +1020,7 @@ impl_runtime_apis! {
         }
 
         fn recorded_history_segment_size() -> u32 {
-            <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+            RECORDED_HISTORY_SEGMENT_SIZE
         }
 
         fn slot_duration() -> Duration {

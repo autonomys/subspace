@@ -1,6 +1,6 @@
 // This file is part of Substrate.
 
-// Copyright (C) 2017-2021 Parity Technologies (UK) Ltd.
+// Copyright (C) 2017-2022 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 
 // This program is free software: you can redistribute it and/or modify
@@ -473,6 +473,39 @@ fn can_sync_small_non_best_forks() {
 
 #[test]
 #[ignore]
+fn can_sync_forks_ahead_of_the_best_chain() {
+	sp_tracing::try_init_simple();
+	let mut net = TestNet::new(2);
+	net.peer(0).push_blocks(1, false);
+	net.peer(1).push_blocks(1, false);
+
+	net.block_until_connected();
+	// Peer 0 is on 2-block fork which is announced with is_best=false
+	let fork_hash = net.peer(0).generate_blocks_with_fork_choice(
+		2,
+		BlockOrigin::Own,
+		|builder| builder.build().unwrap().block,
+		ForkChoiceStrategy::Custom(false),
+	);
+	// Peer 1 is on 1-block fork
+	net.peer(1).push_blocks(1, false);
+	assert!(net.peer(0).client().header(&BlockId::Hash(fork_hash)).unwrap().is_some());
+	assert_eq!(net.peer(0).client().info().best_number, 1);
+	assert_eq!(net.peer(1).client().info().best_number, 2);
+
+	// after announcing, peer 1 downloads the block.
+	block_on(futures::future::poll_fn::<(), _>(|cx| {
+		net.poll(cx);
+
+		if net.peer(1).client().header(&BlockId::Hash(fork_hash)).unwrap().is_none() {
+			return Poll::Pending
+		}
+		Poll::Ready(())
+	}));
+}
+
+#[test]
+#[ignore]
 fn can_sync_explicit_forks() {
 	sp_tracing::try_init_simple();
 	let mut net = TestNet::new(2);
@@ -540,9 +573,10 @@ fn syncs_header_only_forks() {
 	let small_hash = net.peer(0).client().info().best_hash;
 	net.peer(1).push_blocks(4, false);
 
-	net.block_until_sync();
 	// Peer 1 will sync the small fork even though common block state is missing
-	assert!(net.peer(1).has_block(&small_hash));
+	while !net.peer(1).has_block(&small_hash) {
+		net.block_until_idle();
+	}
 }
 
 #[test]
@@ -694,7 +728,7 @@ impl BlockAnnounceValidator<Block> for FailingBlockAnnounceValidator {
 				Validation::Success { is_new_best: true }
 			})
 		}
-		.boxed()
+			.boxed()
 	}
 }
 
@@ -702,7 +736,7 @@ impl BlockAnnounceValidator<Block> for FailingBlockAnnounceValidator {
 #[ignore]
 fn sync_blocks_when_block_announce_validator_says_it_is_new_best() {
 	sp_tracing::try_init_simple();
-	let mut net = TestNet::with_fork_choice(ForkChoiceStrategy::Custom(false));
+	let mut net = TestNet::new(0);
 	net.add_full_peer_with_config(Default::default());
 	net.add_full_peer_with_config(Default::default());
 	net.add_full_peer_with_config(FullPeerConfig {
@@ -712,16 +746,17 @@ fn sync_blocks_when_block_announce_validator_says_it_is_new_best() {
 
 	net.block_until_connected();
 
-	let block_hash = net.peer(0).push_blocks(1, false);
+	// Add blocks but don't set them as best
+	let block_hash = net.peer(0).generate_blocks_with_fork_choice(
+		1,
+		BlockOrigin::Own,
+		|builder| builder.build().unwrap().block,
+		ForkChoiceStrategy::Custom(false),
+	);
 
 	while !net.peer(2).has_block(&block_hash) {
 		net.block_until_idle();
 	}
-
-	// Peer1 should not have the block, because peer 0 did not reported the block
-	// as new best. However, peer2 has a special block announcement validator
-	// that flags all blocks as `is_new_best` and thus, it should have synced the blocks.
-	assert!(!net.peer(1).has_block(&block_hash));
 }
 
 /// Waits for some time until the validation is successfull.
@@ -738,7 +773,7 @@ impl BlockAnnounceValidator<Block> for DeferredBlockAnnounceValidator {
 			futures_timer::Delay::new(std::time::Duration::from_millis(500)).await;
 			Ok(Validation::Success { is_new_best: false })
 		}
-		.boxed()
+			.boxed()
 	}
 }
 
@@ -746,7 +781,7 @@ impl BlockAnnounceValidator<Block> for DeferredBlockAnnounceValidator {
 #[ignore]
 fn wait_until_deferred_block_announce_validation_is_ready() {
 	sp_tracing::try_init_simple();
-	let mut net = TestNet::with_fork_choice(ForkChoiceStrategy::Custom(false));
+	let mut net = TestNet::new(0);
 	net.add_full_peer_with_config(Default::default());
 	net.add_full_peer_with_config(FullPeerConfig {
 		block_announce_validator: Some(Box::new(NewBestBlockAnnounceValidator)),
@@ -755,7 +790,13 @@ fn wait_until_deferred_block_announce_validation_is_ready() {
 
 	net.block_until_connected();
 
-	let block_hash = net.peer(0).push_blocks(1, true);
+	// Add blocks but don't set them as best
+	let block_hash = net.peer(0).generate_blocks_with_fork_choice(
+		1,
+		BlockOrigin::Own,
+		|builder| builder.build().unwrap().block,
+		ForkChoiceStrategy::Custom(false),
+	);
 
 	while !net.peer(1).has_block(&block_hash) {
 		net.block_until_idle();
@@ -786,12 +827,19 @@ fn sync_to_tip_requires_that_sync_protocol_is_informed_about_best_block() {
 	net.block_until_idle();
 
 	// Connect another node that should now sync to the tip
-	net.add_full_peer_with_config(Default::default());
-	net.block_until_connected();
+	net.add_full_peer_with_config(FullPeerConfig {
+		connect_to_peers: Some(vec![0]),
+		..Default::default()
+	});
 
-	while !net.peer(2).has_block(&block_hash) {
-		net.block_until_idle();
-	}
+	block_on(futures::future::poll_fn::<(), _>(|cx| {
+		net.poll(cx);
+		if net.peer(2).has_block(&block_hash) {
+			Poll::Ready(())
+		} else {
+			Poll::Pending
+		}
+	}));
 
 	// However peer 1 should still not have the block.
 	assert!(!net.peer(1).has_block(&block_hash));
@@ -847,7 +895,7 @@ fn block_announce_data_is_propagated() {
 					Ok(Validation::Failure { disconnect: false })
 				}
 			}
-			.boxed()
+				.boxed()
 		}
 	}
 
@@ -868,7 +916,10 @@ fn block_announce_data_is_propagated() {
 	// Wait until peer 1 is connected to both nodes.
 	block_on(futures::future::poll_fn::<(), _>(|cx| {
 		net.poll(cx);
-		if net.peer(1).num_peers() == 2 {
+		if net.peer(1).num_peers() == 2 &&
+			net.peer(0).num_peers() == 1 &&
+			net.peer(2).num_peers() == 1
+		{
 			Poll::Ready(())
 		} else {
 			Poll::Pending
@@ -905,7 +956,7 @@ fn continue_to_sync_after_some_block_announcement_verifications_failed() {
 					Ok(Validation::Success { is_new_best: false })
 				}
 			}
-			.boxed()
+				.boxed()
 		}
 	}
 
@@ -1103,6 +1154,7 @@ fn syncs_indexed_blocks() {
 		false,
 		true,
 		true,
+		ForkChoiceStrategy::LongestChain,
 	);
 	let indexed_key = sp_runtime::traits::BlakeTwo256::hash(&42u64.to_le_bytes());
 	assert!(net
@@ -1128,4 +1180,66 @@ fn syncs_indexed_blocks() {
 		.indexed_transaction(&indexed_key)
 		.unwrap()
 		.is_some());
+}
+
+#[test]
+#[ignore]
+fn warp_sync() {
+	sp_tracing::try_init_simple();
+	let mut net = TestNet::new(0);
+	// Create 3 synced peers and 1 peer trying to warp sync.
+	net.add_full_peer_with_config(Default::default());
+	net.add_full_peer_with_config(Default::default());
+	net.add_full_peer_with_config(Default::default());
+	net.add_full_peer_with_config(FullPeerConfig {
+		sync_mode: SyncMode::Warp,
+		..Default::default()
+	});
+	let gap_end = net.peer(0).push_blocks(63, false);
+	net.peer(0).push_blocks(1, false);
+	net.peer(1).push_blocks(64, false);
+	net.peer(2).push_blocks(64, false);
+	// Wait for peer 1 to sync state.
+	net.block_until_sync();
+	assert!(!net.peer(3).client().has_state_at(&BlockId::Number(1)));
+	assert!(net.peer(3).client().has_state_at(&BlockId::Number(64)));
+
+	// Wait for peer 1 download block history
+	block_on(futures::future::poll_fn::<(), _>(|cx| {
+		net.poll(cx);
+		if net.peer(3).has_block(&gap_end) {
+			Poll::Ready(())
+		} else {
+			Poll::Pending
+		}
+	}));
+}
+
+#[test]
+fn syncs_huge_blocks() {
+	use sp_core::storage::well_known_keys::HEAP_PAGES;
+	use sp_runtime::codec::Encode;
+	use substrate_test_runtime_client::BlockBuilderExt;
+
+	sp_tracing::try_init_simple();
+	let mut net = TestNet::new(2);
+
+	// Increase heap space for bigger blocks.
+	net.peer(0).generate_blocks(1, BlockOrigin::Own, |mut builder| {
+		builder.push_storage_change(HEAP_PAGES.to_vec(), Some(256u64.encode())).unwrap();
+		builder.build().unwrap().block
+	});
+
+	net.peer(0).generate_blocks(32, BlockOrigin::Own, |mut builder| {
+		// Add 32 extrinsics 32k each = 1MiB total
+		for _ in 0..32 {
+			let ex = Extrinsic::IncludeData([42u8; 32 * 1024].to_vec());
+			builder.push(ex).unwrap();
+		}
+		builder.build().unwrap().block
+	});
+
+	net.block_until_sync();
+	assert_eq!(net.peer(0).client.info().best_number, 33);
+	assert_eq!(net.peer(1).client.info().best_number, 33);
 }

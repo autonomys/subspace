@@ -325,6 +325,22 @@ fn main() -> Result<(), Error> {
                         &config,
                         frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE.clone(),
                     ),
+                    BenchmarkCmd::Extrinsic(_cmd) => {
+                        todo!("Not implemented")
+                        // let PartialComponents { client, .. } =
+                        //     subspace_service::new_partial(&config)?;
+                        // // Register the *Remark* and *TKA* builders.
+                        // let ext_factory = ExtrinsicFactory(vec![
+                        //     Box::new(RemarkBuilder::new(client.clone())),
+                        //     Box::new(TransferKeepAliveBuilder::new(
+                        //         client.clone(),
+                        //         Sr25519Keyring::Alice.to_account_id(),
+                        //         ExistentialDeposit: get(),
+                        //     )),
+                        // ]);
+                        //
+                        // cmd.run(client, inherent_benchmark_data()?, &ext_factory)
+                    }
                 }
             })?;
         }

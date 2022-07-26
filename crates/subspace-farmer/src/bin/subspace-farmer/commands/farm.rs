@@ -1,3 +1,4 @@
+use crate::utils::get_usable_plot_space;
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -116,6 +117,7 @@ pub(crate) async fn farm_multi_disk(
             farming_client,
             reward_address,
             bootstrap_nodes: bootstrap_nodes.clone(),
+            listen_on: vec![],
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
@@ -128,7 +130,7 @@ pub(crate) async fn farm_multi_disk(
                     options.max_plot_size,
                 )
             },
-            relay_server_node: relay_server_node.clone(),
+            relay_server_node: Some(relay_server_node.clone()),
         })
         .await?;
 
@@ -289,6 +291,7 @@ pub(crate) async fn farm_legacy(
 
     trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
+    let usable_space = get_usable_plot_space(plot_size.as_u64());
     let multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory,
@@ -298,12 +301,13 @@ pub(crate) async fn farm_legacy(
             object_mappings: object_mappings.clone(),
             reward_address,
             bootstrap_nodes,
+            listen_on: vec![],
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
-            relay_server_node,
+            relay_server_node: Some(relay_server_node.clone()),
         },
-        plot_size.as_u64(),
+        usable_space,
         move |options: PlotFactoryOptions<'_>| {
             Plot::open_or_create(
                 options.single_plot_farm_id,

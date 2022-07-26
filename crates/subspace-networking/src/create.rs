@@ -5,9 +5,7 @@ use crate::behavior::persistent_parameters::{
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
-use crate::pieces_by_range_handler::{
-    ExternalPiecesByRangeRequestHandler, PiecesByRangeRequestHandler,
-};
+use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -23,7 +21,7 @@ use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
 use libp2p::swarm::SwarmBuilder;
-use libp2p::tcp::TokioTcpConfig;
+use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
@@ -67,8 +65,6 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// Defines a handler for the pieces-by-range protocol.
-    pub pieces_by_range_request_handler: ExternalPiecesByRangeRequestHandler,
     /// Circuit relay server address.
     ///
     /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
@@ -80,6 +76,8 @@ pub struct Config {
     pub parent_node: Option<Node>,
     /// A reference to the `NetworkingParametersRegistry` implementation.
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    /// The configuration for the `RequestResponsesBehaviour` protocol.
+    pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
 }
 
 impl fmt::Debug for Config {
@@ -135,10 +133,10 @@ impl Config {
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            pieces_by_range_request_handler: Arc::new(|_| None),
             relay_server_address: None,
             parent_node: None,
             networking_parameters_registry: Box::new(NetworkingParametersRegistryStub),
+            request_response_protocols: Vec::new(),
         }
     }
 }
@@ -175,10 +173,10 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        pieces_by_range_request_handler,
         relay_server_address,
         parent_node,
         networking_parameters_registry,
+        request_response_protocols,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
     // Create relay client transport and client.
@@ -219,9 +217,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
-            PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
-
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
 
         let behaviour = Behavior::new(BehaviorConfig {
@@ -231,8 +226,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             kademlia,
             gossipsub,
             value_getter,
-            pieces_by_range_protocol_config,
-            pieces_by_range_request_handler: Box::new(pieces_by_range_request_handler),
+            request_response_protocols,
             is_relay_server,
             relay_client,
         });
@@ -303,8 +297,12 @@ async fn build_transport(
     relay_transport: ClientTransport,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
-        let dns_tcp = TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?;
-        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpConfig::new().nodelay(true))?);
+        let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
+            GenTcpConfig::default().nodelay(true),
+        ))?;
+        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpTransport::new(
+            GenTcpConfig::default().nodelay(true),
+        ))?);
         let transport = dns_tcp.or_transport(ws);
 
         // Add MemoryTransport to the chain to enable in-memory relay configurations.

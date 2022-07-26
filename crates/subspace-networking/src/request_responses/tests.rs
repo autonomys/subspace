@@ -1,7 +1,6 @@
 use crate::request_responses::{
     Event, IfDisconnected, IncomingRequest, OutboundFailure, OutgoingResponse, ProtocolConfig,
-    RequestFailure, RequestResponseHandlerRunner, RequestResponseInstanceConfig,
-    RequestResponsesBehaviour,
+    RequestFailure, RequestHandler, RequestResponsesBehaviour,
 };
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
@@ -16,11 +15,24 @@ use libp2p::{noise, Multiaddr};
 use std::iter;
 use std::time::Duration;
 
-struct MockRunner;
+#[derive(Clone)]
+struct MockRunner(ProtocolConfig);
 
 #[async_trait]
-impl RequestResponseHandlerRunner for MockRunner {
+impl RequestHandler for MockRunner {
     async fn run(&mut self) {}
+
+    fn protocol_config(&self) -> ProtocolConfig {
+        self.0.clone()
+    }
+
+    fn protocol_name(&self) -> &'static str {
+        self.0.name
+    }
+
+    fn clone_box(&self) -> Box<dyn RequestHandler> {
+        Box::new(Self(self.0.clone()))
+    }
 }
 
 fn build_swarm(
@@ -32,7 +44,7 @@ fn build_swarm(
         .into_authentic(&keypair)
         .unwrap();
 
-    let transport = MemoryTransport
+    let transport = MemoryTransport::default()
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(libp2p::yamux::YamuxConfig::default())
@@ -40,10 +52,7 @@ fn build_swarm(
 
     let configs = list
         .into_iter()
-        .map(|config| {
-            let handler = Box::new(MockRunner);
-            RequestResponseInstanceConfig { config, handler }
-        })
+        .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestHandler>)
         .collect::<Vec<_>>();
     let behaviour = RequestResponsesBehaviour::new(configs).unwrap();
 
@@ -85,7 +94,7 @@ fn basic_request_response_works() {
                 .unwrap();
 
             let protocol_config = ProtocolConfig {
-                name: From::from(protocol_name),
+                name: protocol_name,
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
@@ -184,7 +193,7 @@ fn max_response_size_exceeded() {
                 .unwrap();
 
             let protocol_config = ProtocolConfig {
-                name: From::from(protocol_name),
+                name: protocol_name,
                 max_request_size: 1024,
                 max_response_size: 8, // <-- important for the test
                 request_timeout: Duration::from_secs(30),
@@ -277,14 +286,14 @@ fn request_id_collision() {
     let mut swarm_1 = {
         let protocol_configs = vec![
             ProtocolConfig {
-                name: From::from(protocol_name_1),
+                name: protocol_name_1,
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: None,
             },
             ProtocolConfig {
-                name: From::from(protocol_name_2),
+                name: protocol_name_2,
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
@@ -301,14 +310,14 @@ fn request_id_collision() {
 
         let protocol_configs = vec![
             ProtocolConfig {
-                name: From::from(protocol_name_1),
+                name: protocol_name_1,
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: Some(tx_1),
             },
             ProtocolConfig {
-                name: From::from(protocol_name_2),
+                name: protocol_name_2,
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),

@@ -1,23 +1,23 @@
-use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, SyncOptions};
+use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, PiecesToPlot, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::{LegacyObjectMappings, Plot, RpcClient};
+use crate::{LegacyObjectMappings, Plot};
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use parking_lot::Mutex;
 use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PieceIndex, PieceIndexHash,
-    RootBlock, Sha256Hash, PIECE_SIZE, U256,
+    bidirectional_distance, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece,
+    PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{Config, PiecesToPlot};
 use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -138,23 +138,30 @@ async fn no_sync_test() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_dsn_sync() {
-    let seeder_max_plot_size = 20 * 1024 * 1024 / PIECE_SIZE as u64; // 20M
-    let syncer_max_plot_size = 2 * 1024 * 1024 / PIECE_SIZE as u64; // 2M
-    let request_pieces_size = 20;
+    init();
+
+    let seeder_max_plot_size = 20 * 1024 * 1024; // 20M
+    let seeder_max_piece_count = seeder_max_plot_size / PIECE_SIZE as u64;
+    let syncer_max_plot_size = 2 * 1024 * 1024; // 2M
+    let pieces_per_request = 20;
 
     let seeder_base_directory = TempDir::new().unwrap();
 
-    let (_seeder_slot_info_sender, seeder_slot_info_receiver) = mpsc::channel(10);
-    let (mut seeder_archived_segments_sender, seeder_archived_segments_receiver) = mpsc::channel(0);
-    let (seeder_acknowledge_archived_segment_sender, _seeder_acknowledge_archived_segment_receiver) =
-        mpsc::channel(1);
-    let seeder_client = BenchRpcClient::new(
-        BENCH_FARMER_PROTOCOL_INFO,
-        seeder_slot_info_receiver,
-        seeder_archived_segments_receiver,
-        seeder_acknowledge_archived_segment_sender,
+    let (_slot_info_sender, slot_info_receiver) = mpsc::channel(0);
+    let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(0);
+    let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
+        mpsc::channel(0);
+    let farmer_protocol_info = {
+        let mut farmer_protocol_info = BENCH_FARMER_PROTOCOL_INFO;
+        farmer_protocol_info.total_pieces = seeder_max_piece_count;
+        farmer_protocol_info
+    };
+    let rpc_client = BenchRpcClient::new(
+        farmer_protocol_info,
+        slot_info_receiver,
+        archived_segments_receiver,
+        acknowledge_archived_segment_sender,
     );
 
     let object_mappings = tokio::task::spawn_blocking({
@@ -176,47 +183,78 @@ async fn test_dsn_sync() {
         )
     };
 
-    // Starting the relay server node.
-    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
-        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
-        allow_non_globals_in_dht: true,
-        ..Config::with_generated_keypair()
-    })
-    .await
-    .unwrap();
-
-    tokio::spawn(async move {
-        relay_node_runner.run().await;
-    });
-
     let seeder_multi_farming = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory: seeder_base_directory.as_ref().to_owned(),
-            farmer_protocol_info: seeder_client.farmer_protocol_info().await.unwrap(),
-            archiving_client: seeder_client.clone(),
-            farming_client: seeder_client.clone(),
+            farmer_protocol_info,
+            archiving_client: rpc_client.clone(),
+            farming_client: rpc_client.clone(),
             object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
+            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             bootstrap_nodes: vec![],
             enable_dsn_sync: false,
             enable_dsn_archiving: false,
             enable_farming: false,
-            relay_server_node,
+            relay_server_node: None,
         },
-        u64::MAX / 100,
+        seeder_max_plot_size,
         plot_factory,
     )
     .await
     .unwrap();
 
+    let seeder_plot = seeder_multi_farming.single_plot_farms()[0].plot().clone();
+    let seeder_node = seeder_multi_farming.single_plot_farms()[0].node().clone();
+    let seeder_public_key = *seeder_multi_farming.single_plot_farms()[0].public_key();
+
+    tokio::spawn(async move {
+        if let Err(error) = seeder_multi_farming.wait().await {
+            eprintln!("Seeder exited with error: {error}");
+        }
+    });
+
+    let (seeder_address_sender, seeder_address_receiver) = oneshot::channel();
+    let seeder_address_sender = Arc::new(Mutex::new(Some(seeder_address_sender)));
+
+    let on_new_listener_handler = seeder_node.on_new_listener(Arc::new({
+        let seeder_address_sender = Arc::clone(&seeder_address_sender);
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(seeder_address_sender) = seeder_address_sender.lock().take() {
+                    seeder_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
+    for address in seeder_node.listeners() {
+        if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+            if let Some(seeder_address_sender) = seeder_address_sender.lock().take() {
+                seeder_address_sender.send(address.clone()).unwrap();
+            }
+        }
+    }
+
+    let seeder_multiaddr = seeder_address_receiver
+        .await
+        .unwrap()
+        .with(Protocol::P2p(seeder_node.id().into()));
+
+    drop(on_new_listener_handler);
+
     let piece_index_hashes = {
-        let pieces_per_segment = 256;
+        let pieces_per_segment = u64::from(
+            farmer_protocol_info.recorded_history_segment_size / farmer_protocol_info.record_size
+                * 2,
+        );
 
         let mut last_archived_block = LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Partial(0),
         };
-        let number_of_segments = seeder_max_plot_size / pieces_per_segment;
+        let number_of_segments = seeder_max_piece_count / pieces_per_segment;
 
         for segment_index in 0..number_of_segments {
             let archived_segment = {
@@ -236,10 +274,11 @@ async fn test_dsn_sync() {
                 }
             };
 
-            seeder_archived_segments_sender
+            archived_segments_sender
                 .send(archived_segment)
                 .await
                 .unwrap();
+            acknowledge_archived_segment_receiver.next().await.unwrap();
             last_archived_block.set_complete();
         }
 
@@ -248,64 +287,16 @@ async fn test_dsn_sync() {
             .collect::<BTreeMap<_, _>>()
     };
 
-    let (seeder_address_sender, seeder_address_receiver) = oneshot::channel();
-    let on_new_listener_handler = seeder_multi_farming.single_plot_farms()[0]
-        .node()
-        .on_new_listener(Arc::new({
-            let seeder_address_sender = Mutex::new(Some(seeder_address_sender));
-
-            move |address| {
-                if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                    if let Some(seeder_address_sender) = seeder_address_sender.lock().take() {
-                        seeder_address_sender.send(address.clone()).unwrap();
-                    }
-                }
-            }
-        }));
-
-    let peer_id = seeder_multi_farming.single_plot_farms()[0]
-        .node()
-        .id()
-        .into();
-
-    let (seeder_multi_farming_finished_sender, seeder_multi_farming_finished_receiver) =
-        oneshot::channel();
-
-    tokio::spawn(async move {
-        if let Err(error) = seeder_multi_farming.wait().await {
-            eprintln!("Seeder exited with error: {error}");
+    // Acknowledgements are sent optimistically, wait for everything to be actually plotted
+    for _ in 0..20 {
+        if seeder_max_piece_count == seeder_plot.piece_count() {
+            break;
         }
 
-        let _ = seeder_multi_farming_finished_sender.send(());
-    });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 
-    let seeder_multiaddr = seeder_address_receiver
-        .await
-        .unwrap()
-        .with(Protocol::P2p(peer_id));
-    drop(on_new_listener_handler);
-
-    let syncer_base_directory = TempDir::new().unwrap();
-    let (_syncer_slot_info_sender, syncer_slot_info_receiver) = mpsc::channel(10);
-    let (_syncer_archived_segments_sender, syncer_archived_segments_receiver) = mpsc::channel(10);
-    let (syncer_acknowledge_archived_segment_sender, _syncer_acknowledge_archived_segment_receiver) =
-        mpsc::channel(1);
-    let syncer_client = BenchRpcClient::new(
-        BENCH_FARMER_PROTOCOL_INFO,
-        syncer_slot_info_receiver,
-        syncer_archived_segments_receiver,
-        syncer_acknowledge_archived_segment_sender,
-    );
-
-    let object_mappings = tokio::task::spawn_blocking({
-        let path = syncer_base_directory.as_ref().join("object-mappings");
-
-        move || LegacyObjectMappings::open_or_create(path)
-    })
-    .await
-    .unwrap()
-    .unwrap();
-
+    let mut syncer_base_directory = TempDir::new().unwrap();
     let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
             options.single_plot_farm_id,
@@ -316,50 +307,61 @@ async fn test_dsn_sync() {
         )
     };
 
-    // Starting the relay server node.
-    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
-        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
-        allow_non_globals_in_dht: true,
-        ..Config::with_generated_keypair()
-    })
-    .await
-    .unwrap();
+    let syncer_multi_farming = loop {
+        {
+            let object_mappings = tokio::task::spawn_blocking({
+                let path = syncer_base_directory.as_ref().join("object-mappings");
 
-    tokio::spawn(async move {
-        relay_node_runner.run().await;
-    });
+                move || LegacyObjectMappings::open_or_create(path)
+            })
+            .await
+            .unwrap()
+            .unwrap();
 
-    let syncer_multi_farming = LegacyMultiPlotsFarm::new(
-        MultiFarmingOptions {
-            base_directory: syncer_base_directory.as_ref().to_owned(),
-            farmer_protocol_info: {
-                let mut farmer_protocol_info = syncer_client.farmer_protocol_info().await.unwrap();
-                farmer_protocol_info.max_plot_size = syncer_max_plot_size;
-                farmer_protocol_info
-            },
-            archiving_client: syncer_client.clone(),
-            farming_client: syncer_client.clone(),
-            object_mappings: object_mappings.clone(),
-            reward_address: subspace_core_primitives::PublicKey::default(),
-            bootstrap_nodes: vec![seeder_multiaddr.clone()],
-            enable_dsn_sync: false,
-            enable_dsn_archiving: false,
-            enable_farming: false,
-            relay_server_node,
-        },
-        syncer_max_plot_size * PIECE_SIZE as u64,
-        plot_factory,
-    )
-    .await
-    .unwrap();
-    // HACK: farmer reserves 8% for its own needs, so we need to update piece count here
-    let syncer_max_plot_size = syncer_max_plot_size * 92 / 100;
+            let syncer_multi_farming = LegacyMultiPlotsFarm::new(
+                MultiFarmingOptions {
+                    base_directory: syncer_base_directory.as_ref().to_owned(),
+                    farmer_protocol_info,
+                    archiving_client: rpc_client.clone(),
+                    farming_client: rpc_client.clone(),
+                    object_mappings: object_mappings.clone(),
+                    reward_address: subspace_core_primitives::PublicKey::default(),
+                    bootstrap_nodes: vec![seeder_multiaddr.clone()],
+                    listen_on: vec![],
+                    enable_dsn_sync: false,
+                    enable_dsn_archiving: false,
+                    enable_farming: false,
+                    relay_server_node: None,
+                },
+                syncer_max_plot_size,
+                plot_factory,
+            )
+            .await
+            .unwrap();
 
-    let range_size = PieceIndexHashNumber::MAX / seeder_max_plot_size * request_pieces_size;
+            let syncer_public_key = *syncer_multi_farming.single_plot_farms()[0].public_key();
+
+            // Make sure seeder and syncer are close enough to each other
+            if bidirectional_distance(
+                &U256::from_be_bytes(seeder_public_key.into()),
+                &U256::from_be_bytes(syncer_public_key.into()),
+            ) < U256::MAX / U256::from(seeder_max_plot_size / syncer_max_plot_size)
+            {
+                break syncer_multi_farming;
+            }
+        }
+
+        // Remove old directory so that everything is deleted and identity re-created
+        syncer_base_directory = TempDir::new().unwrap();
+    };
+
+    let syncer_max_piece_count = syncer_max_plot_size / PIECE_SIZE as u64;
+
+    let range_size = PieceIndexHashNumber::MAX / seeder_max_piece_count * pieces_per_request;
     let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
     let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync(
         syncer_max_plot_size,
-        seeder_max_plot_size,
+        seeder_max_piece_count,
         range_size,
     );
     let public_key =
@@ -397,7 +399,7 @@ async fn test_dsn_sync() {
             assert!((expected_start..expected_end).contains(&start));
             assert!((expected_start..expected_end).contains(&end));
 
-            if piece_index_hashes.len() as u64 > syncer_max_plot_size {
+            if piece_index_hashes.len() as u64 > syncer_max_piece_count {
                 let expected_piece_count = piece_index_hashes.range(start..=end).count() as u64;
                 assert_eq!(
                     plot.piece_count(),
@@ -406,7 +408,7 @@ async fn test_dsn_sync() {
                 );
                 assert_eq!(
                     plot.piece_count(),
-                    syncer_max_plot_size,
+                    syncer_max_piece_count,
                     "Didn't sync all that we need"
                 );
             } else {
@@ -430,10 +432,4 @@ async fn test_dsn_sync() {
             0
         ),
     };
-
-    drop(syncer_client);
-
-    drop(seeder_archived_segments_sender);
-    drop(seeder_client);
-    seeder_multi_farming_finished_receiver.await.unwrap();
 }

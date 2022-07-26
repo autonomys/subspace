@@ -37,7 +37,7 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::time::Duration;
-use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee};
 use frame_support::{construct_runtime, parameter_types};
@@ -64,11 +64,14 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{PublicKey, Randomness, RootBlock, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RootBlock, Sha256Hash, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
+};
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE, SHANNON,
-    SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
+    MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 use subspace_verification::derive_randomness;
 
@@ -283,6 +286,11 @@ impl pallet_timestamp::Config for Runtime {
     type WeightInfo = ();
 }
 
+parameter_types! {
+    // TODO: Correct value
+    pub const ExistentialDeposit: Balance = 500 * SHANNON;
+}
+
 impl pallet_balances::Config for Runtime {
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
@@ -292,8 +300,7 @@ impl pallet_balances::Config for Runtime {
     /// The ubiquitous event type.
     type Event = Event;
     type DustRemoval = ();
-    // TODO: Correct value
-    type ExistentialDeposit = ConstU128<{ 500 * SHANNON }>;
+    type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
@@ -717,11 +724,11 @@ impl_runtime_apis! {
         }
 
         fn record_size() -> u32 {
-            <Self as pallet_subspace::Config>::RecordSize::get()
+            RECORD_SIZE
         }
 
         fn recorded_history_segment_size() -> u32 {
-            <Self as pallet_subspace::Config>::RecordedHistorySegmentSize::get()
+            RECORDED_HISTORY_SEGMENT_SIZE
         }
 
         fn slot_duration() -> Duration {

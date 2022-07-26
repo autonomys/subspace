@@ -35,11 +35,11 @@ Install [Polkadot.js extension](https://polkadot.js.org/extension/) into your br
 The address of your account will be necessary at the last step.
 
 ## Required ports
-Currently, TCP port `30333` needs to be exposed for node to work properly.
+Currently, TCP ports `30333` and `40333` need to be exposed for node and farmer to work properly.
 
-If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP port `30333` for incoming connections.
+If you have a server with no firewall, there is nothing to be done, but otherwise make sure to open TCP ports `30333` and `40333` for incoming connections.
 
-On the desktop side if you have a router in front of your computer, you'll need to forward TCP port `30333` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
+On the desktop side if you have a router in front of your computer, you'll need to forward TCP ports `30333` and `40333` to the machine on which your node is running (how this is done varied from router to router, but there is always a feature like this, ask [on the forum](https://forum.subspace.network/) if you have questions).
 If you're connected directly without any router, then again nothing needs to be done in such case.
 
 ## 🖼️ Windows Instructions
@@ -278,12 +278,16 @@ services:
     volumes:
       - farmer-data:/var/subspace:rw
 #      - /path/to/subspace-farmer:/var/subspace:rw
+# If port 40333 is already occupied by something else, replace all
+# occurrences of `40333` in this file with another value
+      - "0.0.0.0:40333:40333"
     restart: unless-stopped
     command: [
       "--base-path", "/var/subspace",
       "farm",
       "--node-rpc-url", "ws://node:9944",
       "--ws-server-listen-addr", "0.0.0.0:9955",
+      "--listen-on", "/ip4/0.0.0.0/tcp/40333",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
@@ -371,6 +375,42 @@ Archival node is useful if you run an RPC node and want to support querying olde
 
 NOTE: You can't switch between full and archival node without wiping it, so if you need that, follow steps in
 [Switching to a new snapshot](#switching-to-a-new-snapshot) section above.
+
+## [Advanced] Support for multiple disks (including HDD/SSD separation)
+
+Farmer has an advanced set of parameters that allow using multiple disks, including separate HDD/SSD for different kinds of data farmer stores.
+
+To use this advanced parameters you need to replace this command:
+```
+./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+```
+
+With this:
+```
+./FARMER_FILE_NAME --farm hdd=/hdd1,ssd=/ssd,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
+```
+
+`/hdd` is path to the HDD (or SSD if you'd like) that will store large amount of data, up to `PLOT_SIZE`.
+`/ssd` is path to the SSD (or HDD if you'd like, can even be the same as path to HDD if you don't have a separate SSD, it is fine too), farmer will store up to 8% of `PLOT_SIZE` worth of data there, make sure to have enough space.
+
+NOTE: `PLOT_SIZE` has a different notion here, it doesn't include amount of data stored on SSD!
+
+Multiple farms are supported too, for example:
+```
+./FARMER_FILE_NAME \
+    --farm hdd=/media/hdd1,ssd=/media/hdd1,size=100GiB \
+    --farm hdd=/media/hdd2,ssd=/media/ssd1,size=10T \
+    --farm hdd=/media/hdd3,ssd=/media/ssd1,size=10T \
+    farm --reward-address WALLET_ADDRESS
+```
+
+In above example `/media/hdd1` will store everything for the first farm and will occupy up to `100GiB+8%=108GiB` of space.
+`/media/hdd2` and `/media/hdd3` will store `10T` each and `/media/ssd1` will store up to `10TB*8%+10TB*8%=1.6TB` of data.
+
+You can also print info about farms with `info` command:
+```
+./FARMER_FILE_NAME --farm hdd=/hdd1,ssd=/ssd,size=PLOT_SIZE info
+```
 
 ## [Advanced] Build from source (Linux)
 
