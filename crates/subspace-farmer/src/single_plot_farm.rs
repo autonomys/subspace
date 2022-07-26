@@ -583,6 +583,16 @@ impl SinglePlotFarm {
         Ok(farm)
     }
 
+    /// Returns a future which can be polled in order to stop the single plot farm
+    pub fn on_exit(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let node = self.node.clone();
+        let plot = self.plot.clone();
+        async move {
+            node.stop();
+            plot.stop();
+        }
+    }
+
     /// Collect summary of single plot farm for presentational purposes
     pub fn collect_summary(
         plot_directory: PathBuf,

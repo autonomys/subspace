@@ -80,6 +80,12 @@ struct Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
+        self.stop()
+    }
+}
+
+impl Inner {
+    pub fn stop(&self) {
         let (result_sender, result_receiver) = mpsc::channel();
 
         if self
@@ -119,6 +125,11 @@ impl fmt::Debug for Plot {
 }
 
 impl Plot {
+    /// Stop the corresponding plot worker
+    pub fn stop(&self) {
+        self.inner.stop()
+    }
+
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create(
         single_plot_farm_id: &SinglePlotFarmId,

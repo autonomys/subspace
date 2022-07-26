@@ -1,7 +1,7 @@
 use crate::object_mappings::{LegacyObjectMappings, ObjectMappings};
 use crate::rpc_client::RpcClient;
 use crate::utils::AbortingJoinHandle;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
@@ -31,6 +31,7 @@ pub enum ArchivingError {
 
 /// Abstraction around archiving blocks and updating global object map
 pub struct Archiving {
+    stop_sender: Option<oneshot::Sender<()>>,
     archiving_handle: Option<AbortingJoinHandle<()>>,
 }
 
@@ -117,10 +118,29 @@ impl Archiving {
             .subscribe_archived_segments()
             .await
             .map_err(ArchivingError::RpcError)?;
+        let (stop_sender, stop_receiver) = oneshot::channel();
 
         let archiving_handle = tokio::spawn(async move {
-            // Listen for new blocks produced on the network
-            while let Some(archived_segment) = archived_segments.next().await {
+            let mut stop_receiver = stop_receiver.fuse();
+            loop {
+                let archived_segment = futures::select! {
+                    res = stop_receiver => {
+                        if let Ok(()) = res {
+                            break
+                        } else {
+                            continue
+                        }
+                    }
+                    // Listen for new blocks produced on the network
+                    next = archived_segments.next().fuse() => {
+                        if let Some(archived_segment) = next {
+                            archived_segment
+                        } else {
+                            break
+                        }
+                    }
+                };
+
                 let segment_index = archived_segment.root_block.segment_index();
                 let (acknowledge_sender, acknowledge_receiver) = oneshot::channel();
                 // Acknowledge immediately to allow node to continue sync quickly,
@@ -142,8 +162,19 @@ impl Archiving {
         });
 
         Ok(Self {
+            stop_sender: Some(stop_sender),
             archiving_handle: Some(AbortingJoinHandle::new(archiving_handle)),
         })
+    }
+
+    /// Returns a future which can be polled in order to stop the archiving
+    pub fn on_exit(&mut self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let sender = self.stop_sender.take();
+        async move {
+            if let Some(sender) = sender {
+                let _ = sender.send(());
+            }
+        }
     }
 
     /// Waits for the background archiving to finish

@@ -1,4 +1,4 @@
-use crate::utils::get_usable_plot_space;
+use crate::utils::{get_usable_plot_space, SignalHandler};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -17,7 +17,7 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, trace, warn};
 
-use crate::{utils, ArchivingFrom, DiskFarm, FarmingArgs};
+use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -28,6 +28,8 @@ pub(crate) async fn farm_multi_disk(
     if disk_farms.is_empty() {
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
+
+    let signal_handler = SignalHandler::new();
 
     let FarmingArgs {
         bootstrap_nodes,
@@ -54,6 +56,13 @@ pub(crate) async fn farm_multi_disk(
         ..Config::with_generated_keypair()
     })
     .await?;
+
+    signal_handler
+        .on_exit({
+            let relay_server_node = relay_server_node.clone();
+            async move { relay_server_node.stop() }
+        })
+        .await;
 
     relay_server_node
         .on_new_listener(Arc::new({
@@ -105,7 +114,7 @@ pub(crate) async fn farm_multi_disk(
         record_size.replace(farmer_protocol_info.record_size);
         recorded_history_segment_size.replace(farmer_protocol_info.recorded_history_segment_size);
 
-        let single_disk_farm = SingleDiskFarm::new(SingleDiskFarmOptions {
+        let mut single_disk_farm = SingleDiskFarm::new(SingleDiskFarmOptions {
             plot_directory: disk_farm.plot_directory,
             metadata_directory: disk_farm.metadata_directory,
             allocated_plotting_space: disk_farm.allocated_plotting_space,
@@ -131,6 +140,8 @@ pub(crate) async fn farm_multi_disk(
             relay_server_node: Some(relay_server_node.clone()),
         })
         .await?;
+
+        signal_handler.on_exit(single_disk_farm.on_exit()).await;
 
         single_disk_farms.push(single_disk_farm);
     }
@@ -183,7 +194,13 @@ pub(crate) async fn farm_multi_disk(
         ),
         Arc::new(vec![]),
     );
-    let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
+    let stop_handle = ws_server.start(rpc_server.into_rpc())?;
+
+    signal_handler
+        .on_exit(async move {
+            let _ = stop_handle.stop();
+        })
+        .await;
 
     info!("WS RPC server listening on {ws_server_addr}");
 
@@ -228,6 +245,8 @@ pub(crate) async fn farm_legacy(
         ));
     }
 
+    let signal_handler = SignalHandler::new();
+
     info!("Connecting to node at {}", node_rpc_url);
     let archiving_client = NodeRpcClient::new(&node_rpc_url).await?;
     let farming_client = NodeRpcClient::new(&node_rpc_url).await?;
@@ -268,6 +287,13 @@ pub(crate) async fn farm_legacy(
     })
     .await?;
 
+    signal_handler
+        .on_exit({
+            let relay_server_node = relay_server_node.clone();
+            async move { relay_server_node.stop() }
+        })
+        .await;
+
     relay_server_node
         .on_new_listener(Arc::new({
             let node_id = relay_server_node.id();
@@ -288,7 +314,7 @@ pub(crate) async fn farm_legacy(
     trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
     let usable_space = get_usable_plot_space(plot_size.as_u64());
-    let multi_plots_farm = LegacyMultiPlotsFarm::new(
+    let mut multi_plots_farm = LegacyMultiPlotsFarm::new(
         MultiFarmingOptions {
             base_directory,
             farmer_protocol_info,
@@ -315,6 +341,8 @@ pub(crate) async fn farm_legacy(
         },
     )
     .await?;
+
+    signal_handler.on_exit(multi_plots_farm.on_exit()).await;
 
     // Start RPC server
     let ws_server = match WsServerBuilder::default()
@@ -345,7 +373,13 @@ pub(crate) async fn farm_legacy(
         Arc::new(vec![]),
         Arc::new(vec![object_mappings]),
     );
-    let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
+    let stop_handle = ws_server.start(rpc_server.into_rpc())?;
+
+    signal_handler
+        .on_exit(async move {
+            let _ = stop_handle.stop();
+        })
+        .await;
 
     info!("WS RPC server listening on {ws_server_addr}");
 

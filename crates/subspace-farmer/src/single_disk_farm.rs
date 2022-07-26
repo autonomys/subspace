@@ -399,6 +399,25 @@ impl SingleDiskFarm {
         })
     }
 
+    /// Returns a future which can be polled in order to stop the single disk farm
+    pub fn on_exit(&mut self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let archiving_stop = self.archiving.as_mut().map(Archiving::on_exit);
+        let single_plot_farms_on_exit = self
+            .single_plot_farms
+            .iter()
+            .map(SinglePlotFarm::on_exit)
+            .collect::<Vec<_>>();
+
+        async move {
+            if let Some(archiving_stop) = archiving_stop {
+                archiving_stop.await;
+            }
+            for single_plot_farm_on_exit in single_plot_farms_on_exit {
+                single_plot_farm_on_exit.await;
+            }
+        }
+    }
+
     pub fn single_plot_farms(&self) -> &'_ [SinglePlotFarm] {
         &self.single_plot_farms
     }
