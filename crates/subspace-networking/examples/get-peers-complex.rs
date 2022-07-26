@@ -61,7 +61,7 @@ async fn main() {
     }
 
     let db_path = std::env::temp_dir()
-        .join("temp_networking_params_db")
+        .join("subspace_example_networking_params_db")
         .into_boxed_path();
 
     println!(
@@ -90,11 +90,17 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peer_id = node
+    let peers = node
         .get_closest_peers(expected_node_id.into())
         .await
-        .unwrap()[0];
-    assert_eq!(peer_id, expected_node_id);
+        .unwrap();
+
+    println!("Received closest peers: {:?}", peers);
+
+    let peer_id = peers.first().unwrap();
+    assert_eq!(*peer_id, expected_node_id);
+
+    tokio::time::sleep(Duration::from_secs(12)).await;
 
     println!("Exiting..");
 }

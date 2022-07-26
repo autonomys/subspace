@@ -207,8 +207,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             networking_parameters_registry
                 .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
                 .await
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(Ok),
         )
         .collect::<Result<_, CreationError>>()?;

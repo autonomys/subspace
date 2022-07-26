@@ -78,6 +78,8 @@ pub enum NetworkParametersPersistenceError {
 
 /// Handles networking parameters. It manages network parameters set and its persistence.
 pub struct NetworkingParametersManager {
+    // Defines whether the cache requires saving to DB
+    cache_need_saving: bool,
     // LRU cache for the known peers and their addresses
     known_peers: LruCache<PeerId, LruCache<Multiaddr, ()>>,
     // Period between networking parameters saves.
@@ -118,6 +120,7 @@ impl NetworkingParametersManager {
             .unwrap_or_else(|| Ok(LruCache::new(PEER_CACHE_SIZE)))?;
 
         Ok(Self {
+            cache_need_saving: false,
             db: Arc::new(db),
             column_id,
             object_id,
@@ -193,6 +196,8 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
                     addresses.push(addr, ());
                 }
             });
+
+        self.cache_need_saving = true;
     }
 
     async fn known_addresses(&self, peer_number: usize) -> Vec<(PeerId, Multiaddr)> {
@@ -206,29 +211,36 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     }
 
     async fn run(&mut self) {
-        (&mut self.networking_parameters_save_delay).await;
+        loop {
+            (&mut self.networking_parameters_save_delay).await;
 
-        // save accumulated cache to DB
-        let dto = NetworkingParameters::from_cache(self.clone_known_peers());
-        let save_result = serde_json::to_vec(&dto)
-            .map_err(NetworkParametersPersistenceError::from)
-            .and_then(|data| {
-                let tx = vec![(self.column_id, self.object_id, Some(data))];
+            if self.cache_need_saving {
+                // save accumulated cache to DB
+                let dto = NetworkingParameters::from_cache(self.clone_known_peers());
+                let save_result = serde_json::to_vec(&dto)
+                    .map_err(NetworkParametersPersistenceError::from)
+                    .and_then(|data| {
+                        let tx = vec![(self.column_id, self.object_id, Some(data))];
 
-                self.db.commit(tx).map_err(|err| err.into())
-            });
+                        self.db.commit(tx).map_err(|err| err.into())
+                    });
 
-        if let Err(err) = save_result {
-            debug!(error=%err, "Error on saving network parameters");
-        } else {
-            trace!("Networking parameters saved to DB");
+                if let Err(err) = save_result {
+                    debug!(error=%err, "Error on saving network parameters");
+                } else {
+                    trace!("Networking parameters saved to DB");
+                }
+
+                self.cache_need_saving = false;
+            }
+
+            self.networking_parameters_save_delay = NetworkingParametersManager::default_delay();
         }
-
-        self.networking_parameters_save_delay = NetworkingParametersManager::default_delay();
     }
 
     fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry> {
         Self {
+            cache_need_saving: self.cache_need_saving,
             known_peers: self.clone_known_peers(),
             networking_parameters_save_delay: Self::default_delay(),
             db: self.db.clone(),
@@ -249,11 +261,11 @@ impl NetworkingParameters {
     fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, ()>>) -> Self {
         Self {
             known_peers: cache
-                .iter()
+                .into_iter()
                 .map(|(peer_id, addresses)| {
                     (
-                        *peer_id,
-                        addresses.iter().map(|(addr, _)| addr).cloned().collect(),
+                        peer_id,
+                        addresses.into_iter().map(|(addr, _)| addr).collect(),
                     )
                 })
                 .collect(),
