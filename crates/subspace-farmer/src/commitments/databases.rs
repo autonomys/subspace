@@ -146,7 +146,7 @@ impl CommitmentDatabases {
                 Ok(())
             })?;
 
-            tokio::task::spawn_blocking(move || {
+            std::thread::spawn(move || {
                 // Take a lock to make sure database was released by whatever user there was and we
                 // have an exclusive access to it, then drop it
                 old_db_entry.db.lock().take();
