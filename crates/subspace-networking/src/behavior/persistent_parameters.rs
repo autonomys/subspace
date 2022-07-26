@@ -43,12 +43,6 @@ impl Clone for Box<dyn NetworkingParametersRegistry> {
     }
 }
 
-// Helper struct for NetworkingPersistence implementations (data transfer object).
-#[derive(Default, Debug, Serialize, Deserialize)]
-struct NetworkingParametersDto {
-    pub known_peers: HashMap<PeerId, HashSet<Multiaddr>>,
-}
-
 /// The default implementation for networking manager stub. All operations muted.
 #[derive(Clone)]
 pub struct NetworkingParametersRegistryStub;
@@ -82,7 +76,7 @@ pub enum NetworkParametersPersistenceError {
 /// Handles networking parameters. It manages network parameters set and its persistence.
 pub struct NetworkingParametersManager {
     // LRU cache for the known peers and their addresses
-    known_peers: LruCache<PeerId, HashSet<Multiaddr>>,
+    known_peers: LruCache<PeerId, HashSet<Multiaddr>>, // LruCache<Multiaddr, ()>>,
     // Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     // Parity DB instance
@@ -109,11 +103,8 @@ impl NetworkingParametersManager {
         let cache = db
             .get(column_id, object_id)?
             .map(|data| {
-                let result = serde_json::from_slice::<NetworkingParametersDto>(&data).map(|data| {
-                    let cache: LruCache<PeerId, HashSet<Multiaddr>> = data.into();
-
-                    cache
-                });
+                let result = serde_json::from_slice::<NetworkingParameters>(&data)
+                    .map(|data| data.to_cache());
 
                 if result.is_ok() {
                     trace!("Networking parameters loaded from DB");
@@ -157,12 +148,25 @@ impl NetworkingParametersManager {
 #[async_trait]
 impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
-        let addr_set = addresses.iter().cloned().collect::<HashSet<_>>();
+        let addr_set = addresses
+            .iter()
+            .cloned()
+            .filter(|addr| {
+                // filter Memory addresses
+                !addr
+                    .into_iter()
+                    .any(|protocol| matches!(protocol, Protocol::Memory(..)))
+            })
+            .collect::<HashSet<_>>();
 
-        if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
-            *addresses = addresses.union(&addr_set).cloned().collect()
-        } else {
-            self.known_peers.push(peer_id, addr_set);
+        if !addr_set.is_empty() {
+            //TODO
+            //    I think here we also want to have LRU, otherwise addresses of pathological peers can flood these hashsets.
+            if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
+                *addresses = addresses.union(&addr_set).cloned().collect()
+            } else {
+                self.known_peers.push(peer_id, addr_set);
+            }
         }
     }
 
@@ -188,7 +192,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
         (&mut self.networking_parameters_save_delay).await;
 
         // save accumulated cache to DB
-        let dto: NetworkingParametersDto = self.clone_known_peers().into();
+        let dto = NetworkingParameters::from_cache(self.clone_known_peers());
         let save_result = serde_json::to_vec(&dto)
             .map_err(NetworkParametersPersistenceError::from)
             .and_then(|data| {
@@ -218,8 +222,14 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     }
 }
 
-impl From<&LruCache<PeerId, HashSet<Multiaddr>>> for NetworkingParametersDto {
-    fn from(cache: &LruCache<PeerId, HashSet<Multiaddr>>) -> Self {
+// Helper struct for NetworkingPersistence implementations (data transfer object).
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct NetworkingParameters {
+    pub known_peers: HashMap<PeerId, HashSet<Multiaddr>>,
+}
+
+impl NetworkingParameters {
+    fn from_cache(cache: LruCache<PeerId, HashSet<Multiaddr>>) -> Self {
         Self {
             known_peers: cache
                 .iter()
@@ -227,19 +237,11 @@ impl From<&LruCache<PeerId, HashSet<Multiaddr>>> for NetworkingParametersDto {
                 .collect(),
         }
     }
-}
 
-impl From<LruCache<PeerId, HashSet<Multiaddr>>> for NetworkingParametersDto {
-    fn from(cache: LruCache<PeerId, HashSet<Multiaddr>>) -> Self {
-        From::<&LruCache<PeerId, HashSet<Multiaddr>>>::from(&cache)
-    }
-}
-
-impl From<NetworkingParametersDto> for LruCache<PeerId, HashSet<Multiaddr>> {
-    fn from(params: NetworkingParametersDto) -> Self {
+    fn to_cache(&self) -> LruCache<PeerId, HashSet<Multiaddr>> {
         let mut known_peers = LruCache::<PeerId, HashSet<Multiaddr>>::new(PEER_CACHE_SIZE);
 
-        for (peer_id, addresses) in params.known_peers.iter() {
+        for (peer_id, addresses) in self.known_peers.iter() {
             known_peers.push(*peer_id, addresses.clone());
         }
 

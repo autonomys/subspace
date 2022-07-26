@@ -89,9 +89,14 @@ async fn main() {
         nodes.push(node);
     }
 
-    let db_path = std::env::temp_dir().join("database2").into_boxed_path();
+    let db_path = std::env::temp_dir()
+        .join("temp_networking_params_db")
+        .into_boxed_path();
 
-    println!("Networking parameters database path used: {:?}", db_path);
+    println!(
+        "Networking parameters database path used (the app creates DB on the first run): {:?}",
+        db_path
+    );
 
     let config = Config {
         bootstrap_nodes,

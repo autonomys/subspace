@@ -186,43 +186,40 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
-    let cached_bootstrap_addresses = networking_parameters_registry
+    // We take cached known addresses and combine them with manually provided bootstrap addresses
+    // with a limit.
+    let combined_bootstrap_addresses = networking_parameters_registry
         .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
         .await
         .iter()
         .cloned()
-        .filter(|(_, addr)| {
-            // filter Memory addresses
-            !addr
+        .map(Ok)
+        .chain(
+            bootstrap_nodes
                 .into_iter()
-                .any(|protocol| matches!(protocol, Protocol::Memory(..)))
-        })
-        .collect::<Vec<_>>();
+                // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
+                .map(|mut multiaddr| {
+                    let peer_id: PeerId = multiaddr
+                        .pop()
+                        .and_then(|protocol| {
+                            if let Protocol::P2p(peer_id) = protocol {
+                                Some(peer_id.try_into().ok()?)
+                            } else {
+                                None
+                            }
+                        })
+                        .ok_or(CreationError::BadBootstrapAddress)?;
 
-    trace!(peer_id=?local_peer_id, "Cached bootstrap addresses: {:?}", cached_bootstrap_addresses);
+                    Ok((peer_id, multiaddr))
+                }),
+        )
+        .take(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
+        .collect::<Result<_, CreationError>>()?;
+
+    trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
-        let bootstrap_nodes = bootstrap_nodes
-            .into_iter()
-            .map(|mut multiaddr| {
-                let peer_id: PeerId = multiaddr
-                    .pop()
-                    .and_then(|protocol| {
-                        if let Protocol::P2p(peer_id) = protocol {
-                            Some(peer_id.try_into().ok()?)
-                        } else {
-                            None
-                        }
-                    })
-                    .ok_or(CreationError::BadBootstrapAddress)?;
-
-                Ok((peer_id, multiaddr))
-            })
-            .chain(cached_bootstrap_addresses.into_iter().map(Ok))
-            .collect::<Result<_, CreationError>>()?;
-
         let (pieces_by_range_request_handler, pieces_by_range_protocol_config) =
             PiecesByRangeRequestHandler::new(pieces_by_range_request_handler);
 
@@ -230,7 +227,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
-            bootstrap_nodes,
+            bootstrap_nodes: combined_bootstrap_addresses,
             identify,
             kademlia,
             gossipsub,
