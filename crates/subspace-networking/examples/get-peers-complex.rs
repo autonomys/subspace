@@ -1,6 +1,7 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::PeerId;
+use libp2p::multihash::{Code, MultihashDigest};
+use libp2p::{identity, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -90,12 +91,22 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peers = node
-        .get_closest_peers(expected_node_id.into())
-        .await
-        .unwrap();
+    // Prepare multihash to look for in Kademlia
+    let encoding = expected_node_id.as_ref().digest();
+    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
+        .expect("Invalid public key from PeerId.");
+    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
+        pk.encode()
+    } else {
+        panic!("Expected PublicKey::Sr25519")
+    };
 
-    println!("Received closest peers: {:?}", peers);
+    let key = Code::Identity.digest(&peer_id_public_key);
+
+    let peers = node.get_closest_peers(key).await.unwrap();
+
+    // Uncomment on debugging:
+    // println!("Received closest peers: {:?}", peers);
 
     let peer_id = peers.first().unwrap();
     assert_eq!(*peer_id, expected_node_id);

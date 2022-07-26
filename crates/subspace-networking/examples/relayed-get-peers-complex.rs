@@ -1,11 +1,10 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::Code;
-use libp2p::PeerId;
+use libp2p::multihash::{Code, MultihashDigest};
+use libp2p::{identity, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{crypto, PieceIndexHash, U256};
 use subspace_networking::Config;
 
 #[tokio::main]
@@ -103,13 +102,21 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let hashed_peer_id = PieceIndexHash::from(crypto::sha256_hash(&expected_node_id.to_bytes()));
-    let key = libp2p::multihash::MultihashDigest::digest(
-        &Code::Identity,
-        &U256::from(hashed_peer_id).to_be_bytes(),
-    );
+    // Prepare multihash to look for in Kademlia
+    let encoding = expected_node_id.as_ref().digest();
+    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
+        .expect("Invalid public key from PeerId.");
+    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
+        pk.encode()
+    } else {
+        panic!("Expected PublicKey::Sr25519")
+    };
+    let key = Code::Identity.digest(&peer_id_public_key);
+
     let peer_id = node.get_closest_peers(key).await.unwrap()[0];
     assert_eq!(peer_id, expected_node_id);
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     println!("Exiting..");
 }
