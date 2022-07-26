@@ -1,6 +1,7 @@
-use crate::mock::{Header, MockImporter, MockStorage, NumberOf};
+use crate::mock::{Header, MockImporter, MockStorage};
 use crate::{
-    calculate_block_weight, HashOf, HeaderExt, HeaderImporter, ImportError, SolutionRange, Storage,
+    calculate_block_weight, HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf,
+    SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use schnorrkel::Keypair;
@@ -164,7 +165,7 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
     let best_header_ext = store.best_header();
     assert_eq!(best_header_ext.header, best_header);
     // we still track the forks
-    assert_eq!(store.headers_at(3).len(), 2);
+    assert_eq!(store.headers_at_number(3).len(), 2);
 }
 
 #[test]

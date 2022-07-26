@@ -70,6 +70,7 @@ pub struct HeaderExt<Header> {
 }
 
 type HashOf<T> = <T as HeaderT>::Hash;
+type NumberOf<T> = <T as HeaderT>::Number;
 
 /// Storage responsible for storing headers
 pub trait Storage<Header: HeaderT> {
@@ -80,7 +81,7 @@ pub trait Storage<Header: HeaderT> {
     fn segment_size(&self) -> SegmentSize;
 
     /// Queries a header at a specific block number or block hash
-    fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>>;
+    fn header(&self, hash: HashOf<Header>) -> Option<HeaderExt<Header>>;
 
     /// Stores the extended header.
     /// as_best_header signifies of the header we are importing is considered best
@@ -88,6 +89,18 @@ pub trait Storage<Header: HeaderT> {
 
     /// Returns the best known tip of the chain
     fn best_header(&self) -> HeaderExt<Header>;
+
+    /// Returns headers at a given number
+    fn headers_at_number(&self, number: NumberOf<Header>) -> Vec<HeaderExt<Header>>;
+
+    /// Prunes header with hash
+    fn prune_header(&mut self, hash: HashOf<Header>);
+
+    /// Marks a given header with hash as finalized
+    fn finalize_header(&mut self, hash: HashOf<Header>);
+
+    /// Returns the latest finalized header
+    fn finalized_header(&self) -> HeaderExt<Header>;
 }
 
 /// Error during the header import.
