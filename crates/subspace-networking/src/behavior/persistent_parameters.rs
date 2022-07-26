@@ -7,6 +7,7 @@ use lru::LruCache;
 use parity_db::{Db, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -17,6 +18,8 @@ use tracing::{debug, trace};
 
 // Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: usize = 100;
+// Size of the LRU cache for addresses.
+const ADDRESSES_CACHE_SIZE: usize = 100;
 // Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 
@@ -76,7 +79,7 @@ pub enum NetworkParametersPersistenceError {
 /// Handles networking parameters. It manages network parameters set and its persistence.
 pub struct NetworkingParametersManager {
     // LRU cache for the known peers and their addresses
-    known_peers: LruCache<PeerId, HashSet<Multiaddr>>, // LruCache<Multiaddr, ()>>,
+    known_peers: LruCache<PeerId, LruCache<Multiaddr, ()>>,
     // Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     // Parity DB instance
@@ -124,11 +127,11 @@ impl NetworkingParametersManager {
     }
 
     // Helps create a copy of the internal LruCache
-    fn clone_known_peers(&self) -> LruCache<PeerId, HashSet<Multiaddr>> {
+    fn clone_known_peers(&self) -> LruCache<PeerId, LruCache<Multiaddr, ()>> {
         let mut known_peers = LruCache::new(self.known_peers.cap());
 
         for (peer_id, addresses) in self.known_peers.iter() {
-            known_peers.push(*peer_id, addresses.clone());
+            known_peers.push(*peer_id, clone_lru_cache(addresses, ADDRESSES_CACHE_SIZE));
         }
 
         known_peers
@@ -145,45 +148,59 @@ impl NetworkingParametersManager {
     }
 }
 
+// Generic LRU-cache cloning function.
+fn clone_lru_cache<K: Clone + Hash + Eq, V: Clone>(
+    cache: &LruCache<K, V>,
+    cap: usize,
+) -> LruCache<K, V> {
+    let mut cloned_cache = LruCache::new(cap);
+
+    for (key, value) in cache.iter() {
+        cloned_cache.push(key.clone(), value.clone());
+    }
+
+    cloned_cache
+}
+
 #[async_trait]
 impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
-        let addr_set = addresses
+        addresses
             .iter()
-            .cloned()
             .filter(|addr| {
                 // filter Memory addresses
                 !addr
                     .into_iter()
                     .any(|protocol| matches!(protocol, Protocol::Memory(..)))
             })
-            .collect::<HashSet<_>>();
+            .cloned()
+            .map(|addr| {
+                // remove p2p-protocol suffix if any
+                let mut modified_address = addr.clone();
 
-        if !addr_set.is_empty() {
-            //TODO
-            //    I think here we also want to have LRU, otherwise addresses of pathological peers can flood these hashsets.
-            if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
-                *addresses = addresses.union(&addr_set).cloned().collect()
-            } else {
-                self.known_peers.push(peer_id, addr_set);
-            }
-        }
+                if let Some(Protocol::P2p(_)) = modified_address.pop() {
+                    modified_address
+                } else {
+                    addr
+                }
+            })
+            .for_each(|addr| {
+                // Add new address cache if it doesn't exist previously.
+                self.known_peers
+                    .get_or_insert(peer_id, || LruCache::new(ADDRESSES_CACHE_SIZE));
+
+                if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
+                    addresses.push(addr, ());
+                }
+            });
     }
 
     async fn known_addresses(&self, peer_number: usize) -> Vec<(PeerId, Multiaddr)> {
         self.known_peers
             .iter()
             .take(peer_number)
-            .flat_map(|(peer_id, addresses)| addresses.iter().map(|addr| (*peer_id, addr.clone())))
-            .map(|(peer_id, addr)| {
-                // remove p2p-protocol suffix if any
-                let mut modified_address = addr.clone();
-
-                if let Some(Protocol::P2p(_)) = modified_address.pop() {
-                    (peer_id, modified_address)
-                } else {
-                    (peer_id, addr)
-                }
+            .flat_map(|(peer_id, addresses)| {
+                addresses.iter().map(|addr| (*peer_id, addr.0.clone()))
             })
             .collect()
     }
@@ -229,22 +246,32 @@ struct NetworkingParameters {
 }
 
 impl NetworkingParameters {
-    fn from_cache(cache: LruCache<PeerId, HashSet<Multiaddr>>) -> Self {
+    fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, ()>>) -> Self {
         Self {
             known_peers: cache
                 .iter()
-                .map(|(peer_id, addresses)| (*peer_id, addresses.clone()))
+                .map(|(peer_id, addresses)| {
+                    (
+                        *peer_id,
+                        addresses.iter().map(|(addr, _)| addr).cloned().collect(),
+                    )
+                })
                 .collect(),
         }
     }
 
-    fn to_cache(&self) -> LruCache<PeerId, HashSet<Multiaddr>> {
-        let mut known_peers = LruCache::<PeerId, HashSet<Multiaddr>>::new(PEER_CACHE_SIZE);
+    fn to_cache(&self) -> LruCache<PeerId, LruCache<Multiaddr, ()>> {
+        let mut peers_cache = LruCache::<PeerId, LruCache<Multiaddr, ()>>::new(PEER_CACHE_SIZE);
 
-        for (peer_id, addresses) in self.known_peers.iter() {
-            known_peers.push(*peer_id, addresses.clone());
+        for (peer_id, address_set) in self.known_peers.iter() {
+            let mut address_cache = LruCache::<Multiaddr, ()>::new(ADDRESSES_CACHE_SIZE);
+
+            for address in address_set.iter().cloned() {
+                address_cache.push(address, ());
+            }
+            peers_cache.push(*peer_id, address_cache);
         }
 
-        known_peers
+        peers_cache
     }
 }
