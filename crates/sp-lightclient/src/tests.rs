@@ -1,5 +1,8 @@
 use crate::mock::{Header, MockStorage};
-use crate::{HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf, SolutionRange, Storage};
+use crate::{
+    ChainConstants, HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf, SolutionRange,
+    Storage,
+};
 use frame_support::{assert_err, assert_ok};
 use schnorrkel::Keypair;
 use sp_consensus_subspace::digests::{
@@ -19,6 +22,10 @@ fn default_randomness_and_salt() -> (Randomness, Salt) {
     let randomness = [1u8; 32];
     let salt = [2u8; 8];
     (randomness, salt)
+}
+
+fn default_test_constants() -> ChainConstants<Header> {
+    ChainConstants { k_depth: 7 }
 }
 
 fn derive_solution_range(target: Tag, tag: Tag) -> SolutionRange {
@@ -114,7 +121,7 @@ fn import_blocks_until(
 
 #[test]
 fn test_header_import_missing_parent() {
-    let mut store = MockStorage::default();
+    let mut store = MockStorage::new(default_test_constants());
     let keypair = Keypair::generate();
     let slot = 1;
     let (header, _) = valid_header(Default::default(), 0, slot, &keypair);
@@ -124,7 +131,7 @@ fn test_header_import_missing_parent() {
 }
 
 fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
-    let mut store = MockStorage::default();
+    let mut store = MockStorage::new(default_test_constants());
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();
@@ -185,7 +192,7 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
 
 #[test]
 fn test_header_import_success() {
-    let mut store = MockStorage::default();
+    let mut store = MockStorage::new(default_test_constants());
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();

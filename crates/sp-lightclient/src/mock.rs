@@ -1,29 +1,24 @@
-use crate::{
-    BlockWeight, HashOf, HeaderExt, NumberOf, RecordSize, SegmentSize, SolutionRange, Storage,
-};
+use crate::{BlockWeight, ChainConstants, HashOf, HeaderExt, NumberOf, SolutionRange, Storage};
 use sp_arithmetic::traits::Zero;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::HashMap;
 
 pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct StorageData {
+    constants: ChainConstants<Header>,
     headers: HashMap<HashOf<Header>, HeaderExt<Header>>,
     number_to_hashes: HashMap<NumberOf<Header>, Vec<HashOf<Header>>>,
     best_header: (NumberOf<Header>, HashOf<Header>),
     finalized_head: Option<(NumberOf<Header>, HashOf<Header>)>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct MockStorage(StorageData);
 impl Storage<Header> for MockStorage {
-    fn record_size(&self) -> RecordSize {
-        Default::default()
-    }
-
-    fn segment_size(&self) -> SegmentSize {
-        Default::default()
+    fn chain_constants(&self) -> ChainConstants<Header> {
+        self.0.constants.clone()
     }
 
     fn header(&self, query: HashOf<Header>) -> Option<HeaderExt<Header>> {
@@ -107,6 +102,16 @@ impl Storage<Header> for MockStorage {
 }
 
 impl MockStorage {
+    pub(crate) fn new(constants: ChainConstants<Header>) -> Self {
+        MockStorage(StorageData {
+            constants,
+            headers: Default::default(),
+            number_to_hashes: Default::default(),
+            best_header: (Default::default(), Default::default()),
+            finalized_head: None,
+        })
+    }
+
     // hack to adjust the solution range
     pub(crate) fn override_solution_range(
         &mut self,

@@ -45,14 +45,15 @@ mod mock;
 /// Type of solution range.
 type SolutionRange = u64;
 
-/// The size of data in one piece (in bytes).
-type RecordSize = u32;
-
-/// The size of encoded and plotted piece in segments of this size (in bytes).
-type SegmentSize = u32;
-
 /// BlockWeight type for fork choice rules.
 type BlockWeight = u128;
+
+/// Chain constants
+#[derive(Debug, Clone)]
+pub struct ChainConstants<Header: HeaderT> {
+    /// K Depth at which we finalize the heads
+    pub k_depth: NumberOf<Header>,
+}
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -77,11 +78,8 @@ type NumberOf<T> = <T as HeaderT>::Number;
 
 /// Storage responsible for storing headers.
 pub trait Storage<Header: HeaderT> {
-    /// Record size
-    fn record_size(&self) -> RecordSize;
-
-    /// Segment size
-    fn segment_size(&self) -> SegmentSize;
+    /// Returns the chain constants.
+    fn chain_constants(&self) -> ChainConstants<Header>;
 
     /// Queries a header at a specific block number or block hash.
     fn header(&self, hash: HashOf<Header>) -> Option<HeaderExt<Header>>;
