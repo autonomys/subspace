@@ -56,6 +56,7 @@
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
+//! [`FraudProof`]: ../sp_executor/struct.FraudProof.html
 
 #![feature(drain_filter)]
 
@@ -85,7 +86,7 @@ use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_executor::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId, FraudProof,
+    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
     InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -323,93 +324,6 @@ where
         }
     }
 
-    fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-bundle-equivocation-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting bundle equivocation proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_bundle_equivocation_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        bundle_equivocation_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit bundle equivocation proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
-    }
-
-    fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-fraud-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting fraud proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_fraud_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        fraud_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit fraud proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
-    }
-
-    fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-invalid-transaction-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting invalid transaction proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_invalid_transaction_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        invalid_transaction_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit invalid transaction proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
-    }
-
     /// The background is that a receipt received from the network points to a future block
     /// from the local view, so we need to wait for the receipt for the block at the same
     /// height to be produced locally in order to check the validity of the external receipt.
@@ -581,7 +495,12 @@ where
 
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {
-            self.submit_bundle_equivocation_proof(equivocation_proof);
+            self.primary_chain_client
+                .runtime_api()
+                .submit_bundle_equivocation_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    equivocation_proof,
+                )?;
             return Err(GossipMessageError::BundleEquivocation);
         }
 
@@ -622,7 +541,12 @@ where
                     // if illegal => illegal tx proof
                     let invalid_transaction_proof = InvalidTransactionProof;
 
-                    self.submit_invalid_transaction_proof(invalid_transaction_proof);
+                    self.primary_chain_client
+                        .runtime_api()
+                        .submit_invalid_transaction_proof_unsigned(
+                            &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                            invalid_transaction_proof,
+                        )?;
                 }
             }
 
@@ -726,7 +650,12 @@ where
                 signed_receipt_hash,
             )?;
 
-            self.submit_fraud_proof(fraud_proof);
+            self.primary_chain_client
+                .runtime_api()
+                .submit_fraud_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    fraud_proof,
+                )?;
 
             Ok(Action::Empty)
         } else {
