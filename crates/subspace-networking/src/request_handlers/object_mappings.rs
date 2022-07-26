@@ -8,10 +8,6 @@ use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::objects::GlobalObject;
 use subspace_core_primitives::Sha256Hash;
 
-/// Pieces-by-range-protocol name.
-const PROTOCOL_NAME: &str = "/subspace/object-mappings/0.1.0";
-const LOG_TARGET: &str = "object-mappings-request-response-handler";
-
 /// Object-mapping protocol request.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct ObjectMappingsRequest {
@@ -20,8 +16,8 @@ pub struct ObjectMappingsRequest {
 }
 
 impl GenericRequest for ObjectMappingsRequest {
-    const PROTOCOL_NAME: &'static str = PROTOCOL_NAME;
-    const LOG_TARGET: &'static str = LOG_TARGET;
+    const PROTOCOL_NAME: &'static str = "/subspace/object-mappings/0.1.0";
+    const LOG_TARGET: &'static str = "object-mappings-request-response-handler";
     type Response = ObjectMappingsResponse;
 }
 

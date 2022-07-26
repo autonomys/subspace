@@ -28,7 +28,8 @@ mod shared;
 mod utils;
 
 pub use crate::node::{
-    CircuitRelayClientError, GetPiecesByRangeError, Node, SubscribeError, TopicSubscription,
+    CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
+    TopicSubscription,
 };
 pub use crate::node_runner::NodeRunner;
 pub use create::{create, Config, CreationError};

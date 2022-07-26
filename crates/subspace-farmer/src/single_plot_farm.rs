@@ -3,8 +3,7 @@ pub mod dsn_archiving;
 mod tests;
 
 use crate::commitments::{CommitmentError, Commitments};
-use crate::dsn;
-use crate::dsn::{PieceIndexHashNumber, SyncOptions};
+use crate::dsn::{self, PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
@@ -451,13 +450,14 @@ impl SinglePlotFarm {
                 let codec = codec.clone();
 
                 // TODO: also ask for how many pieces to read
-                move |&PiecesByRangeRequest { from, to }| {
-                    let mut pieces_and_indexes =
-                        plot.get_sequential_pieces(from, SYNC_PIECES_AT_ONCE).ok()?;
+                move |&PiecesByRangeRequest { start, end }| {
+                    let mut pieces_and_indexes = plot
+                        .get_sequential_pieces(start, SYNC_PIECES_AT_ONCE)
+                        .ok()?;
 
                     let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
                         .iter()
-                        .position(|(piece_index, _)| PieceIndexHash::from_index(*piece_index) > to)
+                        .position(|(piece_index, _)| PieceIndexHash::from_index(*piece_index) > end)
                     {
                         pieces_and_indexes.truncate(idx);
                         None

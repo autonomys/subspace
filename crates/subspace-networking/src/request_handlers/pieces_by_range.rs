@@ -1,18 +1,7 @@
-//! Helper for incoming pieces-by-range requests.
-//!
-//! Handle (i.e. answer) incoming pieces-by-range requests from a remote peer received via
-//! `RequestResponsesBehaviour` with generic [`GenericRequestHandler`].
-
-#[cfg(test)]
-mod tests;
-
-use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{FlatPieces, PieceIndex, PieceIndexHash};
 
-/// Pieces-by-range-protocol name.
-const PROTOCOL_NAME: &str = "/subspace/sync/pieces-by-range/0.1.0";
-const LOG_TARGET: &str = "pieces-by-range-request-response-handler";
+use crate::{GenericRequest, GenericRequestHandler};
 
 //TODO: A candidate for migrating to a separate crate.
 /// Collection of pieces that potentially need to be plotted
@@ -28,14 +17,14 @@ pub struct PiecesToPlot {
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct PiecesByRangeRequest {
     /// Start of the requested range
-    pub from: PieceIndexHash,
+    pub start: PieceIndexHash,
     /// End of the requested range
-    pub to: PieceIndexHash,
+    pub end: PieceIndexHash,
 }
 
 impl GenericRequest for PiecesByRangeRequest {
-    const PROTOCOL_NAME: &'static str = PROTOCOL_NAME;
-    const LOG_TARGET: &'static str = LOG_TARGET;
+    const PROTOCOL_NAME: &'static str = "/subspace/sync/pieces-by-range/0.1.0";
+    const LOG_TARGET: &'static str = "pieces-by-range-request-response-handler";
     type Response = PiecesByRangeResponse;
 }
 
