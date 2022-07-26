@@ -188,32 +188,31 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     // We take cached known addresses and combine them with manually provided bootstrap addresses
     // with a limit.
-    let combined_bootstrap_addresses = networking_parameters_registry
-        .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
-        .await
-        .iter()
-        .cloned()
-        .map(Ok)
-        .chain(
-            bootstrap_nodes
-                .into_iter()
-                // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
-                .map(|mut multiaddr| {
-                    let peer_id: PeerId = multiaddr
-                        .pop()
-                        .and_then(|protocol| {
-                            if let Protocol::P2p(peer_id) = protocol {
-                                Some(peer_id.try_into().ok()?)
-                            } else {
-                                None
-                            }
-                        })
-                        .ok_or(CreationError::BadBootstrapAddress)?;
+    let combined_bootstrap_addresses = bootstrap_nodes
+        .into_iter()
+        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
+        .map(|mut multiaddr| {
+            let peer_id: PeerId = multiaddr
+                .pop()
+                .and_then(|protocol| {
+                    if let Protocol::P2p(peer_id) = protocol {
+                        Some(peer_id.try_into().ok()?)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or(CreationError::BadBootstrapAddress)?;
 
-                    Ok((peer_id, multiaddr))
-                }),
+            Ok((peer_id, multiaddr))
+        })
+        .chain(
+            networking_parameters_registry
+                .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
+                .await
+                .iter()
+                .cloned()
+                .map(Ok),
         )
-        .take(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
         .collect::<Result<_, CreationError>>()?;
 
     trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
