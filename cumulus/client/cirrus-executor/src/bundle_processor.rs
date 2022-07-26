@@ -3,7 +3,6 @@ use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor, TransactionFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::FutureExt;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -178,6 +177,7 @@ where
         }
     }
 
+    // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
@@ -626,32 +626,20 @@ where
     }
 
     fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-fraud-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting fraud proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_fraud_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        fraud_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit fraud proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(error) = self
+            .primary_chain_client
+            .runtime_api()
+            .submit_fraud_proof_unsigned(
+                &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                fraud_proof,
+            )
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                error = ?error,
+                "Failed to submit fraud proof"
+            );
+        }
     }
 
     fn try_sign_and_send_receipt(
