@@ -21,12 +21,14 @@
 
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_arithmetic::traits::{CheckedAdd, One};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
     ErrorDigestType, PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
+use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use std::marker::PhantomData;
 use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt};
@@ -121,6 +123,8 @@ pub enum ImportError<Hash> {
     InvalidBlockSignature,
     /// Solution present in the header is invalid.
     InvalidSolution(subspace_verification::Error),
+    /// Arithmetic error.
+    ArithmeticError(ArithmeticError),
 }
 
 impl<Hash> From<DigestError> for ImportError<Hash> {
@@ -208,9 +212,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
-        // TODO(ved):
-        //      at the moment, we cannot prune the fork headers due to the probabilistic nature of the chain
-        //      Once we have some form of finality to the chain, we should prune the forks then
 
         // store header
         let header_ext = HeaderExt {
@@ -316,5 +317,80 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         );
         let tag = u64::from_be_bytes(pre_digest.solution.tag);
         u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
+    }
+
+    /// Returns the ancestor of the header at number.
+    fn find_ancestor_of_header_at_number(
+        store: &Store,
+        header: HeaderExt<Header>,
+        ancestor_number: NumberOf<Header>,
+    ) -> Option<HeaderExt<Header>> {
+        // header number must be greater than the ancestor number
+        if ancestor_number >= *header.header.number() {
+            return None;
+        }
+
+        let headers_at_ancestor_number = store.headers_at_number(ancestor_number);
+        let finalized_header = store.finalized_header();
+
+        // short circuit if the ancestor number is at the same or lower number than finalized head
+        if ancestor_number.le(finalized_header.header.number())
+            // short circuit if there are no forks at the depth
+            || headers_at_ancestor_number.len() == 1
+        {
+            return headers_at_ancestor_number.into_iter().next();
+        }
+
+        // start tree route till the ancestor
+        let mut header = header;
+        while *header.header.number() > ancestor_number {
+            header = store.header(*header.header.parent_hash())?;
+        }
+
+        Some(header)
+    }
+
+    /// Prunes header and its descendant header chain(s).
+    fn prune_chain_from_header(
+        store: &mut Store,
+        header: HeaderExt<Header>,
+    ) -> Result<(), ImportError<HashOf<Header>>> {
+        // prune the header
+        store.prune_header(header.header.hash());
+
+        // start pruning all the descendant headers from the current header
+        //        header(at number n)
+        //        /         \
+        //  descendant-1   descendant-2
+        //     /
+        //  descendant-3
+        let mut pruned_parent_hashes = vec![header.header.hash()];
+        let mut current_number = *header.header.number();
+
+        while !pruned_parent_hashes.is_empty() {
+            current_number = current_number
+                .checked_add(&One::one())
+                .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
+
+            // get headers at the current number and
+            // filter the headers descended from the pruned parents
+            let descendant_header_hashes = store
+                .headers_at_number(current_number)
+                .into_iter()
+                .filter(|descendant_header| {
+                    pruned_parent_hashes.contains(descendant_header.header.parent_hash())
+                })
+                .map(|header| header.header.hash())
+                .collect::<Vec<HashOf<Header>>>();
+
+            // prune the descendant headers
+            descendant_header_hashes
+                .iter()
+                .for_each(|hash| store.prune_header(*hash));
+
+            pruned_parent_hashes = descendant_header_hashes;
+        }
+
+        Ok(())
     }
 }
