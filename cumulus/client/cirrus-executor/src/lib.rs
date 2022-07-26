@@ -324,90 +324,54 @@ where
     }
 
     fn submit_bundle_equivocation_proof(&self, bundle_equivocation_proof: BundleEquivocationProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-bundle-equivocation-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting bundle equivocation proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_bundle_equivocation_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        bundle_equivocation_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit bundle equivocation proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(error) = self
+            .primary_chain_client
+            .runtime_api()
+            .submit_bundle_equivocation_proof_unsigned(
+                &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                bundle_equivocation_proof,
+            )
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                error = ?error,
+                "Failed to submit bundle equivocation proof"
+            );
+        }
     }
 
     fn submit_fraud_proof(&self, fraud_proof: FraudProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-fraud-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting fraud proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_fraud_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        fraud_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit fraud proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(error) = self
+            .primary_chain_client
+            .runtime_api()
+            .submit_fraud_proof_unsigned(
+                &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                fraud_proof,
+            )
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                error = ?error,
+                "Failed to submit fraud proof"
+            );
+        }
     }
 
     fn submit_invalid_transaction_proof(&self, invalid_transaction_proof: InvalidTransactionProof) {
-        let primary_chain_client = self.primary_chain_client.clone();
-        // TODO: No backpressure
-        self.spawner.spawn_blocking(
-            "cirrus-submit-invalid-transaction-proof",
-            None,
-            async move {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    "Submitting invalid transaction proof in a background task..."
-                );
-                if let Err(error) = primary_chain_client
-                    .runtime_api()
-                    .submit_invalid_transaction_proof_unsigned(
-                        &BlockId::Hash(primary_chain_client.info().best_hash),
-                        invalid_transaction_proof,
-                    )
-                {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        error = ?error,
-                        "Failed to submit invalid transaction proof"
-                    );
-                }
-            }
-            .boxed(),
-        );
+        if let Err(error) = self
+            .primary_chain_client
+            .runtime_api()
+            .submit_invalid_transaction_proof_unsigned(
+                &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                invalid_transaction_proof,
+            )
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                error = ?error,
+                "Failed to submit invalid transaction proof"
+            );
+        }
     }
 
     /// The background is that a receipt received from the network points to a future block
