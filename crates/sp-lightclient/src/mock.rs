@@ -1,6 +1,5 @@
 use crate::{
-    BlockWeight, HashOf, HeaderExt, HeaderImporter, NumberOf, RecordSize, SegmentSize,
-    SolutionRange, Storage,
+    BlockWeight, HashOf, HeaderExt, NumberOf, RecordSize, SegmentSize, SolutionRange, Storage,
 };
 use sp_arithmetic::traits::Zero;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
@@ -126,6 +125,3 @@ impl MockStorage {
         self.0.headers.insert(hash, header);
     }
 }
-
-pub(crate) struct MockImporter;
-impl HeaderImporter<Header, MockStorage> for MockImporter {}

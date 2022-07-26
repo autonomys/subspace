@@ -1,8 +1,5 @@
-use crate::mock::{Header, MockImporter, MockStorage};
-use crate::{
-    calculate_block_weight, HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf,
-    SolutionRange, Storage,
-};
+use crate::mock::{Header, MockStorage};
+use crate::{HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf, SolutionRange, Storage};
 use frame_support::{assert_err, assert_ok};
 use schnorrkel::Keypair;
 use sp_consensus_subspace::digests::{
@@ -122,7 +119,7 @@ fn test_header_import_missing_parent() {
     let slot = 1;
     let (header, _) = valid_header(Default::default(), 0, slot, &keypair);
     let hash = header.hash();
-    let res = MockImporter::import_header(&mut store, header);
+    let res = HeaderImporter::import_header(&mut store, header);
     assert_err!(res, ImportError::MissingParent(hash));
 }
 
@@ -136,7 +133,7 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
     // import block 3
     let (header, solution_range) = valid_header(parent_hash, 3, next_slot, &keypair);
     store.override_solution_range(parent_hash, solution_range);
-    let res = MockImporter::import_header(&mut store, header.clone());
+    let res = HeaderImporter::import_header(&mut store, header.clone());
     assert_ok!(res);
     let best_header_ext = store.best_header();
     assert_eq!(best_header_ext.header, header);
@@ -146,7 +143,10 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
     let (header, solution_range) = valid_header(parent_hash, 3, next_slot + 1, &keypair);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
         extract_subspace_digest_items(&header).unwrap();
-    let new_weight = calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
+    let new_weight = HeaderImporter::<Header, MockStorage>::calculate_block_weight(
+        &digests.global_randomness,
+        &digests.pre_digest,
+    );
     store.override_solution_range(parent_hash, solution_range);
     match new_header_weight {
         Ordering::Less => {
@@ -160,7 +160,7 @@ fn header_import_reorg_at_same_height(new_header_weight: Ordering) {
             best_header = header.clone();
         }
     };
-    let res = MockImporter::import_header(&mut store, header);
+    let res = HeaderImporter::import_header(&mut store, header);
     assert_ok!(res);
     let best_header_ext = store.best_header();
     assert_eq!(best_header_ext.header, best_header);
@@ -197,7 +197,7 @@ fn test_header_import_success() {
     for number in 3..=10 {
         let (header, solution_range) = valid_header(parent_hash, number, slot, &keypair);
         store.override_solution_range(parent_hash, solution_range);
-        let res = MockImporter::import_header(&mut store, header.clone());
+        let res = HeaderImporter::import_header(&mut store, header.clone());
         assert_ok!(res);
         // best header should be correct
         let best_header = store.best_header();
