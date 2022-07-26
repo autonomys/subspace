@@ -10,6 +10,7 @@ use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotFarmId;
 use crate::utils::AbortingJoinHandle;
+use crate::CommitmentError;
 use futures::future::{Fuse, FusedFuture};
 use futures::{FutureExt, StreamExt};
 use std::sync::mpsc;
@@ -308,6 +309,9 @@ fn update_commitments(
 
                     if let Err(error) = commitments.create(salt, plot) {
                         error!(%error, "Failed to create commitment");
+                        if matches!(error, CommitmentError::Stop) {
+                            return;
+                        }
                     } else {
                         info!(
                             took_seconds = started.elapsed().as_secs_f32(),

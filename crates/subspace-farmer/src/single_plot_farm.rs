@@ -587,9 +587,11 @@ impl SinglePlotFarm {
     pub fn on_exit(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let node = self.node.clone();
         let plot = self.plot.clone();
+        let commitments = self.commitments.clone();
         async move {
             node.stop();
             plot.stop();
+            commitments.stop().await;
         }
     }
 

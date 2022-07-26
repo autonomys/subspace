@@ -7,6 +7,7 @@ use crate::plot::{PieceOffset, Plot};
 use arc_swap::ArcSwapOption;
 use databases::{CommitmentDatabases, CreateDbEntryResult, DbEntry};
 use event_listener_primitives::{Bag, HandlerId};
+use futures::channel::oneshot;
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::{WriteBatch, DB};
@@ -32,6 +33,8 @@ pub enum CommitmentError {
     CommitmentDb(rocksdb::Error),
     #[error("Plot error: {0}")]
     Plot(io::Error),
+    #[error("Stop signal received")]
+    Stop,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -60,6 +63,8 @@ struct Inner {
     current: ArcSwapOption<DbEntry>,
     next: ArcSwapOption<DbEntry>,
     commitment_databases: Mutex<CommitmentDatabases>,
+    stop_receiver: Mutex<oneshot::Receiver<()>>,
+    stop_sender: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
 }
 
 /// `Commitments` is a database for commitments.
@@ -80,6 +85,7 @@ impl Commitments {
         let mut commitment_databases = CommitmentDatabases::new(base_directory.clone())?;
 
         let (current, next) = commitment_databases.get_db_entries();
+        let (stop_sender, stop_receiver) = oneshot::channel();
 
         let inner = Inner {
             base_directory,
@@ -87,6 +93,8 @@ impl Commitments {
             current: ArcSwapOption::new(current),
             next: ArcSwapOption::new(next),
             commitment_databases: Mutex::new(commitment_databases),
+            stop_receiver: Mutex::new(stop_receiver),
+            stop_sender: tokio::sync::Mutex::new(Some(stop_sender)),
         };
 
         Ok(Self {
@@ -133,6 +141,17 @@ impl Commitments {
         let piece_count = plot.piece_count();
         let mut tags_with_offset = Vec::with_capacity(TAGS_WRITE_BATCH_SIZE);
         for batch_start in (0..piece_count).step_by(PLOT_READ_BATCH_SIZE as usize) {
+            if self
+                .inner
+                .stop_receiver
+                .lock()
+                .try_recv()
+                .expect("Sender is never dropped")
+                .is_some()
+            {
+                return Err(CommitmentError::Stop);
+            }
+
             let pieces_to_process =
                 (batch_start + PLOT_READ_BATCH_SIZE).min(piece_count) - batch_start;
             // TODO: Read next batch while creating tags for the previous one for faster
@@ -156,25 +175,27 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            if let Some(db) = db_guard.as_ref() {
-                for (tag, offset) in tags.into_iter().zip(batch_start..) {
-                    tags_with_offset.push((tag, offset.to_le_bytes()));
-                }
-
-                if tags_with_offset.len() == tags_with_offset.capacity() {
-                    tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
-
-                    let mut batch = WriteBatch::default();
-                    for (tag, offset) in &tags_with_offset {
-                        batch.put(tag, offset);
-                    }
-                    db.write(batch).map_err(CommitmentError::CommitmentDb)?;
-
-                    tags_with_offset.clear();
-                }
+            let db = if let Some(db) = db_guard.as_ref() {
+                db
             } else {
                 // Database was already removed, no need to continue
                 break;
+            };
+
+            for (tag, offset) in tags.into_iter().zip(batch_start..) {
+                tags_with_offset.push((tag, offset.to_le_bytes()));
+            }
+
+            if tags_with_offset.len() == tags_with_offset.capacity() {
+                tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
+
+                let mut batch = WriteBatch::default();
+                for (tag, offset) in &tags_with_offset {
+                    batch.put(tag, offset);
+                }
+                db.write(batch).map_err(CommitmentError::CommitmentDb)?;
+
+                tags_with_offset.clear();
             }
         }
 
@@ -318,6 +339,16 @@ impl Commitments {
             subspace_core_primitives::bidirectional_distance(&target, &tag)
         });
         solutions
+    }
+
+    /// Stop creation of commitments in background
+    pub(crate) async fn stop(&self) {
+        self.inner
+            .stop_sender
+            .lock()
+            .await
+            .take()
+            .map(|sender| sender.send(()));
     }
 
     pub fn on_status_change(
