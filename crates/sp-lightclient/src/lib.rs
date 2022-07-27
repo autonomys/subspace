@@ -368,10 +368,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         }
 
         let headers_at_ancestor_number = self.store.headers_at_number(ancestor_number);
-        let finalized_header = self.store.finalized_header();
 
-        // short circuit if the ancestor number is at the same or lower number than finalized head
-        if ancestor_number <= *finalized_header.header.number() {
+        // short circuit if the there are not fork headers at the ancestor number
+        if headers_at_ancestor_number.len() == 1 {
             return headers_at_ancestor_number.into_iter().next();
         }
 
