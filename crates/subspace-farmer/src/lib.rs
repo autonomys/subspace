@@ -40,6 +40,7 @@ pub mod legacy_multi_plots_farm;
 mod mock_rpc_client;
 pub(crate) mod node_rpc_client;
 pub(crate) mod object_mappings;
+mod pieces_verification;
 pub(crate) mod plot;
 pub(crate) mod rpc_client;
 pub mod single_disk_farm;
