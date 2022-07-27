@@ -48,7 +48,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Solution, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
+use subspace_core_primitives::{
+    Solution, MERKLE_NUM_LEAVES, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -206,7 +208,10 @@ where
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 // TODO: `max_plot_size` in the protocol must change to bytes as well
                 max_plot_size: runtime_api.max_plot_size(&best_block_id)? * PIECE_SIZE as u64,
-                total_pieces: runtime_api.total_pieces(&best_block_id)?,
+                // Total pieces should never be zero. blockchain is always initialized with one segment.
+                total_pieces: runtime_api
+                    .total_pieces(&best_block_id)?
+                    .max(MERKLE_NUM_LEAVES as u64),
             }
         };
 
