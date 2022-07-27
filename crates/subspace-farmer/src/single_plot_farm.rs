@@ -7,7 +7,6 @@ use crate::dsn::{self, OnSync, PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
-use crate::pieces_verification::verify_pieces_at_blockchain;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
@@ -18,12 +17,16 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use derive_more::{Display, From};
 use futures::future::try_join;
+use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io, mem};
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey};
+use subspace_archiving::archiver::is_piece_valid;
+use subspace_core_primitives::{
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
+};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
@@ -680,7 +683,7 @@ impl SinglePlotFarm {
         verification_client: RC,
         farmer_protocol_info: FarmerProtocolInfo,
         range_size: PieceIndexHashNumber,
-        verify_pieces: bool,
+        pieces_verification_enabled: bool,
     ) -> impl Future<Output = anyhow::Result<()>> {
         let options = SyncOptions {
             range_size,
@@ -694,7 +697,7 @@ impl SinglePlotFarm {
             span: self.span.clone(),
             verification_client,
             farmer_protocol_info,
-            verify_pieces,
+            pieces_verification_enabled,
         };
 
         dsn::sync(self.node.clone(), options, plotter)
@@ -709,7 +712,50 @@ struct VerifyingPlotter<RC> {
     span: Span,
     single_plot_plotter: SinglePlotPlotter,
     farmer_protocol_info: FarmerProtocolInfo,
-    verify_pieces: bool,
+    pieces_verification_enabled: bool,
+}
+
+impl<RC: RpcClient> VerifyingPlotter<RC> {
+    //TODO: Optimize: parallel execution, batch execution.
+    /// Verifies pieces against the blockchain.
+    pub async fn verify_pieces_at_blockchain(
+        &self,
+        piece_indexes: &[PieceIndex],
+        pieces: &FlatPieces,
+    ) -> Result<(), PiecesVerificationError> {
+        if piece_indexes.len() != pieces.count() {
+            return Err(PiecesVerificationError::InvalidRawData);
+        }
+
+        let records_per_segment =
+            self.farmer_protocol_info.recorded_history_segment_size as usize / PIECE_SIZE;
+        if self.farmer_protocol_info.record_size.is_zero() || records_per_segment.is_zero() {
+            return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
+        }
+
+        for (piece, piece_index) in pieces.as_pieces().zip(piece_indexes) {
+            let segment_index: u64 = piece_index / records_per_segment as u64;
+            let position: u64 = piece_index % records_per_segment as u64;
+
+            let root = self
+                .verification_client
+                .records_root(segment_index)
+                .await
+                .map_err(|err| PiecesVerificationError::RpcError(err))?
+                .ok_or(PiecesVerificationError::NoRecordsRootFound)?;
+
+            if !is_piece_valid(
+                piece,
+                root,
+                position as usize,
+                self.farmer_protocol_info.record_size as usize,
+            ) {
+                return Err(PiecesVerificationError::InvalidPieces);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -721,14 +767,9 @@ impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
     ) -> anyhow::Result<()> {
         let _guard = self.span.enter();
 
-        if self.verify_pieces {
-            verify_pieces_at_blockchain(
-                &self.verification_client,
-                self.farmer_protocol_info,
-                &piece_indexes,
-                &pieces,
-            )
-            .await?;
+        if self.pieces_verification_enabled {
+            self.verify_pieces_at_blockchain(&piece_indexes, &pieces)
+                .await?;
         }
 
         self.single_plot_plotter
@@ -738,4 +779,24 @@ impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
             })
             .map_err(Into::into)
     }
+}
+
+/// Pieces verification errors.
+#[derive(Error, Debug)]
+pub enum PiecesVerificationError {
+    /// Invalid pieces data provided
+    #[error("Invalid pieces data provided")]
+    InvalidRawData,
+    /// Invalid farmer protocol info provided
+    #[error("Invalid farmer protocol info provided")]
+    InvalidFarmerProtocolInfo,
+    /// Pieces verification failed.
+    #[error("Pieces verification failed.")]
+    InvalidPieces,
+    /// RPC client failed.
+    #[error("RPC client failed. jsonrpsee error: {0}")]
+    RpcError(Box<dyn std::error::Error + Send + Sync>),
+    /// RPC client returned empty records_root.
+    #[error("RPC client returned empty records_root.")]
+    NoRecordsRootFound,
 }
