@@ -48,7 +48,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Solution, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
+use subspace_core_primitives::{
+    Sha256Hash, Solution, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -95,6 +97,9 @@ pub trait SubspaceRpcApi {
 
     #[method(name = "subspace_acknowledgeArchivedSegment")]
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()>;
+
+    #[method(name = "subspace_recordsRoot")]
+    async fn records_root(&self, segment_index: u64) -> RpcResult<Option<Sha256Hash>>;
 }
 
 #[derive(Default)]
@@ -512,5 +517,20 @@ where
         }
 
         Ok(())
+    }
+
+    async fn records_root(&self, segment_index: u64) -> RpcResult<Option<Sha256Hash>> {
+        let runtime_api = self.client.runtime_api();
+        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+
+        let records_root = runtime_api.records_root(&best_block_id, segment_index);
+
+        records_root.map_err(|error| {
+            error!(
+                "Failed to get data from runtime API (records_root): {}",
+                error
+            );
+            JsonRpseeError::Custom("Internal error during `records_root` call".to_string())
+        })
     }
 }
