@@ -73,6 +73,39 @@ pub struct HeaderExt<Header> {
     pub total_weight: BlockWeight,
 }
 
+/// Type to hold next digest items present in parent header that are used to verify the immediate descendant.
+struct NextDigestItems {
+    next_global_randomness: Randomness,
+    next_solution_range: SolutionRange,
+    next_salt: Salt,
+}
+
+impl<Header: HeaderT> HeaderExt<Header> {
+    /// Extracts the next digest items Randomness, Solution range, and Salt present in the Header.
+    /// If next digests are not present, then we fallback to the current ones.
+    fn extract_next_digest_items(&self) -> Result<NextDigestItems, ImportError<Header>> {
+        let SubspaceDigestItems {
+            pre_digest: _,
+            signature: _,
+            global_randomness,
+            solution_range,
+            salt,
+            next_global_randomness,
+            next_solution_range,
+            next_salt,
+            records_roots: _,
+        } = extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &self.header,
+        )?;
+
+        Ok(NextDigestItems {
+            next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
+            next_solution_range: next_solution_range.unwrap_or(solution_range),
+            next_salt: next_salt.unwrap_or(salt),
+        })
+    }
+}
+
 type HashOf<T> = <T as HeaderT>::Hash;
 type NumberOf<T> = <T as HeaderT>::Number;
 
