@@ -139,24 +139,36 @@ impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
 
 /// Verifies and import headers.
 #[derive(Debug)]
-pub struct HeaderImporter<Header, Store>(PhantomData<(Header, Store)>);
+pub struct HeaderImporter<Header: HeaderT, Store: Storage<Header>> {
+    store: Store,
+    _phantom: PhantomData<Header>,
+}
 
 impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
+    /// Returns a new instance of HeaderImporter with provided Storage impls
+    pub fn new(store: Store) -> Self {
+        HeaderImporter {
+            store,
+            _phantom: Default::default(),
+        }
+    }
+
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
-    pub fn import_header(store: &mut Store, mut header: Header) -> Result<(), ImportError<Header>> {
+    pub fn import_header(&mut self, mut header: Header) -> Result<(), ImportError<Header>> {
         // check if the header is already imported
-        match store.header(header.hash()) {
+        match self.store.header(header.hash()) {
             Some(_) => Err(ImportError::HeaderAlreadyImported),
             None => Ok(()),
         }?;
 
         // only try and import headers above the finalized number
-        if header.number() <= store.finalized_header().header.number() {
+        if header.number() <= self.store.finalized_header().header.number() {
             return Err(ImportError::HeaderIsBelowArchivingDepth);
         }
 
         // fetch parent header
-        let parent_header = store
+        let parent_header = self
+            .store
             .header(*header.parent_hash())
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
@@ -199,7 +211,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let total_weight = parent_header.total_weight + block_weight;
 
         // last best header should ideally be parent header. if not check for forks and pick the best chain
-        let last_best_header = store.best_header();
+        let last_best_header = self.store.best_header();
         let is_best_header = if last_best_header.header.hash() == parent_header.header.hash() {
             // header is extending the current best header. consider this best header
             true
@@ -228,11 +240,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             total_weight,
         };
 
-        store.store_header(header_ext, is_best_header);
+        self.store.store_header(header_ext, is_best_header);
 
         // finalize and prune forks if the chain has progressed
         if is_best_header {
-            Self::finalize_header_at_k_depth(store)?;
+            self.finalize_header_at_k_depth()?;
         }
 
         Ok(())
@@ -333,7 +345,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Returns the ancestor of the header at number.
     fn find_ancestor_of_header_at_number(
-        store: &Store,
+        &self,
         header: HeaderExt<Header>,
         ancestor_number: NumberOf<Header>,
     ) -> Option<HeaderExt<Header>> {
@@ -342,8 +354,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             return None;
         }
 
-        let headers_at_ancestor_number = store.headers_at_number(ancestor_number);
-        let finalized_header = store.finalized_header();
+        let headers_at_ancestor_number = self.store.headers_at_number(ancestor_number);
+        let finalized_header = self.store.finalized_header();
 
         // short circuit if the ancestor number is at the same or lower number than finalized head
         if ancestor_number.le(finalized_header.header.number())
@@ -356,7 +368,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // start tree route till the ancestor
         let mut header = header;
         while *header.header.number() > ancestor_number {
-            header = store.header(*header.header.parent_hash())?;
+            header = self.store.header(*header.header.parent_hash())?;
         }
 
         Some(header)
@@ -364,11 +376,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Prunes header and its descendant header chain(s).
     fn prune_header_and_its_descendants(
-        store: &mut Store,
+        &mut self,
         header: HeaderExt<Header>,
     ) -> Result<(), ImportError<Header>> {
         // prune the header
-        store.prune_header(header.header.hash());
+        self.store.prune_header(header.header.hash());
 
         // start pruning all the descendant headers from the current header
         //        header(at number n)
@@ -385,7 +397,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
 
             // get headers at the current number and filter the headers descended from the pruned parents
-            let descendant_header_hashes = store
+            let descendant_header_hashes = self
+                .store
                 .headers_at_number(current_number)
                 .into_iter()
                 .filter(|descendant_header| {
@@ -397,7 +410,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             // prune the descendant headers
             descendant_header_hashes
                 .iter()
-                .for_each(|hash| store.prune_header(*hash));
+                .for_each(|hash| self.store.prune_header(*hash));
 
             pruned_parent_hashes = descendant_header_hashes;
         }
@@ -412,12 +425,18 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     ///    pruning fork headers between current and to be finalized number. So we go number by number and prune fork headers.
     /// 3. If there was a re-org to a shorter chain and to be finalized header was below the current finalized head,
     ///    fail and let user know.
-    fn finalize_header_at_k_depth(store: &mut Store) -> Result<(), ImportError<Header>> {
-        let k_depth = store.chain_constants().k_depth;
-        let current_finalized_header = store.finalized_header();
+    fn finalize_header_at_k_depth(&mut self) -> Result<(), ImportError<Header>> {
+        let k_depth = self.store.chain_constants().k_depth;
+        let current_finalized_header = self.store.finalized_header();
 
         // ensure we have imported at least K-depth number of headers
-        let number_to_finalize = match store.best_header().header.number().checked_sub(&k_depth) {
+        let number_to_finalize = match self
+            .store
+            .best_header()
+            .header
+            .number()
+            .checked_sub(&k_depth)
+        {
             // we have not progressed that far to finalize yet
             None => {
                 // if the chain re-org happened to smaller chain and if there was any finalized heads,
@@ -447,7 +466,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
                     // find the headers at the number to be finalized
                     let headers_at_number_to_be_finalized =
-                        store.headers_at_number(number_to_finalize);
+                        self.store.headers_at_number(number_to_finalize);
                     // if there is just one header at that number, we mark that header as finalized and move one
                     if headers_at_number_to_be_finalized.len() == 1 {
                         let header_to_finalize = headers_at_number_to_be_finalized
@@ -455,26 +474,26 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                             .next()
                             .expect("Safe to unwrap because of the check above.");
 
-                        store.finalize_header(header_to_finalize.header.hash());
+                        self.store.finalize_header(header_to_finalize.header.hash());
                     } else {
                         // there are multiple headers at the number to be finalized.
                         // find the correct ancestor header of the current best header.
                         // finalize it and prune all the remaining fork headers.
-                        let current_best_header = store.best_header();
+                        let current_best_header = self.store.best_header();
                         let (current_best_hash, current_best_number) = (
                             current_best_header.header.hash(),
                             *current_best_header.header.number(),
                         );
 
-                        let header_to_finalize = Self::find_ancestor_of_header_at_number(
-                            store,
-                            current_best_header,
-                            number_to_finalize,
-                        )
-                        .ok_or(ImportError::MissingAncestorHeader(
-                            current_best_hash,
-                            current_best_number,
-                        ))?;
+                        let header_to_finalize = self
+                            .find_ancestor_of_header_at_number(
+                                current_best_header,
+                                number_to_finalize,
+                            )
+                            .ok_or(ImportError::MissingAncestorHeader(
+                                current_best_hash,
+                                current_best_number,
+                            ))?;
 
                         // filter fork headers and prune them
                         let headers_to_prune = headers_at_number_to_be_finalized
@@ -485,11 +504,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                             .collect::<Vec<HeaderExt<Header>>>();
 
                         for header_to_prune in headers_to_prune {
-                            Self::prune_header_and_its_descendants(store, header_to_prune)?;
+                            self.prune_header_and_its_descendants(header_to_prune)?;
                         }
 
                         // mark the header as finalized
-                        store.finalize_header(header_to_finalize.header.hash())
+                        self.store.finalize_header(header_to_finalize.header.hash())
                     }
 
                     current_finalized_number = number_to_finalize;
