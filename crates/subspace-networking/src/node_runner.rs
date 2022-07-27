@@ -1,3 +1,4 @@
+use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
@@ -6,6 +7,7 @@ use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
+use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
 use libp2p::kad::{
@@ -53,6 +55,8 @@ pub struct NodeRunner {
     /// present for the same physical subscription).
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
+    /// Manages the networking parameters like known peers and addresses
+    networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
 }
 
 impl NodeRunner {
@@ -63,6 +67,7 @@ impl NodeRunner {
         swarm: Swarm<Behavior>,
         shared_weak: Weak<Shared>,
         initial_random_query_interval: Duration,
+        networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
@@ -76,6 +81,7 @@ impl NodeRunner {
             topic_subscription_senders: HashMap::default(),
             // We'll make the first query right away and continue at the interval.
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
+            networking_parameters_registry,
         }
     }
 
@@ -85,8 +91,10 @@ impl NodeRunner {
                 _ = &mut self.random_query_timeout => {
                     self.handle_random_query_interval();
                     // Increase interval 2x, but to at most 60 seconds.
-                    self.random_query_timeout = Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
-                    self.next_random_query_interval = (self.next_random_query_interval * 2).min(Duration::from_secs(60));
+                    self.random_query_timeout =
+                        Box::pin(tokio::time::sleep(self.next_random_query_interval).fuse());
+                    self.next_random_query_interval =
+                        (self.next_random_query_interval * 2).min(Duration::from_secs(60));
                 },
                 swarm_event = self.swarm.next() => {
                     if let Some(swarm_event) = swarm_event {
@@ -102,6 +110,9 @@ impl NodeRunner {
                         break;
                     }
                 },
+                _ = self.networking_parameters_registry.run().fuse() => {
+                    trace!("Network parameters registry runner exited.")
+                }
             }
         }
     }
@@ -159,6 +170,7 @@ impl NodeRunner {
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 num_established,
+                endpoint,
                 ..
             } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -169,6 +181,12 @@ impl NodeRunner {
                 };
                 debug!("Connection established with peer {peer_id} [{num_established} from peer]");
                 shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
+
+                if let ConnectedPoint::Dialer { address, .. } = endpoint {
+                    self.networking_parameters_registry
+                        .add_known_peer(peer_id, vec![address])
+                        .await;
+                }
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,

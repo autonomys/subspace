@@ -1,4 +1,7 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
+use crate::behavior::persistent_parameters::{
+    NetworkingParametersRegistry, NetworkingParametersRegistryStub,
+};
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
@@ -27,10 +30,12 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::crypto;
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, trace};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
-const GOSSIPSUB_PROTOCOL: &str = "/subspace/gossipsub/0.1.0";
+const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
+// Max bootstrap addresses to preload.
+const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -69,6 +74,8 @@ pub struct Config {
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
     /// receive incoming connections.
     pub parent_node: Option<Node>,
+    /// A reference to the `NetworkingParametersRegistry` implementation.
+    pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
 }
@@ -98,7 +105,7 @@ impl Config {
         yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
         let gossipsub = GossipsubConfigBuilder::default()
-            .protocol_id_prefix(GOSSIPSUB_PROTOCOL)
+            .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
             // TODO: Do we want message signing?
             .validation_mode(ValidationMode::None)
             // To content-address message, we can take the hash of message and use it as an ID.
@@ -128,6 +135,7 @@ impl Config {
             initial_random_query_interval: Duration::from_secs(1),
             relay_server_address: None,
             parent_node: None,
+            networking_parameters_registry: Box::new(NetworkingParametersRegistryStub),
             request_response_protocols: Vec::new(),
         }
     }
@@ -167,41 +175,52 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         initial_random_query_interval,
         relay_server_address,
         parent_node,
+        networking_parameters_registry,
         request_response_protocols,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
-
     // Create relay client transport and client.
     let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
+    // We take cached known addresses and combine them with manually provided bootstrap addresses
+    // with a limit.
+    let combined_bootstrap_addresses = bootstrap_nodes
+        .into_iter()
+        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
+        .map(|mut multiaddr| {
+            let peer_id: PeerId = multiaddr
+                .pop()
+                .and_then(|protocol| {
+                    if let Protocol::P2p(peer_id) = protocol {
+                        Some(peer_id.try_into().ok()?)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or(CreationError::BadBootstrapAddress)?;
+
+            Ok((peer_id, multiaddr))
+        })
+        .chain(
+            networking_parameters_registry
+                .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
+                .await
+                .into_iter()
+                .map(Ok),
+        )
+        .collect::<Result<_, CreationError>>()?;
+
+    trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
+
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
-        let bootstrap_nodes = bootstrap_nodes
-            .into_iter()
-            .map(|mut multiaddr| {
-                let peer_id: PeerId = multiaddr
-                    .pop()
-                    .and_then(|protocol| {
-                        if let Protocol::P2p(peer_id) = protocol {
-                            Some(peer_id.try_into().ok()?)
-                        } else {
-                            None
-                        }
-                    })
-                    .ok_or(CreationError::BadBootstrapAddress)?;
-
-                Ok((peer_id, multiaddr))
-            })
-            .collect::<Result<_, CreationError>>()?;
-
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
-            bootstrap_nodes,
+            bootstrap_nodes: combined_bootstrap_addresses,
             identify,
             kademlia,
             gossipsub,
@@ -257,6 +276,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             swarm,
             shared_weak,
             initial_random_query_interval,
+            networking_parameters_registry,
         );
 
         Ok((node, node_runner))

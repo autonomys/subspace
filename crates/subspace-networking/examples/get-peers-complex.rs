@@ -1,10 +1,11 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::PeerId;
+use libp2p::multihash::{Code, MultihashDigest};
+use libp2p::{identity, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::Config;
+use subspace_networking::{Config, NetworkingParametersManager};
 
 #[tokio::main]
 async fn main() {
@@ -16,6 +17,7 @@ async fn main() {
     const TOTAL_NODE_COUNT: usize = 100;
     const EXPECTED_NODE_INDEX: usize = 75;
 
+    let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
         let config = Config {
             bootstrap_nodes: bootstrap_nodes.clone(),
@@ -56,12 +58,25 @@ async fn main() {
         if i == EXPECTED_NODE_INDEX {
             expected_node_id = node.id();
         }
+        nodes.push(node);
     }
+
+    let db_path = std::env::temp_dir()
+        .join("subspace_example_networking_params_db")
+        .into_boxed_path();
+
+    println!(
+        "Networking parameters database path used (the app creates DB on the first run): {:?}",
+        db_path
+    );
 
     let config = Config {
         bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        networking_parameters_registry: NetworkingParametersManager::new(db_path.as_ref())
+            .unwrap()
+            .boxed(),
         ..Config::with_generated_keypair()
     };
 
@@ -76,11 +91,27 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let peer_id = node
-        .get_closest_peers(expected_node_id.into())
-        .await
-        .unwrap()[0];
-    assert_eq!(peer_id, expected_node_id);
+    // Prepare multihash to look for in Kademlia
+    let encoding = expected_node_id.as_ref().digest();
+    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
+        .expect("Invalid public key from PeerId.");
+    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
+        pk.encode()
+    } else {
+        panic!("Expected PublicKey::Sr25519")
+    };
+
+    let key = Code::Identity.digest(&peer_id_public_key);
+
+    let peers = node.get_closest_peers(key).await.unwrap();
+
+    // Uncomment on debugging:
+    // println!("Received closest peers: {:?}", peers);
+
+    let peer_id = peers.first().unwrap();
+    assert_eq!(*peer_id, expected_node_id);
+
+    tokio::time::sleep(Duration::from_secs(12)).await;
 
     println!("Exiting..");
 }
