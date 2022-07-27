@@ -60,17 +60,11 @@ pub struct ChainConstants<Header: HeaderT> {
 pub struct HeaderExt<Header> {
     /// Actual header of the subspace block chain at a specific number.
     pub header: Header,
-    /// Global randomness after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_global_randomness: Randomness,
-    /// Solution range after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_solution_range: SolutionRange,
-    /// Salt after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_salt: Salt,
     /// Cumulative weight of chain until this header.
     pub total_weight: BlockWeight,
+
+    #[cfg(test)]
+    test_overrides: mock::TestOverrides,
 }
 
 /// Type to hold next digest items present in parent header that are used to verify the immediate descendant.
@@ -97,6 +91,15 @@ impl<Header: HeaderT> HeaderExt<Header> {
         } = extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
             &self.header,
         )?;
+
+        #[cfg(test)]
+        let solution_range = {
+            if self.test_overrides.solution_range.is_some() {
+                self.test_overrides.solution_range.unwrap()
+            } else {
+                solution_range
+            }
+        };
 
         Ok(NextDigestItems {
             next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
@@ -273,17 +276,16 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             }
         };
 
-        // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
         // store header
         let header_ext = HeaderExt {
             header,
-            derived_global_randomness: global_randomness,
-            derived_solution_range: solution_range,
-            derived_salt: salt,
             total_weight,
+
+            #[cfg(test)]
+            test_overrides: Default::default(),
         };
 
         self.store.store_header(header_ext, is_best_header);
