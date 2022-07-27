@@ -104,6 +104,13 @@ pub trait Storage<Header: HeaderT> {
     fn finalized_header(&self) -> HeaderExt<Header>;
 }
 
+/// Error type that holds the current finalized number and the header number we are trying to import.
+#[derive(Debug, PartialEq, Eq)]
+pub struct HeaderBelowArchivingDepthError<Header: HeaderT> {
+    current_finalized_number: NumberOf<Header>,
+    header_number: NumberOf<Header>,
+}
+
 /// Error during the header import.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ImportError<Header: HeaderT> {
@@ -128,7 +135,7 @@ pub enum ImportError<Header: HeaderT> {
     /// Switched to different fork beyond archiving depth.
     SwitchedToForkBelowArchivingDepth,
     /// Header being imported is below the archiving depth.
-    HeaderIsBelowArchivingDepth,
+    HeaderIsBelowArchivingDepth(HeaderBelowArchivingDepthError<Header>),
 }
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
@@ -162,8 +169,14 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         }?;
 
         // only try and import headers above the finalized number
-        if header.number() <= self.store.finalized_header().header.number() {
-            return Err(ImportError::HeaderIsBelowArchivingDepth);
+        let current_finalized_number = *self.store.finalized_header().header.number();
+        if *header.number() <= current_finalized_number {
+            return Err(ImportError::HeaderIsBelowArchivingDepth(
+                HeaderBelowArchivingDepthError {
+                    current_finalized_number,
+                    header_number: *header.number(),
+                },
+            ));
         }
 
         // fetch parent header
@@ -350,7 +363,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         ancestor_number: NumberOf<Header>,
     ) -> Option<HeaderExt<Header>> {
         // header number must be greater than the ancestor number
-        if ancestor_number >= *header.header.number() {
+        if *header.header.number() <= ancestor_number {
             return None;
         }
 
@@ -358,10 +371,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let finalized_header = self.store.finalized_header();
 
         // short circuit if the ancestor number is at the same or lower number than finalized head
-        if ancestor_number.le(finalized_header.header.number())
-            // short circuit if there are no forks at the depth
-            || headers_at_ancestor_number.len() == 1
-        {
+        if ancestor_number <= *finalized_header.header.number() {
             return headers_at_ancestor_number.into_iter().next();
         }
 
@@ -460,19 +470,18 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 let mut current_finalized_number = *current_finalized_header.header.number();
 
                 while current_finalized_number < number_to_finalize {
-                    let number_to_finalize = current_finalized_number
+                    current_finalized_number = current_finalized_number
                         .checked_add(&One::one())
                         .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
 
                     // find the headers at the number to be finalized
                     let headers_at_number_to_be_finalized =
-                        self.store.headers_at_number(number_to_finalize);
+                        self.store.headers_at_number(current_finalized_number);
                     // if there is just one header at that number, we mark that header as finalized and move one
                     if headers_at_number_to_be_finalized.len() == 1 {
                         let header_to_finalize = headers_at_number_to_be_finalized
-                            .into_iter()
-                            .next()
-                            .expect("Safe to unwrap because of the check above.");
+                            .first()
+                            .expect("First item must exist as the len is 1.");
 
                         self.store.finalize_header(header_to_finalize.header.hash());
                     } else {
@@ -488,7 +497,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                         let header_to_finalize = self
                             .find_ancestor_of_header_at_number(
                                 current_best_header,
-                                number_to_finalize,
+                                current_finalized_number,
                             )
                             .ok_or(ImportError::MissingAncestorHeader(
                                 current_best_hash,
@@ -510,8 +519,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                         // mark the header as finalized
                         self.store.finalize_header(header_to_finalize.header.hash())
                     }
-
-                    current_finalized_number = number_to_finalize;
                 }
 
                 Ok(())
