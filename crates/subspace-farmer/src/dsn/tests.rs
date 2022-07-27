@@ -1,5 +1,6 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, PiecesToPlot, SyncOptions};
 use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
+use crate::dsn::OnSync;
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{LegacyObjectMappings, Plot};
@@ -19,6 +20,29 @@ use subspace_core_primitives::{
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use tempfile::TempDir;
+
+struct TestPlotter {
+    pub(crate) result: Arc<Mutex<BTreeMap<PieceIndexHash, (Piece, PieceIndex)>>>,
+}
+
+#[async_trait::async_trait]
+impl OnSync for TestPlotter {
+    async fn on_pieces(
+        &self,
+        pieces: FlatPieces,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<()> {
+        let mut result = self.result.lock();
+        result.extend(pieces.as_pieces().zip(piece_indices).map(|(piece, index)| {
+            (
+                PieceIndexHash::from_index(index),
+                (piece.try_into().unwrap(), index),
+            )
+        }));
+
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
@@ -80,19 +104,8 @@ async fn simple_test() {
             max_plot_size: 100 * 1024 * 1024 * 1024,
             total_pieces: 256,
         },
-        {
-            let result = Arc::clone(&result);
-            move |pieces, piece_indexes| {
-                let mut result = result.lock();
-                result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
-                    (
-                        PieceIndexHash::from_index(index),
-                        (piece.try_into().unwrap(), index),
-                    )
-                }));
-
-                Ok(())
-            }
+        TestPlotter {
+            result: Arc::clone(&result),
         },
     )
     .await
@@ -117,18 +130,8 @@ async fn no_sync_test() {
             max_plot_size: 100 * 1024 * 1024 * 1024,
             total_pieces: 0,
         },
-        {
-            let result = Arc::clone(&result);
-            move |pieces, piece_indexes| {
-                let mut result = result.lock();
-                result.extend(pieces.as_pieces().zip(piece_indexes).map(|(piece, index)| {
-                    (
-                        PieceIndexHash::from_index(index),
-                        (piece.try_into().unwrap(), index),
-                    )
-                }));
-                Ok(())
-            }
+        TestPlotter {
+            result: Arc::clone(&result),
         },
     )
     .await
@@ -359,7 +362,8 @@ async fn test_dsn_sync() {
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_piece_count * pieces_per_request;
     let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
-    let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync(
+    let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync::<BenchRpcClient>(
+        None,
         syncer_max_plot_size,
         seeder_max_piece_count,
         range_size,

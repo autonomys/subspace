@@ -3,10 +3,11 @@ pub mod dsn_archiving;
 mod tests;
 
 use crate::commitments::{CommitmentError, Commitments};
-use crate::dsn::{self, PieceIndexHashNumber, SyncOptions};
+use crate::dsn::{self, OnSync, PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
+use crate::pieces_verification::verify_pieces_at_blockchain;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
@@ -14,6 +15,7 @@ use crate::single_plot_farm::dsn_archiving::start_archiving;
 use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
+use async_trait::async_trait;
 use derive_more::{Display, From};
 use futures::future::try_join;
 use serde::{Deserialize, Serialize};
@@ -21,7 +23,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io, mem};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
@@ -509,7 +511,7 @@ impl SinglePlotFarm {
                 id,
                 plot.clone(),
                 commitments.clone(),
-                farming_client,
+                farming_client.clone(),
                 single_disk_semaphore.clone(),
                 identity,
                 reward_address,
@@ -560,6 +562,7 @@ impl SinglePlotFarm {
             let sync_range_size =
                 PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
             let dsn_sync_fut = farm.dsn_sync(
+                Some(farming_client),
                 farmer_protocol_info.max_plot_size,
                 farmer_protocol_info.total_pieces,
                 sync_range_size,
@@ -674,8 +677,9 @@ impl SinglePlotFarm {
         Ok(())
     }
 
-    pub(crate) fn dsn_sync(
+    pub(crate) fn dsn_sync<RC: RpcClient>(
         &self,
+        verification_client: Option<RC>,
         max_plot_size: u64,
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
@@ -687,18 +691,43 @@ impl SinglePlotFarm {
             total_pieces,
         };
 
-        let single_plot_plotter = self.plotter();
-        let span = self.span.clone();
+        let plotter = VerifyingPlotter {
+            single_plot_plotter: self.plotter(),
+            span: self.span.clone(),
+            verification_client,
+        };
 
-        dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
-            let _guard = span.enter();
+        dsn::sync(self.node.clone(), options, plotter)
+    }
+}
 
-            single_plot_plotter
-                .plot_pieces(PiecesToPlot {
-                    pieces,
-                    piece_indexes,
-                })
-                .map_err(Into::into)
-        })
+// Defines actions on receiving pieces batch. It verifies the pieces against the blockchain and
+// plots them.
+struct VerifyingPlotter<RC> {
+    // RPC client for verification
+    verification_client: Option<RC>,
+    span: Span,
+    single_plot_plotter: SinglePlotPlotter,
+}
+
+#[async_trait]
+impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
+    async fn on_pieces(
+        &self,
+        pieces: FlatPieces,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<()> {
+        let _guard = self.span.enter();
+
+        if let Some(ref verification_client) = self.verification_client {
+            verify_pieces_at_blockchain(verification_client, &piece_indices, &pieces).await?;
+        }
+
+        self.single_plot_plotter
+            .plot_pieces(PiecesToPlot {
+                pieces,
+                piece_indexes: piece_indices,
+            })
+            .map_err(Into::into)
     }
 }

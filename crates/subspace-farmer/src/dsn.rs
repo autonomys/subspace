@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use futures::{SinkExt, Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
@@ -162,16 +163,23 @@ impl DSNSync for subspace_networking::Node {
     }
 }
 
+/// Defines actions on receiving the pieces during the sync process.
+#[async_trait]
+pub trait OnSync {
+    /// Defines a callback on receiving pieces.
+    async fn on_pieces(
+        &self,
+        pieces: FlatPieces,
+        piece_indices: Vec<PieceIndex>,
+    ) -> anyhow::Result<()>;
+}
+
 /// Syncs the closest pieces to the public key from the provided DSN.
-pub async fn sync<DSN, OP>(
-    mut dsn: DSN,
-    options: SyncOptions,
-    mut on_pieces: OP,
-) -> anyhow::Result<()>
+pub async fn sync<DSN, OP>(mut dsn: DSN, options: SyncOptions, on_sync: OP) -> anyhow::Result<()>
 where
     DSN: DSNSync + Send + Sized,
     DSN::Stream: Unpin + Send,
-    OP: FnMut(FlatPieces, Vec<PieceIndex>) -> anyhow::Result<()> + Send + 'static,
+    OP: OnSync,
 {
     let SyncOptions {
         max_plot_size,
@@ -232,11 +240,12 @@ where
     for (start, end) in sync_ranges {
         let mut stream = dsn.get_pieces(start.into()..end.into()).await?;
 
-        while let Some(PiecesToPlot {
-            piece_indexes,
-            pieces,
-        }) = stream.next().await
-        {
+        while let Some(pieces_to_plot) = stream.next().await {
+            let PiecesToPlot {
+                piece_indexes,
+                pieces,
+            } = pieces_to_plot;
+
             // Filter out pieces which are not in our range
             let (piece_indexes, pieces) = piece_indexes
                 .into_iter()
@@ -256,12 +265,10 @@ where
                 })
                 .unzip();
 
-            // Writing pieces is usually synchronous, therefore might take some time
-            on_pieces = tokio::task::spawn_blocking(move || {
-                on_pieces(pieces, piece_indexes).map(|()| on_pieces)
-            })
-            .await
-            .expect("`on_pieces` must never panic")?;
+            on_sync
+                .on_pieces(pieces, piece_indexes)
+                .await
+                .expect("`on_pieces` must never panic");
         }
     }
 
