@@ -5,6 +5,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -231,5 +232,9 @@ impl RpcClient for MockRpcClient {
             .await
             .unwrap();
         Ok(())
+    }
+
+    async fn records_root(&self, _: u64) -> Result<Option<Sha256Hash>, MockError> {
+        Ok(None)
     }
 }

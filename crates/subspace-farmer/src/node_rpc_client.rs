@@ -8,6 +8,7 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -120,6 +121,13 @@ impl RpcClient for NodeRpcClient {
                 "subspace_acknowledgeArchivedSegment",
                 rpc_params![&segment_index],
             )
+            .await?)
+    }
+
+    async fn records_root(&self, segment_index: u64) -> Result<Option<Sha256Hash>, RpcError> {
+        Ok(self
+            .client
+            .request("subspace_recordsRoot", rpc_params![&segment_index])
             .await?)
     }
 }

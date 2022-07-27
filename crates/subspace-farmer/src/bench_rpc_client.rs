@@ -6,6 +6,7 @@ use futures::{stream, SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -136,5 +137,9 @@ impl RpcClient for BenchRpcClient {
             .send(segment_index)
             .await?;
         Ok(())
+    }
+
+    async fn records_root(&self, _: u64) -> Result<Option<Sha256Hash>, Error> {
+        Ok(None)
     }
 }
