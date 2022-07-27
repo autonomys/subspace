@@ -304,18 +304,23 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
         ImportError<Header>,
     > {
+        // extract digest items from the header
         let pre_digest_items = extract_subspace_digest_items(header)?;
-        if pre_digest_items.global_randomness != parent_header.derived_global_randomness {
+        // extract next digest items from the parent header
+        let next_digest_items = parent_header.extract_next_digest_items()?;
+
+        // check the digest items against the next digest items from parent header
+        if pre_digest_items.global_randomness != next_digest_items.next_global_randomness {
             return Err(ImportError::InvalidDigest(
                 ErrorDigestType::GlobalRandomness,
             ));
         }
 
-        if pre_digest_items.solution_range != parent_header.derived_solution_range {
+        if pre_digest_items.solution_range != next_digest_items.next_solution_range {
             return Err(ImportError::InvalidDigest(ErrorDigestType::SolutionRange));
         }
 
-        if pre_digest_items.salt != parent_header.derived_salt {
+        if pre_digest_items.salt != next_digest_items.next_salt {
             return Err(ImportError::InvalidDigest(ErrorDigestType::Salt));
         }
 
