@@ -53,6 +53,10 @@ type BlockWeight = u128;
 pub struct ChainConstants<Header: HeaderT> {
     /// K Depth at which we finalize the heads.
     pub k_depth: NumberOf<Header>,
+
+    /// Genesis digest items at the start of the chain since the genesis block will not have any digests
+    /// to verify the Block #1 digests.
+    pub genesis_digest_items: NextDigestItems,
 }
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
@@ -68,10 +72,26 @@ pub struct HeaderExt<Header> {
 }
 
 /// Type to hold next digest items present in parent header that are used to verify the immediate descendant.
-struct NextDigestItems {
+#[derive(Debug, Clone, Default)]
+pub struct NextDigestItems {
     next_global_randomness: Randomness,
     next_solution_range: SolutionRange,
     next_salt: Salt,
+}
+
+impl NextDigestItems {
+    /// Constructs self with provided next digest items.
+    pub fn new(
+        next_global_randomness: Randomness,
+        next_solution_range: SolutionRange,
+        next_salt: Salt,
+    ) -> Self {
+        Self {
+            next_global_randomness,
+            next_solution_range,
+            next_salt,
+        }
+    }
 }
 
 impl<Header: HeaderT> HeaderExt<Header> {
@@ -234,7 +254,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             next_solution_range: _,
             next_salt: _,
             records_roots: _,
-        } = Self::verify_header_digest_with_parent(&parent_header, &header)?;
+        } = self.verify_header_digest_with_parent(&parent_header, &header)?;
 
         // slot must be strictly increasing from the parent header
         Self::verify_slot(&parent_header.header, &pre_digest)?;
@@ -300,6 +320,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Verifies if the header digests matches with logs from the parent header.
     fn verify_header_digest_with_parent(
+        &self,
         parent_header: &HeaderExt<Header>,
         header: &Header,
     ) -> Result<
@@ -309,7 +330,15 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // extract digest items from the header
         let pre_digest_items = extract_subspace_digest_items(header)?;
         // extract next digest items from the parent header
-        let next_digest_items = parent_header.extract_next_digest_items()?;
+        let next_digest_items = {
+            // if the header we are verifying is #1, then parent header, genesis, wont have the next digests
+            // instead fetch them from the constants provided by the store
+            if header.number() == &One::one() {
+                self.store.chain_constants().genesis_digest_items
+            } else {
+                parent_header.extract_next_digest_items()?
+            }
+        };
 
         // check the digest items against the next digest items from parent header
         if pre_digest_items.global_randomness != next_digest_items.next_global_randomness {

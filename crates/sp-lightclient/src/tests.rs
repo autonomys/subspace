@@ -1,7 +1,7 @@
 use crate::mock::{Header, MockStorage};
 use crate::{
-    ChainConstants, HashOf, HeaderExt, HeaderImporter, ImportError, NumberOf, SolutionRange,
-    Storage,
+    ChainConstants, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems, NumberOf,
+    SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use schnorrkel::Keypair;
@@ -25,7 +25,15 @@ fn default_randomness_and_salt() -> (Randomness, Salt) {
 }
 
 fn default_test_constants() -> ChainConstants<Header> {
-    ChainConstants { k_depth: 7 }
+    let (randomness, salt) = default_randomness_and_salt();
+    ChainConstants {
+        k_depth: 7,
+        genesis_digest_items: NextDigestItems {
+            next_global_randomness: randomness,
+            next_solution_range: Default::default(),
+            next_salt: salt,
+        },
+    }
 }
 
 fn derive_solution_range(target: Tag, tag: Tag) -> SolutionRange {
@@ -307,6 +315,12 @@ fn create_fork_chain_from(
         importer.store.override_cumulative_weight(parent_hash, 0);
         parent_hash = header.hash();
         next_slot += 1;
+        if number == 1 {
+            // adjust Chain constants for Block #1
+            let mut constants = importer.store.chain_constants();
+            constants.genesis_digest_items.next_solution_range = solution_range;
+            importer.store.override_constants(constants)
+        }
         assert_ok!(importer.import_header(header));
         // best header should not change
         assert_eq!(importer.store.best_header().header, best_header_ext.header);

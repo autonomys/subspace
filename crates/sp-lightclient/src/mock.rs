@@ -130,6 +130,11 @@ impl MockStorage {
         self.0.headers.insert(hash, header);
     }
 
+    // hack to adjust constants when importing Block #1
+    pub(crate) fn override_constants(&mut self, constants: ChainConstants<Header>) {
+        self.0.constants = constants;
+    }
+
     // hack to adjust the cumulative weight
     pub(crate) fn override_cumulative_weight(&mut self, hash: HashOf<Header>, weight: BlockWeight) {
         let mut header = self.0.headers.remove(&hash).unwrap();
