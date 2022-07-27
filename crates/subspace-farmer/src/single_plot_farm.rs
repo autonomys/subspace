@@ -308,6 +308,8 @@ pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
     pub(crate) enable_dsn_archiving: bool,
     pub(crate) enable_dsn_sync: bool,
     pub(crate) relay_server_node: Option<Node>,
+    /// Client used for pieces verification
+    pub(crate) verification_client: RC,
 }
 
 /// Single plot farm abstraction is a container for everything necessary to plot/farm with a single
@@ -350,6 +352,7 @@ impl SinglePlotFarm {
             enable_dsn_archiving,
             enable_dsn_sync,
             relay_server_node,
+            verification_client,
         } = options;
 
         fs::create_dir_all(&plot_directory)?;
@@ -511,7 +514,7 @@ impl SinglePlotFarm {
                 id,
                 plot.clone(),
                 commitments.clone(),
-                farming_client.clone(),
+                farming_client,
                 single_disk_semaphore.clone(),
                 identity,
                 reward_address,
@@ -559,14 +562,9 @@ impl SinglePlotFarm {
         // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size =
-                PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
-            let dsn_sync_fut = farm.dsn_sync(
-                Some(farming_client),
-                farmer_protocol_info.max_plot_size,
-                farmer_protocol_info.total_pieces,
-                sync_range_size,
-            );
+            let range_size = PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
+            let dsn_sync_fut =
+                farm.dsn_sync(verification_client, farmer_protocol_info, range_size, true);
 
             let dsn_sync_handle = tokio::spawn(async move {
                 match dsn_sync_fut.await {
@@ -679,22 +677,24 @@ impl SinglePlotFarm {
 
     pub(crate) fn dsn_sync<RC: RpcClient>(
         &self,
-        verification_client: Option<RC>,
-        max_plot_size: u64,
-        total_pieces: u64,
+        verification_client: RC,
+        farmer_protocol_info: FarmerProtocolInfo,
         range_size: PieceIndexHashNumber,
+        verify_pieces: bool,
     ) -> impl Future<Output = anyhow::Result<()>> {
         let options = SyncOptions {
             range_size,
             public_key: self.public_key,
-            max_plot_size,
-            total_pieces,
+            max_plot_size: farmer_protocol_info.max_plot_size,
+            total_pieces: farmer_protocol_info.total_pieces,
         };
 
         let plotter = VerifyingPlotter {
             single_plot_plotter: self.plotter(),
             span: self.span.clone(),
             verification_client,
+            farmer_protocol_info,
+            verify_pieces,
         };
 
         dsn::sync(self.node.clone(), options, plotter)
@@ -705,9 +705,11 @@ impl SinglePlotFarm {
 // plots them.
 struct VerifyingPlotter<RC> {
     // RPC client for verification
-    verification_client: Option<RC>,
+    verification_client: RC,
     span: Span,
     single_plot_plotter: SinglePlotPlotter,
+    farmer_protocol_info: FarmerProtocolInfo,
+    verify_pieces: bool,
 }
 
 #[async_trait]
@@ -715,18 +717,24 @@ impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
     async fn on_pieces(
         &self,
         pieces: FlatPieces,
-        piece_indices: Vec<PieceIndex>,
+        piece_indexes: Vec<PieceIndex>,
     ) -> anyhow::Result<()> {
         let _guard = self.span.enter();
 
-        if let Some(ref verification_client) = self.verification_client {
-            verify_pieces_at_blockchain(verification_client, &piece_indices, &pieces).await?;
+        if self.verify_pieces {
+            verify_pieces_at_blockchain(
+                &self.verification_client,
+                self.farmer_protocol_info,
+                &piece_indexes,
+                &pieces,
+            )
+            .await?;
         }
 
         self.single_plot_plotter
             .plot_pieces(PiecesToPlot {
                 pieces,
-                piece_indexes: piece_indices,
+                piece_indexes,
             })
             .map_err(Into::into)
     }

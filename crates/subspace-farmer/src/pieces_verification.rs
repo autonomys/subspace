@@ -1,8 +1,8 @@
 use crate::RpcClient;
+use num_traits::Zero;
 use subspace_archiving::archiver::is_piece_valid;
-use subspace_core_primitives::{
-    FlatPieces, PieceIndex, MERKLE_NUM_LEAVES, PIECE_SIZE, RECORD_SIZE,
-};
+use subspace_core_primitives::{FlatPieces, PieceIndex, PIECE_SIZE};
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use thiserror::Error;
 
 /// Pieces verification errors.
@@ -11,6 +11,9 @@ pub enum PiecesVerificationError {
     /// Invalid pieces data provided
     #[error("Invalid pieces data provided")]
     InvalidRawData,
+    /// Invalid farmer protocol info provided
+    #[error("Invalid farmer protocol info provided")]
+    InvalidFarmerProtocolInfo,
     /// Pieces verification failed.
     #[error("Pieces verification failed.")]
     InvalidPieces,
@@ -26,17 +29,23 @@ pub enum PiecesVerificationError {
 /// Verifies pieces against the blockchain.
 pub async fn verify_pieces_at_blockchain<RC: RpcClient>(
     verification_client: &RC,
+    farmer_protocol_info: FarmerProtocolInfo,
     piece_indexes: &[PieceIndex],
     pieces: &FlatPieces,
 ) -> Result<(), PiecesVerificationError> {
-    if piece_indexes.len() != (pieces.len() / PIECE_SIZE) {
+    if piece_indexes.len() != pieces.count() {
         return Err(PiecesVerificationError::InvalidRawData);
     }
-    for (index, piece) in pieces.as_pieces().enumerate() {
-        let piece_index = piece_indexes[index];
 
-        let segment_index: u64 = piece_index / MERKLE_NUM_LEAVES as u64;
-        let position: u64 = piece_index % MERKLE_NUM_LEAVES as u64;
+    let records_per_segment =
+        farmer_protocol_info.recorded_history_segment_size as usize / PIECE_SIZE;
+    if farmer_protocol_info.record_size.is_zero() || records_per_segment.is_zero() {
+        return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
+    }
+
+    for (piece, piece_index) in pieces.as_pieces().zip(piece_indexes) {
+        let segment_index: u64 = piece_index / records_per_segment as u64;
+        let position: u64 = piece_index % records_per_segment as u64;
 
         let root = verification_client
             .records_root(segment_index)
@@ -44,7 +53,12 @@ pub async fn verify_pieces_at_blockchain<RC: RpcClient>(
             .map_err(|err| PiecesVerificationError::RpcError(err))?
             .ok_or(PiecesVerificationError::NoRecordsRootFound)?;
 
-        if !is_piece_valid(piece, root, position as usize, RECORD_SIZE as usize) {
+        if !is_piece_valid(
+            piece,
+            root,
+            position as usize,
+            farmer_protocol_info.record_size as usize,
+        ) {
             return Err(PiecesVerificationError::InvalidPieces);
         }
     }

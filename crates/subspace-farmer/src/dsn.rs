@@ -7,7 +7,7 @@ use subspace_core_primitives::{
 };
 use subspace_networking::libp2p::core::multihash::{Code, MultihashDigest};
 use subspace_networking::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
 mod pieces_by_range_tests;
@@ -265,10 +265,9 @@ where
                 })
                 .unzip();
 
-            on_sync
-                .on_pieces(pieces, piece_indexes)
-                .await
-                .expect("`on_pieces` must never panic");
+            if let Err(err) = on_sync.on_pieces(pieces, piece_indexes).await {
+                error!("DSN sync process returned an error: {}", err);
+            }
         }
     }
 

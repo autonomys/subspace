@@ -140,6 +140,6 @@ impl RpcClient for BenchRpcClient {
     }
 
     async fn records_root(&self, _: u64) -> Result<Option<Sha256Hash>, Error> {
-        Ok(None)
+        Ok(Some(Default::default()))
     }
 }
