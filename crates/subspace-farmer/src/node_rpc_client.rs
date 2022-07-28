@@ -124,10 +124,13 @@ impl RpcClient for NodeRpcClient {
             .await?)
     }
 
-    async fn records_root(&self, segment_index: u64) -> Result<Option<Sha256Hash>, RpcError> {
+    async fn records_roots(
+        &self,
+        segment_indexes: Vec<u64>,
+    ) -> Result<Vec<Option<Sha256Hash>>, RpcError> {
         Ok(self
             .client
-            .request("subspace_recordsRoot", rpc_params![&segment_index])
+            .request("subspace_recordsRoots", rpc_params![&segment_indexes])
             .await?)
     }
 }

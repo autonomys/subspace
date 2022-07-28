@@ -46,6 +46,9 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     /// Acknowledge receiving of archived segments
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), Error>;
 
-    /// Get records root for the segment
-    async fn records_root(&self, segment_index: u64) -> Result<Option<Sha256Hash>, Error>;
+    /// Get records roots for the segments
+    async fn records_roots(
+        &self,
+        segment_indexes: Vec<u64>,
+    ) -> Result<Vec<Option<Sha256Hash>>, Error>;
 }

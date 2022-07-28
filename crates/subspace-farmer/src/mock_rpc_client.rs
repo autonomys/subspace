@@ -234,7 +234,7 @@ impl RpcClient for MockRpcClient {
         Ok(())
     }
 
-    async fn records_root(&self, _: u64) -> Result<Option<Sha256Hash>, MockError> {
-        Ok(None)
+    async fn records_roots(&self, _: Vec<u64>) -> Result<Vec<Option<Sha256Hash>>, MockError> {
+        Ok(Default::default())
     }
 }

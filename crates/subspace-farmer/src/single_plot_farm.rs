@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, PIECE_SIZE,
 };
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
@@ -733,16 +733,35 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
         }
 
-        for (piece, piece_index) in pieces.as_pieces().zip(piece_indexes) {
-            let segment_index: u64 = piece_index / records_per_segment as u64;
-            let position: u64 = piece_index % records_per_segment as u64;
+        let segment_indexes = piece_indexes
+            .iter()
+            .map(|piece_index| piece_index / records_per_segment as u64)
+            .collect::<Vec<_>>();
 
-            let root = self
-                .verification_client
-                .records_root(segment_index)
-                .await
-                .map_err(|err| PiecesVerificationError::RpcError(err))?
-                .ok_or(PiecesVerificationError::NoRecordsRootFound)?;
+        let roots = self
+            .verification_client
+            .records_roots(segment_indexes)
+            .await
+            .map_err(|err| PiecesVerificationError::RpcError(err))?;
+
+        let verified_roots = roots
+            .into_iter()
+            .zip(piece_indexes.iter())
+            .map(|(root, piece_index)| {
+                if let Some(root) = root {
+                    Ok(root)
+                } else {
+                    error!(?piece_index, "No records root found for piece_index.");
+
+                    Err(PiecesVerificationError::NoRecordsRootFound)
+                }
+            })
+            .collect::<Result<Vec<Sha256Hash>, PiecesVerificationError>>()?;
+
+        for ((piece, piece_index), root) in
+            pieces.as_pieces().zip(piece_indexes).zip(verified_roots)
+        {
+            let position: u64 = piece_index % records_per_segment as u64;
 
             if !is_piece_valid(
                 piece,
@@ -750,6 +769,8 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                 position as usize,
                 self.farmer_protocol_info.record_size as usize,
             ) {
+                error!(?piece_index, "Piece validation failed.");
+
                 return Err(PiecesVerificationError::InvalidPieces);
             }
         }
