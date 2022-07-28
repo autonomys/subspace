@@ -53,6 +53,10 @@ type BlockWeight = u128;
 pub struct ChainConstants<Header: HeaderT> {
     /// K Depth at which we finalize the heads.
     pub k_depth: NumberOf<Header>,
+
+    /// Genesis digest items at the start of the chain since the genesis block will not have any digests
+    /// to verify the Block #1 digests.
+    pub genesis_digest_items: NextDigestItems,
 }
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
@@ -60,17 +64,69 @@ pub struct ChainConstants<Header: HeaderT> {
 pub struct HeaderExt<Header> {
     /// Actual header of the subspace block chain at a specific number.
     pub header: Header,
-    /// Global randomness after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_global_randomness: Randomness,
-    /// Solution range after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_solution_range: SolutionRange,
-    /// Salt after importing the header above.
-    /// This is same as the parent block unless update interval is met.
-    pub derived_salt: Salt,
     /// Cumulative weight of chain until this header.
     pub total_weight: BlockWeight,
+
+    #[cfg(test)]
+    test_overrides: mock::TestOverrides,
+}
+
+/// Type to hold next digest items present in parent header that are used to verify the immediate descendant.
+#[derive(Debug, Clone, Default)]
+pub struct NextDigestItems {
+    next_global_randomness: Randomness,
+    next_solution_range: SolutionRange,
+    next_salt: Salt,
+}
+
+impl NextDigestItems {
+    /// Constructs self with provided next digest items.
+    pub fn new(
+        next_global_randomness: Randomness,
+        next_solution_range: SolutionRange,
+        next_salt: Salt,
+    ) -> Self {
+        Self {
+            next_global_randomness,
+            next_solution_range,
+            next_salt,
+        }
+    }
+}
+
+impl<Header: HeaderT> HeaderExt<Header> {
+    /// Extracts the next digest items Randomness, Solution range, and Salt present in the Header.
+    /// If next digests are not present, then we fallback to the current ones.
+    fn extract_next_digest_items(&self) -> Result<NextDigestItems, ImportError<Header>> {
+        let SubspaceDigestItems {
+            pre_digest: _,
+            signature: _,
+            global_randomness,
+            solution_range,
+            salt,
+            next_global_randomness,
+            next_solution_range,
+            next_salt,
+            records_roots: _,
+        } = extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &self.header,
+        )?;
+
+        #[cfg(test)]
+        let solution_range = {
+            if self.test_overrides.solution_range.is_some() {
+                self.test_overrides.solution_range.unwrap()
+            } else {
+                solution_range
+            }
+        };
+
+        Ok(NextDigestItems {
+            next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
+            next_solution_range: next_solution_range.unwrap_or(solution_range),
+            next_salt: next_salt.unwrap_or(salt),
+        })
+    }
 }
 
 type HashOf<T> = <T as HeaderT>::Hash;
@@ -198,7 +254,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             next_solution_range: _,
             next_salt: _,
             records_roots: _,
-        } = Self::verify_header_digest_with_parent(&parent_header, &header)?;
+        } = self.verify_header_digest_with_parent(&parent_header, &header)?;
 
         // slot must be strictly increasing from the parent header
         Self::verify_slot(&parent_header.header, &pre_digest)?;
@@ -240,17 +296,16 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             }
         };
 
-        // TODO(ved): derive randomness, solution range, salt if interval is met
         // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
         // store header
         let header_ext = HeaderExt {
             header,
-            derived_global_randomness: global_randomness,
-            derived_solution_range: solution_range,
-            derived_salt: salt,
             total_weight,
+
+            #[cfg(test)]
+            test_overrides: Default::default(),
         };
 
         self.store.store_header(header_ext, is_best_header);
@@ -265,24 +320,38 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Verifies if the header digests matches with logs from the parent header.
     fn verify_header_digest_with_parent(
+        &self,
         parent_header: &HeaderExt<Header>,
         header: &Header,
     ) -> Result<
         SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
         ImportError<Header>,
     > {
+        // extract digest items from the header
         let pre_digest_items = extract_subspace_digest_items(header)?;
-        if pre_digest_items.global_randomness != parent_header.derived_global_randomness {
+        // extract next digest items from the parent header
+        let next_digest_items = {
+            // if the header we are verifying is #1, then parent header, genesis, wont have the next digests
+            // instead fetch them from the constants provided by the store
+            if header.number() == &One::one() {
+                self.store.chain_constants().genesis_digest_items
+            } else {
+                parent_header.extract_next_digest_items()?
+            }
+        };
+
+        // check the digest items against the next digest items from parent header
+        if pre_digest_items.global_randomness != next_digest_items.next_global_randomness {
             return Err(ImportError::InvalidDigest(
                 ErrorDigestType::GlobalRandomness,
             ));
         }
 
-        if pre_digest_items.solution_range != parent_header.derived_solution_range {
+        if pre_digest_items.solution_range != next_digest_items.next_solution_range {
             return Err(ImportError::InvalidDigest(ErrorDigestType::SolutionRange));
         }
 
-        if pre_digest_items.salt != parent_header.derived_salt {
+        if pre_digest_items.salt != next_digest_items.next_salt {
             return Err(ImportError::InvalidDigest(ErrorDigestType::Salt));
         }
 

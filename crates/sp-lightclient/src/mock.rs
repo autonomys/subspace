@@ -1,4 +1,6 @@
 use crate::{BlockWeight, ChainConstants, HashOf, HeaderExt, NumberOf, SolutionRange, Storage};
+use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use sp_arithmetic::traits::Zero;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::HashMap;
@@ -12,6 +14,11 @@ struct StorageData {
     number_to_hashes: HashMap<NumberOf<Header>, Vec<HashOf<Header>>>,
     best_header: (NumberOf<Header>, HashOf<Header>),
     finalized_head: Option<(NumberOf<Header>, HashOf<Header>)>,
+}
+
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub(crate) struct TestOverrides {
+    pub(crate) solution_range: Option<SolutionRange>,
 }
 
 #[derive(Debug)]
@@ -119,8 +126,13 @@ impl MockStorage {
         solution_range: SolutionRange,
     ) {
         let mut header = self.0.headers.remove(&hash).unwrap();
-        header.derived_solution_range = solution_range;
+        header.test_overrides.solution_range = Some(solution_range);
         self.0.headers.insert(hash, header);
+    }
+
+    // hack to adjust constants when importing Block #1
+    pub(crate) fn override_constants(&mut self, constants: ChainConstants<Header>) {
+        self.0.constants = constants;
     }
 
     // hack to adjust the cumulative weight
