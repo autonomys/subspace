@@ -557,8 +557,8 @@ impl SinglePlotFarm {
         // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size =
-                PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
+            let sync_range_size = (PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces)
+                .saturating_mul(&1024u32.into()); // 4M per stream
             let dsn_sync_fut = farm.dsn_sync(
                 farmer_protocol_info.max_plot_size,
                 farmer_protocol_info.total_pieces,
