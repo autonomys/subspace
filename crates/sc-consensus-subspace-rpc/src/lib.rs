@@ -98,8 +98,8 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_acknowledgeArchivedSegment")]
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()>;
 
-    #[method(name = "subspace_recordsRoot")]
-    async fn records_root(&self, segment_index: u64) -> RpcResult<Option<Sha256Hash>>;
+    #[method(name = "subspace_recordsRoots")]
+    async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>>;
 }
 
 #[derive(Default)]
@@ -519,18 +519,26 @@ where
         Ok(())
     }
 
-    async fn records_root(&self, segment_index: u64) -> RpcResult<Option<Sha256Hash>> {
+    async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>> {
         let runtime_api = self.client.runtime_api();
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
 
-        let records_root = runtime_api.records_root(&best_block_id, segment_index);
+        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+            .into_iter()
+            .map(|idx| {
+                runtime_api.records_root(&best_block_id, idx).map_err(|_| {
+                    JsonRpseeError::Custom("Internal error during `records_root` call".to_string())
+                })
+            })
+            .collect();
 
-        records_root.map_err(|error| {
+        if let Err(ref err) = records_root_result {
             error!(
                 "Failed to get data from runtime API (records_root): {}",
-                error
+                err
             );
-            JsonRpseeError::Custom("Internal error during `records_root` call".to_string())
-        })
+        }
+
+        records_root_result
     }
 }
