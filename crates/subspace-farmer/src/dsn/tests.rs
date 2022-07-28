@@ -16,11 +16,9 @@ use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
     bidirectional_distance, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece,
-    PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE, U256,
+    PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_rpc_primitives::FarmerProtocolInfo;
 use tempfile::TempDir;
 
 struct TestPlotter {
@@ -366,13 +364,7 @@ async fn test_dsn_sync() {
     let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
     let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync::<BenchRpcClient>(
         rpc_client.clone(),
-        FarmerProtocolInfo {
-            max_plot_size: syncer_max_plot_size,
-            total_pieces: seeder_max_piece_count,
-            genesis_hash: Default::default(), // We don't use this field.
-            record_size: RECORD_SIZE,
-            recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-        },
+        farmer_protocol_info,
         range_size,
         false, // don't verify pieces
     );

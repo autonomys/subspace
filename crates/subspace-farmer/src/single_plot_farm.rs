@@ -704,6 +704,26 @@ impl SinglePlotFarm {
     }
 }
 
+/// Pieces verification errors.
+#[derive(Error, Debug)]
+pub enum PiecesVerificationError {
+    /// Invalid pieces data provided
+    #[error("Invalid pieces data provided")]
+    InvalidRawData,
+    /// Invalid farmer protocol info provided
+    #[error("Invalid farmer protocol info provided")]
+    InvalidFarmerProtocolInfo,
+    /// Pieces verification failed.
+    #[error("Pieces verification failed.")]
+    InvalidPieces,
+    /// RPC client failed.
+    #[error("RPC client failed. jsonrpsee error: {0}")]
+    RpcError(Box<dyn std::error::Error + Send + Sync>),
+    /// RPC client returned empty records_root.
+    #[error("RPC client returned empty records_root.")]
+    NoRecordsRootFound,
+}
+
 // Defines actions on receiving pieces batch. It verifies the pieces against the blockchain and
 // plots them.
 struct VerifyingPlotter<RC> {
@@ -716,8 +736,8 @@ struct VerifyingPlotter<RC> {
 }
 
 impl<RC: RpcClient> VerifyingPlotter<RC> {
-    /// Verifies pieces against the blockchain.
-    pub async fn verify_pieces_at_blockchain(
+    // Verifies pieces against the blockchain.
+    async fn verify_pieces_at_blockchain(
         &self,
         piece_indexes: &[PieceIndex],
         pieces: &FlatPieces,
@@ -799,24 +819,4 @@ impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
             })
             .map_err(Into::into)
     }
-}
-
-/// Pieces verification errors.
-#[derive(Error, Debug)]
-pub enum PiecesVerificationError {
-    /// Invalid pieces data provided
-    #[error("Invalid pieces data provided")]
-    InvalidRawData,
-    /// Invalid farmer protocol info provided
-    #[error("Invalid farmer protocol info provided")]
-    InvalidFarmerProtocolInfo,
-    /// Pieces verification failed.
-    #[error("Pieces verification failed.")]
-    InvalidPieces,
-    /// RPC client failed.
-    #[error("RPC client failed. jsonrpsee error: {0}")]
-    RpcError(Box<dyn std::error::Error + Send + Sync>),
-    /// RPC client returned empty records_root.
-    #[error("RPC client returned empty records_root.")]
-    NoRecordsRootFound,
 }
