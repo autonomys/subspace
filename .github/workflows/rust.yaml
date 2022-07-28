@@ -20,7 +20,7 @@ env:
 
 jobs:
   cargo-fmt:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted-ubuntu
 
     steps:
       - name: Checkout
@@ -59,9 +59,9 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-22.04
-          - macos-12
-          - windows-2022
+          - self-hosted-ubuntu
+          - self-hosted-mac-arm
+          - self-hosted-wnd
 
     runs-on: ${{ matrix.os }}
 
@@ -116,7 +116,7 @@ jobs:
         if: runner.os == 'macOS'
 
   cargo-docs:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted-ubuntu
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -152,9 +152,9 @@ jobs:
     strategy:
       matrix:
         os:
-          - ubuntu-22.04
-          - macos-12
-          - windows-2022
+          - self-hosted-ubuntu
+          - self-hosted-mac-arm
+          - self-hosted-wnd
 
     runs-on: ${{ matrix.os }}
 
