@@ -266,7 +266,7 @@ where
                 .unzip();
 
             if let Err(err) = on_sync.on_pieces(pieces, piece_indexes).await {
-                error!("DSN sync process returned an error: {}", err);
+                error!(%err, "DSN sync process returned an error");
             }
         }
     }

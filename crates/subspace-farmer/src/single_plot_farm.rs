@@ -716,7 +716,6 @@ struct VerifyingPlotter<RC> {
 }
 
 impl<RC: RpcClient> VerifyingPlotter<RC> {
-    //TODO: Optimize: parallel execution, batch execution.
     /// Verifies pieces against the blockchain.
     pub async fn verify_pieces_at_blockchain(
         &self,
@@ -751,7 +750,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                 if let Some(root) = root {
                     Ok(root)
                 } else {
-                    error!(?piece_index, "No records root found for piece_index.");
+                    error!(piece_index, "No records root found for piece_index.");
 
                     Err(PiecesVerificationError::NoRecordsRootFound)
                 }
