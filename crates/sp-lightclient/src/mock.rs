@@ -158,4 +158,13 @@ impl MockStorage {
         header.total_weight = weight;
         self.0.headers.insert(hash, header);
     }
+
+    // hack to store records roots
+    pub(crate) fn store_records_root(
+        &mut self,
+        segment_index: SegmentIndex,
+        records_root: RecordsRoot,
+    ) {
+        self.0.records_roots.insert(segment_index, records_root);
+    }
 }

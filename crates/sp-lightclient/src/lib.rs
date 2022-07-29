@@ -33,10 +33,12 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, Salt, Sha256Hash, MERKLE_NUM_LEAVES,
+    PublicKey, Randomness, RewardSignature, Salt, Sha256Hash, MERKLE_NUM_LEAVES, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use subspace_verification::{
+    check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
+};
 
 #[cfg(test)]
 mod tests;
@@ -292,6 +294,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Self::verify_block_signature(&mut header, &pre_digest.solution.public_key)?;
 
         // verify solution
+        let max_plot_size = self.store.chain_constants().max_plot_size;
+        let segment_index = pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+        let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+        let records_root =
+            self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
+        let total_pieces = self.total_pieces(parent_header.header.hash())?;
+
         verify_solution(
             &pre_digest.solution,
             pre_digest.slot.into(),
@@ -299,8 +308,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 global_randomness: &global_randomness,
                 solution_range,
                 salt,
-                // TODO(ved): verify POAS once we have access to record root
-                piece_check_params: None,
+                piece_check_params: Some(PieceCheckParams {
+                    records_root,
+                    position,
+                    record_size: RECORD_SIZE,
+                    max_plot_size,
+                    total_pieces,
+                }),
             },
         )
         .map_err(ImportError::InvalidSolution)?;
@@ -325,7 +339,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             }
         };
 
-        // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
         // store header
