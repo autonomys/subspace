@@ -163,6 +163,9 @@ instance here is a good example:
 Avoid garbage commit names like "fix", "wip", "🤦 x 2", "......", "AHHHHHHHHH" (those are real examples). In most cases
 those commits probably shouldn't exist separately and better squashed with some other commit.
 
+Here is a good article from GitHub on this topic:
+[Write Better Commits, Build Better Projects](https://github.blog/2022-06-30-write-better-commits-build-better-projects/).
+
 ### Pull requests
 
 It is important to remember that there are many people subscribed to the repository and any changes to pull request
