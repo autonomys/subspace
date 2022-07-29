@@ -30,8 +30,9 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
+use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
-use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt};
+use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt, Sha256Hash};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
@@ -47,6 +48,12 @@ type SolutionRange = u64;
 
 /// BlockWeight type for fork choice rules.
 type BlockWeight = u128;
+
+/// Segment index type.
+type SegmentIndex = u64;
+
+/// Records root type.
+type RecordsRoot = Sha256Hash;
 
 /// Chain constants.
 #[derive(Debug, Clone)]
@@ -158,6 +165,15 @@ pub trait Storage<Header: HeaderT> {
 
     /// Returns the latest finalized header.
     fn finalized_header(&self) -> HeaderExt<Header>;
+
+    /// Stores records roots for fast retrieval by segment index at or below finalized header.
+    fn store_records_roots(&mut self, record_roots: BTreeMap<SegmentIndex, RecordsRoot>);
+
+    /// Returns a records root for a given segment index.
+    fn records_root(&self, segment_index: SegmentIndex) -> Option<RecordsRoot>;
+
+    /// Returns the current count of stored records roots.
+    fn records_roots_count(&self) -> u64;
 }
 
 /// Error type that holds the current finalized number and the header number we are trying to import.
@@ -496,6 +512,23 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Ok(())
     }
 
+    /// Stores finalized header and records roots present in the header.
+    fn store_finalized_header_and_records_roots(
+        &mut self,
+        header: &Header,
+    ) -> Result<(), ImportError<Header>> {
+        // mark header as finalized
+        self.store.finalize_header(header.hash());
+
+        // store the records roots present in the header digests
+        let digests_items =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                header,
+            )?;
+        self.store.store_records_roots(digests_items.records_roots);
+        Ok(())
+    }
+
     /// Finalize the header at K-depth from the best block and prune remaining forks at that number.
     /// We want to finalize the header from the current finalized header until the K-depth number of the best.
     /// 1. In an ideal scenario, the current finalized head is one number less than number to be finalized.
@@ -551,7 +584,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                             .first()
                             .expect("First item must exist as the len is 1.");
 
-                        self.store.finalize_header(header_to_finalize.header.hash());
+                        self.store_finalized_header_and_records_roots(&header_to_finalize.header)?
                     } else {
                         // there are multiple headers at the number to be finalized.
                         // find the correct ancestor header of the current best header.
@@ -585,7 +618,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                         }
 
                         // mark the header as finalized
-                        self.store.finalize_header(header_to_finalize.header.hash())
+                        self.store_finalized_header_and_records_roots(&header_to_finalize.header)?
                     }
                 }
 
