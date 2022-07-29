@@ -6,5 +6,7 @@ fn main() {
         .enable_feature("wasm-builder")
         .export_heap_base()
         .import_memory()
-        .build()
+        .build();
+
+    subspace_wasm_tools::export_wasm_bundle_path();
 }

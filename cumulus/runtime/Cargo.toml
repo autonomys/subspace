@@ -7,6 +7,7 @@ license = "Unlicense"
 homepage = "https://substrate.io"
 repository = "https://github.com/paritytech/cumulus/"
 edition = "2021"
+links = "cirrus-runtime"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -49,6 +50,7 @@ sp-executor = { path = "../../crates/sp-executor", default-features = false }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives", default-features = false }
 
 [build-dependencies]
+subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../crates/subspace-wasm-tools" }
 substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 
 [features]

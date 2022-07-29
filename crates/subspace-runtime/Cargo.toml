@@ -66,7 +66,6 @@ frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "h
 frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86", optional = true }
 
 [build-dependencies]
-cirrus-runtime = { version = "0.1.0", path = "../../cumulus/runtime" }
 subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../subspace-wasm-tools" }
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 
