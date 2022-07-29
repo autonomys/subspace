@@ -789,9 +789,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             .collect::<Result<Vec<Sha256Hash>, PiecesVerificationError>>()?;
 
         // Perform an actual piece validity check
-        for ((piece, piece_index), root) in
-            pieces.as_pieces().zip(piece_indexes).zip(roots)
-        {
+        for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {
             let position: u64 = piece_index % merkle_num_leaves;
 
             if !is_piece_valid(

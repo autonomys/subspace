@@ -30,19 +30,15 @@
 //! 64-bit unsigned integers.
 
 pub(crate) mod archiving;
-pub mod bench_rpc_client;
 pub(crate) mod commitments;
 pub(crate) mod dsn;
 pub(crate) mod farming;
 mod file_ext;
 pub(crate) mod identity;
 pub mod legacy_multi_plots_farm;
-#[cfg(test)]
-mod mock_rpc_client;
-pub(crate) mod node_rpc_client;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
-pub(crate) mod rpc_client;
+pub mod rpc_client;
 pub mod single_disk_farm;
 pub mod single_plot_farm;
 mod utils;
@@ -53,9 +49,9 @@ pub use commitments::{CommitmentError, Commitments};
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;
 pub use jsonrpsee;
-pub use node_rpc_client::NodeRpcClient;
 pub use object_mappings::{
     LegacyObjectMappingError, LegacyObjectMappings, ObjectMappingError, ObjectMappings,
 };
 pub use plot::{PieceOffset, Plot, PlotError, PlotFile};
+pub use rpc_client::node_rpc_client::NodeRpcClient;
 pub use rpc_client::{Error as RpcClientError, RpcClient};

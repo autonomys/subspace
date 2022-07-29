@@ -1,9 +1,9 @@
 use crate::archiving::Archiving;
 use crate::commitments::Commitments;
 use crate::identity::Identity;
-use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::rpc_client::mock_rpc_client::MockRpcClient;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotPlotter;

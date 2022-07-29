@@ -1,7 +1,7 @@
 use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, PiecesToPlot, SyncOptions};
-use crate::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::dsn::OnSync;
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
+use crate::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{LegacyObjectMappings, Plot};
 use futures::channel::{mpsc, oneshot};

@@ -7,6 +7,11 @@ use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
+pub mod bench_rpc_client;
+#[cfg(test)]
+pub mod mock_rpc_client;
+pub(crate) mod node_rpc_client;
+
 /// To become error type agnostic
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 

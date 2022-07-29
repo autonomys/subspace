@@ -1,8 +1,8 @@
 use crate::commitments::{CommitmentStatusChange, Commitments};
 use crate::farming::Farming;
 use crate::identity::Identity;
-use crate::mock_rpc_client::MockRpcClient;
 use crate::plot::Plot;
+use crate::rpc_client::mock_rpc_client::MockRpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
