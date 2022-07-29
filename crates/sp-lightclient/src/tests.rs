@@ -33,6 +33,8 @@ fn default_test_constants() -> ChainConstants<Header> {
             next_solution_range: Default::default(),
             next_salt: salt,
         },
+        max_plot_size: 100,
+        genesis_records_roots: Default::default(),
     }
 }
 

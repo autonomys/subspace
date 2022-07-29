@@ -32,7 +32,9 @@ use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
-use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt, Sha256Hash};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RewardSignature, Salt, Sha256Hash, MERKLE_NUM_LEAVES,
+};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
@@ -64,6 +66,13 @@ pub struct ChainConstants<Header: HeaderT> {
     /// Genesis digest items at the start of the chain since the genesis block will not have any digests
     /// to verify the Block #1 digests.
     pub genesis_digest_items: NextDigestItems,
+
+    /// Maximum number of pieces in a given plot.
+    pub max_plot_size: u64,
+
+    /// Genesis block records roots to verify the Block #1 and other block solutions until Block #1 is finalized.
+    /// When Block #1 is finalized, these records roots are present in Block #1 are stored in the storage.
+    pub genesis_records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
 }
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
@@ -190,6 +199,8 @@ pub enum ImportError<Header: HeaderT> {
     HeaderAlreadyImported,
     /// Missing parent header.
     MissingParent(HashOf<Header>),
+    /// Missing header associated with hash.
+    MissingHeader(HashOf<Header>),
     /// Missing ancestor header at the number.
     MissingAncestorHeader(HashOf<Header>, NumberOf<Header>),
     /// Error while extracting digests from header.
@@ -208,6 +219,8 @@ pub enum ImportError<Header: HeaderT> {
     SwitchedToForkBelowArchivingDepth,
     /// Header being imported is below the archiving depth.
     HeaderIsBelowArchivingDepth(HeaderBelowArchivingDepthError<Header>),
+    /// Missing records root for a given segment index.
+    MissingRecordsRoot(SegmentIndex),
 }
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
@@ -510,6 +523,99 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         }
 
         Ok(())
+    }
+
+    /// Returns the total pieces on chain where chain_tip is the hash of the tip of the chain.
+    /// We count the total records roots to calculate total pieces as follows,
+    /// - Fetch the records roots count from the store.
+    /// - Count the records roots count from each header that is not finalized.
+    fn total_pieces(&self, chain_tip: HashOf<Header>) -> Result<u64, ImportError<Header>> {
+        // fetch the records root count from the store
+        let records_roots_count_till_finalized_header = self.store.records_roots_count();
+
+        let finalized_header = self.store.finalized_header();
+        let mut records_roots_count = records_roots_count_till_finalized_header;
+
+        // special case when Block #1 is not finalized yet, then include the genesis records roots count
+        if finalized_header.header.number() == &Zero::zero() {
+            records_roots_count += self.store.chain_constants().genesis_records_roots.len() as u64;
+        }
+
+        // calculate records root count present in each header from header till finalized header
+        let mut header = self
+            .store
+            .header(chain_tip)
+            .ok_or(ImportError::MissingHeader(chain_tip))?;
+
+        while header.header.hash() != finalized_header.header.hash() {
+            let digest_items = extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&header.header)?;
+            records_roots_count += digest_items.records_roots.len() as u64;
+
+            header = self
+                .store
+                .header(*header.header.parent_hash())
+                .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
+        }
+
+        Ok(records_roots_count * u64::from(MERKLE_NUM_LEAVES))
+    }
+
+    /// Finds a records root mapped against a segment index in the chain with chain_tip as the tip of the chain.
+    /// We try to find the records root as follows,
+    ///  - Find records root from the store and return if found.
+    ///  - Find records root from the genesis record roots and return if found.
+    ///  - Find the records root present in the non finalized headers.
+    fn find_records_root_for_segment_index(
+        &self,
+        segment_index: SegmentIndex,
+        chain_tip: HashOf<Header>,
+    ) -> Result<RecordsRoot, ImportError<Header>> {
+        // check if the records root is already in the store
+        if let Some(records_root) = self.store.records_root(segment_index) {
+            return Ok(records_root);
+        };
+
+        // special case: check the genesis records roots if the Block #1 is not finalized yet
+        if let Some(records_root) = self
+            .store
+            .chain_constants()
+            .genesis_records_roots
+            .get(&segment_index)
+        {
+            return Ok(*records_root);
+        }
+
+        // find the records root from the headers which are not finalized yet.
+        let finalized_header = self.store.finalized_header();
+        let mut header = self
+            .store
+            .header(chain_tip)
+            .ok_or(ImportError::MissingHeader(chain_tip))?;
+
+        while header.header.hash() != finalized_header.header.hash() {
+            let digest_items = extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&header.header)?;
+
+            if let Some(records_root) = digest_items.records_roots.get(&segment_index) {
+                return Ok(*records_root);
+            }
+
+            header = self
+                .store
+                .header(*header.header.parent_hash())
+                .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
+        }
+
+        Err(ImportError::MissingRecordsRoot(segment_index))
     }
 
     /// Stores finalized header and records roots present in the header.
