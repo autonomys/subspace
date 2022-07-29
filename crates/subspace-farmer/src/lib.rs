@@ -1,10 +1,11 @@
 #![feature(
+    const_option,
     hash_drain_filter,
     int_log,
     io_error_other,
     map_first_last,
     trait_alias,
-    try_blocks
+    try_blocks,
 )]
 
 //! # `subspace-farmer` library implementation overview

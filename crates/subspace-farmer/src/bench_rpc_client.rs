@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use crate::rpc_client::{Error, RpcClient};
 use crate::utils::AbortingJoinHandle;
 use async_trait::async_trait;
@@ -30,7 +31,8 @@ pub struct Inner {
 /// Default farmer metadata for benchmarking
 pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     genesis_hash: [0; 32],
-    record_size: 3840,                       // PIECE_SIZE - WITNESS_SIZE
+    // PIECE_SIZE - WITNESS_SIZE
+    record_size: NonZeroU32::new(3840).expect("We must set non-zero integer here."),
     recorded_history_segment_size: 491520,   // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
     max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync

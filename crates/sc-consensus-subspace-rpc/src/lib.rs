@@ -44,6 +44,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -207,7 +208,10 @@ where
         let farmer_protocol_info: Result<FarmerProtocolInfo, ApiError> = try {
             FarmerProtocolInfo {
                 genesis_hash,
-                record_size: RECORD_SIZE,
+                record_size: NonZeroU32::new(RECORD_SIZE).ok_or_else(|| {
+                    error!("Incorrect record_size constant provided.");
+                    ApiError::Application("Incorrect record_size set".to_string().into())
+                })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 // TODO: `max_plot_size` in the protocol must change to bytes as well
                 max_plot_size: runtime_api.max_plot_size(&best_block_id)? * PIECE_SIZE as u64,

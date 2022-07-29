@@ -15,6 +15,7 @@
 
 //! Primitives for Subspace RPC.
 
+use std::num::NonZeroU32;
 use serde::{Deserialize, Serialize};
 use subspace_core_primitives::{
     PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
@@ -28,7 +29,7 @@ pub struct FarmerProtocolInfo {
     #[serde(with = "hex::serde")]
     pub genesis_hash: [u8; 32],
     /// The size of data in one piece (in bytes).
-    pub record_size: u32,
+    pub record_size: NonZeroU32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
     pub recorded_history_segment_size: u32,
     /// Maximum plot size in bytes

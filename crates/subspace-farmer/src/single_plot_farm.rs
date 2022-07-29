@@ -543,7 +543,7 @@ impl SinglePlotFarm {
         if enable_dsn_archiving {
             let archiving_fut = start_archiving(
                 id,
-                farmer_protocol_info.record_size,
+                farmer_protocol_info.record_size.get(),
                 farmer_protocol_info.recorded_history_segment_size,
                 farm.object_mappings().clone(),
                 node,
@@ -748,7 +748,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
 
         let records_per_segment =
             self.farmer_protocol_info.recorded_history_segment_size as usize / PIECE_SIZE;
-        if self.farmer_protocol_info.record_size.is_zero() || records_per_segment.is_zero() {
+        if records_per_segment.is_zero() {
             return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
         }
 
@@ -786,7 +786,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                 piece,
                 root,
                 position as usize,
-                self.farmer_protocol_info.record_size as usize,
+                self.farmer_protocol_info.record_size.get() as usize,
             ) {
                 error!(?piece_index, "Piece validation failed.");
 

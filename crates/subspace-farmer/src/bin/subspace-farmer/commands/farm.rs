@@ -164,7 +164,7 @@ pub(crate) async fn farm_multi_disk(
     };
     let ws_server_addr = ws_server.local_addr()?;
     let rpc_server = RpcServerImpl::new(
-        record_size,
+        record_size.get(),
         recorded_history_segment_size,
         Arc::new(
             single_disk_farms
@@ -343,7 +343,7 @@ pub(crate) async fn farm_legacy(
     };
     let ws_server_addr = ws_server.local_addr()?;
     let rpc_server = RpcServerImpl::new(
-        record_size,
+        record_size.get(),
         recorded_history_segment_size,
         Arc::new(multi_plots_farm.piece_getter()),
         Arc::new(vec![]),
