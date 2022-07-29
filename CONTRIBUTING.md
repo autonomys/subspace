@@ -167,7 +167,7 @@ those commits probably shouldn't exist separately and better squashed with some 
 
 It is important to remember that there are many people subscribed to the repository and any changes to pull request
 will trigger notifications to tens, hundreds, potentially thousands of people. As such try to minimize them or else
-many people, including maintainers, will unsubscribe and response time for issues and pull request changes will drop
+many people, including maintainers, will unsubscribe and response time for issues and pull request changes will increase
 dramatically.
 
 Before even submitting pull request make sure to really do self-review. This will allow you to spot minor issues like
@@ -223,5 +223,5 @@ When leaving more than one comment, make sure to post them as a review from "Fil
 you authored pull request. Once done with comments, submit a review all at once, this also minimized amount of
 distraction for maintainers.
 
-In general, try to maximise reviewer performance because code is written once by you, but will be read many times by
+In general, try to maximize reviewer performance because code is written once by you, but will be read many times by
 maintainers, external auditors and anyone else who might be interested later on.
