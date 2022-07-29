@@ -61,7 +61,6 @@ frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false
 pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 
 [build-dependencies]
-cirrus-test-runtime = { version = "0.1.0", path = "../../cumulus/test/runtime" }
 subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../crates/subspace-wasm-tools" }
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 
