@@ -1,9 +1,9 @@
-use std::num::NonZeroU32;
 use crate::rpc_client::{Error, RpcClient};
 use crate::utils::AbortingJoinHandle;
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
+use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -33,7 +33,7 @@ pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     genesis_hash: [0; 32],
     // PIECE_SIZE - WITNESS_SIZE
     record_size: NonZeroU32::new(3840).expect("We must set non-zero integer here."),
-    recorded_history_segment_size: 491520,   // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
+    recorded_history_segment_size: 491520, // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
     max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,

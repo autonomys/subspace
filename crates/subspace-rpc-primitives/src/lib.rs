@@ -15,11 +15,14 @@
 
 //! Primitives for Subspace RPC.
 
-use std::num::NonZeroU32;
 use serde::{Deserialize, Serialize};
+use std::num::NonZeroU32;
 use subspace_core_primitives::{
     PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
 };
+
+/// Defines a limit for segment indexes array. It affects storage access on the runtime side.
+pub const MAX_SEGMENT_INDEXES_PER_REQUEST: usize = 300;
 
 /// Information about the protocol necessary for farmer operation
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]

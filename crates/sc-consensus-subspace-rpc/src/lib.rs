@@ -54,6 +54,7 @@ use subspace_core_primitives::{
 };
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -527,6 +528,18 @@ where
     }
 
     async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>> {
+        if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
+            error!(
+                "segment_indexes length exceed the limit: {} ",
+                segment_indexes.len()
+            );
+
+            return Err(JsonRpseeError::Custom(
+                "Internal error during `records_root` call: segment_indexes length exceed the limit"
+                    .to_string()
+            ));
+        };
+
         let runtime_api = self.client.runtime_api();
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
 

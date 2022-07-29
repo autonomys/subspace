@@ -16,7 +16,7 @@ use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use derive_more::{Display, From};
-use futures::future::try_join;
+use futures::future::{try_join, try_join_all};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -34,7 +34,7 @@ use subspace_networking::{
     Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeRequestHandler,
     PiecesByRangeResponse, PiecesToPlot,
 };
-use subspace_rpc_primitives::FarmerProtocolInfo;
+use subspace_rpc_primitives::{FarmerProtocolInfo, MAX_SEGMENT_INDEXES_PER_REQUEST};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -752,19 +752,29 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
         }
 
+        // Calculate segment indexes collection
         let segment_indexes = piece_indexes
             .iter()
             .map(|piece_index| piece_index / records_per_segment as u64)
             .collect::<Vec<_>>();
 
-        let roots = self
-            .verification_client
-            .records_roots(segment_indexes)
-            .await
-            .map_err(|err| PiecesVerificationError::RpcError(err))?;
+        // Split segment indexes collection into allowed max sized chunks
+        // and run a future records_roots RPC call for each chunk.
+        let roots_futures = segment_indexes
+            .chunks(MAX_SEGMENT_INDEXES_PER_REQUEST)
+            .map(|segment_indexes_chunk| {
+                self.verification_client
+                    .records_roots(segment_indexes_chunk.to_vec())
+            })
+            .collect::<Vec<_>>();
 
-        let verified_roots = roots
+        // Wait for all the RPC calls,  flatten the results collection
+        // and check for empty result for any of the records root call.
+        let roots = try_join_all(roots_futures)
+            .await
+            .map_err(|err| PiecesVerificationError::RpcError(err))?
             .into_iter()
+            .flatten()
             .zip(piece_indexes.iter())
             .map(|(root, piece_index)| {
                 if let Some(root) = root {
@@ -777,8 +787,9 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             })
             .collect::<Result<Vec<Sha256Hash>, PiecesVerificationError>>()?;
 
+        // Perform an actual piece validity check
         for ((piece, piece_index), root) in
-            pieces.as_pieces().zip(piece_indexes).zip(verified_roots)
+            pieces.as_pieces().zip(piece_indexes).zip(roots)
         {
             let position: u64 = piece_index % records_per_segment as u64;
 
