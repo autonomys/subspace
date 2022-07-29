@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash, PIECE_SIZE,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash,
 };
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
@@ -720,7 +720,7 @@ pub enum PiecesVerificationError {
     #[error("RPC client failed. jsonrpsee error: {0}")]
     RpcError(Box<dyn std::error::Error + Send + Sync>),
     /// RPC client returned empty records_root.
-    #[error("RPC client returned empty records_root.")]
+    #[error("RPC client returned empty records root.")]
     NoRecordsRootFound,
 }
 
@@ -746,16 +746,17 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             return Err(PiecesVerificationError::InvalidRawData);
         }
 
-        let records_per_segment =
-            self.farmer_protocol_info.recorded_history_segment_size as usize / PIECE_SIZE;
-        if records_per_segment.is_zero() {
+        let merkle_num_leaves = (self.farmer_protocol_info.recorded_history_segment_size
+            / self.farmer_protocol_info.record_size.get()
+            * 2) as u64;
+        if merkle_num_leaves.is_zero() {
             return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
         }
 
         // Calculate segment indexes collection
         let segment_indexes = piece_indexes
             .iter()
-            .map(|piece_index| piece_index / records_per_segment as u64)
+            .map(|piece_index| piece_index / merkle_num_leaves)
             .collect::<Vec<_>>();
 
         // Split segment indexes collection into allowed max sized chunks
@@ -768,7 +769,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             })
             .collect::<Vec<_>>();
 
-        // Wait for all the RPC calls,  flatten the results collection
+        // Wait for all the RPC calls, flatten the results collection,
         // and check for empty result for any of the records root call.
         let roots = try_join_all(roots_futures)
             .await
@@ -791,7 +792,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
         for ((piece, piece_index), root) in
             pieces.as_pieces().zip(piece_indexes).zip(roots)
         {
-            let position: u64 = piece_index % records_per_segment as u64;
+            let position: u64 = piece_index % merkle_num_leaves;
 
             if !is_piece_valid(
                 piece,
