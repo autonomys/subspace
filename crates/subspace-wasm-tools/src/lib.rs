@@ -1,11 +1,27 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 use std::{env, fs};
 
-fn get_relative_target(dir: &Path) -> Option<PathBuf> {
-    if dir.join("Cargo.lock").is_file() && dir.join("target").is_dir() {
-        return Some(dir.join("target"));
-    }
-    dir.parent().and_then(get_relative_target)
+/// Emits `cargo:WASM_FILE=/path` so that dependent crates can use it in build script using
+/// `DEP_PACKAGE_WASM_FILE` environment variable
+///
+/// This also requires `links` attribute in the `package` section of `Cargo.toml` set to the package
+/// name.
+pub fn export_wasm_bundle_path() {
+    let mut out_dir = PathBuf::from(env::var("OUT_DIR").expect("Always set by cargo"));
+    // Removing `build/package-abcd/out` component from
+    // `target/debug/build/package-abcd/out`
+    out_dir.pop();
+    out_dir.pop();
+    out_dir.pop();
+
+    let package_name = env::var("CARGO_PKG_NAME").expect("Always set by cargo");
+    let wasm_base_file_name = package_name.replace('-', "_");
+    let wasm_file_path = out_dir
+        .join("wbuild")
+        .join(package_name)
+        .join(format!("{wasm_base_file_name}.compact.wasm"));
+
+    println!("cargo:WASM_FILE={}", wasm_file_path.display());
 }
 
 /// Creates a `target_file_name` in `OUT_DIR` that will contain constant `bundle_const_name` with
@@ -17,71 +33,16 @@ pub fn create_runtime_bundle_inclusion_file(
     bundle_const_name: &str,
     target_file_name: &str,
 ) {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("Always set by cargo"));
-    let target_dir = env::var("CARGO_TARGET_DIR")
-        .or_else(|_| env::var("SUBSPACE_WASM_TARGET_DIRECTORY"))
-        .map(Into::into)
-        .unwrap_or_else(|_| {
-            // Call get `get_relative_target` twice if possible, as wasm target directory is
-            // contained in host target directory, and we actually need host one.
-            get_relative_target(&out_dir)
-                .map(|target_dir| get_relative_target(&target_dir).unwrap_or(target_dir))
-                .expect("Out dir is always inside the target directory")
-        });
-
-    // Propagate target directory to wasm build
-    if env::var("SUBSPACE_WASM_TARGET_DIRECTORY").is_err() {
-        env::set_var("SUBSPACE_WASM_TARGET_DIRECTORY", &target_dir);
-    }
-
-    env::set_var(
-        "SUBSPACE_WASM_BUNDLE_PATH",
-        env::var("SUBSPACE_WASM_BUNDLE_PATH").unwrap_or_else(|_| {
-            // The tricky situation, Cargo doesn't put custom profiles like `production` in
-            // `PROFILE` environment variable, so we need to find the actual profile ourselves by
-            // extracting the first component of `OUT_DIR` that comes after `CARGO_TARGET_DIR`.
-            let mut out_components = out_dir.components();
-            let mut target_components = target_dir.components();
-            while target_components.next().is_some() {
-                out_components.next();
-            }
-
-            let mut path = target_dir;
-
-            let profile = loop {
-                if let Component::Normal(profile_or_target) = out_components
-                    .next()
-                    .expect("OUT_DIR has CARGO_TARGET_DIR as prefix")
-                {
-                    let profile_or_target = profile_or_target
-                        .to_str()
-                        .expect("Profile is always a utf-8 string");
-
-                    // Custom target was specified with `--target`
-                    if profile_or_target == env::var("TARGET").expect("Always set by cargo") {
-                        path = path.join(profile_or_target);
-                    } else {
-                        break profile_or_target;
-                    }
-                } else {
-                    unreachable!("OUT_DIR has CARGO_TARGET_DIR as prefix")
-                }
-            };
-
-            path.join(profile)
-                .join("wbuild")
-                .join(runtime_crate_name)
-                .join(format!(
-                    "{}.compact.wasm",
-                    runtime_crate_name.replace('-', "_")
-                ))
-                .to_string_lossy()
-                .to_string()
-        }),
-    );
-
     // Create a file that will include execution runtime into consensus runtime
-    let execution_wasm_bundle_path = env::var("SUBSPACE_WASM_BUNDLE_PATH").expect("Set above; qed");
+    let execution_wasm_bundle_path = env::var("SUBSPACE_WASM_BUNDLE_PATH").unwrap_or_else(|_| {
+        env::var(format!(
+            "DEP_{}_WASM_FILE",
+            runtime_crate_name.replace('-', "_").to_ascii_uppercase()
+        ))
+        .expect("Must be set by dependency")
+    });
+
+    env::set_var("SUBSPACE_WASM_BUNDLE_PATH", &execution_wasm_bundle_path);
 
     let execution_wasm_bundle_rs_path =
         env::var("OUT_DIR").expect("Set by cargo; qed") + "/" + target_file_name;

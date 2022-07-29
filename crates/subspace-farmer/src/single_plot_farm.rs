@@ -565,9 +565,15 @@ impl SinglePlotFarm {
         // Start DSN syncing
         if enable_dsn_sync {
             // TODO: operate with number of pieces to fetch, instead of range calculations
-            let range_size = PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces * 1024; // 4M per stream
-            let dsn_sync_fut =
-                farm.dsn_sync(verification_client, farmer_protocol_info, range_size, true);
+            let sync_range_size = (PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces)
+                .saturating_mul(&1024u32.into()); // 4M per stream
+
+            let dsn_sync_fut = farm.dsn_sync(
+                verification_client,
+                farmer_protocol_info,
+                sync_range_size,
+                true,
+            );
 
             let dsn_sync_handle = tokio::spawn(async move {
                 match dsn_sync_fut.await {
