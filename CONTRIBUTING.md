@@ -200,8 +200,9 @@ pull request at all.
 Once PR is created, a rule of thumb is to avoid force pushes since it is not always easy to understand what has changed
 in this case and forces maintainers to re-review pull request from scratch. Prefer meaningful commits on top instead.
 One exception to this is fixing typos or trivial renaming, in that case GitHub will show that force push had trivial
-changes, make sure to not rebase on some branch at the same time, it will result in huge diff! Better merge `main` later
-with a button on GitHub. Another exception is when major refactoring is requested that changes the shape of the PR
+changes, make sure to not rebase on some branch at the same time, it will result in huge diff! It will also potentially
+make old commits non-compilable or will cause tests fail, which hurts potential future debugging. Better merge `main`
+later with a button on GitHub. Another exception is when major refactoring is requested that changes the shape of the PR
 completely, especially if it reduces its size, in such case it is also easier to re-review rather than analyzing diff on
 top of undesirable changes that will pollute the history (opening another PR removes previous context, so generally is
 not recommended, but remains an option).
@@ -225,6 +226,11 @@ applicable to those having access to creating branches in the repository.
 When leaving more than one comment, make sure to post them as a review from "File changed" tab, you can do that even if
 you authored pull request. Once done with comments, submit a review all at once, this also minimized amount of
 distraction for maintainers.
+
+Merging of pull requests should be done without squashing in most cases. This makes it possible to track when changes
+happen, leave moving and refactoring of files separated when done in the same PR, helps with bisection of problematic
+changes. Only trivial changes should be squashed or those that are not reviewable for other reasons, though above
+documentation explains how to avoid that.
 
 In general, try to maximize reviewer performance because code is written once by you, but will be read many times by
 maintainers, external auditors and anyone else who might be interested later on.
