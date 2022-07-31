@@ -17,6 +17,7 @@
 use crate::{BundleProcessor, BundleProducer, TransactionFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
+use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::BlockImport;
@@ -69,6 +70,7 @@ where
     pub number: NumberFor<Block>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn start_worker<
     Block,
     PBlock,
@@ -87,6 +89,7 @@ pub(super) async fn start_worker<
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,
+    block_import_throttling_receiver: mpsc::Receiver<()>,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -140,6 +143,7 @@ pub(super) async fn start_worker<
                 )
                 .collect(),
             Box::pin(imported_block_notification_stream),
+            block_import_throttling_receiver,
         );
     let handle_slot_notifications_fut = handle_slot_notifications(
         primary_chain_client.as_ref(),
@@ -215,6 +219,7 @@ async fn handle_block_import_notifications<
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
     mut block_imports: BlockImports,
+    mut block_import_throttling_receiver: mpsc::Receiver<()>,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -277,7 +282,19 @@ async fn handle_block_import_notifications<
         .await
         {
             Ok(()) => {
-                // TODO: Signify the primary block import that a block has been processed successfully.
+                // Signify the primary block import that a block has been processed successfully.
+                match block_import_throttling_receiver.next().await {
+                    Some(_) => {}
+                    None => {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            "Channel of signifying the block has been processed must not be empty"
+                        );
+                        // Bring down the service as bundles processor is an essential task.
+                        // TODO: more graceful shutdown.
+                        break;
+                    }
+                }
             }
             Err(error) => {
                 tracing::error!(

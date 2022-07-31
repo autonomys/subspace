@@ -25,6 +25,7 @@ use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use dsn::start_dsn_node;
 use frame_system_rpc_runtime_api::AccountNonceApi;
+use futures::channel::mpsc;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
@@ -39,8 +40,8 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::error::Error as ServiceError;
 use sc_service::{
-    Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
-    TaskManager,
+    Configuration, KeepBlocks, NetworkStarter, PartialComponents, SpawnTaskHandle,
+    SpawnTasksParams, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
@@ -136,6 +137,7 @@ impl From<Configuration> for SubspaceConfiguration {
 #[allow(clippy::type_complexity)]
 pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
+    maybe_block_import_throttling_sender: Option<mpsc::Sender<()>>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -259,6 +261,7 @@ where
                 }
             }
         },
+        maybe_block_import_throttling_sender,
     )?;
 
     sc_consensus_subspace::start_subspace_archiver(
@@ -335,6 +338,10 @@ where
     pub network_starter: NetworkStarter,
     /// Transaction pool.
     pub transaction_pool: Arc<FullPool<Block, Client, Verifier>>,
+    /// Optional throttle of subspace block import for executor.
+    ///
+    /// The block import will be blocked if the channel is full.
+    pub maybe_block_import_throttling_receiver: Option<mpsc::Receiver<()>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
@@ -366,6 +373,19 @@ where
         + TransactionPaymentApi<Block, Balance>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
+    let (maybe_block_import_throttling_sender, maybe_block_import_throttling_receiver) =
+        if config.executor_enabled {
+            // TODO: Proper value
+            let channel_size = match config.base.keep_blocks {
+                KeepBlocks::All => 128,
+                KeepBlocks::Some(n) => n,
+            };
+            let (signal_sender, signal_receiver) = mpsc::channel::<()>(channel_size as usize);
+            (Some(signal_sender), Some(signal_receiver))
+        } else {
+            (None, None)
+        };
+
     let PartialComponents {
         client,
         backend,
@@ -375,7 +395,7 @@ where
         select_chain,
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
-    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config, maybe_block_import_throttling_sender)?;
 
     if let Some(dsn_config) = config.dsn_config.clone() {
         start_dsn_node(
@@ -530,5 +550,6 @@ where
         archived_segment_notification_stream,
         network_starter,
         transaction_pool,
+        maybe_block_import_throttling_receiver,
     })
 }

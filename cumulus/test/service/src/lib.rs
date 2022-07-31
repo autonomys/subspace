@@ -163,6 +163,9 @@ async fn run_executor(
                         slot_notification.new_slot_info.global_challenge,
                     )
                 }),
+            primary_chain_full_node
+                .maybe_block_import_throttling_receiver
+                .expect("Block import throttling must exist for executor"),
         )
         .await?;
 
