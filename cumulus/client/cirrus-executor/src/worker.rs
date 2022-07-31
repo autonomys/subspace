@@ -126,14 +126,6 @@ pub(super) async fn start_worker<
                         .clone()
                         .process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
                         .instrument(span.clone())
-                        .unwrap_or_else(move |error| {
-                            tracing::error!(
-                                target: LOG_TARGET,
-                                relay_parent = ?primary_hash,
-                                error = ?error,
-                                "Error at processing bundles.",
-                            );
-                        })
                         .boxed()
                 }
             },
@@ -233,7 +225,7 @@ async fn handle_block_import_notifications<
             Vec<OpaqueBundle>,
             Randomness,
             Option<Cow<'static, [u8]>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
@@ -255,8 +247,12 @@ async fn handle_block_import_notifications<
             {
                 tracing::error!(
                     target: LOG_TARGET,
-                    "Collation generation processing error: {error}"
+                    ?error,
+                    "Failed to process primary block on startup"
                 );
+                // Bring down the service as bundles processor is an essential task.
+                // TODO: more graceful shutdown.
+                return;
             }
         }
     }
@@ -272,7 +268,7 @@ async fn handle_block_import_notifications<
             number: *header.number(),
         };
 
-        if let Err(error) = block_imported(
+        match block_imported(
             primary_chain_client,
             &processor,
             &mut active_leaves,
@@ -280,12 +276,19 @@ async fn handle_block_import_notifications<
         )
         .await
         {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to process primary block"
-            );
-            break;
+            Ok(()) => {
+                // TODO: Signify the primary block import that a block has been processed successfully.
+            }
+            Err(error) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    ?error,
+                    "Failed to process primary block"
+                );
+                // Bring down the service as bundles processor is an essential task.
+                // TODO: more graceful shutdown.
+                break;
+            }
         }
     }
 }
@@ -345,7 +348,7 @@ where
             Vec<OpaqueBundle>,
             Randomness,
             Option<Cow<'static, [u8]>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
@@ -362,18 +365,12 @@ where
         debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
     }
 
-    if let Err(error) = process_primary_block(
+    process_primary_block(
         primary_chain_client,
         processor,
         (block_info.hash, block_info.number),
     )
-    .await
-    {
-        tracing::error!(
-            target: LOG_TARGET,
-            "Collation generation processing error: {error}"
-        );
-    }
+    .await?;
 
     Ok(())
 }
@@ -396,7 +393,7 @@ where
             Vec<OpaqueBundle>,
             Randomness,
             Option<Cow<'static, [u8]>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
@@ -463,7 +460,7 @@ where
         shuffling_seed,
         maybe_new_runtime,
     )
-    .await;
+    .await?;
 
     Ok(())
 }
