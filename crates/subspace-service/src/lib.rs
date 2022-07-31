@@ -116,9 +116,8 @@ pub struct SubspaceConfiguration {
     #[deref_mut]
     #[into]
     pub base: Configuration,
-    /// Whether slot notifications need to be present even if node is not responsible for block
-    /// authoring.
-    pub force_new_slot_notifications: bool,
+    /// Whether the executor is enabled.
+    pub executor_enabled: bool,
     /// Subspace networking configuration (for DSN). Will not be started if set to `None`.
     pub dsn_config: Option<subspace_networking::Config>,
 }
@@ -127,7 +126,7 @@ impl From<Configuration> for SubspaceConfiguration {
     fn from(base: Configuration) -> Self {
         Self {
             base,
-            force_new_slot_notifications: false,
+            executor_enabled: false,
             dsn_config: None,
         }
     }
@@ -415,7 +414,9 @@ where
     let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    if config.role.is_authority() || config.force_new_slot_notifications {
+    // Run the authoring task even if node is not an authority when executor is enabled,
+    // for executor relys on the slots notifications for bundle production.
+    if config.role.is_authority() || config.executor_enabled {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),

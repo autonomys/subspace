@@ -364,6 +364,8 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
+                let executor_enabled = !cli.secondary_chain_args.is_empty();
+
                 let (mut primary_chain_node, config_dir) = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -397,8 +399,7 @@ fn main() -> Result<(), Error> {
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
-                        // Secondary node needs slots notifications for bundle production.
-                        force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
+                        executor_enabled,
                         dsn_config,
                     };
 
@@ -419,7 +420,7 @@ fn main() -> Result<(), Error> {
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
-                if !cli.secondary_chain_args.is_empty() {
+                if executor_enabled {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "SecondaryChain"

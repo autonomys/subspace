@@ -153,6 +153,7 @@ pub async fn run_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
     run_farmer: bool,
+    executor_enabled: bool,
 ) -> (PrimaryTestNode, NetworkStarter) {
     let primary_chain_config = node_config(tokio_handle, key, boot_nodes, run_farmer);
     let multiaddr = primary_chain_config.network.listen_addresses[0].clone();
@@ -172,7 +173,7 @@ pub async fn run_validator_node(
 
         let primary_chain_config = SubspaceConfiguration {
             base: primary_chain_config,
-            force_new_slot_notifications: true,
+            executor_enabled,
             dsn_config: None,
         };
 
@@ -335,12 +336,12 @@ mod tests {
 
         // start alice
         let (alice, alice_network_starter) =
-            run_validator_node(tokio_handle.clone(), Alice, vec![], true).await;
+            run_validator_node(tokio_handle.clone(), Alice, vec![], true, false).await;
 
         alice_network_starter.start_network();
 
         let (bob, bob_network_starter) =
-            run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false).await;
+            run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false, false).await;
 
         bob_network_starter.start_network();
 

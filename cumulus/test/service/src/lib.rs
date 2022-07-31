@@ -116,8 +116,7 @@ async fn run_executor(
 
         let primary_chain_config = subspace_service::SubspaceConfiguration {
             base: primary_chain_config,
-            // Always enable the slot notification.
-            force_new_slot_notifications: true,
+            executor_enabled: true,
             dsn_config: None,
         };
 
@@ -523,7 +522,7 @@ pub fn construct_extrinsic(
     )
 }
 
-/// Run a primary-chain validator node.
+/// Run a primary-chain validator node without the executor functionality.
 ///
 /// This is essentially a wrapper around
 /// [`run_validator_node`](subspace_test_service::run_validator_node).
@@ -532,5 +531,5 @@ pub async fn run_primary_chain_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
 ) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
-    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true).await
+    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true, false).await
 }
