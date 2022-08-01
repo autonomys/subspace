@@ -120,7 +120,13 @@ async fn main() {
     // Prepare multihash to look for in Kademlia
     let key = Code::Identity.digest(&expected_kaypair.public().encode());
 
-    let peer_id = node.get_closest_peers(key).await.unwrap()[0];
+    let peer_id = *node
+        .get_closest_peers(key)
+        .await
+        .expect("get_closest_peers must return peers")
+        .first()
+        .expect("get_closest_peers returned zero peers");
+
     assert_eq!(peer_id, expected_node_id);
     println!("Expected Peer ID received.");
 

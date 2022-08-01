@@ -20,6 +20,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
@@ -30,12 +31,12 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::crypto;
 use thiserror::Error;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Max bootstrap addresses to preload.
-const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
+const INITIAL_BOOTSTRAP_ADDRESS_LIMIT: usize = 200;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -177,18 +178,17 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
-    // We take cached known addresses and combine them with manually provided bootstrap addresses
-    // with a limit.
+    // We take cached known addresses and combine them with manually provided bootstrap addresses.
     let combined_bootstrap_addresses = networking_parameters_registry
-        .bootstrap_addresses()
+        .known_addresses()
+        .await
         .into_iter()
         .chain(
             networking_parameters_registry
-                .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
-                .await
+                .bootstrap_addresses()
                 .into_iter(),
         )
-        .collect();
+        .collect::<Vec<_>>();
 
     trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
 
@@ -198,7 +198,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
-            bootstrap_nodes: combined_bootstrap_addresses,
             identify,
             kademlia,
             gossipsub,
@@ -214,6 +213,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             }))
             .build();
 
+        // Setup listen_on addresses
         for mut addr in listen_on {
             if let Err(error) = swarm.listen_on(addr.clone()) {
                 if !listen_on_fallback_to_random_port {
@@ -232,6 +232,27 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             }
         }
 
+        // Setup bootstrap addresses
+        let mut dialed_addresses_number = 0;
+        for (peer_id, addr) in combined_bootstrap_addresses {
+            // Limit dialed addresses
+            if dialed_addresses_number == INITIAL_BOOTSTRAP_ADDRESS_LIMIT {
+                break;
+            }
+
+            let dial_opts = DialOpts::peer_id(peer_id)
+                .addresses(vec![addr.clone()])
+                .build();
+
+            if let Err(err) = swarm.dial(dial_opts) {
+                debug!(%err, %peer_id, %addr, "Bootstrap address dialed successfully." )
+            } else {
+                dialed_addresses_number += 1;
+                trace!(%peer_id, %addr, "Failed to dial a bootstrap address." )
+            }
+        }
+
+        // Setup relay addresses
         if let Some(relay_server_address) = relay_server_address {
             // Setup circuit for the accepting relay client. This will reserve a circuit.
             swarm.listen_on(relay_server_address)?;
@@ -241,6 +262,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;
         }
 
+        // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
         let shared = Arc::new(Shared::new(local_peer_id, parent_node, command_sender));

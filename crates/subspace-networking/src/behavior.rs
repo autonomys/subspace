@@ -31,8 +31,6 @@ impl RateLimiter for MemoryRateLimiter {
 pub(crate) struct BehaviorConfig {
     /// Identity keypair of a node used for authenticated connections.
     pub(crate) peer_id: PeerId,
-    /// Nodes to connect to on creation.
-    pub(crate) bootstrap_nodes: Vec<(PeerId, Multiaddr)>,
     /// The configuration for the [`Identify`] behaviour.
     pub(crate) identify: IdentifyConfig,
     /// The configuration for the [`Kademlia`] behaviour.
@@ -64,17 +62,11 @@ pub(crate) struct Behavior {
 
 impl Behavior {
     pub(crate) fn new(config: BehaviorConfig) -> Self {
-        let kademlia = {
-            let store = CustomRecordStore::new(config.value_getter);
-            let mut kademlia =
-                Kademlia::<_, IdendityHash>::with_config(config.peer_id, store, config.kademlia);
-
-            for (peer_id, address) in config.bootstrap_nodes {
-                kademlia.add_address(&peer_id, address);
-            }
-
-            kademlia
-        };
+        let kademlia = Kademlia::<_, IdendityHash>::with_config(
+            config.peer_id,
+            CustomRecordStore::new(config.value_getter),
+            config.kademlia,
+        );
 
         let gossipsub = Gossipsub::new(
             // TODO: Do we want message signing?

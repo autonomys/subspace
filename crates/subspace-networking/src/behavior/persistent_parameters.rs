@@ -30,8 +30,7 @@ pub trait NetworkingParametersRegistry: Send {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 
     /// Returns known addresses from networking parameters DB. It removes p2p-protocol suffix.
-    /// Peer number parameter limits peers to retrieve.
-    async fn known_addresses(&self, peer_number: usize) -> Vec<(PeerId, Multiaddr)>;
+    async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)>;
 
     /// Returns boostrap addresses from networking parameters initialization.
     /// It removes p2p-protocol suffix.
@@ -58,7 +57,7 @@ pub struct NetworkingParametersRegistryStub;
 impl NetworkingParametersRegistry for NetworkingParametersRegistryStub {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
-    async fn known_addresses(&self, _: usize) -> Vec<(PeerId, Multiaddr)> {
+    async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
         Vec::new()
     }
 
@@ -96,7 +95,7 @@ impl BootstrappedNetworkingParameters {
 impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
-    async fn known_addresses(&self, _: usize) -> Vec<(PeerId, Multiaddr)> {
+    async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
         Vec::new()
     }
 
@@ -252,10 +251,9 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
         self.cache_need_saving = true;
     }
 
-    async fn known_addresses(&self, peer_number: usize) -> Vec<(PeerId, Multiaddr)> {
+    async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
         self.known_peers
             .iter()
-            .take(peer_number)
             .flat_map(|(peer_id, addresses)| {
                 addresses.iter().map(|addr| (*peer_id, addr.0.clone()))
             })
