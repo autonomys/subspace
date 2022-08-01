@@ -178,7 +178,7 @@ pub trait Storage<Header: HeaderT> {
     fn finalized_header(&self) -> HeaderExt<Header>;
 
     /// Stores records roots for fast retrieval by segment index at or below finalized header.
-    fn store_records_roots(&mut self, record_roots: BTreeMap<SegmentIndex, RecordsRoot>);
+    fn store_records_roots(&mut self, records_roots: BTreeMap<SegmentIndex, RecordsRoot>);
 
     /// Returns a records root for a given segment index.
     fn records_root(&self, segment_index: SegmentIndex) -> Option<RecordsRoot>;
@@ -550,7 +550,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let mut records_roots_count = records_roots_count_till_finalized_header;
 
         // special case when Block #1 is not finalized yet, then include the genesis records roots count
-        if finalized_header.header.number() == &Zero::zero() {
+        if finalized_header.header.number().is_zero() {
             records_roots_count += self.store.chain_constants().genesis_records_roots.len() as u64;
         }
 
@@ -636,14 +636,15 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         &mut self,
         header: &Header,
     ) -> Result<(), ImportError<Header>> {
-        // mark header as finalized
-        self.store.finalize_header(header.hash());
-
-        // store the records roots present in the header digests
         let digests_items =
             extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
                 header,
             )?;
+
+        // mark header as finalized
+        self.store.finalize_header(header.hash());
+
+        // store the records roots present in the header digests
         self.store.store_records_roots(digests_items.records_roots);
         Ok(())
     }
