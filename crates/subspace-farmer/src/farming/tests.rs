@@ -42,7 +42,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.clone(), || false).unwrap();
 
     let client = MockRpcClient::new();
 

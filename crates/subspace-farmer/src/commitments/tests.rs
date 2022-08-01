@@ -33,7 +33,7 @@ fn create() {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot).unwrap();
+    commitments.create(salt, plot, || false).unwrap();
 
     let (tag, _) = commitments
         .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)
@@ -68,7 +68,7 @@ fn find_by_tag() {
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
 
-    commitments.create(salt, plot).unwrap();
+    commitments.create(salt, plot, || false).unwrap();
 
     {
         let target = [0u8, 0, 0, 0, 0, 0, 0, 1];
@@ -157,7 +157,7 @@ fn remove_commitments() {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.clone(), || false).unwrap();
 
     let (_, offset) = commitments
         .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)

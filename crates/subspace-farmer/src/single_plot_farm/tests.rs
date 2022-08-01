@@ -155,7 +155,7 @@ async fn plotting_piece_eviction() {
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments.create(salt, plot.clone(), || false).unwrap();
 
     let client = MockRpcClient::new();
 

@@ -21,6 +21,8 @@ use subspace_rpc_primitives::{
 };
 use subspace_verification::is_within_solution_range;
 use thiserror::Error;
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 const TAGS_SEARCH_LIMIT: usize = 10;
@@ -42,7 +44,25 @@ pub enum FarmingError {
 /// At high level it receives a new challenge from the consensus and tries to find solution for it
 /// in its `Commitments` database.
 pub struct Farming {
-    handle: Fuse<AbortingJoinHandle<Result<(), FarmingError>>>,
+    handle: Option<Fuse<JoinHandle<Result<(), FarmingError>>>>,
+    stop_sender: watch::Sender<()>,
+}
+
+impl Drop for Farming {
+    fn drop(&mut self) {
+        let handle = self.handle.take().expect("Always set");
+        if handle.is_terminated() {
+            return;
+        }
+        let _ = self.stop_sender.send(());
+
+        let (exitted_sender, exitted_receiver) = std::sync::mpsc::sync_channel(1);
+        tokio::spawn(async move {
+            let _ = handle.await;
+            let _ = exitted_sender.send(());
+        });
+        let _ = exitted_receiver.recv();
+    }
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
@@ -58,9 +78,10 @@ impl Farming {
         reward_address: PublicKey,
     ) -> Self {
         let (initialized_sender, initialized_receiver) = async_oneshot::oneshot();
+        let (stop_sender, stop_receiver) = watch::channel(());
 
         // Get a handle for the background task, so that we can wait on it later if we want to
-        let farming_handle = tokio::spawn(
+        let handle = tokio::spawn(
             async move {
                 subscribe_to_slot_info(
                     single_plot_farm_id,
@@ -71,26 +92,30 @@ impl Farming {
                     single_disk_semaphore,
                     &identity,
                     reward_address,
+                    stop_receiver,
                 )
                 .await
             }
             .in_current_span(),
-        );
+        )
+        .fuse();
 
         // Wait for initialization to finish, result doesn't matter here
         let _ = initialized_receiver.await;
 
         Farming {
-            handle: AbortingJoinHandle::new(farming_handle).fuse(),
+            handle: Some(handle),
+            stop_sender,
         }
     }
 
     /// Waits for the background farming to finish
     pub async fn wait(&mut self) -> Result<(), FarmingError> {
-        if self.handle.is_terminated() {
+        let handle = self.handle.as_mut().expect("Always set");
+        if handle.is_terminated() {
             return Ok(());
         }
-        (&mut self.handle).await.map_err(FarmingError::JoinTask)?
+        handle.await.map_err(FarmingError::JoinTask)?
     }
 }
 
@@ -112,12 +137,14 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     single_disk_semaphore: SingleDiskSemaphore,
     identity: &Identity,
     reward_address: PublicKey,
+    mut stop_receiver: watch::Receiver<()>,
 ) -> Result<(), FarmingError> {
     info!("Subscribing to slot info notifications");
     let mut slot_info_notifications = client
         .subscribe_slot_info()
         .await
-        .map_err(FarmingError::RpcError)?;
+        .map_err(FarmingError::RpcError)?
+        .fuse();
 
     let mut reward_signing_info_notifications = client
         .subscribe_reward_signing()
@@ -167,8 +194,30 @@ async fn subscribe_to_slot_info<T: RpcClient>(
     }));
 
     let mut salts = Salts::default();
+    let is_stopped = {
+        let stop_receiver = stop_receiver.clone();
+        move || stop_receiver.has_changed().unwrap_or_default()
+    };
+    let mut is_stopped_async = Box::pin(stop_receiver.changed()).fuse();
 
-    while let Some(slot_info) = slot_info_notifications.next().await {
+    loop {
+        let slot_info = futures::select! {
+            slot_info = slot_info_notifications.next() => {
+                if let Some(slot_info) = slot_info {
+                    slot_info
+                } else {
+                    break;
+                }
+            }
+            result = is_stopped_async => {
+                if result.is_ok() {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+        };
+
         debug!(?slot_info, "New slot");
 
         update_commitments(
@@ -178,6 +227,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             &mut salts,
             &slot_info,
             &single_disk_semaphore,
+            is_stopped.clone(),
         );
 
         let maybe_solution_handle = tokio::task::spawn_blocking({
@@ -275,6 +325,7 @@ fn update_commitments(
     salts: &mut Salts,
     slot_info: &SlotInfo,
     single_disk_semaphore: &SingleDiskSemaphore,
+    is_stopped: impl FnMut() -> bool + Clone + Send + 'static,
 ) {
     let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
@@ -293,6 +344,7 @@ fn update_commitments(
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
             let span = info_span!("recommit", new_salt = %hex::encode(salt));
+            let is_stopped = is_stopped.clone();
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -306,7 +358,7 @@ fn update_commitments(
                     let started = Instant::now();
                     info!("Salt updated, recommitting in background");
 
-                    if let Err(error) = commitments.create(salt, plot) {
+                    if let Err(error) = commitments.create(salt, plot, is_stopped) {
                         error!(%error, "Failed to create commitment");
                     } else {
                         info!(
@@ -351,7 +403,7 @@ fn update_commitments(
 
                     let started = Instant::now();
                     info!("Salt will be updated, recommitting in background");
-                    if let Err(error) = commitments.create(new_next_salt, plot) {
+                    if let Err(error) = commitments.create(new_next_salt, plot, is_stopped) {
                         error!(
                             %error,
                             "Recommitting salt in background failed",

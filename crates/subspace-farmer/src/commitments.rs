@@ -32,6 +32,8 @@ pub enum CommitmentError {
     CommitmentDb(rocksdb::Error),
     #[error("Plot error: {0}")]
     Plot(io::Error),
+    #[error("Received stop signal")]
+    Stop,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -95,7 +97,12 @@ impl Commitments {
     }
 
     /// Create commitments for all pieces for a given salt
-    pub fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
+    pub fn create(
+        &self,
+        salt: Salt,
+        plot: Plot,
+        mut is_stopped: impl FnMut() -> bool,
+    ) -> Result<(), CommitmentError> {
         {
             let mut commitment_databases = self.inner.commitment_databases.lock();
 
@@ -133,6 +140,9 @@ impl Commitments {
         let piece_count = plot.piece_count();
         let mut tags_with_offset = Vec::with_capacity(TAGS_WRITE_BATCH_SIZE);
         for batch_start in (0..piece_count).step_by(PLOT_READ_BATCH_SIZE as usize) {
+            if is_stopped() {
+                return Err(CommitmentError::Stop);
+            }
             let pieces_to_process =
                 (batch_start + PLOT_READ_BATCH_SIZE).min(piece_count) - batch_start;
             // TODO: Read next batch while creating tags for the previous one for faster

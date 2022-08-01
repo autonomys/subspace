@@ -287,7 +287,7 @@ pub(crate) async fn bench(
                     single_plot_farm.plot().clone(),
                 )
             })
-            .map(|(commitments, plot)| move || commitments.create(rand::random(), plot))
+            .map(|(commitments, plot)| move || commitments.create(rand::random(), plot, || false))
             .map(tokio::task::spawn_blocking)
             .collect::<FuturesUnordered<_>>();
         while let Some(result) = tasks.next().await {

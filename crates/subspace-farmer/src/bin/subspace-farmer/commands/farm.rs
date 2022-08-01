@@ -17,7 +17,7 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, trace, warn};
 
-use crate::{utils, ArchivingFrom, DiskFarm, FarmingArgs};
+use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
