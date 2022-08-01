@@ -319,11 +319,26 @@ pub struct SinglePlotFarm {
     commitments: Commitments,
     object_mappings: ObjectMappings,
     farming: Option<Farming>,
-    node: Node,
-    node_runner: NodeRunner,
+    node: Option<Node>,
+    node_runner: Option<NodeRunner>,
     single_disk_semaphore: SingleDiskSemaphore,
     span: Span,
     background_task_handles: Vec<AbortingJoinHandle<()>>,
+}
+
+impl Drop for SinglePlotFarm {
+    fn drop(&mut self) {
+        // Ensure that the node is dropped
+        drop(self.node.take());
+
+        let (exitted_sender, exitted_receiver) = std::sync::mpsc::sync_channel(1);
+        let mut node_runner = self.node_runner.take().expect("Is always some");
+        tokio::spawn(async move {
+            node_runner.run().await;
+            let _ = exitted_sender.send(());
+        });
+        let _ = exitted_receiver.recv();
+    }
 }
 
 impl SinglePlotFarm {
@@ -524,8 +539,8 @@ impl SinglePlotFarm {
             commitments,
             object_mappings,
             farming,
-            node: node.clone(),
-            node_runner,
+            node: Some(node.clone()),
+            node_runner: Some(node_runner),
             single_disk_semaphore,
             span: Span::current(),
             background_task_handles: vec![],
@@ -641,7 +656,7 @@ impl SinglePlotFarm {
 
     /// Access network node instance of the farm
     pub fn node(&self) -> &Node {
-        &self.node
+        self.node.as_ref().expect("Is always some")
     }
 
     pub fn piece_getter(&self) -> impl PieceGetter {
@@ -659,16 +674,17 @@ impl SinglePlotFarm {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
+        let node_runner = self.node_runner.as_mut().expect("Is always some");
         if let Some(farming) = self.farming.as_mut() {
             try_join(farming.wait(), async {
-                self.node_runner.run().await;
+                node_runner.run().await;
 
                 Ok(())
             })
             .instrument(self.span.clone())
             .await?;
         } else {
-            self.node_runner.run().instrument(self.span.clone()).await;
+            node_runner.run().instrument(self.span.clone()).await;
         }
 
         Ok(())
@@ -679,7 +695,7 @@ impl SinglePlotFarm {
         max_plot_size: u64,
         total_pieces: u64,
         range_size: PieceIndexHashNumber,
-    ) -> impl Future<Output = anyhow::Result<()>> {
+    ) -> impl Future<Output = anyhow::Result<()>> + 'static {
         let options = SyncOptions {
             range_size,
             public_key: self.public_key,
@@ -690,15 +706,19 @@ impl SinglePlotFarm {
         let single_plot_plotter = self.plotter();
         let span = self.span.clone();
 
-        dsn::sync(self.node.clone(), options, move |pieces, piece_indexes| {
-            let _guard = span.enter();
+        dsn::sync(
+            self.node().clone(),
+            options,
+            move |pieces, piece_indexes| {
+                let _guard = span.enter();
 
-            single_plot_plotter
-                .plot_pieces(PiecesToPlot {
-                    pieces,
-                    piece_indexes,
-                })
-                .map_err(Into::into)
-        })
+                single_plot_plotter
+                    .plot_pieces(PiecesToPlot {
+                        pieces,
+                        piece_indexes,
+                    })
+                    .map_err(Into::into)
+            },
+        )
     }
 }
