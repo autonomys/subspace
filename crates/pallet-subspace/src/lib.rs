@@ -407,6 +407,11 @@ mod pallet {
     #[pallet::getter(fn records_root)]
     pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
 
+    /// Mapping from segment index to corresponding merkle tree root of segment records.
+    #[pallet::storage]
+    #[pallet::getter(fn object_mapping_root)]
+    pub(super) type ObjectMappingRoots<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
+
     /// Storage of previous vote verification data, updated on each block during finalization.
     #[pallet::storage]
     pub(super) type ParentVoteVerificationData<T> = StorageValue<_, VoteVerificationData>;
@@ -983,6 +988,10 @@ impl<T: Config> Pallet<T> {
     fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
         for root_block in root_blocks {
             RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
+            ObjectMappingRoots::<T>::insert(
+                root_block.segment_index(),
+                root_block.object_mapping_root(),
+            );
             // Deposit global randomness data such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::records_root(
                 root_block.segment_index(),
@@ -1524,12 +1533,18 @@ fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), Transac
     // Segment in root blocks should monotonically increase
     if first_root_block.segment_index() > 0
         && !RecordsRoot::<T>::contains_key(first_root_block.segment_index() - 1)
+        && !ObjectMappingRoots::<T>::contains_key(first_root_block.segment_index() - 1)
     {
         return Err(InvalidTransaction::BadMandatory.into());
     }
 
     // Root blocks should never repeat
     if RecordsRoot::<T>::contains_key(first_root_block.segment_index()) {
+        return Err(InvalidTransaction::BadMandatory.into());
+    }
+
+    // Object mappings should never repeat
+    if ObjectMappingRoots::<T>::contains_key(first_root_block.segment_index()) {
         return Err(InvalidTransaction::BadMandatory.into());
     }
 
@@ -1545,6 +1560,11 @@ fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), Transac
 
         // Root blocks should never repeat
         if RecordsRoot::<T>::contains_key(segment_index) {
+            return Err(InvalidTransaction::BadMandatory.into());
+        }
+
+        // Object mappings should never repeat
+        if ObjectMappingRoots::<T>::contains_key(first_root_block.segment_index()) {
             return Err(InvalidTransaction::BadMandatory.into());
         }
 

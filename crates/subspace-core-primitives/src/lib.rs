@@ -459,6 +459,16 @@ impl RootBlock {
         }
     }
 
+    /// Merkle root of the object mappings in a segments.
+    pub fn object_mappings_root(&self) -> Sha256Hash {
+        match self {
+            Self::V0 {
+                object_mappings_root,
+                ..
+            } => *object_mappings_root,
+        }
+    }
+
     /// Hash of the root block of the previous segment
     pub fn prev_root_block_hash(&self) -> Sha256Hash {
         match self {
