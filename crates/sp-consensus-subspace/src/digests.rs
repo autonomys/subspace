@@ -18,6 +18,7 @@
 
 use crate::{ConsensusLog, FarmerPublicKey, FarmerSignature, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
+use frame_support::ensure;
 use log::trace;
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
@@ -26,7 +27,8 @@ use sp_runtime::traits::Zero;
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
-use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{PublicKey, Randomness, Salt, Sha256Hash, Solution};
+use subspace_verification::derive_randomness;
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
@@ -315,6 +317,20 @@ pub enum Error {
         error("Duplicate Subspace {0} digests, rejecting!")
     )]
     Duplicate(ErrorDigestType),
+
+    /// Error when deriving next digests
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive next {0} digest, rejecting!")
+    )]
+    NextDigestDerivationError(ErrorDigestType),
+
+    /// Error when verifying next digests
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to verify next {0} digest, rejecting!")
+    )]
+    NextDigestVerificationError(ErrorDigestType),
 }
 
 #[cfg(feature = "std")]
@@ -532,4 +548,52 @@ where
         }
     }
     pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))
+}
+
+type NumberOf<T> = <T as HeaderT>::Number;
+
+fn derive_next_global_randomness<Header: HeaderT>(
+    number: NumberOf<Header>,
+    global_randomness_interval: NumberOf<Header>,
+    pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+) -> Result<Option<Randomness>, Error> {
+    if number % global_randomness_interval != Zero::zero() {
+        return Ok(None);
+    }
+
+    derive_randomness(
+        &Into::<PublicKey>::into(&pre_digest.solution.public_key),
+        pre_digest.solution.tag,
+        &pre_digest.solution.tag_signature,
+    )
+    .map(Some)
+    .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
+}
+
+/// Type that holds the parameters to derive and verify next digest items.
+pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
+    /// Header number for which we are verifying the digests.
+    pub number: NumberOf<Header>,
+    /// Digests present in the header that corresponds to number above.
+    pub header_digests: &'a SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
+    /// Randomness interval at which next randomness is derived.
+    pub global_randomness_interval: NumberOf<Header>,
+}
+
+/// Derives and verifies next digest items based on their respective intervals.
+pub fn verify_next_digests<Header: HeaderT>(
+    params: NextDigestsVerificationParams<Header>,
+) -> Result<(), Error> {
+    // verify if the randomness is supposed to derived at this block header
+    let expected_next_randomness = derive_next_global_randomness::<Header>(
+        params.number,
+        params.global_randomness_interval,
+        &params.header_digests.pre_digest,
+    )?;
+    ensure!(
+        expected_next_randomness == params.header_digests.next_global_randomness,
+        Error::NextDigestVerificationError(ErrorDigestType::NextGlobalRandomness)
+    );
+
+    Ok(())
 }

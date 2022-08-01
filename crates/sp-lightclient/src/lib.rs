@@ -23,8 +23,9 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_consensus_subspace::digests::{
-    extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, Error as DigestError,
-    ErrorDigestType, PreDigest, SubspaceDigestItems,
+    extract_pre_digest, extract_subspace_digest_items, verify_next_digests, CompatibleDigestItem,
+    Error as DigestError, ErrorDigestType, NextDigestsVerificationParams, PreDigest,
+    SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
@@ -75,6 +76,9 @@ pub struct ChainConstants<Header: HeaderT> {
     /// Genesis block records roots to verify the Block #1 and other block solutions until Block #1 is finalized.
     /// When Block #1 is finalized, these records roots are present in Block #1 are stored in the storage.
     pub genesis_records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
+
+    /// Defines interval at which randomness is updated.
+    pub global_randomness_interval: NumberOf<Header>,
 }
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
@@ -206,7 +210,7 @@ pub enum ImportError<Header: HeaderT> {
     /// Missing ancestor header at the number.
     MissingAncestorHeader(HashOf<Header>, NumberOf<Header>),
     /// Error while extracting digests from header.
-    DigestExtractionError(DigestError),
+    DigestError(DigestError),
     /// Invalid digest in the header.
     InvalidDigest(ErrorDigestType),
     /// Invalid slot when compared with parent header.
@@ -227,7 +231,7 @@ pub enum ImportError<Header: HeaderT> {
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
     fn from(error: DigestError) -> Self {
-        ImportError::DigestExtractionError(error)
+        ImportError::DigestError(error)
     }
 }
 
@@ -275,39 +279,37 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // TODO(ved): check for farmer equivocation
 
         // verify global randomness, solution range, and salt from the parent header
-        let SubspaceDigestItems {
-            pre_digest,
-            signature: _,
-            global_randomness,
-            solution_range,
-            salt,
-            next_global_randomness: _,
-            next_solution_range: _,
-            next_salt: _,
-            records_roots: _,
-        } = self.verify_header_digest_with_parent(&parent_header, &header)?;
+        let digests = self.verify_header_digest_with_parent(&parent_header, &header)?;
+
+        // verify next digest items
+        let constants = self.store.chain_constants();
+        verify_next_digests::<Header>(NextDigestsVerificationParams {
+            number: *header.number(),
+            header_digests: &digests,
+            global_randomness_interval: constants.global_randomness_interval,
+        })?;
 
         // slot must be strictly increasing from the parent header
-        Self::verify_slot(&parent_header.header, &pre_digest)?;
+        Self::verify_slot(&parent_header.header, &digests.pre_digest)?;
 
         // verify block signature
-        Self::verify_block_signature(&mut header, &pre_digest.solution.public_key)?;
+        Self::verify_block_signature(&mut header, &digests.pre_digest.solution.public_key)?;
 
         // verify solution
         let max_plot_size = self.store.chain_constants().max_plot_size;
-        let segment_index = pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
-        let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+        let segment_index = digests.pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+        let position = digests.pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
         let records_root =
             self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
         let total_pieces = self.total_pieces(parent_header.header.hash())?;
 
         verify_solution(
-            &pre_digest.solution,
-            pre_digest.slot.into(),
+            &digests.pre_digest.solution,
+            digests.pre_digest.slot.into(),
             VerifySolutionParams {
-                global_randomness: &global_randomness,
-                solution_range,
-                salt,
+                global_randomness: &digests.global_randomness,
+                solution_range: digests.solution_range,
+                salt: digests.salt,
                 piece_check_params: Some(PieceCheckParams {
                     records_root,
                     position,
@@ -319,7 +321,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         )
         .map_err(ImportError::InvalidSolution)?;
 
-        let block_weight = Self::calculate_block_weight(&global_randomness, &pre_digest);
+        let block_weight =
+            Self::calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
         let total_weight = parent_header.total_weight + block_weight;
 
         // last best header should ideally be parent header. if not check for forks and pick the best chain
@@ -419,12 +422,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         header: &mut Header,
         public_key: &FarmerPublicKey,
     ) -> Result<(), ImportError<Header>> {
-        let seal = header
-            .digest_mut()
-            .pop()
-            .ok_or(ImportError::DigestExtractionError(DigestError::Missing(
-                ErrorDigestType::Seal,
-            )))?;
+        let seal =
+            header
+                .digest_mut()
+                .pop()
+                .ok_or(ImportError::DigestError(DigestError::Missing(
+                    ErrorDigestType::Seal,
+                )))?;
 
         let signature = seal
             .as_subspace_seal()

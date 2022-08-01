@@ -1,14 +1,15 @@
 use crate::mock::{Header, MockStorage};
 use crate::{
-    ChainConstants, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems, NumberOf,
-    RecordsRoot, SegmentIndex, SolutionRange, Storage,
+    ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
+    NumberOf, RecordsRoot, SegmentIndex, SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use schnorrkel::Keypair;
 use sp_consensus_subspace::digests::{
-    extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
+    extract_subspace_digest_items, CompatibleDigestItem, ErrorDigestType, PreDigest,
+    SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::app_crypto::UncheckedFrom;
@@ -22,6 +23,7 @@ use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
     derive_target, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
+use subspace_verification::derive_randomness;
 
 fn default_randomness_and_salt() -> (Randomness, Salt) {
     let randomness = [1u8; 32];
@@ -40,6 +42,7 @@ fn default_test_constants() -> ChainConstants<Header> {
         },
         max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
         genesis_records_roots: Default::default(),
+        global_randomness_interval: 20,
     }
 }
 
@@ -100,7 +103,17 @@ fn valid_header_with_default_randomness_and_salt(
     keypair: &Keypair,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
     let (randomness, salt) = default_randomness_and_salt();
-    valid_header(parent_hash, number, slot, keypair, randomness, salt)
+    valid_header(parent_hash, number, slot, keypair, randomness, salt, false)
+}
+
+fn valid_header_with_next_randomness(
+    parent_hash: HashOf<Header>,
+    number: NumberOf<Header>,
+    slot: u64,
+    keypair: &Keypair,
+) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
+    let (randomness, salt) = default_randomness_and_salt();
+    valid_header(parent_hash, number, slot, keypair, randomness, salt, true)
 }
 
 fn valid_header(
@@ -110,6 +123,7 @@ fn valid_header(
     keypair: &Keypair,
     randomness: Randomness,
     salt: Salt,
+    should_add_next_randomness: bool,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
     let (encoding, piece_index, segment_index, records_root) = valid_piece(keypair.public);
     let tag: Tag = create_tag(encoding.as_ref(), salt);
@@ -123,8 +137,8 @@ fn valid_header(
     .unwrap();
     let solution_range = derive_solution_range(target, tag);
     let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
-
-    let digests = vec![
+    let tag_signature = create_tag_signature(keypair, tag);
+    let mut digests = vec![
         DigestItem::global_randomness(randomness),
         DigestItem::solution_range(solution_range),
         DigestItem::salt(salt),
@@ -135,12 +149,25 @@ fn valid_header(
                 reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                 piece_index,
                 encoding,
-                tag_signature: create_tag_signature(keypair, tag),
+                tag_signature,
                 local_challenge,
                 tag,
             },
         }),
     ];
+
+    if should_add_next_randomness {
+        let next_global_randomness = derive_randomness(
+            &Into::<subspace_core_primitives::PublicKey>::into(&FarmerPublicKey::unchecked_from(
+                keypair.public.to_bytes(),
+            )),
+            tag,
+            &tag_signature,
+        )
+        .unwrap();
+        digests.push(DigestItem::next_global_randomness(next_global_randomness));
+    }
+
     let mut header = Header {
         parent_hash,
         number,
@@ -306,7 +333,9 @@ fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: N
 
 #[test]
 fn test_header_import_success() {
-    let mut store = MockStorage::new(default_test_constants());
+    let mut constants = default_test_constants();
+    constants.global_randomness_interval = 11;
+    let mut store = MockStorage::new(constants);
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();
@@ -341,6 +370,40 @@ fn test_header_import_success() {
 
     // header count at the finalized head must be 1
     ensure_finalized_heads_have_no_forks(&importer.store, 3);
+
+    // verify global randomness
+    // global randomness at block number 11 should be updated as the interval is 11.
+    let (header, solution_range, segment_index, records_root) =
+        valid_header_with_default_randomness_and_salt(parent_hash, 11, slot, &keypair);
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    // this should fail since the next digest for randomness is missing
+    let res = importer.import_header(header.clone());
+    assert_err!(
+        res,
+        ImportError::DigestError(DigestError::NextDigestVerificationError(
+            ErrorDigestType::NextGlobalRandomness
+        ))
+    );
+
+    // inject expected randomness digest
+    let (header, solution_range, segment_index, records_root) =
+        valid_header_with_next_randomness(parent_hash, 11, slot, &keypair);
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    // this should fail since the next digest for randomness is missing
+    let res = importer.import_header(header);
+    assert_ok!(res);
 }
 
 fn create_fork_chain_from(
