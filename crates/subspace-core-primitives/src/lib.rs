@@ -430,6 +430,8 @@ pub enum RootBlock {
         segment_index: u64,
         /// Merkle root of the records in a segment.
         records_root: Sha256Hash,
+        /// Merkle root of object mappings root
+        object_mappings_root: Sha256Hash,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Sha256Hash,
         /// Last archived block

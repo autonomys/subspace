@@ -310,6 +310,7 @@ fn invalid_usage() {
             RootBlock::V0 {
                 segment_index: 0,
                 records_root: Sha256Hash::default(),
+                object_mappings_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -337,6 +338,7 @@ fn invalid_usage() {
             RootBlock::V0 {
                 segment_index: 0,
                 records_root: Sha256Hash::default(),
+                object_mappings_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -432,6 +434,7 @@ fn object_on_the_edge_of_segment() {
                     - RootBlock::V0 {
                         segment_index: 0,
                         records_root: Default::default(),
+                        object_mappings_root: Default::default(),
                         prev_root_block_hash: Default::default(),
                         last_archived_block: LastArchivedBlock {
                             number: 0,

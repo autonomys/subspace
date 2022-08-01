@@ -210,6 +210,7 @@ pub(crate) async fn bench(
             let root_block = RootBlock::V0 {
                 segment_index,
                 records_root: Sha256Hash::default(),
+                object_mappings_root: Sha256Hash::default(),
                 prev_root_block_hash: Sha256Hash::default(),
                 last_archived_block,
             };

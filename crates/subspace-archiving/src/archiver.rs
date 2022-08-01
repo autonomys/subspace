@@ -653,7 +653,7 @@ impl Archiver {
         drop(record_shards_slices);
 
         // Build a Merkle tree over all records
-        let merkle_tree = MerkleTree::from_data(
+        let records_merkle_tree = MerkleTree::from_data(
             record_shards
                 .as_bytes()
                 .as_ref()
@@ -676,16 +676,36 @@ impl Archiver {
 
                 record_part.copy_from_slice(shard_chunk);
                 witness_part.copy_from_slice(
-                    &merkle_tree
+                    &records_merkle_tree
                         .get_witness(position)
                         .expect("We use the same indexes as during Merkle tree creation; qed"),
                 );
             });
 
+        let records_merkle_tree = MerkleTree::from_data(
+            record_shards
+                .as_bytes()
+                .as_ref()
+                .chunks_exact(self.record_size),
+        );
+
+        let object_mappings_merkle_tree = MerkleTree::from_data(
+            object_mapping
+                .iter()
+                .flat_map(|PieceObjectMapping { objects }| objects)
+                .map(|PieceObject::V0 { hash, offset }| {
+                    hash.iter()
+                        .copied()
+                        .chain(offset.to_be_bytes())
+                        .collect::<Vec<_>>()
+                }),
+        );
+
         // Now produce root block
         let root_block = RootBlock::V0 {
             segment_index: self.segment_index,
-            records_root: merkle_tree.root(),
+            records_root: records_merkle_tree.root(),
+            object_mappings_root: object_mappings_merkle_tree.root(),
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };
