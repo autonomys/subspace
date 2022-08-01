@@ -4,13 +4,15 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, GenericRequest, GenericRequestHandler};
+use subspace_networking::{
+    BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler,
+};
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;
 
 impl GenericRequest for ExampleRequest {
-    const PROTOCOL_NAME: &'static str = "example";
+    const PROTOCOL_NAME: &'static str = "/example";
     const LOG_TARGET: &'static str = "example_request";
     type Response = ExampleResponse;
 }
@@ -75,10 +77,12 @@ async fn main() {
     // NODE 3 - requester
 
     let config_3 = Config {
-        bootstrap_nodes: vec![node_1_addr
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![node_1_addr
             .with(Protocol::P2p(node_1.id().into()))
             .with(Protocol::P2pCircuit)
-            .with(Protocol::P2p(node_2.id().into()))],
+            .with(Protocol::P2p(node_2.id().into()))])
+        .boxed(),
+        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::client_only()],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };
@@ -97,5 +101,8 @@ async fn main() {
         .send_generic_request(node_2.id(), ExampleRequest)
         .await
         .unwrap();
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
     println!("Received {:?}", result)
 }

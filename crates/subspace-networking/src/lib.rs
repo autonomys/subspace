@@ -27,7 +27,9 @@ mod request_responses;
 mod shared;
 mod utils;
 
-pub use crate::behavior::persistent_parameters::NetworkingParametersManager;
+pub use crate::behavior::persistent_parameters::{
+    BootstrappedNetworkingParameters, NetworkingParametersManager,
+};
 pub use crate::node::{
     CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
     TopicSubscription,

@@ -5,7 +5,7 @@ use libp2p::identity::sr25519::Keypair;
 use libp2p::Multiaddr;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::Config;
+use subspace_networking::{BootstrappedNetworkingParameters, Config};
 use tracing::info;
 
 #[derive(Debug, Parser)]
@@ -15,7 +15,7 @@ enum Command {
     Start {
         /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
         #[clap(long)]
-        bootstrap_node: Vec<Multiaddr>,
+        bootstrap_nodes: Vec<Multiaddr>,
         /// Keypair for node identity, can be obtained with `generate-keypair` command
         keypair: String,
         /// Multiaddr to listen on for subspace networking, multiple are supported
@@ -34,12 +34,15 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         Command::Start {
-            bootstrap_node,
+            bootstrap_nodes,
             keypair,
             listen_on,
         } => {
             let config = Config {
-                bootstrap_nodes: bootstrap_node,
+                networking_parameters_registry: BootstrappedNetworkingParameters::new(
+                    bootstrap_nodes,
+                )
+                .boxed(),
                 listen_on,
                 allow_non_globals_in_dht: true,
                 ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)

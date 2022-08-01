@@ -33,6 +33,10 @@ pub trait NetworkingParametersRegistry: Send {
     /// Peer number parameter limits peers to retrieve.
     async fn known_addresses(&self, peer_number: usize) -> Vec<(PeerId, Multiaddr)>;
 
+    /// Returns boostrap addresses from networking parameters initialization.
+    /// It removes p2p-protocol suffix.
+    fn bootstrap_addresses(&self) -> Vec<(PeerId, Multiaddr)>;
+
     /// Drive async work in the persistence provider
     async fn run(&mut self);
 
@@ -56,6 +60,48 @@ impl NetworkingParametersRegistry for NetworkingParametersRegistryStub {
 
     async fn known_addresses(&self, _: usize) -> Vec<(PeerId, Multiaddr)> {
         Vec::new()
+    }
+
+    fn bootstrap_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
+        Vec::new()
+    }
+
+    async fn run(&mut self) {
+        futures::future::pending().await // never resolves
+    }
+
+    fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry> {
+        Box::new(self.clone())
+    }
+}
+/// Networking manager implementation with bootstapped addresses. All other operations muted.
+#[derive(Clone)]
+pub struct BootstrappedNetworkingParameters {
+    bootstrap_addresses: Vec<Multiaddr>,
+}
+
+impl BootstrappedNetworkingParameters {
+    pub fn new(bootstrap_addresses: Vec<Multiaddr>) -> Self {
+        Self {
+            bootstrap_addresses,
+        }
+    }
+
+    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+        Box::new(self)
+    }
+}
+
+#[async_trait]
+impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
+    async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
+
+    async fn known_addresses(&self, _: usize) -> Vec<(PeerId, Multiaddr)> {
+        Vec::new()
+    }
+
+    fn bootstrap_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
+        convert_bootstrap_addresses(self.bootstrap_addresses.clone())
     }
 
     async fn run(&mut self) {
@@ -90,12 +136,17 @@ pub struct NetworkingParametersManager {
     column_id: u8,
     // Key to persistent parameters
     object_id: &'static [u8],
+    // Bootstrap addresses provided on creation
+    bootstrap_addresses: Vec<Multiaddr>,
 }
 
 impl NetworkingParametersManager {
     /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
     /// On object creation it starts a job for networking parameters cache handling.
-    pub fn new(path: &Path) -> Result<Self, NetworkParametersPersistenceError> {
+    pub fn new(
+        path: &Path,
+        bootstrap_addresses: Vec<Multiaddr>,
+    ) -> Result<Self, NetworkParametersPersistenceError> {
         let mut options = Options::with_columns(path, 1);
         // We don't use stats
         options.stats = false;
@@ -126,6 +177,7 @@ impl NetworkingParametersManager {
             object_id,
             known_peers: cache,
             networking_parameters_save_delay: Self::default_delay(),
+            bootstrap_addresses,
         })
     }
 
@@ -210,6 +262,10 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             .collect()
     }
 
+    fn bootstrap_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
+        convert_bootstrap_addresses(self.bootstrap_addresses.clone())
+    }
+
     async fn run(&mut self) {
         loop {
             (&mut self.networking_parameters_save_delay).await;
@@ -246,6 +302,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             db: self.db.clone(),
             column_id: self.column_id,
             object_id: self.object_id,
+            bootstrap_addresses: self.bootstrap_addresses.clone(),
         }
         .boxed()
     }
@@ -286,4 +343,31 @@ impl NetworkingParameters {
 
         peers_cache
     }
+}
+
+// Helper function. Converts boostrap addresses to a tuple with peer ID removing the peer Id suffix.
+// It logs incorrect multiaddresses.
+fn convert_bootstrap_addresses(bootstrap_addresses: Vec<Multiaddr>) -> Vec<(PeerId, Multiaddr)> {
+    bootstrap_addresses
+        .into_iter()
+        .filter_map(|multiaddr| {
+            let mut modified_multiaddr = multiaddr.clone();
+
+            let peer_id: Option<PeerId> = modified_multiaddr.pop().and_then(|protocol| {
+                if let Protocol::P2p(peer_id) = protocol {
+                    peer_id.try_into().ok()
+                } else {
+                    None
+                }
+            });
+
+            if let Some(peer_id) = peer_id {
+                Some((peer_id, modified_multiaddr))
+            } else {
+                debug!(%multiaddr, "Incorrect multiaddr provided for bootstrap");
+
+                None
+            }
+        })
+        .collect()
 }

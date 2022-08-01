@@ -6,7 +6,7 @@ use libp2p::{identity, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, NetworkingParametersManager};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, NetworkingParametersManager};
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +23,10 @@ async fn main() {
     for i in 0..TOTAL_NODE_COUNT {
         let keypair = Keypair::generate();
         let config = Config {
-            bootstrap_nodes: bootstrap_nodes.clone(),
+            networking_parameters_registry: BootstrappedNetworkingParameters::new(
+                bootstrap_nodes.clone(),
+            )
+            .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_globals_in_dht: true,
             ..Config::with_keypair(keypair.clone())
@@ -77,12 +80,14 @@ async fn main() {
     );
 
     let config = Config {
-        bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        networking_parameters_registry: NetworkingParametersManager::new(db_path.as_ref())
-            .unwrap()
-            .boxed(),
+        networking_parameters_registry: NetworkingParametersManager::new(
+            db_path.as_ref(),
+            bootstrap_nodes,
+        )
+        .unwrap()
+        .boxed(),
         ..Config::with_generated_keypair()
     };
 

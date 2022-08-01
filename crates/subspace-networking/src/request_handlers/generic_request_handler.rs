@@ -60,6 +60,12 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         })
     }
 
+    /// Creates a protocol handler with empty request handler. It could be used for protocol
+    /// registration in the libp2p stack in client-only usage scenarios.
+    pub fn client_only() -> Box<dyn RequestHandler> {
+        Self::create(|_| None)
+    }
+
     // Invokes external protocol handler.
     fn handle_request(
         &mut self,

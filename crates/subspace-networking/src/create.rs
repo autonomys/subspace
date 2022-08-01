@@ -42,8 +42,6 @@ const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
 pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
-    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
-    pub bootstrap_nodes: Vec<Multiaddr>,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
     pub listen_on: Vec<Multiaddr>,
     /// Fallback to random port if specified (or default) port is already occupied.
@@ -122,7 +120,6 @@ impl Config {
 
         Self {
             keypair,
-            bootstrap_nodes: vec![],
             listen_on: vec![],
             listen_on_fallback_to_random_port: true,
             timeout: Duration::from_secs(10),
@@ -144,9 +141,6 @@ impl Config {
 /// Errors that might happen during network creation.
 #[derive(Debug, Error)]
 pub enum CreationError {
-    /// Bad bootstrap address.
-    #[error("Bad bootstrap address")]
-    BadBootstrapAddress,
     /// Circuit relay client error.
     #[error("Circuit relay client error: {0}")]
     CircuitRelayClient(#[from] CircuitRelayClientError),
@@ -167,7 +161,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         timeout,
         identify,
         kademlia,
-        bootstrap_nodes,
         gossipsub,
         value_getter,
         yamux_config,
@@ -186,31 +179,16 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     // We take cached known addresses and combine them with manually provided bootstrap addresses
     // with a limit.
-    let combined_bootstrap_addresses = bootstrap_nodes
+    let combined_bootstrap_addresses = networking_parameters_registry
+        .bootstrap_addresses()
         .into_iter()
-        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
-        .map(|mut multiaddr| {
-            let peer_id: PeerId = multiaddr
-                .pop()
-                .and_then(|protocol| {
-                    if let Protocol::P2p(peer_id) = protocol {
-                        Some(peer_id.try_into().ok()?)
-                    } else {
-                        None
-                    }
-                })
-                .ok_or(CreationError::BadBootstrapAddress)?;
-
-            Ok((peer_id, multiaddr))
-        })
         .chain(
             networking_parameters_registry
                 .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
                 .await
-                .into_iter()
-                .map(Ok),
+                .into_iter(),
         )
-        .collect::<Result<_, CreationError>>()?;
+        .collect();
 
     trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
 
