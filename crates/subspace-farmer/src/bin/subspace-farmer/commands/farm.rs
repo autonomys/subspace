@@ -1,7 +1,7 @@
 use crate::utils::get_usable_plot_space;
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use jsonrpsee::ws_server::WsServerBuilder;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -192,10 +192,24 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_farm| single_disk_farm.wait())
         .collect::<FuturesUnordered<_>>();
 
-    while let Some(result) = single_disk_farms_stream.next().await {
-        result?;
+    let mut signal = Box::pin(tokio::signal::ctrl_c()).fuse();
 
-        info!("Farm exited successfully");
+    loop {
+        futures::select! {
+            maybe_result = single_disk_farms_stream.next() => {
+                if let Some(result) = maybe_result {
+                    result?;
+                    info!("Farm exited successfully");
+                } else {
+                    break
+                }
+            }
+            result = signal => {
+                if result.is_ok() {
+                    break
+                }
+            }
+        }
     }
 
     Ok(())
@@ -349,5 +363,13 @@ pub(crate) async fn farm_legacy(
 
     info!("WS RPC server listening on {ws_server_addr}");
 
-    multi_plots_farm.wait().await
+    let mut signal = Box::pin(tokio::signal::ctrl_c()).fuse();
+    let mut wait = Box::pin(multi_plots_farm.wait()).fuse();
+
+    loop {
+        futures::select! {
+            result = wait => return result,
+            result = signal => if result.is_ok() { return Ok(()) }
+        }
+    }
 }
