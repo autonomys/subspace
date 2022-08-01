@@ -1,3 +1,8 @@
+pub mod bench_rpc_client;
+#[cfg(test)]
+pub mod mock_rpc_client;
+pub(crate) mod node_rpc_client;
+
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
@@ -6,11 +11,6 @@ use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
-
-pub mod bench_rpc_client;
-#[cfg(test)]
-pub mod mock_rpc_client;
-pub(crate) mod node_rpc_client;
 
 /// To become error type agnostic
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;

@@ -19,6 +19,7 @@ use subspace_core_primitives::{
     PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use tempfile::TempDir;
 
 struct TestPlotter {
@@ -364,7 +365,11 @@ async fn test_dsn_sync() {
     let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
     let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync::<BenchRpcClient>(
         rpc_client.clone(),
-        farmer_protocol_info,
+        FarmerProtocolInfo {
+            max_plot_size: syncer_max_plot_size,
+            total_pieces: seeder_max_piece_count,
+            ..farmer_protocol_info
+        },
         range_size,
         false, // don't verify pieces
     );

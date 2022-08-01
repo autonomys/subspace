@@ -534,10 +534,10 @@ where
                 segment_indexes.len()
             );
 
-            return Err(JsonRpseeError::Custom(
-                "Internal error during `records_root` call: segment_indexes length exceed the limit"
-                    .to_string()
-            ));
+            return Err(JsonRpseeError::Custom(format!(
+                "segment_indexes length exceed the limit {}",
+                MAX_SEGMENT_INDEXES_PER_REQUEST
+            )));
         };
 
         let runtime_api = self.client.runtime_api();
