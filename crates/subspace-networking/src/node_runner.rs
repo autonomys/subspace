@@ -15,7 +15,7 @@ use libp2p::kad::{
     QueryResult, Quorum,
 };
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::{AddressScore, SwarmEvent};
+use libp2p::swarm::{AddressScore, DialError, SwarmEvent};
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
@@ -202,6 +202,20 @@ impl NodeRunner {
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
                 shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
+            }
+            SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+                if let DialError::Transport(ref addresses) = error {
+                    for (addr, _) in addresses {
+                        debug!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError for peer.");
+                        if let Some(peer_id) = peer_id {
+                            self.networking_parameters_registry
+                                .remove_known_peer_addresses(peer_id, vec![addr.clone()])
+                                .await;
+                        }
+                    }
+                } else {
+                    trace!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
+                }
             }
             other => {
                 trace!("Other swarm event: {:?}", other);

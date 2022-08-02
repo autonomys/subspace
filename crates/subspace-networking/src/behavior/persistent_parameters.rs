@@ -29,6 +29,9 @@ pub trait NetworkingParametersRegistry: Send {
     /// Registers a peer ID and associated addresses
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 
+    /// Unregisters associated addresses for peer ID.
+    async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
+
     /// Returns known addresses from networking parameters DB. It removes p2p-protocol suffix.
     async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)>;
 
@@ -49,32 +52,8 @@ impl Clone for Box<dyn NetworkingParametersRegistry> {
     }
 }
 
-/// The default implementation for networking manager stub. All operations muted.
-#[derive(Clone)]
-pub struct NetworkingParametersRegistryStub;
-
-#[async_trait]
-impl NetworkingParametersRegistry for NetworkingParametersRegistryStub {
-    async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
-
-    async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
-        Vec::new()
-    }
-
-    fn bootstrap_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
-        Vec::new()
-    }
-
-    async fn run(&mut self) {
-        futures::future::pending().await // never resolves
-    }
-
-    fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry> {
-        Box::new(self.clone())
-    }
-}
-/// Networking manager implementation with bootstapped addresses. All other operations muted.
-#[derive(Clone)]
+/// Networking manager implementation with bootstrapped addresses. All other operations muted.
+#[derive(Clone, Default)]
 pub struct BootstrappedNetworkingParameters {
     bootstrap_addresses: Vec<Multiaddr>,
 }
@@ -94,6 +73,8 @@ impl BootstrappedNetworkingParameters {
 #[async_trait]
 impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
+
+    async fn remove_known_peer_addresses(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
     async fn known_addresses(&self) -> Vec<(PeerId, Multiaddr)> {
         Vec::new()
@@ -154,7 +135,7 @@ impl NetworkingParametersManager {
         let column_id = 0u8;
         let object_id = b"global_networking_parameters_key";
 
-        // load known peeers cache.
+        // load known peers cache.
         let cache = db
             .get(column_id, object_id)?
             .map(|data| {
@@ -245,6 +226,28 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
 
                 if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
                     addresses.push(addr, ());
+                }
+            });
+
+        self.cache_need_saving = true;
+    }
+
+    async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
+        addresses
+            .into_iter()
+            .map(|addr| {
+                // remove p2p-protocol suffix if any
+                let mut modified_address = addr.clone();
+
+                if let Some(Protocol::P2p(_)) = modified_address.pop() {
+                    modified_address
+                } else {
+                    addr
+                }
+            })
+            .for_each(|addr| {
+                if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
+                    addresses.pop(&addr);
                 }
             });
 

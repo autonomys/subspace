@@ -1,12 +1,11 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
-use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, NetworkingParametersRegistryStub,
-};
+use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
+use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, MemoryTransport, OrTransport};
@@ -21,7 +20,7 @@ use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::SwarmBuilder;
+use libp2p::swarm::{ConnectionLimits, SwarmBuilder};
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
@@ -35,8 +34,7 @@ use tracing::{debug, info, trace};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
-// Max bootstrap addresses to preload.
-const INITIAL_BOOTSTRAP_ADDRESS_LIMIT: usize = 200;
+const OUTGOING_CONNECTIONS_LIMIT: u32 = 300;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -133,7 +131,7 @@ impl Config {
             initial_random_query_interval: Duration::from_secs(1),
             relay_server_address: None,
             parent_node: None,
-            networking_parameters_registry: Box::new(NetworkingParametersRegistryStub),
+            networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
         }
     }
@@ -211,6 +209,10 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             .executor(Box::new(|fut| {
                 tokio::spawn(fut);
             }))
+            .connection_limits(
+                ConnectionLimits::default()
+                    .with_max_established_outgoing(Some(OUTGOING_CONNECTIONS_LIMIT)),
+            )
             .build();
 
         // Setup listen_on addresses
@@ -233,22 +235,15 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         }
 
         // Setup bootstrap addresses
-        let mut dialed_addresses_number = 0;
         for (peer_id, addr) in combined_bootstrap_addresses {
-            // Limit dialed addresses
-            if dialed_addresses_number == INITIAL_BOOTSTRAP_ADDRESS_LIMIT {
-                break;
-            }
-
             let dial_opts = DialOpts::peer_id(peer_id)
                 .addresses(vec![addr.clone()])
                 .build();
 
             if let Err(err) = swarm.dial(dial_opts) {
-                debug!(%err, %peer_id, %addr, "Bootstrap address dialed successfully." )
+                debug!(%err, %peer_id, %addr, "Unexpected error: failed to dial a bootstrap address.");
             } else {
-                dialed_addresses_number += 1;
-                trace!(%peer_id, %addr, "Failed to dial a bootstrap address." )
+                trace!(%peer_id, %addr, "Bootstrap address dialed successfully.");
             }
         }
 
