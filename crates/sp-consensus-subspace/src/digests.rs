@@ -28,7 +28,9 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{PublicKey, Randomness, Salt, Sha256Hash, Solution};
-use subspace_verification::derive_randomness;
+use subspace_verification::{
+    derive_next_eon_index, derive_next_salt_from_randomness, derive_randomness,
+};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
@@ -570,6 +572,34 @@ fn derive_next_global_randomness<Header: HeaderT>(
     .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
 }
 
+fn derive_next_salt<Header: HeaderT>(
+    eon_duration: u64,
+    current_eon_index: u64,
+    genesis_slot: Slot,
+    current_slot: Slot,
+    maybe_randomness: Option<Randomness>,
+) -> Result<Option<Salt>, Error> {
+    // check if eon changes
+    let maybe_next_eon_index = derive_next_eon_index(
+        current_eon_index,
+        eon_duration,
+        u64::from(genesis_slot),
+        u64::from(current_slot),
+    );
+
+    // eon has changed, derive salt from the randomness derived from header at which salt is revealed
+    if maybe_next_eon_index.is_some() {
+        if let Some(randomness) = maybe_randomness {
+            return Ok(Some(derive_next_salt_from_randomness(
+                current_eon_index,
+                &randomness,
+            )));
+        }
+    }
+
+    Ok(None)
+}
+
 fn derive_next_solution_range<Header: HeaderT>(
     number: NumberOf<Header>,
     era_duration: NumberOf<Header>,
@@ -607,8 +637,16 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     pub era_duration: NumberOf<Header>,
     /// Slot probability.
     pub slot_probability: (u64, u64),
-    /// Era start slot.
+    /// Eon Duration at which next derived salt is used.
+    pub eon_duration: u64,
+    /// Genesis slot of the chain.
+    pub genesis_slot: Slot,
+    /// Current Era start slot.
     pub era_start_slot: Slot,
+    /// Current eon index.
+    pub current_eon_index: u64,
+    /// Randomness used to derive next salt.
+    pub maybe_randomness: Option<Randomness>,
 }
 
 /// Derives and verifies next digest items based on their respective intervals.
@@ -626,7 +664,7 @@ pub fn verify_next_digests<Header: HeaderT>(
         Error::NextDigestVerificationError(ErrorDigestType::NextGlobalRandomness)
     );
 
-    // verify if the solution range should be updated
+    // verify if the solution range should be derived at this block header
     let expected_next_solution_range = derive_next_solution_range::<Header>(
         params.number,
         params.era_duration,
@@ -640,5 +678,17 @@ pub fn verify_next_digests<Header: HeaderT>(
         Error::NextDigestVerificationError(ErrorDigestType::NextSolutionRange)
     );
 
+    // verify if the next derived salt should be present in the block header
+    let expected_next_salt = derive_next_salt::<Header>(
+        params.eon_duration,
+        params.current_eon_index,
+        params.genesis_slot,
+        params.header_digests.pre_digest.slot,
+        params.maybe_randomness,
+    )?;
+    ensure!(
+        expected_next_salt == params.header_digests.next_salt,
+        Error::NextDigestVerificationError(ErrorDigestType::NextSalt)
+    );
     Ok(())
 }
