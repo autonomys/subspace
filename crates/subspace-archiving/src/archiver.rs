@@ -682,30 +682,34 @@ impl Archiver {
                 );
             });
 
-        let records_merkle_tree = MerkleTree::from_data(
-            record_shards
-                .as_bytes()
-                .as_ref()
-                .chunks_exact(self.record_size),
-        );
+        let mut object_mappings_leafs = object_mapping
+            .iter()
+            .flat_map(|PieceObjectMapping { objects }| objects)
+            .map(|PieceObject::V0 { hash, offset }| {
+                hash.iter()
+                    .copied()
+                    .chain(offset.to_be_bytes())
+                    .collect::<Vec<_>>()
+            });
 
-        let object_mappings_merkle_tree = MerkleTree::from_data(
-            object_mapping
-                .iter()
-                .flat_map(|PieceObjectMapping { objects }| objects)
-                .map(|PieceObject::V0 { hash, offset }| {
-                    hash.iter()
-                        .copied()
-                        .chain(offset.to_be_bytes())
-                        .collect::<Vec<_>>()
-                }),
-        );
+        let object_mappings_root = match object_mapping
+            .iter()
+            .map(|PieceObjectMapping { objects }| objects.len())
+            .sum::<usize>()
+        {
+            0 => Default::default(),
+            1 => object_mappings_leafs
+                .next()
+                .map(|item| crypto::sha256_hash(item.as_ref()))
+                .expect("Has at least one item"),
+            _ => MerkleTree::from_data(object_mappings_leafs).root(),
+        };
 
         // Now produce root block
         let root_block = RootBlock::V0 {
             segment_index: self.segment_index,
             records_root: records_merkle_tree.root(),
-            object_mappings_root: object_mappings_merkle_tree.root(),
+            object_mappings_root,
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };

@@ -199,13 +199,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(13233));
+        assert_eq!(last_archived_block.partial_archived(), Some(13201));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(29143));
+        assert_eq!(last_archived_block.partial_archived(), Some(29079));
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -264,7 +264,7 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 3);
-        assert_eq!(last_archived_block.partial_archived(), None);
+        assert_eq!(last_archived_block.partial_archived(), Some(12956));
 
         for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
@@ -473,6 +473,6 @@ fn object_on_the_edge_of_segment() {
     // This will only need to be adjusted when implementation changes
     assert_eq!(
         archived_segment[1].object_mapping[0].objects[0].offset(),
-        88
+        120
     );
 }

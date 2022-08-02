@@ -990,7 +990,7 @@ impl<T: Config> Pallet<T> {
             RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
             ObjectMappingRoots::<T>::insert(
                 root_block.segment_index(),
-                root_block.object_mapping_root(),
+                root_block.object_mappings_root(),
             );
             // Deposit global randomness data such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::records_root(
