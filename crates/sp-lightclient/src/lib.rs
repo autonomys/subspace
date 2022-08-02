@@ -22,6 +22,7 @@
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
+use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, verify_next_digests, CompatibleDigestItem,
     Error as DigestError, ErrorDigestType, NextDigestsVerificationParams, PreDigest,
@@ -79,6 +80,12 @@ pub struct ChainConstants<Header: HeaderT> {
 
     /// Defines interval at which randomness is updated.
     pub global_randomness_interval: NumberOf<Header>,
+
+    /// Era duration at which solution range is updated.
+    pub era_duration: NumberOf<Header>,
+
+    /// Slot probability.
+    pub slot_probability: (u64, u64),
 }
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
@@ -283,10 +290,14 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // verify next digest items
         let constants = self.store.chain_constants();
+        let era_start_slot = self.find_era_start_slot(&header, constants.era_duration)?;
         verify_next_digests::<Header>(NextDigestsVerificationParams {
             number: *header.number(),
             header_digests: &digests,
             global_randomness_interval: constants.global_randomness_interval,
+            era_duration: constants.era_duration,
+            slot_probability: constants.slot_probability,
+            era_start_slot,
         })?;
 
         // slot must be strictly increasing from the parent header
@@ -361,6 +372,36 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         }
 
         Ok(())
+    }
+
+    fn find_era_start_slot(
+        &self,
+        header: &Header,
+        era_duration: NumberOf<Header>,
+    ) -> Result<Slot, ImportError<Header>> {
+        // special case when the current header is one, then extract pre digest and return slot.
+        if header.number().is_one() {
+            let digests = extract_pre_digest(header)?;
+            return Ok(digests.slot);
+        }
+
+        // if the current header number is less than or equal to era duration, then pick the slot from One
+        let era_start_number = if *header.number() <= era_duration {
+            One::one()
+        } else {
+            // era start slot is slot at (current number - era duration) block
+            header
+                .number()
+                .checked_sub(&era_duration)
+                .expect("Safe to unwrap due to check above")
+        };
+
+        let era_start_header = self
+            .find_ancestor_of_header_at_number(*header.parent_hash(), era_start_number)
+            .ok_or_else(|| ImportError::MissingParent(*header.parent_hash()))?;
+
+        let digests = extract_pre_digest(&era_start_header.header)?;
+        Ok(digests.slot)
     }
 
     /// Verifies if the header digests matches with logs from the parent header.
@@ -474,17 +515,19 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     /// Returns the ancestor of the header at number.
     fn find_ancestor_of_header_at_number(
         &self,
-        header: HeaderExt<Header>,
+        hash: HashOf<Header>,
         ancestor_number: NumberOf<Header>,
     ) -> Option<HeaderExt<Header>> {
+        let header = self.store.header(hash)?;
+
         // header number must be greater than the ancestor number
-        if *header.header.number() <= ancestor_number {
+        if *header.header.number() < ancestor_number {
             return None;
         }
 
         let headers_at_ancestor_number = self.store.headers_at_number(ancestor_number);
 
-        // short circuit if the there are not fork headers at the ancestor number
+        // short circuit if there are no fork headers at the ancestor number
         if headers_at_ancestor_number.len() == 1 {
             return headers_at_ancestor_number.into_iter().next();
         }
@@ -721,7 +764,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
                         let header_to_finalize = self
                             .find_ancestor_of_header_at_number(
-                                current_best_header,
+                                current_best_hash,
                                 current_finalized_number,
                             )
                             .ok_or(ImportError::MissingAncestorHeader(

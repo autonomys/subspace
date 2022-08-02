@@ -7,6 +7,7 @@ use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use schnorrkel::Keypair;
+use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, ErrorDigestType, PreDigest,
     SubspaceDigestItems,
@@ -23,7 +24,7 @@ use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
     derive_target, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
-use subspace_verification::derive_randomness;
+use subspace_verification::{derive_next_solution_range, derive_randomness};
 
 fn default_randomness_and_salt() -> (Randomness, Salt) {
     let randomness = [1u8; 32];
@@ -43,6 +44,8 @@ fn default_test_constants() -> ChainConstants<Header> {
         max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
         genesis_records_roots: Default::default(),
         global_randomness_interval: 20,
+        era_duration: 20,
+        slot_probability: (1, 6),
     }
 }
 
@@ -103,28 +106,63 @@ fn valid_header_with_default_randomness_and_salt(
     keypair: &Keypair,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
     let (randomness, salt) = default_randomness_and_salt();
-    valid_header(parent_hash, number, slot, keypair, randomness, salt, false)
+    valid_header(ValidHeaderParams {
+        parent_hash,
+        number,
+        slot,
+        keypair,
+        randomness,
+        salt,
+        should_add_next_randomness: false,
+        maybe_next_solution_range: None,
+    })
 }
 
-fn valid_header_with_next_randomness(
+fn valid_header_with_next_digests(
     parent_hash: HashOf<Header>,
     number: NumberOf<Header>,
     slot: u64,
     keypair: &Keypair,
+    should_add_next_randomness: bool,
+    maybe_next_solution_range: Option<(Slot, (u64, u64), NumberOf<Header>)>,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
     let (randomness, salt) = default_randomness_and_salt();
-    valid_header(parent_hash, number, slot, keypair, randomness, salt, true)
+    valid_header(ValidHeaderParams {
+        parent_hash,
+        number,
+        slot,
+        keypair,
+        randomness,
+        salt,
+        should_add_next_randomness,
+        maybe_next_solution_range,
+    })
 }
 
-fn valid_header(
+struct ValidHeaderParams<'a> {
     parent_hash: HashOf<Header>,
     number: NumberOf<Header>,
     slot: u64,
-    keypair: &Keypair,
+    keypair: &'a Keypair,
     randomness: Randomness,
     salt: Salt,
     should_add_next_randomness: bool,
+    maybe_next_solution_range: Option<(Slot, (u64, u64), NumberOf<Header>)>,
+}
+
+fn valid_header(
+    params: ValidHeaderParams<'_>,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
+    let ValidHeaderParams {
+        parent_hash,
+        number,
+        slot,
+        keypair,
+        randomness,
+        salt,
+        should_add_next_randomness,
+        maybe_next_solution_range,
+    } = params;
     let (encoding, piece_index, segment_index, records_root) = valid_piece(keypair.public);
     let tag: Tag = create_tag(encoding.as_ref(), salt);
     let global_challenge = derive_global_challenge(&randomness, slot);
@@ -166,6 +204,22 @@ fn valid_header(
         )
         .unwrap();
         digests.push(DigestItem::next_global_randomness(next_global_randomness));
+    }
+
+    if let Some((start_slot, probability, era_duration)) = maybe_next_solution_range {
+        let expected_next_solution_range = derive_next_solution_range(
+            u64::from(start_slot),
+            slot,
+            probability,
+            solution_range,
+            era_duration
+                .try_into()
+                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+        );
+
+        digests.push(DigestItem::next_solution_range(
+            expected_next_solution_range,
+        ))
     }
 
     let mut header = Header {
@@ -335,6 +389,7 @@ fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: N
 fn test_header_import_success() {
     let mut constants = default_test_constants();
     constants.global_randomness_interval = 11;
+    constants.era_duration = 11;
     let mut store = MockStorage::new(constants);
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
@@ -383,7 +438,7 @@ fn test_header_import_success() {
         .store_records_root(segment_index, records_root);
 
     // this should fail since the next digest for randomness is missing
-    let res = importer.import_header(header.clone());
+    let res = importer.import_header(header);
     assert_err!(
         res,
         ImportError::DigestError(DigestError::NextDigestVerificationError(
@@ -391,9 +446,9 @@ fn test_header_import_success() {
         ))
     );
 
-    // inject expected randomness digest
+    // inject expected randomness digest but should still fail due to missing next solution range
     let (header, solution_range, segment_index, records_root) =
-        valid_header_with_next_randomness(parent_hash, 11, slot, &keypair);
+        valid_header_with_next_digests(parent_hash, 11, slot, &keypair, true, None);
     importer
         .store
         .override_solution_range(parent_hash, solution_range);
@@ -401,7 +456,48 @@ fn test_header_import_success() {
         .store
         .store_records_root(segment_index, records_root);
 
-    // this should fail since the next digest for randomness is missing
+    // this should fail since the next digest for solution range is missing
+    let res = importer.import_header(header);
+    assert_err!(
+        res,
+        ImportError::DigestError(DigestError::NextDigestVerificationError(
+            ErrorDigestType::NextSolutionRange
+        ))
+    );
+
+    // inject next solution range
+    let ancestor_header = importer
+        .store
+        .headers_at_number(1)
+        .first()
+        .cloned()
+        .unwrap();
+    let ancestor_digests =
+        extract_subspace_digest_items::<Header, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &ancestor_header.header,
+        )
+        .unwrap();
+
+    let constants = importer.store.chain_constants();
+    let (header, solution_range, segment_index, records_root) = valid_header_with_next_digests(
+        parent_hash,
+        11,
+        slot,
+        &keypair,
+        true,
+        Some((
+            ancestor_digests.pre_digest.slot,
+            constants.slot_probability,
+            constants.era_duration,
+        )),
+    );
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
     let res = importer.import_header(header);
     assert_ok!(res);
 }

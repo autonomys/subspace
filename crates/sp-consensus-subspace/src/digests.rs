@@ -570,6 +570,31 @@ fn derive_next_global_randomness<Header: HeaderT>(
     .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
 }
 
+fn derive_next_solution_range<Header: HeaderT>(
+    number: NumberOf<Header>,
+    era_duration: NumberOf<Header>,
+    slot_probability: (u64, u64),
+    current_slot: Slot,
+    current_solution_range: u64,
+    era_start_slot: Slot,
+) -> Result<Option<u64>, Error> {
+    if number.is_zero() || number % era_duration != Zero::zero() {
+        return Ok(None);
+    }
+
+    let next_solution_range = subspace_verification::derive_next_solution_range(
+        u64::from(era_start_slot),
+        u64::from(current_slot),
+        slot_probability,
+        current_solution_range,
+        era_duration
+            .try_into()
+            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+    );
+
+    Ok(Some(next_solution_range))
+}
+
 /// Type that holds the parameters to derive and verify next digest items.
 pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Header number for which we are verifying the digests.
@@ -578,6 +603,12 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     pub header_digests: &'a SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
     /// Randomness interval at which next randomness is derived.
     pub global_randomness_interval: NumberOf<Header>,
+    /// Era duration at which solution range is updated.
+    pub era_duration: NumberOf<Header>,
+    /// Slot probability.
+    pub slot_probability: (u64, u64),
+    /// Era start slot.
+    pub era_start_slot: Slot,
 }
 
 /// Derives and verifies next digest items based on their respective intervals.
@@ -593,6 +624,20 @@ pub fn verify_next_digests<Header: HeaderT>(
     ensure!(
         expected_next_randomness == params.header_digests.next_global_randomness,
         Error::NextDigestVerificationError(ErrorDigestType::NextGlobalRandomness)
+    );
+
+    // verify if the solution range should be updated
+    let expected_next_solution_range = derive_next_solution_range::<Header>(
+        params.number,
+        params.era_duration,
+        params.slot_probability,
+        params.header_digests.pre_digest.slot,
+        params.header_digests.solution_range,
+        params.era_start_slot,
+    )?;
+    ensure!(
+        expected_next_solution_range == params.header_digests.next_solution_range,
+        Error::NextDigestVerificationError(ErrorDigestType::NextSolutionRange)
     );
 
     Ok(())
