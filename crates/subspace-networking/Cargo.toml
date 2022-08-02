@@ -18,6 +18,7 @@ include = [
 [dependencies]
 async-trait = "0.1.56"
 bytes = "1.2.0"
+chrono = {version = "0.4.19", features = ["clock", "serde", "std",]}
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 futures = "0.3.21"

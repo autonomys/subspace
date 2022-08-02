@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::future::Fuse;
 use futures::FutureExt;
 use libp2p::multiaddr::Protocol;
@@ -6,8 +7,9 @@ use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use parity_db::{Db, Options};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::Hash;
+use std::ops::Add;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -15,6 +17,9 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::{debug, trace};
+
+// Defines optional time for address dial failure
+type LastFailedTime = Option<DateTime<Utc>>;
 
 // Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: usize = 100;
@@ -107,7 +112,7 @@ pub struct NetworkingParametersManager {
     // Defines whether the cache requires saving to DB
     cache_need_saving: bool,
     // LRU cache for the known peers and their addresses
-    known_peers: LruCache<PeerId, LruCache<Multiaddr, ()>>,
+    known_peers: LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>>,
     // Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     // Parity DB instance
@@ -162,7 +167,7 @@ impl NetworkingParametersManager {
     }
 
     // Helps create a copy of the internal LruCache
-    fn clone_known_peers(&self) -> LruCache<PeerId, LruCache<Multiaddr, ()>> {
+    fn clone_known_peers(&self) -> LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>> {
         let mut known_peers = LruCache::new(self.known_peers.cap());
 
         for (peer_id, addresses) in self.known_peers.iter() {
@@ -209,23 +214,14 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
                     .any(|protocol| matches!(protocol, Protocol::Memory(..)))
             })
             .cloned()
-            .map(|addr| {
-                // remove p2p-protocol suffix if any
-                let mut modified_address = addr.clone();
-
-                if let Some(Protocol::P2p(_)) = modified_address.pop() {
-                    modified_address
-                } else {
-                    addr
-                }
-            })
+            .map(remove_p2p_suffix)
             .for_each(|addr| {
                 // Add new address cache if it doesn't exist previously.
                 self.known_peers
                     .get_or_insert(peer_id, || LruCache::new(ADDRESSES_CACHE_SIZE));
 
                 if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
-                    addresses.push(addr, ());
+                    addresses.push(addr, None);
                 }
             });
 
@@ -235,19 +231,28 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
         addresses
             .into_iter()
-            .map(|addr| {
-                // remove p2p-protocol suffix if any
-                let mut modified_address = addr.clone();
-
-                if let Some(Protocol::P2p(_)) = modified_address.pop() {
-                    modified_address
-                } else {
-                    addr
-                }
-            })
+            .map(remove_p2p_suffix)
             .for_each(|addr| {
+                // if peer_id is present in the cache
                 if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
-                    addresses.pop(&addr);
+                    // Get mutable reference to last_failed_time for the address without updating
+                    // the item's position in the cache
+                    if let Some(last_failed_time) = addresses.peek_mut(&addr) {
+                        // if we failed previously with this address
+                        if let Some(time) = last_failed_time {
+                            // if we failed less than a day ago
+                            if time.add(chrono::Duration::days(1)) > Utc::now() {
+                                // Update failure time
+                                *last_failed_time = Some(Utc::now())
+                            } else {
+                                // Remove a failed address
+                                addresses.pop(&addr);
+                            }
+                        } else {
+                            // Set failure time
+                            *last_failed_time = Some(Utc::now())
+                        }
+                    }
                 }
             });
 
@@ -312,32 +317,31 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
 // Helper struct for NetworkingPersistence implementations (data transfer object).
 #[derive(Default, Debug, Serialize, Deserialize)]
 struct NetworkingParameters {
-    pub known_peers: HashMap<PeerId, HashSet<Multiaddr>>,
+    pub known_peers: HashMap<PeerId, HashMap<Multiaddr, LastFailedTime>>,
 }
 
 impl NetworkingParameters {
-    fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, ()>>) -> Self {
+    fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>>) -> Self {
         Self {
             known_peers: cache
                 .into_iter()
                 .map(|(peer_id, addresses)| {
-                    (
-                        peer_id,
-                        addresses.into_iter().map(|(addr, _)| addr).collect(),
-                    )
+                    (peer_id, addresses.into_iter().collect::<HashMap<_, _>>())
                 })
-                .collect(),
+                .collect::<HashMap<_, _>>(),
         }
     }
 
-    fn to_cache(&self) -> LruCache<PeerId, LruCache<Multiaddr, ()>> {
-        let mut peers_cache = LruCache::<PeerId, LruCache<Multiaddr, ()>>::new(PEER_CACHE_SIZE);
+    fn to_cache(&self) -> LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>> {
+        let mut peers_cache =
+            LruCache::<PeerId, LruCache<Multiaddr, LastFailedTime>>::new(PEER_CACHE_SIZE);
 
-        for (peer_id, address_set) in self.known_peers.iter() {
-            let mut address_cache = LruCache::<Multiaddr, ()>::new(ADDRESSES_CACHE_SIZE);
+        for (peer_id, address_map) in self.known_peers.iter() {
+            let mut address_cache =
+                LruCache::<Multiaddr, LastFailedTime>::new(ADDRESSES_CACHE_SIZE);
 
-            for address in address_set.iter().cloned() {
-                address_cache.push(address, ());
+            for (address, last_failed) in address_map.iter() {
+                address_cache.push(address.clone(), *last_failed);
             }
             peers_cache.push(*peer_id, address_cache);
         }
@@ -371,4 +375,15 @@ fn convert_bootstrap_addresses(bootstrap_addresses: Vec<Multiaddr>) -> Vec<(Peer
             }
         })
         .collect()
+}
+
+// Removes a P2p protocol suffix from the multiaddress if any.
+fn remove_p2p_suffix(address: Multiaddr) -> Multiaddr {
+    let mut modified_address = address.clone();
+
+    if let Some(Protocol::P2p(_)) = modified_address.pop() {
+        modified_address
+    } else {
+        address
+    }
 }
