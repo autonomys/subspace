@@ -183,8 +183,8 @@ pub trait Storage<Header: HeaderT> {
     /// Returns a records root for a given segment index.
     fn records_root(&self, segment_index: SegmentIndex) -> Option<RecordsRoot>;
 
-    /// Returns the current count of stored records roots.
-    fn records_roots_count(&self) -> u64;
+    /// Returns the stored segment count.
+    fn number_of_segments(&self) -> u64;
 }
 
 /// Error type that holds the current finalized number and the header number we are trying to import.
@@ -539,22 +539,22 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     }
 
     /// Returns the total pieces on chain where chain_tip is the hash of the tip of the chain.
-    /// We count the total records roots to calculate total pieces as follows,
-    /// - Fetch the records roots count from the store.
-    /// - Count the records roots count from each header that is not finalized.
+    /// We count the total segments to calculate total pieces as follows,
+    /// - Fetch the segment count from the store.
+    /// - Count the segments from each header that is not finalized.
     fn total_pieces(&self, chain_tip: HashOf<Header>) -> Result<u64, ImportError<Header>> {
-        // fetch the records root count from the store
-        let records_roots_count_till_finalized_header = self.store.records_roots_count();
+        // fetch the segment count from the store
+        let records_roots_count_till_finalized_header = self.store.number_of_segments();
 
         let finalized_header = self.store.finalized_header();
         let mut records_roots_count = records_roots_count_till_finalized_header;
 
-        // special case when Block #1 is not finalized yet, then include the genesis records roots count
+        // special case when Block #1 is not finalized yet, then include the genesis segment count
         if finalized_header.header.number().is_zero() {
             records_roots_count += self.store.chain_constants().genesis_records_roots.len() as u64;
         }
 
-        // calculate records root count present in each header from header till finalized header
+        // calculate segment count present in each header from header till finalized header
         let mut header = self
             .store
             .header(chain_tip)

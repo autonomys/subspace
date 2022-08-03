@@ -119,7 +119,7 @@ impl Storage<Header> for MockStorage {
         self.0.records_roots.get(&segment_index).cloned()
     }
 
-    fn records_roots_count(&self) -> u64 {
+    fn number_of_segments(&self) -> u64 {
         self.0.records_roots.len() as u64
     }
 }
