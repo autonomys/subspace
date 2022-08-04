@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: self-hosted-ubuntu
+    runs-on: ${{ '$GITHUB_ACTOR' == 'subspace' && 'self-hosted-ubuntu' || 'ubuntu-22.04' }}
     permissions:
       contents: write
       packages: write
@@ -81,7 +81,7 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: self-hosted-ubuntu
+          - os: ${{ '$GITHUB_ACTOR' == 'subspace' && 'self-hosted-ubuntu' || 'ubuntu-22.04' }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             rustflags: ''
@@ -94,10 +94,10 @@ jobs:
             suffix: macos-x86_64-${{ github.ref_name }}
             rustflags: ''
           - os: macos-12
-            target: self-hosted-mac-arm
+            target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             rustflags: ''
-          - os: self-hosted-wnd
+          - os: ${{ '$GITHUB_ACTOR' == 'subspace' && 'self-hosted-wnd' || 'windows-2022' }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-${{ github.ref_name }}
             rustflags: ''
