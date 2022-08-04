@@ -816,13 +816,12 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
 
 #[async_trait]
 impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
+    #[tracing::instrument(parent = &self.span, skip_all)]
     async fn on_pieces(
         &self,
         pieces: FlatPieces,
         piece_indexes: Vec<PieceIndex>,
     ) -> anyhow::Result<()> {
-        let _guard = self.span.enter();
-
         if self.pieces_verification_enabled {
             self.verify_pieces_at_blockchain(&piece_indexes, &pieces)
                 .await?;
