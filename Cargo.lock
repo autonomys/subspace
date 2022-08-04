@@ -7534,6 +7534,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-runtime",
  "sp-std",
+ "subspace-archiving",
  "subspace-core-primitives",
  "subspace-solving",
  "subspace-verification",

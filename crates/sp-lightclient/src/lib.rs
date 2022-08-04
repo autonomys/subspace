@@ -30,10 +30,15 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
+use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
-use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, Salt};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RewardSignature, Salt, Sha256Hash, MERKLE_NUM_LEAVES, RECORD_SIZE,
+};
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use subspace_verification::{
+    check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
+};
 
 #[cfg(test)]
 mod tests;
@@ -48,6 +53,12 @@ type SolutionRange = u64;
 /// BlockWeight type for fork choice rules.
 type BlockWeight = u128;
 
+/// Segment index type.
+type SegmentIndex = u64;
+
+/// Records root type.
+type RecordsRoot = Sha256Hash;
+
 /// Chain constants.
 #[derive(Debug, Clone)]
 pub struct ChainConstants<Header: HeaderT> {
@@ -57,6 +68,13 @@ pub struct ChainConstants<Header: HeaderT> {
     /// Genesis digest items at the start of the chain since the genesis block will not have any digests
     /// to verify the Block #1 digests.
     pub genesis_digest_items: NextDigestItems,
+
+    /// Maximum number of pieces in a given plot.
+    pub max_plot_size: u64,
+
+    /// Genesis block records roots to verify the Block #1 and other block solutions until Block #1 is finalized.
+    /// When Block #1 is finalized, these records roots are present in Block #1 are stored in the storage.
+    pub genesis_records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
 }
 
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
@@ -158,6 +176,15 @@ pub trait Storage<Header: HeaderT> {
 
     /// Returns the latest finalized header.
     fn finalized_header(&self) -> HeaderExt<Header>;
+
+    /// Stores records roots for fast retrieval by segment index at or below finalized header.
+    fn store_records_roots(&mut self, records_roots: BTreeMap<SegmentIndex, RecordsRoot>);
+
+    /// Returns a records root for a given segment index.
+    fn records_root(&self, segment_index: SegmentIndex) -> Option<RecordsRoot>;
+
+    /// Returns the stored segment count.
+    fn number_of_segments(&self) -> u64;
 }
 
 /// Error type that holds the current finalized number and the header number we are trying to import.
@@ -174,6 +201,8 @@ pub enum ImportError<Header: HeaderT> {
     HeaderAlreadyImported,
     /// Missing parent header.
     MissingParent(HashOf<Header>),
+    /// Missing header associated with hash.
+    MissingHeader(HashOf<Header>),
     /// Missing ancestor header at the number.
     MissingAncestorHeader(HashOf<Header>, NumberOf<Header>),
     /// Error while extracting digests from header.
@@ -192,6 +221,8 @@ pub enum ImportError<Header: HeaderT> {
     SwitchedToForkBelowArchivingDepth,
     /// Header being imported is below the archiving depth.
     HeaderIsBelowArchivingDepth(HeaderBelowArchivingDepthError<Header>),
+    /// Missing records root for a given segment index.
+    MissingRecordsRoot(SegmentIndex),
 }
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
@@ -263,6 +294,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Self::verify_block_signature(&mut header, &pre_digest.solution.public_key)?;
 
         // verify solution
+        let max_plot_size = self.store.chain_constants().max_plot_size;
+        let segment_index = pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+        let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+        let records_root =
+            self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
+        let total_pieces = self.total_pieces(parent_header.header.hash())?;
+
         verify_solution(
             &pre_digest.solution,
             pre_digest.slot.into(),
@@ -270,8 +308,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 global_randomness: &global_randomness,
                 solution_range,
                 salt,
-                // TODO(ved): verify POAS once we have access to record root
-                piece_check_params: None,
+                piece_check_params: Some(PieceCheckParams {
+                    records_root,
+                    position,
+                    record_size: RECORD_SIZE,
+                    max_plot_size,
+                    total_pieces,
+                }),
             },
         )
         .map_err(ImportError::InvalidSolution)?;
@@ -296,7 +339,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             }
         };
 
-        // TODO(ved): extract record roots from the header
         // TODO(ved); extract an equivocations from the header
 
         // store header
@@ -496,6 +538,117 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Ok(())
     }
 
+    /// Returns the total pieces on chain where chain_tip is the hash of the tip of the chain.
+    /// We count the total segments to calculate total pieces as follows,
+    /// - Fetch the segment count from the store.
+    /// - Count the segments from each header that is not finalized.
+    fn total_pieces(&self, chain_tip: HashOf<Header>) -> Result<u64, ImportError<Header>> {
+        // fetch the segment count from the store
+        let records_roots_count_till_finalized_header = self.store.number_of_segments();
+
+        let finalized_header = self.store.finalized_header();
+        let mut records_roots_count = records_roots_count_till_finalized_header;
+
+        // special case when Block #1 is not finalized yet, then include the genesis segment count
+        if finalized_header.header.number().is_zero() {
+            records_roots_count += self.store.chain_constants().genesis_records_roots.len() as u64;
+        }
+
+        // calculate segment count present in each header from header till finalized header
+        let mut header = self
+            .store
+            .header(chain_tip)
+            .ok_or(ImportError::MissingHeader(chain_tip))?;
+
+        while header.header.hash() != finalized_header.header.hash() {
+            let digest_items = extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&header.header)?;
+            records_roots_count += digest_items.records_roots.len() as u64;
+
+            header = self
+                .store
+                .header(*header.header.parent_hash())
+                .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
+        }
+
+        Ok(records_roots_count * u64::from(MERKLE_NUM_LEAVES))
+    }
+
+    /// Finds a records root mapped against a segment index in the chain with chain_tip as the tip of the chain.
+    /// We try to find the records root as follows,
+    ///  - Find records root from the store and return if found.
+    ///  - Find records root from the genesis record roots and return if found.
+    ///  - Find the records root present in the non finalized headers.
+    fn find_records_root_for_segment_index(
+        &self,
+        segment_index: SegmentIndex,
+        chain_tip: HashOf<Header>,
+    ) -> Result<RecordsRoot, ImportError<Header>> {
+        // check if the records root is already in the store
+        if let Some(records_root) = self.store.records_root(segment_index) {
+            return Ok(records_root);
+        };
+
+        // special case: check the genesis records roots if the Block #1 is not finalized yet
+        if let Some(records_root) = self
+            .store
+            .chain_constants()
+            .genesis_records_roots
+            .get(&segment_index)
+        {
+            return Ok(*records_root);
+        }
+
+        // find the records root from the headers which are not finalized yet.
+        let finalized_header = self.store.finalized_header();
+        let mut header = self
+            .store
+            .header(chain_tip)
+            .ok_or(ImportError::MissingHeader(chain_tip))?;
+
+        while header.header.hash() != finalized_header.header.hash() {
+            let digest_items = extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&header.header)?;
+
+            if let Some(records_root) = digest_items.records_roots.get(&segment_index) {
+                return Ok(*records_root);
+            }
+
+            header = self
+                .store
+                .header(*header.header.parent_hash())
+                .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
+        }
+
+        Err(ImportError::MissingRecordsRoot(segment_index))
+    }
+
+    /// Stores finalized header and records roots present in the header.
+    fn store_finalized_header_and_records_roots(
+        &mut self,
+        header: &Header,
+    ) -> Result<(), ImportError<Header>> {
+        let digests_items =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                header,
+            )?;
+
+        // mark header as finalized
+        self.store.finalize_header(header.hash());
+
+        // store the records roots present in the header digests
+        self.store.store_records_roots(digests_items.records_roots);
+        Ok(())
+    }
+
     /// Finalize the header at K-depth from the best block and prune remaining forks at that number.
     /// We want to finalize the header from the current finalized header until the K-depth number of the best.
     /// 1. In an ideal scenario, the current finalized head is one number less than number to be finalized.
@@ -551,7 +704,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                             .first()
                             .expect("First item must exist as the len is 1.");
 
-                        self.store.finalize_header(header_to_finalize.header.hash());
+                        self.store_finalized_header_and_records_roots(&header_to_finalize.header)?
                     } else {
                         // there are multiple headers at the number to be finalized.
                         // find the correct ancestor header of the current best header.
@@ -585,7 +738,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                         }
 
                         // mark the header as finalized
-                        self.store.finalize_header(header_to_finalize.header.hash())
+                        self.store_finalized_header_and_records_roots(&header_to_finalize.header)?
                     }
                 }
 
