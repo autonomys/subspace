@@ -1,7 +1,13 @@
+pub mod bench_rpc_client;
+#[cfg(test)]
+pub mod mock_rpc_client;
+pub(crate) mod node_rpc_client;
+
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -44,4 +50,10 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
 
     /// Acknowledge receiving of archived segments
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), Error>;
+
+    /// Get records roots for the segments
+    async fn records_roots(
+        &self,
+        segment_indexes: Vec<u64>,
+    ) -> Result<Vec<Option<Sha256Hash>>, Error>;
 }

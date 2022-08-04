@@ -44,15 +44,17 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    Solution, MERKLE_NUM_LEAVES, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Sha256Hash, Solution, MERKLE_NUM_LEAVES, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -97,6 +99,9 @@ pub trait SubspaceRpcApi {
 
     #[method(name = "subspace_acknowledgeArchivedSegment")]
     async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()>;
+
+    #[method(name = "subspace_recordsRoots")]
+    async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>>;
 }
 
 #[derive(Default)]
@@ -204,7 +209,10 @@ where
         let farmer_protocol_info: Result<FarmerProtocolInfo, ApiError> = try {
             FarmerProtocolInfo {
                 genesis_hash,
-                record_size: RECORD_SIZE,
+                record_size: NonZeroU32::new(RECORD_SIZE).ok_or_else(|| {
+                    error!("Incorrect record_size constant provided.");
+                    ApiError::Application("Incorrect record_size set".to_string().into())
+                })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 // TODO: `max_plot_size` in the protocol must change to bytes as well
                 max_plot_size: runtime_api.max_plot_size(&best_block_id)? * PIECE_SIZE as u64,
@@ -517,5 +525,40 @@ where
         }
 
         Ok(())
+    }
+
+    async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>> {
+        if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
+            error!(
+                "segment_indexes length exceed the limit: {} ",
+                segment_indexes.len()
+            );
+
+            return Err(JsonRpseeError::Custom(format!(
+                "segment_indexes length exceed the limit {}",
+                MAX_SEGMENT_INDEXES_PER_REQUEST
+            )));
+        };
+
+        let runtime_api = self.client.runtime_api();
+        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+
+        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+            .into_iter()
+            .map(|idx| {
+                runtime_api.records_root(&best_block_id, idx).map_err(|_| {
+                    JsonRpseeError::Custom("Internal error during `records_root` call".to_string())
+                })
+            })
+            .collect();
+
+        if let Err(ref err) = records_root_result {
+            error!(
+                "Failed to get data from runtime API (records_root): {}",
+                err
+            );
+        }
+
+        records_root_result
     }
 }

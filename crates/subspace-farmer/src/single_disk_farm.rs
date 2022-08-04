@@ -313,7 +313,7 @@ impl SingleDiskFarm {
         };
 
         let single_disk_semaphore = SingleDiskSemaphore::new(disk_concurrency);
-
+        let verification_client = archiving_client.clone();
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
             single_disk_farm_info
@@ -350,6 +350,7 @@ impl SingleDiskFarm {
                         enable_dsn_archiving,
                         enable_dsn_sync,
                         relay_server_node: relay_server_node.clone(),
+                        verification_client: verification_client.clone(),
                     })
                 })
                 .collect::<anyhow::Result<Vec<_>>>()

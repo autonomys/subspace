@@ -3,9 +3,11 @@ use crate::utils::AbortingJoinHandle;
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
+use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::Sha256Hash;
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -29,8 +31,9 @@ pub struct Inner {
 /// Default farmer metadata for benchmarking
 pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     genesis_hash: [0; 32],
-    record_size: 3840,                       // PIECE_SIZE - WITNESS_SIZE
-    recorded_history_segment_size: 491520,   // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
+    // PIECE_SIZE - WITNESS_SIZE
+    record_size: NonZeroU32::new(3840).expect("We must set non-zero integer here."),
+    recorded_history_segment_size: 491520, // RECORD_SIZE * MERKLE_NUM_LEAVES / 2
     max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,
@@ -136,5 +139,9 @@ impl RpcClient for BenchRpcClient {
             .send(segment_index)
             .await?;
         Ok(())
+    }
+
+    async fn records_roots(&self, _: Vec<u64>) -> Result<Vec<Option<Sha256Hash>>, Error> {
+        Ok(Default::default())
     }
 }
