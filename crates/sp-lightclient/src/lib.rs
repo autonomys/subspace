@@ -171,6 +171,15 @@ impl<Header: HeaderT> HeaderExt<Header> {
             }
         };
 
+        #[cfg(test)]
+        let next_solution_range = {
+            if self.test_overrides.next_solution_range.is_some() {
+                self.test_overrides.next_solution_range
+            } else {
+                next_solution_range
+            }
+        };
+
         Ok(NextDigestItems {
             next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
             next_solution_range: next_solution_range.unwrap_or(solution_range),
@@ -413,41 +422,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let genesis_slot = self.find_genesis_slot(header)?;
         let pre_digest = extract_pre_digest(header)?;
 
-        // if the salt is not revealed yet, check if salt will be revealed at this header
-        let maybe_randomness = if parent_salt_derivation_info.maybe_randomness.is_none() {
-            let next_salt_reveal_slot = constants
-                .next_salt_reveal_interval
-                .checked_add(
-                    parent_salt_derivation_info
-                        .eon_index
-                        .checked_mul(eon_duration)
-                        .and_then(|res| res.checked_add(u64::from(genesis_slot)))
-                        .expect("eon start slot should fit into u64"),
-                )
-                .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
-
-            // salt will be revealed after importing this header.
-            // derive randomness at this header and store it for later verification
-            if pre_digest.slot >= next_salt_reveal_slot {
-                let randomness = derive_randomness(
-                    &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-                    pre_digest.solution.tag,
-                    &pre_digest.solution.tag_signature,
-                )
-                .map_err(|_err| {
-                    ImportError::DigestError(DigestError::NextDigestDerivationError(
-                        ErrorDigestType::NextSalt,
-                    ))
-                })?;
-                Some(randomness)
-            } else {
-                None
-            }
-        } else {
-            // salt is already revealed
-            parent_salt_derivation_info.maybe_randomness
-        };
-
         // check if the eon is about to be changed
         let maybe_next_index = subspace_verification::derive_next_eon_index(
             parent_salt_derivation_info.eon_index,
@@ -456,19 +430,69 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             u64::from(pre_digest.slot),
         );
 
-        // if eon has changed, reset randomness
+        // eon has changed
         if let Some(next_eon_index) = maybe_next_index {
-            return Ok(SaltDerivationInfo {
+            Ok(SaltDerivationInfo {
                 eon_index: next_eon_index,
-                maybe_randomness: None,
-            });
+                // check if the salt will be revealed with new eon index
+                maybe_randomness: self.randomness_for_next_salt(
+                    next_eon_index,
+                    genesis_slot,
+                    &pre_digest,
+                )?,
+            })
+        } else {
+            // eon has not changed
+            Ok(SaltDerivationInfo {
+                eon_index: parent_salt_derivation_info.eon_index,
+                // if the salt is not revealed yet, check if salt will be revealed at this header for the current eon index
+                maybe_randomness: parent_salt_derivation_info.maybe_randomness.or(self
+                    .randomness_for_next_salt(
+                        parent_salt_derivation_info.eon_index,
+                        genesis_slot,
+                        &pre_digest,
+                    )?),
+            })
         }
+    }
 
-        // eon has not changed
-        Ok(SaltDerivationInfo {
-            eon_index: parent_salt_derivation_info.eon_index,
-            maybe_randomness,
-        })
+    /// Returns randomness used to derive the next salt if the next salt is revealed after importing header.
+    fn randomness_for_next_salt(
+        &self,
+        eon_index: EonIndex,
+        genesis_slot: Slot,
+        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+    ) -> Result<Option<Randomness>, ImportError<Header>> {
+        let constants = self.store.chain_constants();
+        let next_salt_reveal_slot = constants
+            .next_salt_reveal_interval
+            .checked_add(
+                eon_index
+                    .checked_mul(constants.eon_duration)
+                    .and_then(|res| res.checked_add(u64::from(genesis_slot)))
+                    .expect("eon start slot should fit into u64"),
+            )
+            .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
+
+        // salt will be revealed after importing this header.
+        // derive randomness at this header and store it for later verification
+        let maybe_randomness = if pre_digest.slot >= next_salt_reveal_slot {
+            let randomness = derive_randomness(
+                &PublicKey::from(&pre_digest.solution.public_key),
+                pre_digest.solution.tag,
+                &pre_digest.solution.tag_signature,
+            )
+            .map_err(|_err| {
+                ImportError::DigestError(DigestError::NextDigestDerivationError(
+                    ErrorDigestType::NextSalt,
+                ))
+            })?;
+            Some(randomness)
+        } else {
+            None
+        };
+
+        Ok(maybe_randomness)
     }
 
     /// Returns the genesis slot of the chain with header being the best tip.

@@ -571,6 +571,10 @@ fn test_header_import_success() {
     );
 
     let next_salt = derive_next_salt_from_randomness(0, &randomness);
+
+    // edge case when slot between #10 and #11 is long enough that, salt is revealed immediately in the first of block of next eon.
+    // so set the next slot far enough
+    slot = 15;
     let (header, solution_range, segment_index, records_root) = valid_header_with_next_digests(
         parent_hash,
         11,
@@ -603,8 +607,57 @@ fn test_header_import_success() {
         .unwrap();
 
     // eon index should be 1
+    // since the slot is far enough, the salt should be revealed in this header as well
+    let digests_at_11 =
+        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &header_at_11.header,
+        )
+        .unwrap();
+    let randomness = derive_randomness(
+        &subspace_core_primitives::PublicKey::from(&FarmerPublicKey::unchecked_from(
+            keypair.public.to_bytes(),
+        )),
+        digests_at_11.pre_digest.solution.tag,
+        &digests_at_11.pre_digest.solution.tag_signature,
+    )
+    .unwrap();
     assert_eq!(header_at_11.salt_derivation_info.eon_index, 1);
-    assert_eq!(header_at_11.salt_derivation_info.maybe_randomness, None);
+    assert_eq!(
+        header_at_11.salt_derivation_info.maybe_randomness,
+        Some(randomness)
+    );
+
+    parent_hash = header_at_11.header.hash();
+    slot += 1;
+    let (header, solution_range, segment_index, records_root) = valid_header(ValidHeaderParams {
+        parent_hash,
+        number: 12,
+        slot,
+        keypair: &keypair,
+        randomness: digests_at_11.next_global_randomness.unwrap(),
+        salt: digests_at_11.next_salt.unwrap(),
+        should_add_next_randomness: false,
+        maybe_next_solution_range: None,
+        maybe_next_salt: None,
+    });
+    importer
+        .store
+        .override_next_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    let res = importer.import_header(header.clone());
+    assert_ok!(res);
+    // best header should be correct
+    let best_header = importer.store.best_header();
+    assert_eq!(best_header.header, header);
+    // randomness should be carried over till next eon change
+    assert_eq!(best_header.salt_derivation_info.eon_index, 1);
+    assert_eq!(
+        best_header.salt_derivation_info.maybe_randomness,
+        Some(randomness)
+    );
 }
 
 fn create_fork_chain_from(

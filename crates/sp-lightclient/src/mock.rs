@@ -23,6 +23,7 @@ struct StorageData {
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub(crate) struct TestOverrides {
     pub(crate) solution_range: Option<SolutionRange>,
+    pub(crate) next_solution_range: Option<SolutionRange>,
 }
 
 #[derive(Debug)]
@@ -144,6 +145,17 @@ impl MockStorage {
     ) {
         let mut header = self.0.headers.remove(&hash).unwrap();
         header.test_overrides.solution_range = Some(solution_range);
+        self.0.headers.insert(hash, header);
+    }
+
+    // hack to adjust the next solution range
+    pub(crate) fn override_next_solution_range(
+        &mut self,
+        hash: HashOf<Header>,
+        next_solution_range: SolutionRange,
+    ) {
+        let mut header = self.0.headers.remove(&hash).unwrap();
+        header.test_overrides.next_solution_range = Some(next_solution_range);
         self.0.headers.insert(hash, header);
     }
 
