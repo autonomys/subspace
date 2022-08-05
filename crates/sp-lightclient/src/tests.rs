@@ -265,12 +265,19 @@ fn import_blocks_until(
     let mut slot = start_slot;
     let mut next_eon_index = 0;
     let genesis_slot = start_slot;
+    let mut era_start_slot = start_slot;
     for block_number in 0..=number {
         let (header, _solution_range, segment_index, records_root) =
             valid_header_with_default_randomness_and_salt(parent_hash, block_number, slot, keypair);
         parent_hash = header.hash();
         slot += 1;
 
+        if HeaderImporter::<_, MockStorage>::has_era_changed(
+            &header,
+            store.chain_constants().era_duration,
+        ) {
+            era_start_slot = slot;
+        }
         let header_ext = HeaderExt {
             header,
             total_weight: 0,
@@ -278,6 +285,7 @@ fn import_blocks_until(
                 eon_index: next_eon_index,
                 maybe_randomness: None,
             },
+            era_start_slot: era_start_slot.into(),
             test_overrides: Default::default(),
         };
         store.store_header(header_ext, true);

@@ -116,6 +116,8 @@ pub struct HeaderExt<Header> {
     pub total_weight: BlockWeight,
     /// Salt Derivation info.
     pub salt_derivation_info: SaltDerivationInfo,
+    /// Slot at which current era started.
+    pub era_start_slot: Slot,
 
     #[cfg(test)]
     test_overrides: mock::TestOverrides,
@@ -320,7 +322,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // verify next digest items
         let constants = self.store.chain_constants();
-        let era_start_slot = self.find_era_start_slot(&header, constants.era_duration)?;
         verify_next_digests::<Header>(NextDigestsVerificationParams {
             number: *header.number(),
             header_digests: &digests,
@@ -329,7 +330,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             slot_probability: constants.slot_probability,
             eon_duration: constants.eon_duration,
             genesis_slot: self.find_genesis_slot(&header)?,
-            era_start_slot,
+            era_start_slot: parent_header.era_start_slot,
             current_eon_index: parent_header.salt_derivation_info.eon_index,
             maybe_randomness: parent_header.salt_derivation_info.maybe_randomness,
         })?;
@@ -391,11 +392,20 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         let salt_derivation_info =
             self.next_salt_derivation_info(&header, &parent_header.salt_derivation_info)?;
+
+        // check if era has changed
+        let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
+            digests.pre_digest.slot
+        } else {
+            parent_header.era_start_slot
+        };
+
         // store header
         let header_ext = HeaderExt {
             header,
             total_weight,
             salt_derivation_info,
+            era_start_slot,
 
             #[cfg(test)]
             test_overrides: Default::default(),
@@ -512,36 +522,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Ok(digests.slot)
     }
 
-    fn find_era_start_slot(
-        &self,
-        header: &Header,
-        era_duration: NumberOf<Header>,
-    ) -> Result<Slot, ImportError<Header>> {
-        // special case when the current header is one, then extract pre digest and return slot.
-        if header.number().is_one() {
-            let digests = extract_pre_digest(header)?;
-            return Ok(digests.slot);
-        }
-
-        // if the current header number is less than or equal to era duration, then pick the slot from One
-        let era_start_number = if *header.number() <= era_duration {
-            One::one()
-        } else {
-            // era start slot is slot at (current number - era duration) block
-            header
-                .number()
-                .checked_sub(&era_duration)
-                .expect("Safe to unwrap due to check above")
-        };
-
-        let era_start_header = self
-            .find_ancestor_of_header_at_number(*header.parent_hash(), era_start_number)
-            .ok_or_else(|| {
-                ImportError::MissingAncestorHeader(*header.parent_hash(), era_start_number)
-            })?;
-
-        let digests = extract_pre_digest(&era_start_header.header)?;
-        Ok(digests.slot)
+    fn has_era_changed(header: &Header, era_duration: NumberOf<Header>) -> bool {
+        // special case when the current header is one, then first era begins
+        // or
+        // era duration interval has reached, so era has changed
+        header.number().is_one() || *header.number() % era_duration == Zero::zero()
     }
 
     /// Verifies if the header digests matches with logs from the parent header.
