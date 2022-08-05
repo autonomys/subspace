@@ -116,7 +116,7 @@ async fn main() {
     assert_eq!(*peer_id, expected_node_id);
     println!("Expected Peer ID received.");
 
-    tokio::time::sleep(Duration::from_secs(12)).await;
+    tokio::time::sleep(Duration::from_secs(120)).await;
 
     println!("Exiting..");
 }

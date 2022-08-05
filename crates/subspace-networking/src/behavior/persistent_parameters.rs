@@ -21,7 +21,7 @@ use tokio::time::{sleep, Sleep};
 use tracing::{debug, trace, warn};
 
 // Defines optional time for address dial failure
-type LastFailedTime = Option<DateTime<Utc>>;
+type FailureTime = Option<DateTime<Utc>>;
 
 // Convenience alias for peer ID and its multiaddresses.
 type PeerAddresses = (PeerId, Multiaddr);
@@ -29,11 +29,13 @@ type PeerAddresses = (PeerId, Multiaddr);
 // Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: usize = 100;
 // Size of the LRU cache for addresses.
-const ADDRESSES_CACHE_SIZE: usize = 100;
+const ADDRESSES_CACHE_SIZE: usize = 30;
 // Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 // Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
-const PEERS_ADDRESSES_BATCH_SIZE: usize = 100;
+const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
+// Defines an expiration period for the peer marked for the removal.
+const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: i64 = 86400; // 1 DAY
 
 /// Defines operations with the networking parameters.
 #[async_trait]
@@ -117,7 +119,7 @@ pub struct NetworkingParametersManager {
     // Defines whether the cache requires saving to DB
     cache_need_saving: bool,
     // LRU cache for the known peers and their addresses
-    known_peers: LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>>,
+    known_peers: LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
     // Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     // Parity DB instance
@@ -194,7 +196,7 @@ impl NetworkingParametersManager {
     }
 
     // Helps create a copy of the internal LruCache
-    fn clone_known_peers(&self) -> LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>> {
+    fn clone_known_peers(&self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
         let mut known_peers = LruCache::new(self.known_peers.cap());
 
         for (peer_id, addresses) in self.known_peers.iter() {
@@ -232,6 +234,8 @@ fn clone_lru_cache<K: Clone + Hash + Eq, V: Clone>(
 #[async_trait]
 impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
+        trace!(%peer_id, "Add new peer addresses to the networking parameters registry: {:?}", addresses);
+
         addresses
             .iter()
             .filter(|addr| {
@@ -248,7 +252,11 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
                     .get_or_insert(peer_id, || LruCache::new(ADDRESSES_CACHE_SIZE));
 
                 if let Some(addresses) = self.known_peers.get_mut(&peer_id) {
-                    addresses.push(addr, None);
+                    let previous_entry = addresses.push(addr, None);
+
+                    if let Some(previous_entry) = previous_entry {
+                        trace!(%peer_id, "Address cache entry replaced: {:?}", previous_entry);
+                    }
                 }
             });
 
@@ -256,32 +264,15 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     }
 
     async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
-        addresses
-            .into_iter()
-            .map(remove_p2p_suffix)
-            .for_each(|addr| {
-                // if peer_id is present in the cache
-                if let Some(addresses) = self.known_peers.peek_mut(&peer_id) {
-                    // Get mutable reference to last_failed_time for the address without updating
-                    // the item's position in the cache
-                    if let Some(last_failed_time) = addresses.peek_mut(&addr) {
-                        // if we failed previously with this address
-                        if let Some(time) = last_failed_time {
-                            // if we failed less than a day ago
-                            if time.add(chrono::Duration::days(1)) > Utc::now() {
-                                // Update failure time
-                                *last_failed_time = Some(Utc::now())
-                            } else {
-                                // Remove a failed address
-                                addresses.pop(&addr);
-                            }
-                        } else {
-                            // Set failure time
-                            *last_failed_time = Some(Utc::now())
-                        }
-                    }
-                }
-            });
+        trace!(%peer_id, "Remove peer addresses from the networking parameters registry: {:?}", addresses);
+
+        remove_known_peer_addresses_internal(
+            &mut self.known_peers,
+            peer_id,
+            addresses,
+            chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS),
+        )
+        .await;
 
         self.cache_need_saving = true;
     }
@@ -294,6 +285,11 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             .into_iter()
             .chain(self.bootstrap_addresses().into_iter())
             .collect::<Vec<_>>();
+
+        trace!(
+            "Peer addresses batch requested. Total list size: {}",
+            combined_addresses.len()
+        );
 
         self.collection_batcher.next_batch(combined_addresses)
     }
@@ -344,11 +340,11 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
 // Helper struct for NetworkingPersistence implementations (data transfer object).
 #[derive(Default, Debug, Serialize, Deserialize)]
 struct NetworkingParameters {
-    pub known_peers: HashMap<PeerId, HashMap<Multiaddr, LastFailedTime>>,
+    pub known_peers: HashMap<PeerId, HashMap<Multiaddr, FailureTime>>,
 }
 
 impl NetworkingParameters {
-    fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>>) -> Self {
+    fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, FailureTime>>) -> Self {
         Self {
             known_peers: cache
                 .into_iter()
@@ -359,13 +355,12 @@ impl NetworkingParameters {
         }
     }
 
-    fn to_cache(&self) -> LruCache<PeerId, LruCache<Multiaddr, LastFailedTime>> {
+    fn to_cache(&self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
         let mut peers_cache =
-            LruCache::<PeerId, LruCache<Multiaddr, LastFailedTime>>::new(PEER_CACHE_SIZE);
+            LruCache::<PeerId, LruCache<Multiaddr, FailureTime>>::new(PEER_CACHE_SIZE);
 
         for (peer_id, address_map) in self.known_peers.iter() {
-            let mut address_cache =
-                LruCache::<Multiaddr, LastFailedTime>::new(ADDRESSES_CACHE_SIZE);
+            let mut address_cache = LruCache::<Multiaddr, FailureTime>::new(ADDRESSES_CACHE_SIZE);
 
             for (address, last_failed) in address_map.iter() {
                 address_cache.push(address.clone(), *last_failed);
@@ -413,4 +408,49 @@ fn remove_p2p_suffix(address: Multiaddr) -> Multiaddr {
     } else {
         address
     }
+}
+
+// Testable implementation of the `remove_known_peer_addresses`
+pub(super) async fn remove_known_peer_addresses_internal(
+    known_peers: &mut LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
+    peer_id: PeerId,
+    addresses: Vec<Multiaddr>,
+    expired_address_duration: chrono::Duration,
+) {
+    addresses
+        .into_iter()
+        .map(remove_p2p_suffix)
+        .for_each(|addr| {
+            // if peer_id is present in the cache
+            if let Some(addresses) = known_peers.peek_mut(&peer_id) {
+                // Get mutable reference to first_failed_time for the address without updating
+                // the item's position in the cache
+                if let Some(first_failed_time) = addresses.peek_mut(&addr) {
+                    // if we failed previously with this address
+                    if let Some(time) = first_failed_time {
+                        // if we failed first time more than a day ago
+                        if time.add(expired_address_duration) < Utc::now() {
+                            // Remove a failed address
+                            addresses.pop(&addr);
+
+                            // If the last address for peer
+                            if addresses.is_empty() {
+                                known_peers.pop(&peer_id);
+
+                                trace!(%peer_id, "Peer removed from the cache");
+                            }
+
+                            trace!(%peer_id, "Address removed from the cache: {:?}", addr);
+                        } else {
+                            trace!(%peer_id, "Saving failed connection attempt to a peer: {:?}", addr);
+                        }
+                    } else {
+                        // Set failure time
+                        first_failed_time.replace(Utc::now());
+
+                        trace!(%peer_id, "Address marked for removal from the cache: {:?}", addr);
+                    }
+                }
+            }
+        });
 }
