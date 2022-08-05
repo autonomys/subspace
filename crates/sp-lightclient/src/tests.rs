@@ -206,7 +206,7 @@ fn valid_header(
 
     if should_add_next_randomness {
         let next_global_randomness = derive_randomness(
-            &Into::<subspace_core_primitives::PublicKey>::into(&FarmerPublicKey::unchecked_from(
+            &subspace_core_primitives::PublicKey::from(&FarmerPublicKey::unchecked_from(
                 keypair.public.to_bytes(),
             )),
             tag,
@@ -558,7 +558,7 @@ fn test_header_import_success() {
     assert_eq!(header_at_4.salt_derivation_info.eon_index, 0);
     let digests_at_4 = extract_pre_digest(&header_at_4.header).unwrap();
     let randomness = derive_randomness(
-        &Into::<subspace_core_primitives::PublicKey>::into(&FarmerPublicKey::unchecked_from(
+        &subspace_core_primitives::PublicKey::from(&FarmerPublicKey::unchecked_from(
             keypair.public.to_bytes(),
         )),
         digests_at_4.solution.tag,

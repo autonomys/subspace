@@ -597,8 +597,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // verify that block is signed properly
         check_reward_signature(
             pre_hash.as_ref(),
-            &Into::<RewardSignature>::into(&signature),
-            &Into::<PublicKey>::into(public_key),
+            &RewardSignature::from(&signature),
+            &PublicKey::from(public_key),
             &schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         )
         .map_err(|_| ImportError::InvalidBlockSignature)?;

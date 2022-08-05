@@ -18,7 +18,6 @@
 
 use crate::{ConsensusLog, FarmerPublicKey, FarmerSignature, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
-use frame_support::ensure;
 use log::trace;
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
@@ -564,7 +563,7 @@ fn derive_next_global_randomness<Header: HeaderT>(
     }
 
     derive_randomness(
-        &Into::<PublicKey>::into(&pre_digest.solution.public_key),
+        &PublicKey::from(&pre_digest.solution.public_key),
         pre_digest.solution.tag,
         &pre_digest.solution.tag_signature,
     )
@@ -659,10 +658,11 @@ pub fn verify_next_digests<Header: HeaderT>(
         params.global_randomness_interval,
         &params.header_digests.pre_digest,
     )?;
-    ensure!(
-        expected_next_randomness == params.header_digests.next_global_randomness,
-        Error::NextDigestVerificationError(ErrorDigestType::NextGlobalRandomness)
-    );
+    if expected_next_randomness != params.header_digests.next_global_randomness {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::NextGlobalRandomness,
+        ));
+    }
 
     // verify if the solution range should be derived at this block header
     let expected_next_solution_range = derive_next_solution_range::<Header>(
@@ -673,10 +673,11 @@ pub fn verify_next_digests<Header: HeaderT>(
         params.header_digests.solution_range,
         params.era_start_slot,
     )?;
-    ensure!(
-        expected_next_solution_range == params.header_digests.next_solution_range,
-        Error::NextDigestVerificationError(ErrorDigestType::NextSolutionRange)
-    );
+    if expected_next_solution_range != params.header_digests.next_solution_range {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::NextSolutionRange,
+        ));
+    }
 
     // verify if the next derived salt should be present in the block header
     let expected_next_salt = derive_next_salt::<Header>(
@@ -686,9 +687,10 @@ pub fn verify_next_digests<Header: HeaderT>(
         params.header_digests.pre_digest.slot,
         params.maybe_randomness,
     )?;
-    ensure!(
-        expected_next_salt == params.header_digests.next_salt,
-        Error::NextDigestVerificationError(ErrorDigestType::NextSalt)
-    );
+    if expected_next_salt != params.header_digests.next_salt {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::NextSalt,
+        ));
+    }
     Ok(())
 }
