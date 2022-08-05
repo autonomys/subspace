@@ -1,8 +1,8 @@
-use crate::identity::sr25519::Keypair;
 use futures::channel::oneshot;
+use libp2p::identity::sr25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::multihash::{Code, MultihashDigest};
-use libp2p::{identity, PeerId};
+use libp2p::PeerId;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -100,7 +100,7 @@ async fn main() {
         node_runner.run().await;
     });
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    node.wait_for_connected_peers().await.unwrap();
 
     // Prepare multihash to look for in Kademlia
     let key = Code::Identity.digest(&expected_kaypair.public().encode());
@@ -110,7 +110,9 @@ async fn main() {
     // Uncomment on debugging:
     // println!("Received closest peers: {:?}", peers);
 
-    let peer_id = peers.first().unwrap();
+    let peer_id = peers
+        .first()
+        .expect("get_closest_peers returned empty set. ");
     assert_eq!(*peer_id, expected_node_id);
     println!("Expected Peer ID received.");
 

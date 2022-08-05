@@ -15,17 +15,20 @@ use libp2p::kad::{
     QueryResult, Quorum,
 };
 use libp2p::multiaddr::Protocol;
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{AddressScore, DialError, SwarmEvent};
 use libp2p::{futures, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
 use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
+
+// Defines a threshold for starting new connection attempts to known peers.
+const CONNECTED_PEERS_THRESHOLD: usize = 10;
 
 enum QueryResultSender {
     GetValue {
@@ -55,6 +58,8 @@ pub struct NodeRunner {
     /// present for the same physical subscription).
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
+    /// Defines a timeout between swarm attempts to dial known addresses
+    peer_dialing_timeout: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
 }
@@ -81,6 +86,8 @@ impl NodeRunner {
             topic_subscription_senders: HashMap::default(),
             // We'll make the first query right away and continue at the interval.
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
+            // We'll make the first dial right away and continue at the interval.
+            peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
         }
     }
@@ -112,6 +119,53 @@ impl NodeRunner {
                 },
                 _ = self.networking_parameters_registry.run().fuse() => {
                     trace!("Network parameters registry runner exited.")
+                },
+                _ = &mut self.peer_dialing_timeout => {
+                    self.handle_peer_dialing().await;
+
+                    self.peer_dialing_timeout =
+                        Box::pin(tokio::time::sleep(Duration::from_secs(3)).fuse());
+                },
+            }
+        }
+    }
+
+    async fn handle_peer_dialing(&mut self) {
+        let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
+        let local_peer_id = *self.swarm.local_peer_id();
+
+        if connected_peers.len() < CONNECTED_PEERS_THRESHOLD {
+            debug!(
+                %local_peer_id,
+                "Initiate connection to known peers [connected peers={}]", connected_peers.len()
+            );
+
+            let addresses = self
+                .networking_parameters_registry
+                .next_known_addresses_batch()
+                .await;
+
+            trace!(%local_peer_id, "Processing addresses batch: {:?}", addresses);
+
+            for (peer_id, addr) in addresses {
+                if connected_peers.contains(&peer_id) {
+                    continue;
+                }
+
+                trace!(%local_peer_id, remote_peer_id=%peer_id, %addr, "Dialing address ...");
+
+                let dial_opts = DialOpts::peer_id(peer_id)
+                    .addresses(vec![addr.clone()])
+                    .build();
+
+                if let Err(err) = self.swarm.dial(dial_opts) {
+                    warn!(
+                        %err,
+                        %local_peer_id,
+                        remote_peer_id = %peer_id,
+                        %addr,
+                        "Unexpected error: failed to dial an address."
+                    );
                 }
             }
         }
@@ -173,14 +227,7 @@ impl NodeRunner {
                 endpoint,
                 ..
             } => {
-                let shared = match self.shared_weak.upgrade() {
-                    Some(shared) => shared,
-                    None => {
-                        return;
-                    }
-                };
                 debug!("Connection established with peer {peer_id} [{num_established} from peer]");
-                shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
 
                 if let ConnectedPoint::Dialer { address, .. } = endpoint {
                     self.networking_parameters_registry
@@ -193,15 +240,7 @@ impl NodeRunner {
                 num_established,
                 ..
             } => {
-                let shared = match self.shared_weak.upgrade() {
-                    Some(shared) => shared,
-                    None => {
-                        return;
-                    }
-                };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
-
-                shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {
                 if let DialError::Transport(ref addresses) = error {
@@ -283,12 +322,6 @@ impl NodeRunner {
                 {
                     match results {
                         Ok(GetClosestPeersOk { key, peers }) => {
-                            let shared = match self.shared_weak.upgrade() {
-                                Some(shared) => shared,
-                                None => {
-                                    return;
-                                }
-                            };
                             trace!(
                                 "Get closest peers query for {} yielded {} results",
                                 hex::encode(&key),
@@ -296,7 +329,8 @@ impl NodeRunner {
                             );
 
                             if peers.is_empty()
-                                && shared.connected_peers_count.load(Ordering::Relaxed) != 0
+                                // Connected peers collection is not empty.
+                                && self.swarm.connected_peers().next().is_some()
                             {
                                 debug!("Random Kademlia query has yielded empty list of peers");
                             }
@@ -522,6 +556,15 @@ impl NodeRunner {
                     result_sender,
                     IfDisconnected::TryConnect,
                 );
+            }
+            Command::CheckConnectedPeers { result_sender } => {
+                let connected_peers_present = self.swarm.connected_peers().next().is_some();
+
+                let kademlia_connection_initiated = connected_peers_present
+                    .then_some(self.swarm.behaviour_mut().kademlia.bootstrap().is_ok())
+                    .unwrap_or(false);
+
+                let _ = result_sender.send(kademlia_connection_initiated);
             }
         }
     }

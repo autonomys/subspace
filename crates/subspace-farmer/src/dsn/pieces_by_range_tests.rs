@@ -82,6 +82,11 @@ async fn pieces_by_range_protocol_smoke() {
         node_runner_2.run().await;
     });
 
+    node_2
+        .wait_for_connected_peers()
+        .await
+        .expect("Unexpected Node failure");
+
     let (mut result_sender, mut result_receiver) = mpsc::unbounded();
     tokio::spawn(async move {
         let resp = node_2
@@ -183,6 +188,11 @@ async fn get_pieces_by_range_smoke() {
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
+
+    node_2
+        .wait_for_connected_peers()
+        .await
+        .expect("Unexpected Node failure");
 
     let mut stream = node_2
         .get_pieces(piece_index_from..piece_index_end)

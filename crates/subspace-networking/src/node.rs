@@ -14,7 +14,9 @@ use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
+use tokio::time::sleep;
 use tracing::{error, trace};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
@@ -77,6 +79,13 @@ pub enum GetValueError {
 pub enum GetClosestPeersError {
     /// Node runner was dropped, impossible to get closest peers.
     #[error("Node runner was dropped, impossible to get closest peers")]
+    NodeRunnerDropped,
+}
+
+#[derive(Debug, Error)]
+pub enum CheckConnectedPeersError {
+    /// Node runner was dropped, impossible to check connected peers.
+    #[error("Node runner was dropped, impossible to check connected peers")]
     NodeRunnerDropped,
 }
 
@@ -325,6 +334,35 @@ impl Node {
         trace!("Kademlia 'GetClosestPeers' returned {} peers", peers.len());
 
         Ok(peers)
+    }
+
+    // TODO: add timeout
+    /// Waits for peers connection to the swarm and for Kademlia address registration.
+    pub async fn wait_for_connected_peers(&self) -> Result<(), CheckConnectedPeersError> {
+        loop {
+            trace!("Starting 'CheckConnectedPeers' request.");
+
+            let (result_sender, result_receiver) = oneshot::channel();
+
+            self.shared
+                .command_sender
+                .clone()
+                .send(Command::CheckConnectedPeers { result_sender })
+                .await
+                .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
+
+            let connected_peers_present = result_receiver
+                .await
+                .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
+
+            trace!("'CheckConnectedPeers' request returned {connected_peers_present}");
+
+            if connected_peers_present {
+                return Ok(());
+            }
+
+            sleep(Duration::from_millis(50)).await;
+        }
     }
 
     /// Node's own addresses where it listens for incoming requests.

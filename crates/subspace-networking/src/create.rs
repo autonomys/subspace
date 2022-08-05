@@ -19,8 +19,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
-use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::{ConnectionLimits, SwarmBuilder};
+use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
@@ -30,11 +29,10 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::crypto;
 use thiserror::Error;
-use tracing::{debug, info, trace};
+use tracing::info;
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
-const OUTGOING_CONNECTIONS_LIMIT: u32 = 300;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -176,20 +174,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
 
-    // We take cached known addresses and combine them with manually provided bootstrap addresses.
-    let combined_bootstrap_addresses = networking_parameters_registry
-        .known_addresses()
-        .await
-        .into_iter()
-        .chain(
-            networking_parameters_registry
-                .bootstrap_addresses()
-                .into_iter(),
-        )
-        .collect::<Vec<_>>();
-
-    trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
-
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
@@ -209,10 +193,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             .executor(Box::new(|fut| {
                 tokio::spawn(fut);
             }))
-            .connection_limits(
-                ConnectionLimits::default()
-                    .with_max_established_outgoing(Some(OUTGOING_CONNECTIONS_LIMIT)),
-            )
             .build();
 
         // Setup listen_on addresses
@@ -231,19 +211,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
                     addr.push(Protocol::Tcp(0));
                     swarm.listen_on(addr)?;
                 }
-            }
-        }
-
-        // Setup bootstrap addresses
-        for (peer_id, addr) in combined_bootstrap_addresses {
-            let dial_opts = DialOpts::peer_id(peer_id)
-                .addresses(vec![addr.clone()])
-                .build();
-
-            if let Err(err) = swarm.dial(dial_opts) {
-                debug!(%err, %peer_id, %addr, "Unexpected error: failed to dial a bootstrap address.");
-            } else {
-                trace!(%peer_id, %addr, "Bootstrap address dialed successfully.");
             }
         }
 

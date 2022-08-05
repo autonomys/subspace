@@ -82,7 +82,7 @@ async fn main() {
             .with(Protocol::P2pCircuit)
             .with(Protocol::P2p(node_2.id().into()))])
         .boxed(),
-        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::client_only()],
+        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(|_| None)],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };

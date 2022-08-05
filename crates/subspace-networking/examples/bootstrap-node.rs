@@ -14,8 +14,8 @@ enum Command {
     /// Start bootstrap node
     Start {
         /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-        #[clap(long)]
-        bootstrap_node: Vec<Multiaddr>,
+        #[clap(long, alias = "bootstrap-node")]
+        bootstrap_nodes: Vec<Multiaddr>,
         /// Keypair for node identity, can be obtained with `generate-keypair` command
         keypair: String,
         /// Multiaddr to listen on for subspace networking, multiple are supported
@@ -34,13 +34,13 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         Command::Start {
-            bootstrap_node,
+            bootstrap_nodes,
             keypair,
             listen_on,
         } => {
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
-                    bootstrap_node,
+                    bootstrap_nodes,
                 )
                 .boxed(),
                 listen_on,
