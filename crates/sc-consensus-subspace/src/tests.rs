@@ -356,7 +356,7 @@ impl TestNetFactory for SubspaceTestNet {
                     Ok((timestamp, slot))
                 }),
             },
-            None,
+            false,
         )
         .expect("can initialize block-import");
 

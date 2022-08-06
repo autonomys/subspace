@@ -33,7 +33,7 @@ use crate::slot_worker::SubspaceSlotWorker;
 pub use archiver::start_subspace_archiver;
 use codec::Encode;
 use futures::channel::mpsc;
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use log::{debug, info, trace, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -153,6 +153,9 @@ where
     pub block_number: NumberFor<Block>,
     /// Sender for archived root blocks
     pub root_block_sender: mpsc::Sender<RootBlock>,
+    /// Optional sender for pausing the block import when executor is not fast enough to process
+    /// the primary block.
+    pub block_import_throttling_sender: Option<mpsc::Sender<()>>,
 }
 
 /// Errors encountered by the Subspace authorship task.
@@ -815,7 +818,7 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
     subspace_link: SubspaceLink<Block>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
-    maybe_block_import_throttling_sender: Option<mpsc::Sender<()>>,
+    executor_enabled: bool,
 }
 
 impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
@@ -833,7 +836,7 @@ where
             subspace_link: self.subspace_link.clone(),
             can_author_with: self.can_author_with.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
-            maybe_block_import_throttling_sender: self.maybe_block_import_throttling_sender.clone(),
+            executor_enabled: self.executor_enabled,
         }
     }
 }
@@ -855,7 +858,7 @@ where
         subspace_link: SubspaceLink<Block>,
         can_author_with: CAW,
         create_inherent_data_providers: CIDP,
-        maybe_block_import_throttling_sender: Option<mpsc::Sender<()>>,
+        executor_enabled: bool,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -864,7 +867,7 @@ where
             subspace_link,
             can_author_with,
             create_inherent_data_providers,
-            maybe_block_import_throttling_sender,
+            executor_enabled,
         }
     }
 
@@ -1310,12 +1313,28 @@ where
 
         let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
+        let (block_import_throttling_sender, block_import_throttling_receiver) =
+            if self.executor_enabled {
+                let (sender, receiver) = mpsc::channel(0);
+                (Some(sender), Some(receiver))
+            } else {
+                (None, None)
+            };
 
         self.imported_block_notification_sender
             .notify(move || ImportedBlockNotification {
                 block_number,
                 root_block_sender,
+                block_import_throttling_sender,
             });
+
+        if let Some(mut throttling_receiver) = block_import_throttling_receiver {
+            if throttling_receiver.next().await.is_none() {
+                return Err(ConsensusError::ClientImport(
+                    "Block import throttling error".to_string(),
+                ));
+            }
+        }
 
         let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 
@@ -1324,13 +1343,6 @@ where
                 .root_blocks
                 .lock()
                 .put(block_number + One::one(), root_blocks);
-        }
-
-        if let Some(block_import_throttling_sender) = &mut self.maybe_block_import_throttling_sender
-        {
-            block_import_throttling_sender.feed(()).await.map_err(|e| {
-                ConsensusError::ClientImport(format!("Block import throttling: {e}"))
-            })?;
         }
 
         Ok(import_result)
@@ -1355,7 +1367,7 @@ pub fn block_import<Client, Block, I, CAW, CIDP>(
     client: Arc<Client>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
-    maybe_block_import_throttling_sender: Option<mpsc::Sender<()>>,
+    executor_enabled: bool,
 ) -> ClientResult<(
     SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
     SubspaceLink<Block>,
@@ -1411,7 +1423,7 @@ where
         link.clone(),
         can_author_with,
         create_inherent_data_providers,
-        maybe_block_import_throttling_sender,
+        executor_enabled,
     );
 
     Ok((import, link))

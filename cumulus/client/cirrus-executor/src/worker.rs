@@ -18,7 +18,7 @@ use crate::{BundleProcessor, BundleProducer, TransactionFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
-use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::BlockImport;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
@@ -89,7 +89,7 @@ pub(super) async fn start_worker<
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,
-    block_import_throttling_receiver: mpsc::Receiver<()>,
+    block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -110,7 +110,7 @@ pub(super) async fn start_worker<
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -143,7 +143,7 @@ pub(super) async fn start_worker<
                 )
                 .collect(),
             Box::pin(imported_block_notification_stream),
-            block_import_throttling_receiver,
+            block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications(
         primary_chain_client.as_ref(),
@@ -219,7 +219,7 @@ async fn handle_block_import_notifications<
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
     mut block_imports: BlockImports,
-    mut block_import_throttling_receiver: mpsc::Receiver<()>,
+    block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -234,7 +234,7 @@ async fn handle_block_import_notifications<
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
-    BlockImports: Stream<Item = NumberFor<PBlock>> + Unpin,
+    BlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
@@ -262,7 +262,12 @@ async fn handle_block_import_notifications<
         }
     }
 
-    while let Some(block_number) = block_imports.next().await {
+    // Pause the primary block import once this channel is full.
+    let (mut buffer_sender, mut buffer_receiver) =
+        mpsc::channel(block_import_throttling_buffer_size as usize);
+
+    while let Some((block_number, mut block_import_throttling_sender)) = block_imports.next().await
+    {
         let header = primary_chain_client
             .header(BlockId::Number(block_number))
             .expect("Header of imported block must exist; qed")
@@ -273,6 +278,31 @@ async fn handle_block_import_notifications<
             number: *header.number(),
         };
 
+        match buffer_sender.feed(()).await {
+            Ok(()) => {
+                if let Err(error) = block_import_throttling_sender.send(()).await {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        ?error,
+                        "Failed to send the block import advance signal"
+                    );
+                    // Bring down the service as bundles processor is an essential task.
+                    // TODO: more graceful shutdown.
+                    break;
+                }
+            }
+            Err(error) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    ?error,
+                    "Failed to reserve a slot in block import throttling buffer"
+                );
+                // Bring down the service as bundles processor is an essential task.
+                // TODO: more graceful shutdown.
+                break;
+            }
+        }
+
         match block_imported(
             primary_chain_client,
             &processor,
@@ -282,19 +312,10 @@ async fn handle_block_import_notifications<
         .await
         {
             Ok(()) => {
-                // Signify the primary block import that a block has been processed successfully.
-                match block_import_throttling_receiver.next().await {
-                    Some(_) => {}
-                    None => {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            "Channel of signifying the block has been processed must not be empty"
-                        );
-                        // Bring down the service as bundles processor is an essential task.
-                        // TODO: more graceful shutdown.
-                        break;
-                    }
-                }
+                buffer_receiver
+                    .next()
+                    .await
+                    .expect("Next item must exist as it was just fed above; qed");
             }
             Err(error) => {
                 tracing::error!(

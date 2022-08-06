@@ -199,12 +199,12 @@ where
         code_executor: Arc<E>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
-        block_import_throttling_receiver: mpsc::Receiver<()>,
+        block_import_throttling_buffer_size: u32,
     ) -> Result<Self, sp_consensus::Error>
     where
         SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
-        IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+        IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
         NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
     {
         let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
@@ -248,7 +248,7 @@ where
                 imported_block_notification_stream,
                 new_slot_notification_stream,
                 active_leaves,
-                block_import_throttling_receiver,
+                block_import_throttling_buffer_size,
             )
             .boxed(),
         );
