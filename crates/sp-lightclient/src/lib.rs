@@ -328,12 +328,14 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // re-check if the salt was revealed and eon also changes with this header, then derive randomness
         let parent_salt_derivation_info = SaltDerivationInfo {
             eon_index: parent_header.salt_derivation_info.eon_index,
-            maybe_randomness: parent_header.salt_derivation_info.maybe_randomness.or(self
-                .randomness_for_next_salt(
+            maybe_randomness: parent_header.salt_derivation_info.maybe_randomness.or(
+                Self::randomness_for_next_salt(
+                    self.store.chain_constants(),
                     parent_header.salt_derivation_info.eon_index,
                     genesis_slot,
                     &header_digests.pre_digest,
-                )?),
+                )?,
+            ),
         };
 
         let mut maybe_root_plot_public_key = parent_header.maybe_root_plot_public_key;
@@ -499,7 +501,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             Ok(SaltDerivationInfo {
                 eon_index: next_eon_index,
                 // check if the salt will be revealed with new eon index
-                maybe_randomness: self.randomness_for_next_salt(
+                maybe_randomness: Self::randomness_for_next_salt(
+                    constants,
                     next_eon_index,
                     genesis_slot,
                     &pre_digest,
@@ -510,24 +513,25 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             Ok(SaltDerivationInfo {
                 eon_index: parent_salt_derivation_info.eon_index,
                 // if the salt is not revealed yet, check if salt will be revealed at this header for the current eon index
-                maybe_randomness: parent_salt_derivation_info.maybe_randomness.or(self
-                    .randomness_for_next_salt(
+                maybe_randomness: parent_salt_derivation_info.maybe_randomness.or(
+                    Self::randomness_for_next_salt(
+                        constants,
                         parent_salt_derivation_info.eon_index,
                         genesis_slot,
                         &pre_digest,
-                    )?),
+                    )?,
+                ),
             })
         }
     }
 
     /// Returns randomness used to derive the next salt if the next salt is revealed after importing header.
     fn randomness_for_next_salt(
-        &self,
+        constants: ChainConstants<Header>,
         eon_index: EonIndex,
         genesis_slot: Slot,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
     ) -> Result<Option<Randomness>, ImportError<Header>> {
-        let constants = self.store.chain_constants();
         let next_salt_reveal_slot = constants
             .next_salt_reveal_interval
             .checked_add(
