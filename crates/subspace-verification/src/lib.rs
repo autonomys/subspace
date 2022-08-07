@@ -326,3 +326,26 @@ pub fn derive_next_salt_from_randomness(eon_index: u64, randomness: &Randomness)
         .try_into()
         .expect("Slice has exactly the size needed; qed")
 }
+
+/// Derives next eon index if eon index should change based on the current slot.
+pub fn derive_next_eon_index(
+    parent_eon_index: u64,
+    eon_duration: u64,
+    genesis_slot: u64,
+    current_slot: u64,
+) -> Option<u64> {
+    // calculate current eon start slot from (eon_index * eon_duration) + genesis_slot
+    let current_eon_start_slot = parent_eon_index
+        .checked_mul(eon_duration)
+        .and_then(|res| res.checked_add(genesis_slot))
+        .expect("eon start slot should fit into u64");
+
+    let should_eon_change = current_slot.saturating_sub(current_eon_start_slot) >= eon_duration;
+    if should_eon_change {
+        current_slot
+            .checked_sub(genesis_slot)
+            .and_then(|slot_diff| slot_diff.checked_div(eon_duration))
+    } else {
+        None
+    }
+}

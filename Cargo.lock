@@ -7531,6 +7531,7 @@ dependencies = [
  "scale-info",
  "schnorrkel",
  "sp-arithmetic",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-runtime",
  "sp-std",

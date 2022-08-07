@@ -193,8 +193,8 @@ where
 
     check_reward_signature(
         pre_hash.as_ref(),
-        &Into::<RewardSignature>::into(&seal),
-        &Into::<PublicKey>::into(offender),
+        &RewardSignature::from(&seal),
+        &PublicKey::from(offender),
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     )
     .is_ok()
@@ -470,8 +470,8 @@ where
     // Verify that block is signed properly
     if check_reward_signature(
         pre_hash.as_ref(),
-        &Into::<RewardSignature>::into(&signature),
-        &Into::<PublicKey>::into(&pre_digest.solution.public_key),
+        &RewardSignature::from(&signature),
+        &PublicKey::from(&pre_digest.solution.public_key),
         reward_signing_context,
     )
     .is_err()

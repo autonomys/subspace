@@ -26,7 +26,10 @@ use sp_runtime::traits::Zero;
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
-use subspace_core_primitives::{Randomness, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{PublicKey, Randomness, Salt, Sha256Hash, Solution};
+use subspace_verification::{
+    derive_next_eon_index, derive_next_salt_from_randomness, derive_randomness,
+};
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
@@ -315,6 +318,20 @@ pub enum Error {
         error("Duplicate Subspace {0} digests, rejecting!")
     )]
     Duplicate(ErrorDigestType),
+
+    /// Error when deriving next digests
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive next {0} digest, rejecting!")
+    )]
+    NextDigestDerivationError(ErrorDigestType),
+
+    /// Error when verifying next digests
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to verify next {0} digest, rejecting!")
+    )]
+    NextDigestVerificationError(ErrorDigestType),
 }
 
 #[cfg(feature = "std")]
@@ -532,4 +549,148 @@ where
         }
     }
     pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))
+}
+
+type NumberOf<T> = <T as HeaderT>::Number;
+
+fn derive_next_global_randomness<Header: HeaderT>(
+    number: NumberOf<Header>,
+    global_randomness_interval: NumberOf<Header>,
+    pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+) -> Result<Option<Randomness>, Error> {
+    if number % global_randomness_interval != Zero::zero() {
+        return Ok(None);
+    }
+
+    derive_randomness(
+        &PublicKey::from(&pre_digest.solution.public_key),
+        pre_digest.solution.tag,
+        &pre_digest.solution.tag_signature,
+    )
+    .map(Some)
+    .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
+}
+
+fn derive_next_salt<Header: HeaderT>(
+    eon_duration: u64,
+    current_eon_index: u64,
+    genesis_slot: Slot,
+    current_slot: Slot,
+    maybe_randomness: Option<Randomness>,
+) -> Result<Option<Salt>, Error> {
+    // check if eon changes
+    let maybe_next_eon_index = derive_next_eon_index(
+        current_eon_index,
+        eon_duration,
+        u64::from(genesis_slot),
+        u64::from(current_slot),
+    );
+
+    // eon has changed, derive salt from the randomness derived from header at which salt is revealed
+    if maybe_next_eon_index.is_some() {
+        if let Some(randomness) = maybe_randomness {
+            return Ok(Some(derive_next_salt_from_randomness(
+                current_eon_index,
+                &randomness,
+            )));
+        }
+    }
+
+    Ok(None)
+}
+
+fn derive_next_solution_range<Header: HeaderT>(
+    number: NumberOf<Header>,
+    era_duration: NumberOf<Header>,
+    slot_probability: (u64, u64),
+    current_slot: Slot,
+    current_solution_range: u64,
+    era_start_slot: Slot,
+) -> Result<Option<u64>, Error> {
+    if number.is_zero() || number % era_duration != Zero::zero() {
+        return Ok(None);
+    }
+
+    let next_solution_range = subspace_verification::derive_next_solution_range(
+        u64::from(era_start_slot),
+        u64::from(current_slot),
+        slot_probability,
+        current_solution_range,
+        era_duration
+            .try_into()
+            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+    );
+
+    Ok(Some(next_solution_range))
+}
+
+/// Type that holds the parameters to derive and verify next digest items.
+pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
+    /// Header number for which we are verifying the digests.
+    pub number: NumberOf<Header>,
+    /// Digests present in the header that corresponds to number above.
+    pub header_digests: &'a SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
+    /// Randomness interval at which next randomness is derived.
+    pub global_randomness_interval: NumberOf<Header>,
+    /// Era duration at which solution range is updated.
+    pub era_duration: NumberOf<Header>,
+    /// Slot probability.
+    pub slot_probability: (u64, u64),
+    /// Eon Duration at which next derived salt is used.
+    pub eon_duration: u64,
+    /// Genesis slot of the chain.
+    pub genesis_slot: Slot,
+    /// Current Era start slot.
+    pub era_start_slot: Slot,
+    /// Current eon index.
+    pub current_eon_index: u64,
+    /// Randomness used to derive next salt.
+    pub maybe_randomness: Option<Randomness>,
+}
+
+/// Derives and verifies next digest items based on their respective intervals.
+pub fn verify_next_digests<Header: HeaderT>(
+    params: NextDigestsVerificationParams<Header>,
+) -> Result<(), Error> {
+    // verify if the randomness is supposed to derived at this block header
+    let expected_next_randomness = derive_next_global_randomness::<Header>(
+        params.number,
+        params.global_randomness_interval,
+        &params.header_digests.pre_digest,
+    )?;
+    if expected_next_randomness != params.header_digests.next_global_randomness {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::NextGlobalRandomness,
+        ));
+    }
+
+    // verify if the solution range should be derived at this block header
+    let expected_next_solution_range = derive_next_solution_range::<Header>(
+        params.number,
+        params.era_duration,
+        params.slot_probability,
+        params.header_digests.pre_digest.slot,
+        params.header_digests.solution_range,
+        params.era_start_slot,
+    )?;
+    if expected_next_solution_range != params.header_digests.next_solution_range {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::NextSolutionRange,
+        ));
+    }
+
+    // verify if the next derived salt should be present in the block header
+    let expected_next_salt = derive_next_salt::<Header>(
+        params.eon_duration,
+        params.current_eon_index,
+        params.genesis_slot,
+        params.header_digests.pre_digest.slot,
+        params.maybe_randomness,
+    )?;
+    if expected_next_salt != params.header_digests.next_salt {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::NextSalt,
+        ));
+    }
+    Ok(())
 }
