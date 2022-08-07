@@ -24,7 +24,7 @@ use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_client_api::HeaderBackend;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
-use sc_service::{KeepBlocks, PartialComponents};
+use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
@@ -114,7 +114,7 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config, false)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -129,7 +129,7 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config, false)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, config.database)
                         .map_err(Error::SubstrateCli),
@@ -145,7 +145,7 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config, false)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, config.chain_spec)
                         .map_err(Error::SubstrateCli),
@@ -162,7 +162,7 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config, false)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -178,7 +178,7 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config, false)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -266,7 +266,7 @@ fn main() -> Result<(), Error> {
                     backend,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config, false)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
                     task_manager,
@@ -297,18 +297,14 @@ fn main() -> Result<(), Error> {
                     }
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } =
-                            subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
-                                &config, false,
-                            )?;
+                            subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
                         cmd.run(client)
                     }
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
-                        } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
-                            &config, false,
-                        )?;
+                        } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
@@ -368,11 +364,8 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
-                let executor_enabled = !cli.secondary_chain_args.is_empty();
-                let block_import_throttling_buffer_size = match primary_chain_config.keep_blocks {
-                    KeepBlocks::All => 128, // TODO: proper value
-                    KeepBlocks::Some(n) => n,
-                };
+                // TODO: proper value
+                let block_import_throttling_buffer_size = 10;
 
                 let (mut primary_chain_node, config_dir) = {
                     let span = sc_tracing::tracing::info_span!(
@@ -407,7 +400,8 @@ fn main() -> Result<(), Error> {
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
-                        executor_enabled,
+                        // Secondary node needs slots notifications for bundle production.
+                        force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
                         dsn_config,
                     };
 
@@ -428,7 +422,7 @@ fn main() -> Result<(), Error> {
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
-                if executor_enabled {
+                if !cli.secondary_chain_args.is_empty() {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "SecondaryChain"
@@ -480,9 +474,7 @@ fn main() -> Result<(), Error> {
                             .then(|imported_block_notification| async move {
                                 (
                                     imported_block_notification.block_number,
-                                    imported_block_notification
-                                        .block_import_throttling_sender
-                                        .expect("Block import throttling must exist for executor"),
+                                    imported_block_notification.block_import_throttling_sender,
                                 )
                             }),
                         primary_chain_node

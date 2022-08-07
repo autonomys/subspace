@@ -116,8 +116,9 @@ pub struct SubspaceConfiguration {
     #[deref_mut]
     #[into]
     pub base: Configuration,
-    /// Whether the executor is enabled.
-    pub executor_enabled: bool,
+    /// Whether slot notifications need to be present even if node is not responsible for block
+    /// authoring.
+    pub force_new_slot_notifications: bool,
     /// Subspace networking configuration (for DSN). Will not be started if set to `None`.
     pub dsn_config: Option<subspace_networking::Config>,
 }
@@ -126,7 +127,7 @@ impl From<Configuration> for SubspaceConfiguration {
     fn from(base: Configuration) -> Self {
         Self {
             base,
-            executor_enabled: false,
+            force_new_slot_notifications: false,
             dsn_config: None,
         }
     }
@@ -136,7 +137,6 @@ impl From<Configuration> for SubspaceConfiguration {
 #[allow(clippy::type_complexity)]
 pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
-    executor_enabled: bool,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -260,7 +260,6 @@ where
                 }
             }
         },
-        executor_enabled,
     )?;
 
     sc_consensus_subspace::start_subspace_archiver(
@@ -377,7 +376,7 @@ where
         select_chain,
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
-    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config, config.executor_enabled)?;
+    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
     if let Some(dsn_config) = config.dsn_config.clone() {
         start_dsn_node(
@@ -416,9 +415,7 @@ where
     let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    // Run the authoring task even if node is not an authority when executor is enabled,
-    // for executor relys on the slots notifications for bundle production.
-    if config.role.is_authority() || config.executor_enabled {
+    if config.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),

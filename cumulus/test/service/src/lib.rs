@@ -107,11 +107,6 @@ async fn run_executor(
     RpcHandlers,
     Executor,
 )> {
-    let block_import_throttling_buffer_size = match primary_chain_config.keep_blocks {
-        KeepBlocks::All => 128,
-        KeepBlocks::Some(n) => n,
-    };
-
     let primary_chain_full_node = {
         let span = tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -121,7 +116,8 @@ async fn run_executor(
 
         let primary_chain_config = subspace_service::SubspaceConfiguration {
             base: primary_chain_config,
-            executor_enabled: true,
+            // Always enable the slot notification.
+            force_new_slot_notifications: true,
             dsn_config: None,
         };
 
@@ -139,6 +135,7 @@ async fn run_executor(
         })?
     };
 
+    let block_import_throttling_buffer_size = 10;
     let secondary_chain_node = cirrus_node::service::new_full::<
         _,
         _,
@@ -158,9 +155,7 @@ async fn run_executor(
             .then(|imported_block_notification| async move {
                 (
                     imported_block_notification.block_number,
-                    imported_block_notification
-                        .block_import_throttling_sender
-                        .expect("Block import throttling must exist for executor"),
+                    imported_block_notification.block_import_throttling_sender,
                 )
             }),
         primary_chain_full_node
@@ -541,5 +536,5 @@ pub async fn run_primary_chain_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
 ) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
-    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true, false).await
+    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true).await
 }

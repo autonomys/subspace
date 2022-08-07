@@ -153,9 +153,9 @@ where
     pub block_number: NumberFor<Block>,
     /// Sender for archived root blocks
     pub root_block_sender: mpsc::Sender<RootBlock>,
-    /// Optional sender for pausing the block import when executor is not fast enough to process
+    /// Sender for pausing the block import when executor is not fast enough to process
     /// the primary block.
-    pub block_import_throttling_sender: Option<mpsc::Sender<()>>,
+    pub block_import_throttling_sender: mpsc::Sender<()>,
 }
 
 /// Errors encountered by the Subspace authorship task.
@@ -818,7 +818,6 @@ pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
     subspace_link: SubspaceLink<Block>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
-    executor_enabled: bool,
 }
 
 impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
@@ -836,7 +835,6 @@ where
             subspace_link: self.subspace_link.clone(),
             can_author_with: self.can_author_with.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
-            executor_enabled: self.executor_enabled,
         }
     }
 }
@@ -858,7 +856,6 @@ where
         subspace_link: SubspaceLink<Block>,
         can_author_with: CAW,
         create_inherent_data_providers: CIDP,
-        executor_enabled: bool,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -867,7 +864,6 @@ where
             subspace_link,
             can_author_with,
             create_inherent_data_providers,
-            executor_enabled,
         }
     }
 
@@ -1313,13 +1309,8 @@ where
 
         let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
-        let (block_import_throttling_sender, block_import_throttling_receiver) =
-            if self.executor_enabled {
-                let (sender, receiver) = mpsc::channel(0);
-                (Some(sender), Some(receiver))
-            } else {
-                (None, None)
-            };
+        let (block_import_throttling_sender, mut block_import_throttling_receiver) =
+            mpsc::channel(0);
 
         self.imported_block_notification_sender
             .notify(move || ImportedBlockNotification {
@@ -1328,13 +1319,7 @@ where
                 block_import_throttling_sender,
             });
 
-        if let Some(mut throttling_receiver) = block_import_throttling_receiver {
-            if throttling_receiver.next().await.is_none() {
-                return Err(ConsensusError::ClientImport(
-                    "Block import throttling error".to_string(),
-                ));
-            }
-        }
+        block_import_throttling_receiver.next().await;
 
         let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 
@@ -1367,7 +1352,6 @@ pub fn block_import<Client, Block, I, CAW, CIDP>(
     client: Arc<Client>,
     can_author_with: CAW,
     create_inherent_data_providers: CIDP,
-    executor_enabled: bool,
 ) -> ClientResult<(
     SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
     SubspaceLink<Block>,
@@ -1423,7 +1407,6 @@ where
         link.clone(),
         can_author_with,
         create_inherent_data_providers,
-        executor_enabled,
     );
 
     Ok((import, link))

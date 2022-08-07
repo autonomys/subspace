@@ -263,69 +263,40 @@ async fn handle_block_import_notifications<
     }
 
     // Pause the primary block import once this channel is full.
-    let (mut buffer_sender, mut buffer_receiver) =
+    let (mut block_info_sender, mut block_info_receiver) =
         mpsc::channel(block_import_throttling_buffer_size as usize);
 
-    while let Some((block_number, mut block_import_throttling_sender)) = block_imports.next().await
-    {
-        let header = primary_chain_client
-            .header(BlockId::Number(block_number))
-            .expect("Header of imported block must exist; qed")
-            .expect("Header of imported block must exist; qed");
-        let block_info = BlockInfo {
-            hash: header.hash(),
-            parent_hash: *header.parent_hash(),
-            number: *header.number(),
-        };
-
-        match buffer_sender.feed(()).await {
-            Ok(()) => {
-                if let Err(error) = block_import_throttling_sender.send(()).await {
+    loop {
+        tokio::select! {
+            Some((block_number, mut block_import_throttling_sender)) = block_imports.next() => {
+                let header = primary_chain_client
+                    .header(BlockId::Number(block_number))
+                    .expect("Header of imported block must exist; qed")
+                    .expect("Header of imported block must exist; qed");
+                let block_info = BlockInfo {
+                    hash: header.hash(),
+                    parent_hash: *header.parent_hash(),
+                    number: *header.number(),
+                };
+                let _ = block_info_sender.feed(block_info).await;
+                let _ = block_import_throttling_sender.send(()).await;
+            }
+            Some(block_info) = block_info_receiver.next() => {
+                if let Err(error) = block_imported(
+                    primary_chain_client,
+                    &processor,
+                    &mut active_leaves,
+                    block_info,
+                ).await {
                     tracing::error!(
                         target: LOG_TARGET,
                         ?error,
-                        "Failed to send the block import advance signal"
+                        "Failed to process primary block"
                     );
                     // Bring down the service as bundles processor is an essential task.
                     // TODO: more graceful shutdown.
                     break;
                 }
-            }
-            Err(error) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    ?error,
-                    "Failed to reserve a slot in block import throttling buffer"
-                );
-                // Bring down the service as bundles processor is an essential task.
-                // TODO: more graceful shutdown.
-                break;
-            }
-        }
-
-        match block_imported(
-            primary_chain_client,
-            &processor,
-            &mut active_leaves,
-            block_info,
-        )
-        .await
-        {
-            Ok(()) => {
-                buffer_receiver
-                    .next()
-                    .await
-                    .expect("Next item must exist as it was just fed above; qed");
-            }
-            Err(error) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    ?error,
-                    "Failed to process primary block"
-                );
-                // Bring down the service as bundles processor is an essential task.
-                // TODO: more graceful shutdown.
-                break;
             }
         }
     }
