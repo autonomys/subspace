@@ -268,7 +268,14 @@ async fn handle_block_import_notifications<
 
     loop {
         tokio::select! {
-            Some((block_number, mut block_import_throttling_sender)) = block_imports.next() => {
+            maybe_block_import = block_imports.next() => {
+                let (block_number, mut block_import_acknowledgement_sender) = match maybe_block_import {
+                    Some(block_import) => block_import,
+                    None => {
+                        // Can be None on graceful shutdown.
+                        break;
+                    }
+                };
                 let header = primary_chain_client
                     .header(BlockId::Number(block_number))
                     .expect("Header of imported block must exist; qed")
@@ -279,7 +286,7 @@ async fn handle_block_import_notifications<
                     number: *header.number(),
                 };
                 let _ = block_info_sender.feed(block_info).await;
-                let _ = block_import_throttling_sender.send(()).await;
+                let _ = block_import_acknowledgement_sender.send(()).await;
             }
             Some(block_info) = block_info_receiver.next() => {
                 if let Err(error) = block_imported(
