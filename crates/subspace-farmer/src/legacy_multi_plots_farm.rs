@@ -78,6 +78,7 @@ impl LegacyMultiPlotsFarm {
         let single_disk_semaphore =
             SingleDiskSemaphore::new(NonZeroU16::try_from(16).expect("Non zero; qed"));
 
+        let verification_client = archiving_client.clone();
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
             plot_sizes
@@ -112,6 +113,7 @@ impl LegacyMultiPlotsFarm {
                         enable_dsn_archiving,
                         enable_dsn_sync,
                         relay_server_node: relay_server_node.clone(),
+                        verification_client: verification_client.clone(),
                     })
                 })
                 .collect::<anyhow::Result<Vec<_>>>()
