@@ -39,7 +39,7 @@ const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: i64 = 86400; // 1 DAY
 
 /// Defines operations with the networking parameters.
 #[async_trait]
-pub trait NetworkingParametersRegistry: Send {
+pub trait NetworkingParametersRegistry: Send + Sync {
     /// Registers a peer ID and associated addresses
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 

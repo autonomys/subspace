@@ -1,15 +1,15 @@
 use crate::archiving::Archiving;
 use crate::commitments::Commitments;
 use crate::identity::Identity;
-use crate::mock_rpc_client::MockRpcClient;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::Plot;
+use crate::rpc_client::mock_rpc_client::MockRpcClient;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotPlotter;
 use rand::prelude::*;
 use rand::Rng;
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU32};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
@@ -58,7 +58,7 @@ async fn plotting_happy_path() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
-        record_size: RECORD_SIZE as u32,
+        record_size: NonZeroU32::new(RECORD_SIZE as u32).unwrap(),
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
         total_pieces: 0,
@@ -162,7 +162,7 @@ async fn plotting_piece_eviction() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
-        record_size: RECORD_SIZE as u32,
+        record_size: NonZeroU32::new(RECORD_SIZE as u32).unwrap(),
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
         total_pieces: 0,
