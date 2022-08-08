@@ -144,7 +144,7 @@ async fn no_sync_test() {
     assert!(result.lock().is_empty())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_dsn_sync() {
     init();
 
