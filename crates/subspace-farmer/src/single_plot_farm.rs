@@ -827,11 +827,15 @@ impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
                 .await?;
         }
 
-        self.single_plot_plotter
-            .plot_pieces(PiecesToPlot {
-                pieces,
-                piece_indexes,
-            })
-            .map_err(Into::into)
+        let plotter = self.single_plot_plotter.clone();
+        tokio::task::spawn_blocking(move || {
+            plotter
+                .plot_pieces(PiecesToPlot {
+                    pieces,
+                    piece_indexes,
+                })
+                .map_err(Into::into)
+        })
+        .await?
     }
 }

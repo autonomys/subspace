@@ -17,7 +17,7 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, trace, warn};
 
-use crate::{utils, ArchivingFrom, DiskFarm, FarmingArgs};
+use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -28,8 +28,6 @@ pub(crate) async fn farm_multi_disk(
     if disk_farms.is_empty() {
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
-
-    utils::raise_fd_limit();
 
     let FarmingArgs {
         bootstrap_nodes,
@@ -209,8 +207,6 @@ pub(crate) async fn farm_legacy(
     base_directory: PathBuf,
     farm_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
-    utils::raise_fd_limit();
-
     let FarmingArgs {
         bootstrap_nodes,
         listen_on,

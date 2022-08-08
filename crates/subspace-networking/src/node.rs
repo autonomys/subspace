@@ -1,9 +1,11 @@
 use crate::create::{create, Config, CreationError};
 use crate::node_runner::NodeRunner;
 use crate::request_handlers::generic_request_handler::GenericRequest;
+use crate::request_responses;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
+use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
@@ -68,49 +70,94 @@ impl PinnedDrop for TopicSubscription {
 
 #[derive(Debug, Error)]
 pub enum GetValueError {
-    /// Node runner was dropped, impossible to get value.
-    #[error("Node runner was dropped, impossible to get value")]
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
     NodeRunnerDropped,
+}
+
+impl From<oneshot::Canceled> for GetValueError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
 }
 
 #[derive(Debug, Error)]
 pub enum GetClosestPeersError {
-    /// Node runner was dropped, impossible to get closest peers.
-    #[error("Node runner was dropped, impossible to get closest peers")]
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
     NodeRunnerDropped,
+}
+
+impl From<oneshot::Canceled> for GetClosestPeersError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
 }
 
 #[derive(Debug, Error)]
 pub enum SubscribeError {
-    /// Node runner was dropped, impossible to subscribe.
-    #[error("Node runner was dropped, impossible to get value")]
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
     NodeRunnerDropped,
     /// Failed to create subscription.
     #[error("Failed to create subscription: {0}")]
     Subscription(#[from] SubscriptionError),
 }
 
+impl From<oneshot::Canceled> for SubscribeError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum PublishError {
-    /// Node runner was dropped, impossible to publish.
-    #[error("Node runner was dropped, impossible to get value")]
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
     NodeRunnerDropped,
     /// Failed to publish message.
     #[error("Failed to publish message: {0}")]
     Publish(#[from] libp2p::gossipsub::error::PublishError),
 }
 
+impl From<oneshot::Canceled> for PublishError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum SendRequestError {
-    /// Node runner was dropped, impossible to send request.
-    #[error("Node runner was dropped, impossible to send request")]
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
     NodeRunnerDropped,
     /// Underlying protocol returned an error, impossible to get response.
-    #[error("Underlying protocol returned an error, impossible to get response")]
-    ProtocolFailure,
+    #[error("Underlying protocol returned an error: {0}")]
+    ProtocolFailure(#[from] request_responses::RequestFailure),
     /// Underlying protocol returned an incorrect format, impossible to get response.
-    #[error("Underlying protocol returned an incorrect format, impossible to get response")]
-    IncorrectResponseFormat,
+    #[error("Received incorrectly formatted response: {0}")]
+    IncorrectResponseFormat(#[from] parity_scale_codec::Error),
+}
+
+impl From<oneshot::Canceled> for SendRequestError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
 }
 
 #[derive(Debug, Error)]
@@ -121,6 +168,12 @@ pub enum CircuitRelayClientError {
     /// Failed to retrieve memory address, typically means networking was destroyed.
     #[error("Failed to retrieve memory address")]
     FailedToRetrieveMemoryAddress,
+}
+
+impl From<oneshot::Canceled> for CircuitRelayClientError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::FailedToRetrieveMemoryAddress
+    }
 }
 
 /// Implementation of a network node on Subspace Network.
@@ -196,12 +249,8 @@ impl Node {
         }
 
         // Otherwise for new memory listener
-        let port = port_receiver
-            .await
-            .map_err(|_error| CircuitRelayClientError::FailedToRetrieveMemoryAddress)?;
-
+        let port = port_receiver.await?;
         self.relay_server_memory_port.lock().replace(port);
-
         Ok(port)
     }
 
@@ -212,12 +261,9 @@ impl Node {
             .command_sender
             .clone()
             .send(Command::GetValue { key, result_sender })
-            .await
-            .map_err(|_error| GetValueError::NodeRunnerDropped)?;
+            .await?;
 
-        result_receiver
-            .await
-            .map_err(|_error| GetValueError::NodeRunnerDropped)
+        Ok(result_receiver.await?)
     }
 
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
@@ -230,16 +276,12 @@ impl Node {
                 topic: topic.clone(),
                 result_sender,
             })
-            .await
-            .map_err(|_error| SubscribeError::NodeRunnerDropped)?;
+            .await?;
 
         let CreatedSubscription {
             subscription_id,
             receiver,
-        } = result_receiver
-            .await
-            .map_err(|_error| SubscribeError::NodeRunnerDropped)?
-            .map_err(SubscribeError::Subscription)?;
+        } = result_receiver.await??;
 
         Ok(TopicSubscription {
             topic: Some(topic),
@@ -260,13 +302,9 @@ impl Node {
                 message,
                 result_sender,
             })
-            .await
-            .map_err(|_error| PublishError::NodeRunnerDropped)?;
+            .await?;
 
-        result_receiver
-            .await
-            .map_err(|_error| PublishError::NodeRunnerDropped)?
-            .map_err(PublishError::Publish)
+        result_receiver.await?.map_err(PublishError::Publish)
     }
 
     // Sends the generic request to the peer and awaits the result.
@@ -286,20 +324,11 @@ impl Node {
             result_sender,
         };
 
-        self.shared
-            .command_sender
-            .clone()
-            .send(command)
-            .await
-            .map_err(|_| SendRequestError::NodeRunnerDropped)?;
+        self.shared.command_sender.clone().send(command).await?;
 
-        let result = result_receiver
-            .await
-            .map_err(|_| SendRequestError::NodeRunnerDropped)?
-            .map_err(|_| SendRequestError::ProtocolFailure)?;
+        let result = result_receiver.await??;
 
-        Request::Response::decode(&mut result.as_slice())
-            .map_err(|_| SendRequestError::IncorrectResponseFormat)
+        Request::Response::decode(&mut result.as_slice()).map_err(Into::into)
     }
 
     /// Get closest peers by multihash key using Kademlia DHT.
@@ -315,12 +344,9 @@ impl Node {
             .command_sender
             .clone()
             .send(Command::GetClosestPeers { key, result_sender })
-            .await
-            .map_err(|_| GetClosestPeersError::NodeRunnerDropped)?;
+            .await?;
 
-        let peers = result_receiver
-            .await
-            .map_err(|_| GetClosestPeersError::NodeRunnerDropped)?;
+        let peers = result_receiver.await?;
 
         trace!("Kademlia 'GetClosestPeers' returned {} peers", peers.len());
 
