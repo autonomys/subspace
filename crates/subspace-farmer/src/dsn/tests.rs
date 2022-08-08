@@ -1,5 +1,4 @@
-use super::{sync, DSNSync, NoSync, PieceIndexHashNumber, PiecesToPlot, SyncOptions};
-use crate::dsn::OnSync;
+use crate::dsn::{sync, DSNSync, NoSync, OnSync, PieceIndexHashNumber, SyncOptions};
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::single_plot_farm::PlotFactoryOptions;
@@ -11,14 +10,18 @@ use parking_lot::Mutex;
 use rand::Rng;
 use std::collections::BTreeMap;
 use std::ops::Range;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    bidirectional_distance, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece,
+    bidirectional_distance, crypto, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece,
     PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::{
+    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tempfile::TempDir;
 
@@ -441,4 +444,184 @@ async fn test_dsn_sync() {
             0
         ),
     };
+}
+
+#[tokio::test]
+async fn pieces_by_range_protocol_smoke() {
+    let request = PiecesByRangeRequest {
+        start: PieceIndexHash::from([1u8; 32]),
+        end: PieceIndexHash::from([1u8; 32]),
+    };
+
+    let piece_bytes: Vec<u8> = Piece::default().into();
+    let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+    let pieces = PiecesToPlot {
+        piece_indexes: vec![1],
+        pieces: flat_pieces,
+    };
+
+    let response = PiecesByRangeResponse {
+        pieces,
+        next_piece_index_hash: None,
+    };
+
+    let expected_request = request.clone();
+    let expected_response = response.clone();
+
+    let config_1 = Config {
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
+            assert_eq!(*req, expected_request);
+
+            Some(expected_response.clone())
+        })],
+        ..Config::with_generated_keypair()
+    };
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+
+    let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = node_1.on_new_listener(Arc::new({
+        let node_1_address_sender = Mutex::new(Some(node_1_address_sender));
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
+                    node_1_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
+    tokio::spawn(async move {
+        node_runner_1.run().await;
+    });
+
+    // Wait for first node to know its address
+    let node_1_addr = node_1_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
+
+    let config_2 = Config {
+        bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
+        ..Config::with_generated_keypair()
+    };
+
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    tokio::spawn(async move {
+        node_runner_2.run().await;
+    });
+
+    let (mut result_sender, mut result_receiver) = mpsc::unbounded();
+    tokio::spawn(async move {
+        let resp = node_2
+            .send_generic_request(node_1.id(), request)
+            .await
+            .unwrap();
+
+        result_sender.send(resp).await.unwrap();
+    });
+
+    let resp = result_receiver.next().await.unwrap();
+    assert_eq!(resp, response);
+}
+
+#[tokio::test]
+async fn get_pieces_by_range_smoke() {
+    let piece_index_from = PieceIndexHash::from(crypto::sha256_hash(b"from"));
+    let piece_index_continue = PieceIndexHash::from(crypto::sha256_hash(b"continue"));
+    let piece_index_end = PieceIndexHash::from(crypto::sha256_hash(b"end"));
+
+    fn get_pieces_to_plot_mock(seed: u8) -> PiecesToPlot {
+        let piece_bytes: Vec<u8> = [seed; 4096].to_vec();
+        let flat_pieces = FlatPieces::try_from(piece_bytes).unwrap();
+
+        PiecesToPlot {
+            piece_indexes: vec![1],
+            pieces: flat_pieces,
+        }
+    }
+
+    static REQUEST_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    let expected_data = vec![get_pieces_to_plot_mock(0), get_pieces_to_plot_mock(1)];
+    let response_data = expected_data.clone();
+
+    let config_1 = Config {
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
+            let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+
+            // Only two responses
+            if request_index == 2 {
+                return None;
+            }
+
+            if request_index == 0 {
+                Some(PiecesByRangeResponse {
+                    pieces: response_data[request_index].clone(),
+                    next_piece_index_hash: Some(piece_index_continue),
+                })
+            } else {
+                // New request starts from from the previous response.
+                assert_eq!(req.start, piece_index_continue);
+
+                Some(PiecesByRangeResponse {
+                    pieces: response_data[request_index].clone(),
+                    next_piece_index_hash: None,
+                })
+            }
+        })],
+        ..Config::with_generated_keypair()
+    };
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+
+    let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = node_1.on_new_listener(Arc::new({
+        let node_1_address_sender = Mutex::new(Some(node_1_address_sender));
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
+                    node_1_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
+    tokio::spawn(async move {
+        node_runner_1.run().await;
+    });
+
+    // Wait for first node to know its address
+    let node_1_addr = node_1_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
+
+    let config_2 = Config {
+        bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_globals_in_dht: true,
+        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
+        ..Config::with_generated_keypair()
+    };
+
+    let (mut node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    tokio::spawn(async move {
+        node_runner_2.run().await;
+    });
+
+    let mut stream = node_2
+        .get_pieces(piece_index_from..piece_index_end)
+        .await
+        .unwrap();
+
+    let mut result = Vec::new();
+    while let Some(piece_plot) = stream.next().await {
+        result.push(piece_plot);
+    }
+
+    assert_eq!(result, expected_data);
 }

@@ -10,8 +10,6 @@ use subspace_networking::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToP
 use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
-mod pieces_by_range_tests;
-#[cfg(test)]
 mod tests;
 
 const PIECES_CHANNEL_BUFFER_SIZE: usize = 20;
