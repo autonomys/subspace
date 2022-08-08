@@ -4,7 +4,7 @@ use crate::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_
 use crate::single_plot_farm::PlotFactoryOptions;
 use crate::{LegacyObjectMappings, Plot};
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use parking_lot::Mutex;
 use rand::Rng;
@@ -53,13 +53,12 @@ struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
 
 #[async_trait::async_trait]
 impl DSNSync for TestDSN {
-    type Stream = futures::stream::Once<futures::future::Ready<PiecesToPlot>>;
     type Error = std::convert::Infallible;
 
     async fn get_pieces(
         &mut self,
         Range { start, end }: Range<PieceIndexHash>,
-    ) -> Result<Self::Stream, Self::Error> {
+    ) -> Result<Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send>, Self::Error> {
         let (pieces, piece_indexes) = self
             .0
             .iter()
@@ -73,12 +72,12 @@ impl DSNSync for TestDSN {
                     (flat_pieces, piece_indexes)
                 },
             );
-        Ok(futures::stream::once(futures::future::ready(
+        Ok(Box::new(futures::stream::once(futures::future::ready(
             PiecesToPlot {
                 pieces: pieces.try_into().unwrap(),
                 piece_indexes,
             },
-        )))
+        ))))
     }
 }
 
