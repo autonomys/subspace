@@ -17,7 +17,8 @@
 use crate::{BundleProcessor, BundleProducer, TransactionFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
-use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::channel::mpsc;
+use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::BlockImport;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
@@ -69,6 +70,7 @@ where
     pub number: NumberFor<Block>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn start_worker<
     Block,
     PBlock,
@@ -87,6 +89,7 @@ pub(super) async fn start_worker<
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,
+    block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -107,7 +110,7 @@ pub(super) async fn start_worker<
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -126,14 +129,6 @@ pub(super) async fn start_worker<
                         .clone()
                         .process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
                         .instrument(span.clone())
-                        .unwrap_or_else(move |error| {
-                            tracing::error!(
-                                target: LOG_TARGET,
-                                relay_parent = ?primary_hash,
-                                error = ?error,
-                                "Error at processing bundles.",
-                            );
-                        })
                         .boxed()
                 }
             },
@@ -148,6 +143,7 @@ pub(super) async fn start_worker<
                 )
                 .collect(),
             Box::pin(imported_block_notification_stream),
+            block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications(
         primary_chain_client.as_ref(),
@@ -223,6 +219,7 @@ async fn handle_block_import_notifications<
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
     mut block_imports: BlockImports,
+    block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -233,11 +230,11 @@ async fn handle_block_import_notifications<
             Vec<OpaqueBundle>,
             Randomness,
             Option<Cow<'static, [u8]>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
-    BlockImports: Stream<Item = NumberFor<PBlock>> + Unpin,
+    BlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
@@ -255,37 +252,59 @@ async fn handle_block_import_notifications<
             {
                 tracing::error!(
                     target: LOG_TARGET,
-                    "Collation generation processing error: {error}"
+                    ?error,
+                    "Failed to process primary block on startup"
                 );
+                // Bring down the service as bundles processor is an essential task.
+                // TODO: more graceful shutdown.
+                return;
             }
         }
     }
 
-    while let Some(block_number) = block_imports.next().await {
-        let header = primary_chain_client
-            .header(BlockId::Number(block_number))
-            .expect("Header of imported block must exist; qed")
-            .expect("Header of imported block must exist; qed");
-        let block_info = BlockInfo {
-            hash: header.hash(),
-            parent_hash: *header.parent_hash(),
-            number: *header.number(),
-        };
+    // Pause the primary block import once this channel is full.
+    let (mut block_info_sender, mut block_info_receiver) =
+        mpsc::channel(block_import_throttling_buffer_size as usize);
 
-        if let Err(error) = block_imported(
-            primary_chain_client,
-            &processor,
-            &mut active_leaves,
-            block_info,
-        )
-        .await
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to process primary block"
-            );
-            break;
+    loop {
+        tokio::select! {
+            maybe_block_import = block_imports.next() => {
+                let (block_number, mut block_import_acknowledgement_sender) = match maybe_block_import {
+                    Some(block_import) => block_import,
+                    None => {
+                        // Can be None on graceful shutdown.
+                        break;
+                    }
+                };
+                let header = primary_chain_client
+                    .header(BlockId::Number(block_number))
+                    .expect("Header of imported block must exist; qed")
+                    .expect("Header of imported block must exist; qed");
+                let block_info = BlockInfo {
+                    hash: header.hash(),
+                    parent_hash: *header.parent_hash(),
+                    number: *header.number(),
+                };
+                let _ = block_info_sender.feed(block_info).await;
+                let _ = block_import_acknowledgement_sender.send(()).await;
+            }
+            Some(block_info) = block_info_receiver.next() => {
+                if let Err(error) = block_imported(
+                    primary_chain_client,
+                    &processor,
+                    &mut active_leaves,
+                    block_info,
+                ).await {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        ?error,
+                        "Failed to process primary block"
+                    );
+                    // Bring down the service as bundles processor is an essential task.
+                    // TODO: more graceful shutdown.
+                    break;
+                }
+            }
         }
     }
 }
@@ -345,7 +364,7 @@ where
             Vec<OpaqueBundle>,
             Randomness,
             Option<Cow<'static, [u8]>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
@@ -362,18 +381,12 @@ where
         debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
     }
 
-    if let Err(error) = process_primary_block(
+    process_primary_block(
         primary_chain_client,
         processor,
         (block_info.hash, block_info.number),
     )
-    .await
-    {
-        tracing::error!(
-            target: LOG_TARGET,
-            "Collation generation processing error: {error}"
-        );
-    }
+    .await?;
 
     Ok(())
 }
@@ -396,7 +409,7 @@ where
             Vec<OpaqueBundle>,
             Randomness,
             Option<Cow<'static, [u8]>>,
-        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
     SecondaryHash: Encode + Decode,
@@ -463,7 +476,7 @@ where
         shuffling_seed,
         maybe_new_runtime,
     )
-    .await;
+    .await?;
 
     Ok(())
 }
