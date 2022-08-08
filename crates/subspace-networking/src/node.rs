@@ -73,14 +73,14 @@ pub enum GetValueError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
-    /// Node runner didn't send result back
-    #[error("Node runner didn't send result back")]
-    ReceiveResult,
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
 }
 
 impl From<oneshot::Canceled> for GetValueError {
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::ReceiveResult
+        Self::NodeRunnerDropped
     }
 }
 
@@ -89,14 +89,14 @@ pub enum GetClosestPeersError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
-    /// Node runner didn't send result back
-    #[error("Node runner didn't send result back")]
-    ReceiveResult,
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
 }
 
 impl From<oneshot::Canceled> for GetClosestPeersError {
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::ReceiveResult
+        Self::NodeRunnerDropped
     }
 }
 
@@ -105,9 +105,9 @@ pub enum SubscribeError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
-    /// Node runner didn't send result back
-    #[error("Node runner didn't send result back")]
-    ReceiveResult,
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
     /// Failed to create subscription.
     #[error("Failed to create subscription: {0}")]
     Subscription(#[from] SubscriptionError),
@@ -115,7 +115,7 @@ pub enum SubscribeError {
 
 impl From<oneshot::Canceled> for SubscribeError {
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::ReceiveResult
+        Self::NodeRunnerDropped
     }
 }
 
@@ -124,9 +124,9 @@ pub enum PublishError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
-    /// Node runner didn't send result back
-    #[error("Node runner didn't send result back")]
-    ReceiveResult,
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
     /// Failed to publish message.
     #[error("Failed to publish message: {0}")]
     Publish(#[from] libp2p::gossipsub::error::PublishError),
@@ -134,7 +134,7 @@ pub enum PublishError {
 
 impl From<oneshot::Canceled> for PublishError {
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::ReceiveResult
+        Self::NodeRunnerDropped
     }
 }
 
@@ -143,9 +143,9 @@ pub enum SendRequestError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
-    /// Node runner didn't send result back
-    #[error("Node runner didn't send result back")]
-    ReceiveResult,
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
     /// Underlying protocol returned an error, impossible to get response.
     #[error("Underlying protocol returned an error: {0}")]
     ProtocolFailure(#[from] request_responses::RequestFailure),
@@ -156,7 +156,7 @@ pub enum SendRequestError {
 
 impl From<oneshot::Canceled> for SendRequestError {
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::ReceiveResult
+        Self::NodeRunnerDropped
     }
 }
 
