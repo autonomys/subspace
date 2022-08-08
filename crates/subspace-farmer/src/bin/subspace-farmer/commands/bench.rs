@@ -1,4 +1,4 @@
-use crate::{utils, WriteToDisk};
+use crate::WriteToDisk;
 use anyhow::anyhow;
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
@@ -97,8 +97,6 @@ pub(crate) async fn bench(
     write_pieces_size: u64,
     do_recommitments: bool,
 ) -> anyhow::Result<()> {
-    utils::raise_fd_limit();
-
     let (mut slot_info_sender, slot_info_receiver) = mpsc::channel(1);
     let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(1);
     let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
