@@ -20,6 +20,7 @@ codec = { package = "parity-scale-codec", version = "3.1.2", default-features = 
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-arithmetic = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace", default-features = false }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
@@ -30,6 +31,7 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 [dev-dependencies]
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1399afdcd8ab4d7fad149c96f9cadcaf04b94f86" }
 rand = { version = "0.8.5", features = ["min_const_gen"] }
+subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}
 
 [features]
 default = ["std"]
@@ -38,6 +40,7 @@ std = [
     "scale-info/std",
     "schnorrkel/std",
     "sp-arithmetic/std",
+    "sp-consensus-slots/std",
     "sp-consensus-subspace/std",
     "sp-runtime/std",
     "sp-std/std",
