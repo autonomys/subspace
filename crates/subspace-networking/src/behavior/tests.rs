@@ -35,8 +35,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
         .expect("Address present")
         .is_none());
 
-    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses.clone(), expiration)
-        .await;
+    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses.clone(), expiration);
 
     // Check after the first run (set the first failure time)
     assert_eq!(peers_cache.len(), 1);
@@ -51,7 +50,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
         .expect("Address present")
         .is_some());
 
-    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses, expiration).await;
+    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses, expiration);
 
     // Check after the second run (clean cache)
     assert_eq!(peers_cache.len(), 0);

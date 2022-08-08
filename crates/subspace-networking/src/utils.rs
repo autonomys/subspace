@@ -4,7 +4,6 @@ mod tests;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use std::marker::PhantomData;
-
 use std::num::NonZeroUsize;
 
 /// This test is successful only for global IP addresses and DNS names.

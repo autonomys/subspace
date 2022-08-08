@@ -120,6 +120,8 @@ impl NodeRunner {
                 _ = self.networking_parameters_registry.run().fuse() => {
                     trace!("Network parameters registry runner exited.")
                 },
+                //TODO: consider changing this worker to the reactive approach (using the connection
+                // closing events to maintain established connections set).
                 _ = &mut self.peer_dialing_timeout => {
                     self.handle_peer_dialing().await;
 
@@ -137,7 +139,8 @@ impl NodeRunner {
         if connected_peers.len() < CONNECTED_PEERS_THRESHOLD {
             debug!(
                 %local_peer_id,
-                "Initiate connection to known peers [connected peers={}]", connected_peers.len()
+                connected_peers=connected_peers.len(),
+                "Initiate connection to known peers",
             );
 
             let addresses = self
