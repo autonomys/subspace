@@ -12,6 +12,8 @@ use crate::single_plot_farm::SinglePlotFarmId;
 use crate::utils::AbortingJoinHandle;
 use futures::future::{Fuse, FusedFuture};
 use futures::{FutureExt, StreamExt};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -29,11 +31,11 @@ const TAGS_SEARCH_LIMIT: usize = 10;
 pub enum FarmingError {
     #[error("jsonrpsee error: {0}")]
     RpcError(Box<dyn std::error::Error + Send + Sync>),
-    #[error("Error joining task: {0}")]
-    JoinTask(tokio::task::JoinError),
     #[error("Plot read error: {0}")]
     PlotRead(std::io::Error),
 }
+
+type FarmingFut = Pin<Box<dyn Future<Output = Result<(), FarmingError>> + Send>>;
 
 /// `Farming` structure is an abstraction of the farming process for a single replica plot farming.
 ///
@@ -41,14 +43,15 @@ pub enum FarmingError {
 ///
 /// At high level it receives a new challenge from the consensus and tries to find solution for it
 /// in its `Commitments` database.
+#[must_use = "doesn't do anything unless `.wait()` method is called"]
 pub struct Farming {
-    handle: Fuse<AbortingJoinHandle<Result<(), FarmingError>>>,
+    farming_fut: Fuse<FarmingFut>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
 impl Farming {
-    /// Returns an instance of farming, and also starts a concurrent background farming task
-    pub async fn start<T: RpcClient + Sync + Send + 'static>(
+    /// Create new farming instance
+    pub fn create<T: RpcClient + Sync + Send + 'static>(
         single_plot_farm_id: SinglePlotFarmId,
         plot: Plot,
         commitments: Commitments,
@@ -57,14 +60,10 @@ impl Farming {
         identity: Identity,
         reward_address: PublicKey,
     ) -> Self {
-        let (initialized_sender, initialized_receiver) = async_oneshot::oneshot();
-
-        // Get a handle for the background task, so that we can wait on it later if we want to
-        let farming_handle = tokio::spawn(
+        let farming_fut: FarmingFut = Box::pin(
             async move {
                 subscribe_to_slot_info(
                     single_plot_farm_id,
-                    initialized_sender,
                     &client,
                     &plot,
                     &commitments,
@@ -77,20 +76,17 @@ impl Farming {
             .in_current_span(),
         );
 
-        // Wait for initialization to finish, result doesn't matter here
-        let _ = initialized_receiver.await;
-
         Farming {
-            handle: AbortingJoinHandle::new(farming_handle).fuse(),
+            farming_fut: farming_fut.fuse(),
         }
     }
 
     /// Waits for the background farming to finish
     pub async fn wait(&mut self) -> Result<(), FarmingError> {
-        if self.handle.is_terminated() {
+        if self.farming_fut.is_terminated() {
             return Ok(());
         }
-        (&mut self.handle).await.map_err(FarmingError::JoinTask)?
+        (&mut self.farming_fut).await
     }
 }
 
@@ -105,7 +101,6 @@ struct Salts {
 #[allow(clippy::too_many_arguments)]
 async fn subscribe_to_slot_info<T: RpcClient>(
     single_plot_farm_id: SinglePlotFarmId,
-    mut initialized_sender: async_oneshot::Sender<()>,
     client: &T,
     plot: &Plot,
     commitments: &Commitments,
@@ -123,10 +118,6 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .subscribe_reward_signing()
         .await
         .map_err(FarmingError::RpcError)?;
-
-    if let Err(_closed) = initialized_sender.send(()) {
-        return Ok(());
-    }
 
     let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
         let identity = identity.clone();
