@@ -153,6 +153,9 @@ where
     pub block_number: NumberFor<Block>,
     /// Sender for archived root blocks
     pub root_block_sender: mpsc::Sender<RootBlock>,
+    /// Sender for pausing the block import when executor is not fast enough to process
+    /// the primary block.
+    pub block_import_acknowledgement_sender: mpsc::Sender<()>,
 }
 
 /// Errors encountered by the Subspace authorship task.
@@ -1306,12 +1309,19 @@ where
 
         let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
+        let (block_import_acknowledgement_sender, mut block_import_acknowledgement_receiver) =
+            mpsc::channel(0);
 
         self.imported_block_notification_sender
             .notify(move || ImportedBlockNotification {
                 block_number,
                 root_block_sender,
+                block_import_acknowledgement_sender,
             });
+
+        while (block_import_acknowledgement_receiver.next().await).is_some() {
+            // Wait for all the acknowledgements to progress.
+        }
 
         let root_blocks: Vec<RootBlock> = root_block_receiver.collect().await;
 

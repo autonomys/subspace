@@ -876,7 +876,7 @@ impl<T: Config> Pallet<T> {
         // Extract PoR randomness from pre-digest.
         // Tag signature is validated by the client and is always valid here.
         let por_randomness: Randomness = derive_randomness(
-            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
+            &PublicKey::from(&pre_digest.solution.public_key),
             pre_digest.solution.tag,
             &pre_digest.solution.tag_signature,
         )
@@ -1382,8 +1382,8 @@ fn check_vote<T: Config>(
 
     if let Err(error) = check_reward_signature(
         signed_vote.vote.hash().as_bytes(),
-        &Into::<RewardSignature>::into(&signed_vote.signature),
-        &Into::<PublicKey>::into(&solution.public_key),
+        &RewardSignature::from(&signed_vote.signature),
+        &PublicKey::from(&solution.public_key),
         &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
     ) {
         debug!(

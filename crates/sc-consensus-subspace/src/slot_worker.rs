@@ -454,8 +454,8 @@ where
         while let Some(signature) = signature_receiver.next().await {
             if check_reward_signature(
                 hash.as_ref(),
-                &Into::<RewardSignature>::into(&signature),
-                &Into::<subspace_core_primitives::PublicKey>::into(public_key),
+                &RewardSignature::from(&signature),
+                &subspace_core_primitives::PublicKey::from(public_key),
                 &self.reward_signing_context,
             )
             .is_err()

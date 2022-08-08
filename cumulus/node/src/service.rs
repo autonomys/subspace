@@ -5,6 +5,7 @@ use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_primitives::SecondaryApi;
 use cirrus_runtime::opaque::Block;
 use cirrus_runtime::{AccountId, Balance, Hash};
+use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, StateBackendFor};
@@ -205,6 +206,7 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
     select_chain: &SC,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
+    block_import_throttling_buffer_size: u32,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -225,7 +227,7 @@ where
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
-    IBNS: Stream<Item = NumberFor<PBlock>> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -323,6 +325,7 @@ where
         code_executor.clone(),
         validator,
         params.keystore_container.sync_keystore(),
+        block_import_throttling_buffer_size,
     )
     .await?;
 

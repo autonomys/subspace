@@ -1,14 +1,16 @@
 use crate::mock::{Header, MockStorage};
 use crate::{
-    ChainConstants, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems, NumberOf,
-    RecordsRoot, SegmentIndex, SolutionRange, Storage,
+    ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
+    NumberOf, RecordsRoot, SaltDerivationInfo, SegmentIndex, SolutionRange, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use schnorrkel::Keypair;
+use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
+    extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem, ErrorDigestType,
+    PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::app_crypto::UncheckedFrom;
@@ -21,6 +23,10 @@ use subspace_core_primitives::{
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
     derive_target, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+};
+use subspace_verification::{
+    derive_next_eon_index, derive_next_salt_from_randomness, derive_next_solution_range,
+    derive_randomness,
 };
 
 fn default_randomness_and_salt() -> (Randomness, Salt) {
@@ -40,6 +46,11 @@ fn default_test_constants() -> ChainConstants<Header> {
         },
         max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
         genesis_records_roots: Default::default(),
+        global_randomness_interval: 20,
+        era_duration: 20,
+        slot_probability: (1, 6),
+        eon_duration: 20,
+        next_salt_reveal_interval: 6,
     }
 }
 
@@ -100,17 +111,68 @@ fn valid_header_with_default_randomness_and_salt(
     keypair: &Keypair,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
     let (randomness, salt) = default_randomness_and_salt();
-    valid_header(parent_hash, number, slot, keypair, randomness, salt)
+    valid_header(ValidHeaderParams {
+        parent_hash,
+        number,
+        slot,
+        keypair,
+        randomness,
+        salt,
+        should_add_next_randomness: false,
+        maybe_next_solution_range: None,
+        maybe_next_salt: None,
+    })
 }
 
-fn valid_header(
+fn valid_header_with_next_digests(
     parent_hash: HashOf<Header>,
     number: NumberOf<Header>,
     slot: u64,
     keypair: &Keypair,
+    should_add_next_randomness: bool,
+    maybe_next_solution_range: Option<(Slot, (u64, u64), NumberOf<Header>)>,
+    maybe_next_salt: Option<Salt>,
+) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
+    let (randomness, salt) = default_randomness_and_salt();
+    valid_header(ValidHeaderParams {
+        parent_hash,
+        number,
+        slot,
+        keypair,
+        randomness,
+        salt,
+        should_add_next_randomness,
+        maybe_next_solution_range,
+        maybe_next_salt,
+    })
+}
+
+struct ValidHeaderParams<'a> {
+    parent_hash: HashOf<Header>,
+    number: NumberOf<Header>,
+    slot: u64,
+    keypair: &'a Keypair,
     randomness: Randomness,
     salt: Salt,
+    should_add_next_randomness: bool,
+    maybe_next_solution_range: Option<(Slot, (u64, u64), NumberOf<Header>)>,
+    maybe_next_salt: Option<Salt>,
+}
+
+fn valid_header(
+    params: ValidHeaderParams<'_>,
 ) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
+    let ValidHeaderParams {
+        parent_hash,
+        number,
+        slot,
+        keypair,
+        randomness,
+        salt,
+        should_add_next_randomness,
+        maybe_next_solution_range,
+        maybe_next_salt,
+    } = params;
     let (encoding, piece_index, segment_index, records_root) = valid_piece(keypair.public);
     let tag: Tag = create_tag(encoding.as_ref(), salt);
     let global_challenge = derive_global_challenge(&randomness, slot);
@@ -123,8 +185,8 @@ fn valid_header(
     .unwrap();
     let solution_range = derive_solution_range(target, tag);
     let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
-
-    let digests = vec![
+    let tag_signature = create_tag_signature(keypair, tag);
+    let mut digests = vec![
         DigestItem::global_randomness(randomness),
         DigestItem::solution_range(solution_range),
         DigestItem::salt(salt),
@@ -135,12 +197,45 @@ fn valid_header(
                 reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                 piece_index,
                 encoding,
-                tag_signature: create_tag_signature(keypair, tag),
+                tag_signature,
                 local_challenge,
                 tag,
             },
         }),
     ];
+
+    if should_add_next_randomness {
+        let next_global_randomness = derive_randomness(
+            &subspace_core_primitives::PublicKey::from(&FarmerPublicKey::unchecked_from(
+                keypair.public.to_bytes(),
+            )),
+            tag,
+            &tag_signature,
+        )
+        .unwrap();
+        digests.push(DigestItem::next_global_randomness(next_global_randomness));
+    }
+
+    if let Some((start_slot, probability, era_duration)) = maybe_next_solution_range {
+        let expected_next_solution_range = derive_next_solution_range(
+            u64::from(start_slot),
+            slot,
+            probability,
+            solution_range,
+            era_duration
+                .try_into()
+                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+        );
+
+        digests.push(DigestItem::next_solution_range(
+            expected_next_solution_range,
+        ))
+    }
+
+    if let Some(next_salt) = maybe_next_salt {
+        digests.push(DigestItem::next_salt(next_salt))
+    }
+
     let mut header = Header {
         parent_hash,
         number,
@@ -168,19 +263,40 @@ fn import_blocks_until(
 ) -> (HashOf<Header>, u64) {
     let mut parent_hash = Default::default();
     let mut slot = start_slot;
+    let mut next_eon_index = 0;
+    let genesis_slot = start_slot;
+    let mut era_start_slot = start_slot;
     for block_number in 0..=number {
         let (header, _solution_range, segment_index, records_root) =
             valid_header_with_default_randomness_and_salt(parent_hash, block_number, slot, keypair);
         parent_hash = header.hash();
         slot += 1;
 
+        if HeaderImporter::<_, MockStorage>::has_era_changed(
+            &header,
+            store.chain_constants().era_duration,
+        ) {
+            era_start_slot = slot;
+        }
         let header_ext = HeaderExt {
             header,
             total_weight: 0,
+            salt_derivation_info: SaltDerivationInfo {
+                eon_index: next_eon_index,
+                maybe_randomness: None,
+            },
+            era_start_slot: era_start_slot.into(),
             test_overrides: Default::default(),
         };
         store.store_header(header_ext, true);
-        store.store_records_root(segment_index, records_root)
+        store.store_records_root(segment_index, records_root);
+        next_eon_index = derive_next_eon_index(
+            next_eon_index,
+            store.chain_constants().eon_duration,
+            genesis_slot,
+            slot,
+        )
+        .unwrap_or(next_eon_index)
     }
 
     (parent_hash, slot)
@@ -306,7 +422,12 @@ fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: N
 
 #[test]
 fn test_header_import_success() {
-    let mut store = MockStorage::new(default_test_constants());
+    let mut constants = default_test_constants();
+    constants.global_randomness_interval = 11;
+    constants.era_duration = 11;
+    constants.eon_duration = 10;
+    constants.next_salt_reveal_interval = 3;
+    let mut store = MockStorage::new(constants);
     let keypair = Keypair::generate();
     let (parent_hash, next_slot) = import_blocks_until(&mut store, 2, 1, &keypair);
     let best_header = store.best_header();
@@ -341,6 +462,210 @@ fn test_header_import_success() {
 
     // header count at the finalized head must be 1
     ensure_finalized_heads_have_no_forks(&importer.store, 3);
+
+    // verify global randomness
+    // global randomness at block number 11 should be updated as the interval is 11.
+    let (header, solution_range, segment_index, records_root) =
+        valid_header_with_default_randomness_and_salt(parent_hash, 11, slot, &keypair);
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    // this should fail since the next digest for randomness is missing
+    let res = importer.import_header(header);
+    assert_err!(
+        res,
+        ImportError::DigestError(DigestError::NextDigestVerificationError(
+            ErrorDigestType::NextGlobalRandomness
+        ))
+    );
+
+    // inject expected randomness digest but should still fail due to missing next solution range
+    let (header, solution_range, segment_index, records_root) =
+        valid_header_with_next_digests(parent_hash, 11, slot, &keypair, true, None, None);
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    // this should fail since the next digest for solution range is missing
+    let res = importer.import_header(header);
+    assert_err!(
+        res,
+        ImportError::DigestError(DigestError::NextDigestVerificationError(
+            ErrorDigestType::NextSolutionRange
+        ))
+    );
+
+    // inject next solution range
+    let ancestor_header = importer
+        .store
+        .headers_at_number(1)
+        .first()
+        .cloned()
+        .unwrap();
+    let ancestor_digests =
+        extract_subspace_digest_items::<Header, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &ancestor_header.header,
+        )
+        .unwrap();
+
+    let constants = importer.store.chain_constants();
+    let (header, solution_range, segment_index, records_root) = valid_header_with_next_digests(
+        parent_hash,
+        11,
+        slot,
+        &keypair,
+        true,
+        Some((
+            ancestor_digests.pre_digest.slot,
+            constants.slot_probability,
+            constants.era_duration,
+        )),
+        None,
+    );
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    let res = importer.import_header(header);
+    assert_err!(
+        res,
+        ImportError::DigestError(DigestError::NextDigestVerificationError(
+            ErrorDigestType::NextSalt
+        ))
+    );
+
+    // inject next salt
+    let header_at_3 = importer
+        .store
+        .headers_at_number(3)
+        .first()
+        .cloned()
+        .unwrap();
+    let header_at_4 = importer
+        .store
+        .headers_at_number(4)
+        .first()
+        .cloned()
+        .unwrap();
+
+    // verify salt reveal at block #4
+    // salt reveal number should be empty at header #3
+    assert_eq!(header_at_3.salt_derivation_info.eon_index, 0);
+    assert_eq!(header_at_3.salt_derivation_info.maybe_randomness, None);
+    // eon index should still be 0 and the next salt should be revealed at #4
+    assert_eq!(header_at_4.salt_derivation_info.eon_index, 0);
+    let digests_at_4 = extract_pre_digest(&header_at_4.header).unwrap();
+    let randomness = derive_randomness(
+        &subspace_core_primitives::PublicKey::from(&FarmerPublicKey::unchecked_from(
+            keypair.public.to_bytes(),
+        )),
+        digests_at_4.solution.tag,
+        &digests_at_4.solution.tag_signature,
+    )
+    .unwrap();
+    assert_eq!(
+        header_at_4.salt_derivation_info.maybe_randomness,
+        Some(randomness)
+    );
+
+    let next_salt = derive_next_salt_from_randomness(0, &randomness);
+
+    // edge case when slot between #10 and #11 is long enough that, salt is revealed immediately in the first of block of next eon.
+    // so set the next slot far enough
+    slot = 15;
+    let (header, solution_range, segment_index, records_root) = valid_header_with_next_digests(
+        parent_hash,
+        11,
+        slot,
+        &keypair,
+        true,
+        Some((
+            ancestor_digests.pre_digest.slot,
+            constants.slot_probability,
+            constants.era_duration,
+        )),
+        Some(next_salt),
+    );
+    importer
+        .store
+        .override_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    let res = importer.import_header(header);
+    assert_ok!(res);
+
+    // verify eon index changes at block #11
+    let header_at_11 = importer
+        .store
+        .headers_at_number(11)
+        .first()
+        .cloned()
+        .unwrap();
+
+    // eon index should be 1
+    // since the slot is far enough, the salt should be revealed in this header as well
+    let digests_at_11 =
+        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+            &header_at_11.header,
+        )
+        .unwrap();
+    let randomness = derive_randomness(
+        &subspace_core_primitives::PublicKey::from(&FarmerPublicKey::unchecked_from(
+            keypair.public.to_bytes(),
+        )),
+        digests_at_11.pre_digest.solution.tag,
+        &digests_at_11.pre_digest.solution.tag_signature,
+    )
+    .unwrap();
+    assert_eq!(header_at_11.salt_derivation_info.eon_index, 1);
+    assert_eq!(
+        header_at_11.salt_derivation_info.maybe_randomness,
+        Some(randomness)
+    );
+
+    parent_hash = header_at_11.header.hash();
+    slot += 1;
+    let (header, solution_range, segment_index, records_root) = valid_header(ValidHeaderParams {
+        parent_hash,
+        number: 12,
+        slot,
+        keypair: &keypair,
+        randomness: digests_at_11.next_global_randomness.unwrap(),
+        salt: digests_at_11.next_salt.unwrap(),
+        should_add_next_randomness: false,
+        maybe_next_solution_range: None,
+        maybe_next_salt: None,
+    });
+    importer
+        .store
+        .override_next_solution_range(parent_hash, solution_range);
+    importer
+        .store
+        .store_records_root(segment_index, records_root);
+
+    let res = importer.import_header(header.clone());
+    assert_ok!(res);
+    // best header should be correct
+    let best_header = importer.store.best_header();
+    assert_eq!(best_header.header, header);
+    // randomness should be carried over till next eon change
+    assert_eq!(best_header.salt_derivation_info.eon_index, 1);
+    assert_eq!(
+        best_header.salt_derivation_info.maybe_randomness,
+        Some(randomness)
+    );
 }
 
 fn create_fork_chain_from(

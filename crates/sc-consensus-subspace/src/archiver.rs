@@ -442,6 +442,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                 while let Some(ImportedBlockNotification {
                     block_number,
                     mut root_block_sender,
+                    ..
                 }) = imported_block_notification_stream.next().await
                 {
                     let block_number_to_archive =
