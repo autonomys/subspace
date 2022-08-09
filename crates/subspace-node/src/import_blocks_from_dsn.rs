@@ -31,7 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::{multimess, Config};
+use subspace_networking::{multimess, BootstrappedNetworkingParameters, Config};
 
 type PieceIndex = u64;
 
@@ -135,7 +135,8 @@ where
     IQ: ImportQueue<B> + 'static,
 {
     let (node, mut node_runner) = subspace_networking::create(Config {
-        bootstrap_nodes,
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
+            .boxed(),
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     })

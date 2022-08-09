@@ -15,7 +15,6 @@ use libp2p::kad::record;
 use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::sha256_hash;
 use subspace_core_primitives::PUBLIC_KEY_LENGTH;
@@ -58,6 +57,9 @@ pub(crate) enum Command {
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
+    CheckConnectedPeers {
+        result_sender: oneshot::Sender<bool>,
+    },
 }
 
 #[derive(Default, Debug)]
@@ -72,7 +74,6 @@ pub(crate) struct Shared {
     pub(crate) id: PeerId,
     /// Addresses on which node is listening for incoming requests.
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
-    pub(crate) connected_peers_count: AtomicUsize,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
     /// Parent node instance (if any) to keep alive.
@@ -92,7 +93,6 @@ impl Shared {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
-            connected_peers_count: AtomicUsize::new(0),
             command_sender,
             _parent_node: parent_node,
         }

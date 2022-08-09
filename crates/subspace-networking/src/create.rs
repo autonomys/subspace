@@ -1,12 +1,11 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
-use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, NetworkingParametersRegistryStub,
-};
+use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::NodeRunner;
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
+use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, MemoryTransport, OrTransport};
@@ -30,20 +29,16 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::crypto;
 use thiserror::Error;
-use tracing::{info, trace};
+use tracing::info;
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
-// Max bootstrap addresses to preload.
-const INITIAL_BOOTSTRAP_ADDRESS_NUMBER: usize = 100;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
 pub struct Config {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
-    /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
-    pub bootstrap_nodes: Vec<Multiaddr>,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
     pub listen_on: Vec<Multiaddr>,
     /// Fallback to random port if specified (or default) port is already occupied.
@@ -122,7 +117,6 @@ impl Config {
 
         Self {
             keypair,
-            bootstrap_nodes: vec![],
             listen_on: vec![],
             listen_on_fallback_to_random_port: true,
             timeout: Duration::from_secs(10),
@@ -135,7 +129,7 @@ impl Config {
             initial_random_query_interval: Duration::from_secs(1),
             relay_server_address: None,
             parent_node: None,
-            networking_parameters_registry: Box::new(NetworkingParametersRegistryStub),
+            networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
         }
     }
@@ -144,9 +138,6 @@ impl Config {
 /// Errors that might happen during network creation.
 #[derive(Debug, Error)]
 pub enum CreationError {
-    /// Bad bootstrap address.
-    #[error("Bad bootstrap address")]
-    BadBootstrapAddress,
     /// Circuit relay client error.
     #[error("Circuit relay client error: {0}")]
     CircuitRelayClient(#[from] CircuitRelayClientError),
@@ -167,7 +158,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         timeout,
         identify,
         kademlia,
-        bootstrap_nodes,
         gossipsub,
         value_getter,
         yamux_config,
@@ -184,43 +174,12 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     let transport = build_transport(&keypair, timeout, yamux_config, relay_transport)?;
 
-    // We take cached known addresses and combine them with manually provided bootstrap addresses
-    // with a limit.
-    let combined_bootstrap_addresses = bootstrap_nodes
-        .into_iter()
-        // Remove `/p2p/QmFoo` from the end of multiaddr and store separately in a tuple
-        .map(|mut multiaddr| {
-            let peer_id: PeerId = multiaddr
-                .pop()
-                .and_then(|protocol| {
-                    if let Protocol::P2p(peer_id) = protocol {
-                        Some(peer_id.try_into().ok()?)
-                    } else {
-                        None
-                    }
-                })
-                .ok_or(CreationError::BadBootstrapAddress)?;
-
-            Ok((peer_id, multiaddr))
-        })
-        .chain(
-            networking_parameters_registry
-                .known_addresses(INITIAL_BOOTSTRAP_ADDRESS_NUMBER)
-                .await
-                .into_iter()
-                .map(Ok),
-        )
-        .collect::<Result<_, CreationError>>()?;
-
-    trace!(peer_id=?local_peer_id, "Combined bootstrap addresses: {:?}", combined_bootstrap_addresses);
-
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
         let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
-            bootstrap_nodes: combined_bootstrap_addresses,
             identify,
             kademlia,
             gossipsub,
@@ -236,6 +195,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             }))
             .build();
 
+        // Setup listen_on addresses
         for mut addr in listen_on {
             if let Err(error) = swarm.listen_on(addr.clone()) {
                 if !listen_on_fallback_to_random_port {
@@ -254,6 +214,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             }
         }
 
+        // Setup relay addresses
         if let Some(relay_server_address) = relay_server_address {
             // Setup circuit for the accepting relay client. This will reserve a circuit.
             swarm.listen_on(relay_server_address)?;
@@ -263,6 +224,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;
         }
 
+        // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
         let shared = Arc::new(Shared::new(local_peer_id, parent_node, command_sender));
