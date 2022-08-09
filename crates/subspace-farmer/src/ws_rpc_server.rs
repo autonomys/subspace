@@ -1,5 +1,4 @@
 use crate::object_mappings::{LegacyObjectMappings, ObjectMappingError, ObjectMappings};
-use async_trait::async_trait;
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
@@ -137,12 +136,12 @@ pub struct Object {
 #[rpc(server, client)]
 pub trait Rpc {
     /// Get single piece by its index
-    #[method(name = "getPiece")]
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error>;
+    #[method(name = "getPiece", blocking)]
+    fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error>;
 
     /// Find object by its ID
-    #[method(name = "findObject")]
-    async fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error>;
+    #[method(name = "findObject", blocking)]
+    fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error>;
 }
 
 /// Farmer RPC server implementation.
@@ -215,24 +214,23 @@ impl RpcServerImpl {
 
     /// Assemble object that starts at `piece_index` at `offset` by reading necessary pieces from
     /// plot and putting necessary bytes together.
-    async fn assemble_object(
+    fn assemble_object(
         &self,
         piece_index: PieceIndex,
         offset: u16,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
         // Try fast object assembling
-        if let Some(data) = self.assemble_object_fast(piece_index, offset).await? {
+        if let Some(data) = self.assemble_object_fast(piece_index, offset)? {
             return Ok(data);
         }
 
         self.assemble_object_regular(piece_index, offset, object_id)
-            .await
     }
 
     /// Fast object assembling in case object doesn't cross piece (super fast) or segment (just
     /// fast) boundary, returns `Ok(None)` if fast retrieval possibility is not guaranteed.
-    async fn assemble_object_fast(
+    fn assemble_object_fast(
         &self,
         piece_index: PieceIndex,
         offset: u16,
@@ -273,7 +271,7 @@ impl RpcServerImpl {
         let mut read_records_data = Vec::<u8>::with_capacity(self.record_size as usize * 2);
         let mut next_piece_index = piece_index;
 
-        let piece = self.read_and_decode_piece(next_piece_index).await?;
+        let piece = self.read_and_decode_piece(next_piece_index)?;
         next_piece_index += 1;
         read_records_data.extend_from_slice(&piece[..self.record_size as usize]);
 
@@ -307,7 +305,7 @@ impl RpcServerImpl {
         } else if !last_data_piece_in_segment {
             if !length_before_record_end {
                 // Need the next piece to read the length of data
-                let piece = self.read_and_decode_piece(next_piece_index).await?;
+                let piece = self.read_and_decode_piece(next_piece_index)?;
                 next_piece_index += 1;
                 read_records_data.extend_from_slice(&piece[..self.record_size as usize]);
             }
@@ -336,7 +334,7 @@ impl RpcServerImpl {
 
         // Read more pieces until we have enough data
         while data.len() <= data_length as usize {
-            let piece = self.read_and_decode_piece(next_piece_index).await?;
+            let piece = self.read_and_decode_piece(next_piece_index)?;
             next_piece_index += 1;
             data.extend_from_slice(&piece[..self.record_size as usize]);
         }
@@ -349,7 +347,7 @@ impl RpcServerImpl {
 
     /// Assemble object that can cross segment boundary, which requires assembling and iterating
     /// over full segments.
-    async fn assemble_object_regular(
+    fn assemble_object_regular(
         &self,
         piece_index: PieceIndex,
         offset: u16,
@@ -361,7 +359,7 @@ impl RpcServerImpl {
             piece_position_in_segment * u64::from(self.record_size) + u64::from(offset);
 
         let mut data = {
-            let Segment::V0 { items } = self.read_segment(segment_index).await?;
+            let Segment::V0 { items } = self.read_segment(segment_index)?;
             // Unconditional progress is enum variant + compact encoding of number of elements
             let mut progress = 1 + Compact::compact_len(&(items.len() as u64));
             let segment_item = items
@@ -412,7 +410,7 @@ impl RpcServerImpl {
         }
 
         for segment_index in segment_index + 1.. {
-            let Segment::V0 { items } = self.read_segment(segment_index).await?;
+            let Segment::V0 { items } = self.read_segment(segment_index)?;
             for segment_item in items {
                 if let SegmentItem::BlockContinuation { bytes, .. } = segment_item {
                     data.extend_from_slice(&bytes);
@@ -436,13 +434,13 @@ impl RpcServerImpl {
     }
 
     /// Read the whole segment by its index (just records, skipping witnesses)
-    async fn read_segment(&self, segment_index: u64) -> Result<Segment, Error> {
+    fn read_segment(&self, segment_index: u64) -> Result<Segment, Error> {
         let first_piece_in_segment = segment_index * u64::from(self.merkle_num_leaves);
         let mut segment_bytes =
             Vec::<u8>::with_capacity((self.merkle_num_leaves * self.record_size) as usize);
 
         for piece_index in (first_piece_in_segment..).take(self.merkle_num_leaves as usize / 2) {
-            let piece = self.read_and_decode_piece(piece_index).await?;
+            let piece = self.read_and_decode_piece(piece_index)?;
             segment_bytes.extend_from_slice(&piece[..self.record_size as usize]);
         }
 
@@ -463,77 +461,56 @@ impl RpcServerImpl {
     }
 
     /// Read and decode the whole piece
-    async fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
+    fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
         let piece_getter = self.piece_getter.clone();
-        tokio::task::spawn_blocking(move || {
-            piece_getter.get_piece(piece_index, PieceIndexHash::from_index(piece_index))
-        })
-        .await
-        .unwrap()
-        .ok_or_else(|| Error::Custom("Object mapping found, but reading piece failed".to_string()))
+        piece_getter
+            .get_piece(piece_index, PieceIndexHash::from_index(piece_index))
+            .ok_or_else(|| {
+                Error::Custom("Object mapping found, but reading piece failed".to_string())
+            })
     }
 }
 
-#[async_trait]
 impl RpcServer for RpcServerImpl {
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
+    fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
         let piece_getter = self.piece_getter.clone();
-        tokio::task::spawn_blocking(move || {
-            piece_getter.get_piece(piece_index, PieceIndexHash::from_index(piece_index))
-        })
-        .await
-        .unwrap()
-        .map(HexPiece::from)
-        .map(Some)
-        .ok_or_else(|| Error::Custom("Piece not found".to_string()))
+        piece_getter
+            .get_piece(piece_index, PieceIndexHash::from_index(piece_index))
+            .map(HexPiece::from)
+            .map(Some)
+            .ok_or_else(|| Error::Custom("Piece not found".to_string()))
     }
 
     /// Find object by its ID
-    async fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error> {
-        let global_object_handle = tokio::task::spawn_blocking({
-            let object_mappings = Arc::clone(&self.object_mappings);
-            let legacy_object_mappings = Arc::clone(&self.legacy_object_mappings);
+    fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error> {
+        let global_object_handle = || -> Result<Option<GlobalObject>, ObjectMappingError> {
+            for object_mappings in self.object_mappings.iter() {
+                let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
 
-            move || -> Result<Option<GlobalObject>, ObjectMappingError> {
-                for object_mappings in object_mappings.iter() {
-                    let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
-
-                    if let Some(global_object) = maybe_global_object {
-                        return Ok(Some(global_object));
-                    }
+                if let Some(global_object) = maybe_global_object {
+                    return Ok(Some(global_object));
                 }
-                for object_mappings in legacy_object_mappings.iter() {
-                    if let Ok(Some(global_object)) = object_mappings.retrieve(&object_id.into()) {
-                        return Ok(Some(global_object));
-                    }
-                }
-
-                Ok(None)
             }
-        });
+            for object_mappings in self.legacy_object_mappings.iter() {
+                if let Ok(Some(global_object)) = object_mappings.retrieve(&object_id.into()) {
+                    return Ok(Some(global_object));
+                }
+            }
+
+            Ok(None)
+        };
 
         let object_id_string = hex::encode(object_id);
 
-        let global_object = global_object_handle
-            .await
-            .map_err(|error| {
-                error!(
-                    object_id = %object_id_string,
-                    %error,
-                    "Object mapping retrieving panicked",
-                );
+        let global_object = global_object_handle().map_err(|error| {
+            error!(
+                object_id = %object_id_string,
+                %error,
+                "Object mapping retrieving failed",
+            );
 
-                Error::Custom("Failed to find an object due to internal error".to_string())
-            })?
-            .map_err(|error| {
-                error!(
-                    object_id = %object_id_string,
-                    %error,
-                    "Object mapping retrieving failed",
-                );
-
-                Error::Custom("Failed to find an object due to internal error".to_string())
-            })?;
+            Error::Custom("Failed to find an object due to internal error".to_string())
+        })?;
 
         let global_object = match global_object {
             Some(global_object) => global_object,
@@ -547,9 +524,7 @@ impl RpcServer for RpcServerImpl {
         let piece_index = global_object.piece_index();
         let offset = global_object.offset();
 
-        let data = self
-            .assemble_object(piece_index, offset, &object_id_string)
-            .await?;
+        let data = self.assemble_object(piece_index, offset, &object_id_string)?;
 
         Ok(Some(Object {
             piece_index,
