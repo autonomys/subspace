@@ -182,7 +182,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
     // Create relay client transport and client.
     let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
-    let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
+    let transport = build_transport(&keypair, timeout, yamux_config, relay_transport)?;
 
     // We take cached known addresses and combine them with manually provided bootstrap addresses
     // with a limit.
@@ -289,7 +289,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 }
 
 // Builds the transport stack that LibP2P will communicate over along with a relay client.
-async fn build_transport(
+fn build_transport(
     keypair: &identity::Keypair,
     timeout: Duration,
     yamux_config: YamuxConfig,

@@ -54,21 +54,26 @@ impl Deref for JoinOnDrop {
     }
 }
 
-pub(crate) struct CallOnDrop(Option<Box<dyn FnOnce() + Send + 'static>>);
+pub(crate) struct CallOnDrop<F>(Option<F>)
+where
+    F: FnOnce() + Send + 'static;
 
-impl Drop for CallOnDrop {
+impl<F> Drop for CallOnDrop<F>
+where
+    F: FnOnce() + Send + 'static,
+{
     fn drop(&mut self) {
         let callback = self.0.take().expect("Only removed on drop; qed");
         callback();
     }
 }
 
-impl CallOnDrop {
-    pub(crate) fn new<F>(callback: F) -> Self
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        Self(Some(Box::new(callback)))
+impl<F> CallOnDrop<F>
+where
+    F: FnOnce() + Send + 'static,
+{
+    pub(crate) fn new(callback: F) -> Self {
+        Self(Some(callback))
     }
 }
 
