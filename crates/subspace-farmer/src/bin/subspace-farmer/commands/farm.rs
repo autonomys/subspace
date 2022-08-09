@@ -1,9 +1,14 @@
 use crate::utils::get_usable_plot_space;
 use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::future::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use jsonrpsee::ws_server::WsServerBuilder;
+#[cfg(unix)]
+use signal_hook::consts::signal::{SIGINT, SIGTERM};
+#[cfg(unix)]
+use signal_hook_tokio::Signals;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_farmer::legacy_multi_plots_farm::{
@@ -45,6 +50,8 @@ pub(crate) async fn farm_multi_disk(
     if disk_farms.is_empty() {
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
+
+    let mut signals = Signals::new(&[SIGTERM, SIGINT])?;
 
     let FarmingArgs {
         bootstrap_nodes,
@@ -218,13 +225,42 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_farm| single_disk_farm.wait())
         .collect::<FuturesUnordered<_>>();
 
+    #[cfg(unix)]
+    {
+        select(
+            Box::pin(async move {
+                if let Some(signal) = signals.next().await {
+                    let signal = match signal {
+                        SIGINT => "SIGINT".to_string(),
+                        SIGTERM => "SIGTERM".to_string(),
+                        signal => format!("unexpected signal {signal}"),
+                    };
+                    info!("Received {signal}, shutting down farmer...");
+                }
+
+                anyhow::Ok(())
+            }),
+            Box::pin(async move {
+                while let Some(result) = single_disk_farms_stream.next().await {
+                    result?;
+
+                    info!("Farm exited successfully");
+                }
+
+                anyhow::Ok(())
+            }),
+        )
+        .await
+        .factor_first()
+        .0
+    }
+
+    #[cfg(not(unix))]
     while let Some(result) = single_disk_farms_stream.next().await {
         result?;
 
         info!("Farm exited successfully");
     }
-
-    Ok(())
 }
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
@@ -233,6 +269,9 @@ pub(crate) async fn farm_legacy(
     base_directory: PathBuf,
     farm_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
+    #[cfg(unix)]
+    let mut signals = Signals::new(&[SIGTERM, SIGINT])?;
+
     let FarmingArgs {
         bootstrap_nodes,
         listen_on,
@@ -384,5 +423,28 @@ pub(crate) async fn farm_legacy(
 
     info!("WS RPC server listening on {ws_server_addr}");
 
+    #[cfg(unix)]
+    {
+        select(
+            Box::pin(async move {
+                if let Some(signal) = signals.next().await {
+                    let signal = match signal {
+                        SIGINT => "SIGINT".to_string(),
+                        SIGTERM => "SIGTERM".to_string(),
+                        signal => format!("unexpected signal {signal}"),
+                    };
+                    info!("Received {signal}, shutting down farmer...");
+                }
+
+                anyhow::Ok(())
+            }),
+            Box::pin(multi_plots_farm.wait()),
+        )
+        .await
+        .factor_first()
+        .0
+    }
+
+    #[cfg(not(unix))]
     multi_plots_farm.wait().await
 }

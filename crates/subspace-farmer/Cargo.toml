@@ -56,6 +56,10 @@ tracing-subscriber = { version = "0.3.14", features = ["env-filter"] }
 ulid = { version = "0.6.0", features = ["serde"] }
 zeroize = "1.5.6"
 
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3.14"
+signal-hook-tokio = { version = "0.3.1", features = ["futures-v0_3"] }
+
 # OpenBSD and MSVC are unteested and shouldn't enable jemalloc:
 # https://github.com/tikv/jemallocator/blob/52de4257fab3e770f73d5174c12a095b49572fba/jemalloc-sys/build.rs#L26-L27
 [target.'cfg(any(target_os = "openbsd", target_env = "msvc"))'.dependencies.rocksdb]
