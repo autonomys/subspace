@@ -9,7 +9,6 @@ use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotFarmId;
-use crate::utils::AbortingJoinHandle;
 use futures::future::{Fuse, FusedFuture};
 use futures::{FutureExt, StreamExt};
 use std::future::Future;
@@ -119,7 +118,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .await
         .map_err(FarmingError::RpcError)?;
 
-    let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
+    let reward_signing_fut = {
         let identity = identity.clone();
         let client = client.clone();
 
@@ -153,106 +152,119 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                     }
                 }
             }
+
+            Ok(())
         }
-        .in_current_span()
-    }));
+    };
 
-    let mut salts = Salts::default();
+    let notification_handling_fut = async move {
+        let mut salts = Salts::default();
 
-    while let Some(slot_info) = slot_info_notifications.next().await {
-        debug!(?slot_info, "New slot");
+        while let Some(slot_info) = slot_info_notifications.next().await {
+            debug!(?slot_info, "New slot");
 
-        update_commitments(
-            single_plot_farm_id,
-            plot,
-            commitments,
-            &mut salts,
-            &slot_info,
-            &single_disk_semaphore,
-        );
+            update_commitments(
+                single_plot_farm_id,
+                plot,
+                commitments,
+                &mut salts,
+                &slot_info,
+                &single_disk_semaphore,
+            );
 
-        let maybe_solution_handle = tokio::task::spawn_blocking({
-            let identity = identity.clone();
-            let commitments = commitments.clone();
-            let plot = plot.clone();
+            let maybe_solution_handle = tokio::task::spawn_blocking({
+                let identity = identity.clone();
+                let commitments = commitments.clone();
+                let plot = plot.clone();
 
-            move || {
-                let (local_challenge, target) =
-                    identity.derive_local_challenge_and_target(slot_info.global_challenge);
+                move || {
+                    let (local_challenge, target) =
+                        identity.derive_local_challenge_and_target(slot_info.global_challenge);
 
-                // Try to first find a block authoring solution, then if not found try to find a
-                // vote
-                let voting_tags = commitments.find_by_range(
-                    target,
-                    slot_info.voting_solution_range,
-                    slot_info.salt,
-                    TAGS_SEARCH_LIMIT,
-                );
+                    // Try to first find a block authoring solution, then if not found try to find a
+                    // vote
+                    let voting_tags = commitments.find_by_range(
+                        target,
+                        slot_info.voting_solution_range,
+                        slot_info.salt,
+                        TAGS_SEARCH_LIMIT,
+                    );
 
-                let maybe_tag = if voting_tags.len() < TAGS_SEARCH_LIMIT {
-                    // We found all tags within voting solution range
-                    voting_tags.into_iter().next()
-                } else {
-                    let (tag, piece_offset) = voting_tags
-                        .into_iter()
-                        .next()
-                        .expect("Due to if condition vector is not empty; qed");
-
-                    if is_within_solution_range(target, tag, slot_info.solution_range) {
-                        // Found a tag within solution range for blocks
-                        Some((tag, piece_offset))
+                    let maybe_tag = if voting_tags.len() < TAGS_SEARCH_LIMIT {
+                        // We found all tags within voting solution range
+                        voting_tags.into_iter().next()
                     } else {
-                        // There might be something that is within solution range for blocks
-                        commitments
-                            .find_by_range(
-                                target,
-                                slot_info.solution_range,
-                                slot_info.salt,
-                                TAGS_SEARCH_LIMIT,
-                            )
+                        let (tag, piece_offset) = voting_tags
                             .into_iter()
                             .next()
-                            .or(Some((tag, piece_offset)))
-                    }
-                };
+                            .expect("Due to if condition vector is not empty; qed");
 
-                match maybe_tag {
-                    Some((tag, piece_offset)) => {
-                        let (encoding, piece_index) = plot
-                            .read_piece_with_index(piece_offset)
-                            .map_err(FarmingError::PlotRead)?;
-                        let solution = Solution {
-                            public_key: identity.public_key().to_bytes().into(),
-                            reward_address,
-                            piece_index,
-                            encoding,
-                            tag_signature: identity.create_tag_signature(tag),
-                            local_challenge,
-                            tag,
-                        };
-                        debug!("Solution found");
-                        trace!(?solution, "Solution found");
+                        if is_within_solution_range(target, tag, slot_info.solution_range) {
+                            // Found a tag within solution range for blocks
+                            Some((tag, piece_offset))
+                        } else {
+                            // There might be something that is within solution range for blocks
+                            commitments
+                                .find_by_range(
+                                    target,
+                                    slot_info.solution_range,
+                                    slot_info.salt,
+                                    TAGS_SEARCH_LIMIT,
+                                )
+                                .into_iter()
+                                .next()
+                                .or(Some((tag, piece_offset)))
+                        }
+                    };
 
-                        Ok(Some(solution))
-                    }
-                    None => {
-                        debug!("Solution not found");
-                        Ok(None)
+                    match maybe_tag {
+                        Some((tag, piece_offset)) => {
+                            let (encoding, piece_index) = plot
+                                .read_piece_with_index(piece_offset)
+                                .map_err(FarmingError::PlotRead)?;
+                            let solution = Solution {
+                                public_key: identity.public_key().to_bytes().into(),
+                                reward_address,
+                                piece_index,
+                                encoding,
+                                tag_signature: identity.create_tag_signature(tag),
+                                local_challenge,
+                                tag,
+                            };
+                            debug!("Solution found");
+                            trace!(?solution, "Solution found");
+
+                            Ok(Some(solution))
+                        }
+                        None => {
+                            debug!("Solution not found");
+                            Ok(None)
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        let maybe_solution = maybe_solution_handle.await.unwrap()?;
+            let maybe_solution = maybe_solution_handle.await.unwrap()?;
 
-        client
-            .submit_solution_response(SolutionResponse {
-                slot_number: slot_info.slot_number,
-                maybe_solution,
-            })
-            .await
-            .map_err(FarmingError::RpcError)?;
-    }
+            client
+                .submit_solution_response(SolutionResponse {
+                    slot_number: slot_info.slot_number,
+                    maybe_solution,
+                })
+                .await
+                .map_err(FarmingError::RpcError)?;
+        }
+
+        Ok(())
+    };
+
+    futures::future::select(
+        Box::pin(reward_signing_fut),
+        Box::pin(notification_handling_fut),
+    )
+    .await
+    .factor_first()
+    .0?;
 
     Ok(())
 }
