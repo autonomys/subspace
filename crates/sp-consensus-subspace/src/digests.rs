@@ -27,8 +27,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    EonIndex, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Sha256Hash, Solution,
-    SolutionRange,
+    EonIndex, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_verification::{
     derive_next_eon_index, derive_next_salt_from_randomness, derive_randomness,
