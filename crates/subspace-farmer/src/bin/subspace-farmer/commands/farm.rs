@@ -5,10 +5,6 @@ use futures::future::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use jsonrpsee::ws_server::WsServerBuilder;
-#[cfg(unix)]
-use signal_hook::consts::signal::{SIGINT, SIGTERM};
-#[cfg(unix)]
-use signal_hook_tokio::Signals;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_farmer::legacy_multi_plots_farm::{
@@ -21,6 +17,7 @@ use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
+use tokio::signal;
 use tracing::{info, trace, warn};
 
 struct CallOnDrop<F>(Option<F>)
@@ -46,6 +43,40 @@ where
     }
 }
 
+#[cfg(unix)]
+async fn shutdown_signal() {
+    use futures::FutureExt;
+
+    select(
+        Box::pin(
+            signal::unix::signal(signal::unix::SignalKind::interrupt())
+                .expect("Setting signal handlers must never fail")
+                .recv()
+                .map(|_| {
+                    info!("Received SIGINT, shutting down farmer...");
+                }),
+        ),
+        Box::pin(
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("Setting signal handlers must never fail")
+                .recv()
+                .map(|_| {
+                    info!("Received SIGTERM, shutting down farmer...");
+                }),
+        ),
+    )
+    .await;
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    signal::ctrl_c()
+        .await
+        .expect("Setting signal handlers must never fail");
+
+    info!("Received Ctrl+C, shutting down farmer...");
+}
+
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm_multi_disk(
@@ -56,7 +87,7 @@ pub(crate) async fn farm_multi_disk(
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
 
-    let mut signals = Signals::new(&[SIGTERM, SIGINT])?;
+    let signal = shutdown_signal();
 
     let FarmingArgs {
         bootstrap_nodes,
@@ -231,26 +262,10 @@ pub(crate) async fn farm_multi_disk(
         .collect::<FuturesUnordered<_>>();
 
     select(
-        #[cfg(unix)]
         Box::pin(async move {
-            if let Some(signal) = signals.next().await {
-                let signal = match signal {
-                    SIGINT => "SIGINT".to_string(),
-                    SIGTERM => "SIGTERM".to_string(),
-                    signal => format!("unexpected signal {signal}"),
-                };
-                info!("Received {signal}, shutting down farmer...");
-            }
+            signal.await;
 
-            anyhow::Ok(())
-        }),
-        #[cfg(windows)]
-        Box::pin(async {
-            tokio::signal::ctrl_c().await?;
-
-            info!("Received Ctrl+C, shutting down farmer...");
-
-            anyhow::Ok(())
+            Ok(())
         }),
         Box::pin(async move {
             while let Some(result) = single_disk_farms_stream.next().await {
@@ -273,8 +288,7 @@ pub(crate) async fn farm_legacy(
     base_directory: PathBuf,
     farm_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
-    #[cfg(unix)]
-    let mut signals = Signals::new(&[SIGTERM, SIGINT])?;
+    let signal = shutdown_signal();
 
     let FarmingArgs {
         bootstrap_nodes,
@@ -428,26 +442,10 @@ pub(crate) async fn farm_legacy(
     info!("WS RPC server listening on {ws_server_addr}");
 
     select(
-        #[cfg(unix)]
         Box::pin(async move {
-            if let Some(signal) = signals.next().await {
-                let signal = match signal {
-                    SIGINT => "SIGINT".to_string(),
-                    SIGTERM => "SIGTERM".to_string(),
-                    signal => format!("unexpected signal {signal}"),
-                };
-                info!("Received {signal}, shutting down farmer...");
-            }
+            signal.await;
 
-            anyhow::Ok(())
-        }),
-        #[cfg(windows)]
-        Box::pin(async {
-            tokio::signal::ctrl_c().await?;
-
-            info!("Received Ctrl+C, shutting down farmer...");
-
-            anyhow::Ok(())
+            Ok(())
         }),
         Box::pin(multi_plots_farm.wait()),
     )
