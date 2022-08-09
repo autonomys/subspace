@@ -11,6 +11,7 @@ use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
+use crate::utils::CallOnDrop;
 use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -834,13 +835,22 @@ impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
         }
 
         let plotter = self.single_plot_plotter.clone();
+        let (farm_creation_start_sender, farm_creation_start_receiver) =
+            std::sync::mpsc::sync_channel(1);
+        // Makes sure background blocking task below is finished before this function's future is
+        // dropped
+        let _plot_pieces_guard = CallOnDrop::new(move || {
+            let _ = farm_creation_start_receiver.recv();
+        });
         tokio::task::spawn_blocking(move || {
-            plotter
-                .plot_pieces(PiecesToPlot {
-                    pieces,
-                    piece_indexes,
-                })
-                .map_err(Into::into)
+            plotter.plot_pieces(PiecesToPlot {
+                pieces,
+                piece_indexes,
+            })?;
+
+            let _ = farm_creation_start_sender.send(());
+
+            Ok(())
         })
         .await?
     }
