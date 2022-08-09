@@ -1,5 +1,7 @@
 use crate::utils::get_usable_plot_space;
+use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::future::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use jsonrpsee::ws_server::WsServerBuilder;
@@ -15,9 +17,65 @@ use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
+use tokio::signal;
 use tracing::{info, trace, warn};
 
-use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
+struct CallOnDrop<F>(Option<F>)
+where
+    F: FnOnce() + Send + 'static;
+
+impl<F> Drop for CallOnDrop<F>
+where
+    F: FnOnce() + Send + 'static,
+{
+    fn drop(&mut self) {
+        let callback = self.0.take().expect("Only removed on drop; qed");
+        callback();
+    }
+}
+
+impl<F> CallOnDrop<F>
+where
+    F: FnOnce() + Send + 'static,
+{
+    fn new(callback: F) -> Self {
+        Self(Some(callback))
+    }
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() {
+    use futures::FutureExt;
+
+    select(
+        Box::pin(
+            signal::unix::signal(signal::unix::SignalKind::interrupt())
+                .expect("Setting signal handlers must never fail")
+                .recv()
+                .map(|_| {
+                    info!("Received SIGINT, shutting down farmer...");
+                }),
+        ),
+        Box::pin(
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("Setting signal handlers must never fail")
+                .recv()
+                .map(|_| {
+                    info!("Received SIGTERM, shutting down farmer...");
+                }),
+        ),
+    )
+    .await;
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    signal::ctrl_c()
+        .await
+        .expect("Setting signal handlers must never fail");
+
+    info!("Received Ctrl+C, shutting down farmer...");
+}
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -28,6 +86,8 @@ pub(crate) async fn farm_multi_disk(
     if disk_farms.is_empty() {
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
+
+    let signal = shutdown_signal();
 
     let FarmingArgs {
         bootstrap_nodes,
@@ -183,7 +243,16 @@ pub(crate) async fn farm_multi_disk(
         ),
         Arc::new(vec![]),
     );
-    let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
+    let _ws_server_guard = CallOnDrop::new({
+        let ws_server = ws_server.start(rpc_server.into_rpc())?;
+        let tokio_handle = tokio::runtime::Handle::current();
+
+        move || {
+            if let Ok(waiter) = ws_server.stop() {
+                tokio::task::block_in_place(move || tokio_handle.block_on(waiter));
+            }
+        }
+    });
 
     info!("WS RPC server listening on {ws_server_addr}");
 
@@ -192,13 +261,25 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_farm| single_disk_farm.wait())
         .collect::<FuturesUnordered<_>>();
 
-    while let Some(result) = single_disk_farms_stream.next().await {
-        result?;
+    select(
+        Box::pin(async move {
+            signal.await;
 
-        info!("Farm exited successfully");
-    }
+            Ok(())
+        }),
+        Box::pin(async move {
+            while let Some(result) = single_disk_farms_stream.next().await {
+                result?;
 
-    Ok(())
+                info!("Farm exited successfully");
+            }
+
+            anyhow::Ok(())
+        }),
+    )
+    .await
+    .factor_first()
+    .0
 }
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
@@ -207,6 +288,8 @@ pub(crate) async fn farm_legacy(
     base_directory: PathBuf,
     farm_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
+    let signal = shutdown_signal();
+
     let FarmingArgs {
         bootstrap_nodes,
         listen_on,
@@ -345,9 +428,28 @@ pub(crate) async fn farm_legacy(
         Arc::new(vec![]),
         Arc::new(vec![object_mappings]),
     );
-    let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
+    let _ws_server_guard = CallOnDrop::new({
+        let ws_server = ws_server.start(rpc_server.into_rpc())?;
+        let tokio_handle = tokio::runtime::Handle::current();
+
+        move || {
+            if let Ok(waiter) = ws_server.stop() {
+                tokio::task::block_in_place(move || tokio_handle.block_on(waiter));
+            }
+        }
+    });
 
     info!("WS RPC server listening on {ws_server_addr}");
 
-    multi_plots_farm.wait().await
+    select(
+        Box::pin(async move {
+            signal.await;
+
+            Ok(())
+        }),
+        Box::pin(multi_plots_farm.wait()),
+    )
+    .await
+    .factor_first()
+    .0
 }

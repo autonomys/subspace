@@ -7,6 +7,7 @@ mod worker;
 use crate::file_ext::FileExt;
 use crate::plot::worker::{PlotWorker, Request, RequestPriority, RequestWithPriority, WriteResult};
 use crate::single_plot_farm::SinglePlotFarmId;
+use crate::utils::JoinOnDrop;
 use event_listener_primitives::{Bag, HandlerId};
 use std::fs::{File, OpenOptions};
 use std::ops::RangeInclusive;
@@ -76,23 +77,16 @@ struct Inner {
     handlers: Handlers,
     requests_sender: mpsc::SyncSender<RequestWithPriority>,
     piece_count: Arc<AtomicU64>,
+    /// Only present to make sure background thread is joined on drop
+    _worker_thread: JoinOnDrop,
 }
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        let (result_sender, result_receiver) = mpsc::channel();
-
-        if self
-            .requests_sender
-            .send(RequestWithPriority {
-                request: Request::Exit { result_sender },
-                priority: RequestPriority::Low,
-            })
-            .is_ok()
-        {
-            // We don't care why this returns
-            let _ = result_receiver.recv();
-        }
+        let _ = self.requests_sender.send(RequestWithPriority {
+            request: Request::Exit,
+            priority: RequestPriority::Low,
+        });
     }
 }
 
@@ -171,19 +165,21 @@ impl Plot {
         let piece_count = Arc::clone(plot_worker.piece_count());
 
         let span = Span::current();
-        thread::Builder::new()
+        let worker_thread = thread::Builder::new()
             .name(format!("plot-worker-{single_plot_farm_id}"))
             .spawn(move || {
                 let _guard = span.enter();
 
                 plot_worker.run(requests_receiver);
             })
+            .map(JoinOnDrop::new)
             .map_err(PlotError::WorkerSpawn)?;
 
         let inner = Inner {
             handlers: Handlers::default(),
             requests_sender,
             piece_count,
+            _worker_thread: worker_thread,
         };
 
         Ok(Plot {

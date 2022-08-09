@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
 use std::ops::Range;
@@ -10,13 +11,56 @@ use subspace_networking::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToP
 use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
-mod pieces_by_range_tests;
-#[cfg(test)]
 mod tests;
 
 const PIECES_CHANNEL_BUFFER_SIZE: usize = 20;
 
 pub type PieceIndexHashNumber = U256;
+
+mod private {
+    use futures::channel::{mpsc, oneshot};
+    use futures::Stream;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use subspace_networking::PiecesToPlot;
+
+    pub struct NodePiecesStream {
+        rx: Option<mpsc::Receiver<PiecesToPlot>>,
+        task_end_rx: Option<oneshot::Receiver<()>>,
+    }
+
+    impl NodePiecesStream {
+        pub(super) fn new(
+            rx: mpsc::Receiver<PiecesToPlot>,
+            task_end_rx: oneshot::Receiver<()>,
+        ) -> Self {
+            Self {
+                rx: Some(rx),
+                task_end_rx: Some(task_end_rx),
+            }
+        }
+    }
+
+    impl Stream for NodePiecesStream {
+        type Item = PiecesToPlot;
+
+        fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            Pin::new(self.rx.as_mut().expect("Only removed on drop; qed")).poll_next(cx)
+        }
+    }
+
+    impl Drop for NodePiecesStream {
+        fn drop(&mut self) {
+            self.rx.take();
+            // Wait for background task to finish before exiting
+            let _ = futures::executor::block_on(
+                self.task_end_rx
+                    .take()
+                    .expect("Drop is only called once; qed"),
+            );
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum GetPiecesByRangeError {
@@ -45,14 +89,13 @@ pub struct SyncOptions {
 
 #[async_trait::async_trait]
 pub trait DSNSync {
-    type Stream: Stream<Item = PiecesToPlot>;
     type Error: std::error::Error + Send + Sync + 'static;
 
     /// Get pieces from the network which fall within the range
     async fn get_pieces(
         &mut self,
         range: Range<PieceIndexHash>,
-    ) -> Result<Self::Stream, Self::Error>;
+    ) -> Result<Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send>, Self::Error>;
 }
 
 /// Marker which disables sync
@@ -61,26 +104,24 @@ pub struct NoSync;
 
 #[async_trait::async_trait]
 impl DSNSync for NoSync {
-    type Stream = futures::stream::Empty<PiecesToPlot>;
     type Error = std::convert::Infallible;
 
     async fn get_pieces(
         &mut self,
         _range: Range<PieceIndexHash>,
-    ) -> Result<Self::Stream, Self::Error> {
-        Ok(futures::stream::empty())
+    ) -> Result<Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send>, Self::Error> {
+        Ok(Box::new(futures::stream::empty()))
     }
 }
 
 #[async_trait::async_trait]
 impl DSNSync for subspace_networking::Node {
-    type Stream = futures::channel::mpsc::Receiver<PiecesToPlot>;
     type Error = GetPiecesByRangeError;
 
     async fn get_pieces(
         &mut self,
         Range { start, end }: Range<PieceIndexHash>,
-    ) -> Result<Self::Stream, Self::Error> {
+    ) -> Result<Box<dyn Stream<Item = PiecesToPlot> + Unpin + Send>, Self::Error> {
         // calculate the middle of the range (big endian)
         let middle = {
             let start = PieceIndexHashNumber::from(start);
@@ -104,8 +145,8 @@ impl DSNSync for subspace_networking::Node {
         trace!(%peer_id, ?start, ?end, "Peer found");
 
         // prepare stream channel
-        let (mut tx, rx) =
-            futures::channel::mpsc::channel::<PiecesToPlot>(PIECES_CHANNEL_BUFFER_SIZE);
+        let (task_end_tx, task_end_rx) = oneshot::channel::<()>();
+        let (mut tx, rx) = mpsc::channel::<PiecesToPlot>(PIECES_CHANNEL_BUFFER_SIZE);
 
         // populate resulting stream in a separate async task
         let node = self.clone();
@@ -157,9 +198,11 @@ impl DSNSync for subspace_networking::Node {
                     }
                 }
             }
+            drop(node);
+            let _ = task_end_tx.send(());
         });
 
-        Ok(rx)
+        Ok(Box::new(private::NodePiecesStream::new(rx, task_end_rx)))
     }
 }
 
@@ -178,7 +221,6 @@ pub trait OnSync {
 pub async fn sync<DSN, OP>(mut dsn: DSN, options: SyncOptions, on_sync: OP) -> anyhow::Result<()>
 where
     DSN: DSNSync + Send + Sized,
-    DSN::Stream: Unpin + Send,
     OP: OnSync,
 {
     let SyncOptions {

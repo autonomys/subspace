@@ -65,9 +65,7 @@ pub(super) enum Request {
         /// Returns offsets of all new pieces and pieces which were replaced
         result_sender: mpsc::Sender<io::Result<WriteResult>>,
     },
-    Exit {
-        result_sender: mpsc::Sender<()>,
-    },
+    Exit,
 }
 
 #[derive(Debug)]
@@ -124,7 +122,6 @@ impl<T: PlotFile> PlotWorker<T> {
 
     pub(super) fn run(mut self, requests_receiver: mpsc::Receiver<RequestWithPriority>) {
         let mut low_priority_requests = VecDeque::new();
-        let mut exit_result_sender = None;
 
         // Process as many high priority as possible, interleaved with single low priority request
         // in case no high priority requests are available.
@@ -190,8 +187,7 @@ impl<T: PlotFile> PlotWorker<T> {
                             let _ =
                                 result_sender.send(self.write_encodings(encodings, piece_indexes));
                         }
-                        Request::Exit { result_sender } => {
-                            exit_result_sender.replace(result_sender);
+                        Request::Exit => {
                             break 'outer;
                         }
                     }
@@ -219,9 +215,6 @@ impl<T: PlotFile> PlotWorker<T> {
                 break;
             }
         }
-
-        // Close the rest of databases
-        drop(self);
     }
 
     fn read_encoding(&mut self, piece_index_hash: PieceIndexHash) -> io::Result<Piece> {

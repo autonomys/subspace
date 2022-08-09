@@ -5,6 +5,7 @@ use futures::stream::FuturesUnordered;
 use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
@@ -285,7 +286,9 @@ pub(crate) async fn bench(
                     single_plot_farm.plot().clone(),
                 )
             })
-            .map(|(commitments, plot)| move || commitments.create(rand::random(), plot))
+            .map(|(commitments, plot)| {
+                move || commitments.create(rand::random(), plot, &AtomicBool::new(false))
+            })
             .map(tokio::task::spawn_blocking)
             .collect::<FuturesUnordered<_>>();
         while let Some(result) = tasks.next().await {

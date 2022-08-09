@@ -1,5 +1,6 @@
 #![feature(
     const_option,
+    drain_filter,
     hash_drain_filter,
     int_log,
     io_error_other,

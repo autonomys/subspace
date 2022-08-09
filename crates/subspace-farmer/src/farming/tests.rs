@@ -7,6 +7,7 @@ use crate::single_disk_farm::SingleDiskSemaphore;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::num::NonZeroU16;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, SolutionRange, Tag, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
@@ -42,12 +43,14 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments
+        .create(salt, plot.clone(), &AtomicBool::new(false))
+        .unwrap();
 
     let client = MockRpcClient::new();
 
     // start the farming task
-    let mut farming_instance = Farming::start(
+    let mut farming_instance = Farming::create(
         0usize.into(),
         plot.clone(),
         commitments.clone(),
@@ -55,8 +58,9 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         SingleDiskSemaphore::new(NonZeroU16::try_from(1).unwrap()),
         identity.clone(),
         public_key,
-    )
-    .await;
+    );
+
+    let farming_instance_task = tokio::spawn(async move { farming_instance.wait().await });
 
     let mut counter = 0;
     let mut latest_salt = slots.first().unwrap().salt;
@@ -103,7 +107,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     client.drop_slot_sender().await;
 
     // wait for farmer to finish
-    if let Err(e) = farming_instance.wait().await {
+    if let Err(e) = farming_instance_task.await {
         panic!("Panicked with error...{:?}", e);
     }
 }

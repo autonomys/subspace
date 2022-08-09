@@ -10,6 +10,7 @@ use crate::single_plot_farm::SinglePlotPlotter;
 use rand::prelude::*;
 use rand::Rng;
 use std::num::{NonZeroU16, NonZeroU32};
+use std::sync::atomic::AtomicBool;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
@@ -155,7 +156,9 @@ async fn plotting_piece_eviction() {
 
     // There are no pieces, but we need to create empty commitments database for this salt, such
     //  that plotter will create commitments for plotted pieces
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments
+        .create(salt, plot.clone(), &AtomicBool::new(false))
+        .unwrap();
 
     let client = MockRpcClient::new();
 

@@ -1,7 +1,8 @@
 use crate::object_mappings::{LegacyObjectMappings, ObjectMappings};
 use crate::rpc_client::RpcClient;
-use crate::utils::AbortingJoinHandle;
+use crate::utils::{AbortingJoinHandle, JoinOnDrop};
 use futures::StreamExt;
+use std::{io, thread};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
 use subspace_core_primitives::Sha256Hash;
@@ -27,11 +28,17 @@ pub enum ArchivingError {
     Archiver(subspace_archiving::archiver::ArchiverInstantiationError),
     #[error("Failed to subscribe to new segments: {0}")]
     Subscribe(#[from] subspace_networking::SubscribeError),
+    /// Failed to spawn archiving thread
+    #[error("Failed to spawn archiving thread: {0}")]
+    ArchivingThread(io::Error),
 }
 
 /// Abstraction around archiving blocks and updating global object map
 pub struct Archiving {
-    archiving_handle: Option<AbortingJoinHandle<()>>,
+    archiving_task: Option<AbortingJoinHandle<()>>,
+    /// Background archiving thread, must be kept around to stop gracefully on drop, including
+    /// waiting for async archiving task above
+    _archiving_thread: JoinOnDrop,
 }
 
 impl Archiving {
@@ -61,56 +68,60 @@ impl Archiving {
             std::sync::mpsc::channel::<(ArchivedSegment, oneshot::Sender<()>)>();
 
         // Erasure coding in archiver and piece encoding are CPU-intensive operations.
-        tokio::task::spawn_blocking({
-            move || {
-                let mut last_archived_segment_index = None;
-                while let Ok((archived_segment, acknowledgement_sender)) =
-                    archived_segments_sync_receiver.recv()
-                {
-                    let ArchivedSegment {
-                        root_block,
-                        pieces,
-                        object_mapping,
-                    } = archived_segment;
-                    let segment_index = root_block.segment_index();
-                    if last_archived_segment_index == Some(segment_index) {
-                        continue;
-                    }
-                    last_archived_segment_index.replace(segment_index);
-
-                    let piece_index_offset = merkle_num_leaves * segment_index;
-
-                    let pieces_to_plot = PiecesToPlot {
-                        piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
-                        pieces,
-                    };
-                    if !on_pieces_to_plot(pieces_to_plot) {
-                        // No need to continue
-                        break;
-                    }
-
-                    let object_mapping =
-                        create_global_object_mapping(piece_index_offset, object_mapping);
-
-                    for object_mappings in &object_mappings {
-                        if let Err(error) = object_mappings.store(&object_mapping) {
-                            error!(%error, "Failed to store object mappings for pieces");
+        let archiving_thread = thread::Builder::new()
+            .name("archiving".to_string())
+            .spawn({
+                move || {
+                    let mut last_archived_segment_index = None;
+                    while let Ok((archived_segment, acknowledgement_sender)) =
+                        archived_segments_sync_receiver.recv()
+                    {
+                        let ArchivedSegment {
+                            root_block,
+                            pieces,
+                            object_mapping,
+                        } = archived_segment;
+                        let segment_index = root_block.segment_index();
+                        if last_archived_segment_index == Some(segment_index) {
+                            continue;
                         }
-                    }
-                    for object_mappings in &legacy_object_mappings {
-                        if let Err(error) = object_mappings.store(&object_mapping) {
-                            error!(%error, "Failed to store legacy object mappings for pieces");
+                        last_archived_segment_index.replace(segment_index);
+
+                        let piece_index_offset = merkle_num_leaves * segment_index;
+
+                        let pieces_to_plot = PiecesToPlot {
+                            piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),
+                            pieces,
+                        };
+                        if !on_pieces_to_plot(pieces_to_plot) {
+                            // No need to continue
+                            break;
                         }
-                    }
 
-                    info!(segment_index, "Plotted segment");
+                        let object_mapping =
+                            create_global_object_mapping(piece_index_offset, object_mapping);
 
-                    if let Err(()) = acknowledgement_sender.send(()) {
-                        error!("Failed to send archived segment acknowledgement");
+                        for object_mappings in &object_mappings {
+                            if let Err(error) = object_mappings.store(&object_mapping) {
+                                error!(%error, "Failed to store object mappings for pieces");
+                            }
+                        }
+                        for object_mappings in &legacy_object_mappings {
+                            if let Err(error) = object_mappings.store(&object_mapping) {
+                                error!(%error, "Failed to store legacy object mappings for pieces");
+                            }
+                        }
+
+                        info!(segment_index, "Plotted segment");
+
+                        if let Err(()) = acknowledgement_sender.send(()) {
+                            error!("Failed to send archived segment acknowledgement");
+                        }
                     }
                 }
-            }
-        });
+            })
+            .map(JoinOnDrop::new)
+            .map_err(ArchivingError::ArchivingThread)?;
 
         info!("Subscribing to archived segments");
         let mut archived_segments = client
@@ -142,13 +153,14 @@ impl Archiving {
         });
 
         Ok(Self {
-            archiving_handle: Some(AbortingJoinHandle::new(archiving_handle)),
+            archiving_task: Some(AbortingJoinHandle::new(archiving_handle)),
+            _archiving_thread: archiving_thread,
         })
     }
 
     /// Waits for the background archiving to finish
     pub async fn wait(mut self) -> Result<(), ArchivingError> {
-        self.archiving_handle
+        self.archiving_task
             .take()
             .unwrap()
             .await
