@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{crypto, PieceIndexHash, U256};
-use subspace_networking::Config;
+use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 #[tokio::main]
 async fn main() {
@@ -46,7 +46,10 @@ async fn main() {
     drop(on_new_listener_handler);
 
     let config_2 = Config {
-        bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
+            node_1_addr.with(Protocol::P2p(node_1.id().into()))
+        ])
+        .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()

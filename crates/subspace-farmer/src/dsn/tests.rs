@@ -376,11 +376,18 @@ async fn test_dsn_sync() {
     let public_key =
         U256::from_be_bytes((*syncer_multi_farming.single_plot_farms()[0].public_key()).into());
 
+    let syncer_node = syncer_multi_farming.single_plot_farms()[0].node().clone();
+
     tokio::spawn(async move {
         if let Err(error) = syncer_multi_farming.wait().await {
             eprintln!("Syncer exited with error: {error}");
         }
     });
+
+    syncer_node
+        .wait_for_connected_peers()
+        .await
+        .expect("Unexpected Node failure");
 
     dsn_sync.await.unwrap();
 

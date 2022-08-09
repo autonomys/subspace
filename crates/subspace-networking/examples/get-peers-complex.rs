@@ -1,11 +1,12 @@
 use futures::channel::oneshot;
+use libp2p::identity::sr25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::multihash::{Code, MultihashDigest};
-use libp2p::{identity, PeerId};
+use libp2p::PeerId;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, NetworkingParametersManager};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, NetworkingParametersManager};
 
 #[tokio::main]
 async fn main() {
@@ -13,21 +14,32 @@ async fn main() {
 
     let mut bootstrap_nodes = Vec::new();
     let mut expected_node_id = PeerId::random();
+    let mut expected_kaypair = Keypair::generate();
 
     const TOTAL_NODE_COUNT: usize = 100;
     const EXPECTED_NODE_INDEX: usize = 75;
 
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
+        let keypair = Keypair::generate();
         let config = Config {
-            bootstrap_nodes: bootstrap_nodes.clone(),
+            networking_parameters_registry: BootstrappedNetworkingParameters::new(
+                bootstrap_nodes.clone(),
+            )
+            .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_globals_in_dht: true,
-            ..Config::with_generated_keypair()
+            ..Config::with_keypair(keypair.clone())
         };
+
         let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
         println!("Node {} ID is {}", i, node.id());
+
+        if i == EXPECTED_NODE_INDEX {
+            expected_node_id = node.id();
+            expected_kaypair = keypair;
+        }
 
         let (node_address_sender, node_address_receiver) = oneshot::channel();
         let _handler = node.on_new_listener(Arc::new({
@@ -55,9 +67,6 @@ async fn main() {
 
         bootstrap_nodes.push(address);
 
-        if i == EXPECTED_NODE_INDEX {
-            expected_node_id = node.id();
-        }
         nodes.push(node);
     }
 
@@ -71,12 +80,14 @@ async fn main() {
     );
 
     let config = Config {
-        bootstrap_nodes,
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        networking_parameters_registry: NetworkingParametersManager::new(db_path.as_ref())
-            .unwrap()
-            .boxed(),
+        networking_parameters_registry: NetworkingParametersManager::new(
+            db_path.as_ref(),
+            bootstrap_nodes,
+        )
+        .unwrap()
+        .boxed(),
         ..Config::with_generated_keypair()
     };
 
@@ -89,29 +100,23 @@ async fn main() {
         node_runner.run().await;
     });
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    node.wait_for_connected_peers().await.unwrap();
 
     // Prepare multihash to look for in Kademlia
-    let encoding = expected_node_id.as_ref().digest();
-    let public_key = identity::PublicKey::from_protobuf_encoding(encoding)
-        .expect("Invalid public key from PeerId.");
-    let peer_id_public_key = if let identity::PublicKey::Sr25519(pk) = public_key {
-        pk.encode()
-    } else {
-        panic!("Expected PublicKey::Sr25519")
-    };
-
-    let key = Code::Identity.digest(&peer_id_public_key);
+    let key = Code::Identity.digest(&expected_kaypair.public().encode());
 
     let peers = node.get_closest_peers(key).await.unwrap();
 
     // Uncomment on debugging:
     // println!("Received closest peers: {:?}", peers);
 
-    let peer_id = peers.first().unwrap();
+    let peer_id = peers
+        .first()
+        .expect("get_closest_peers returned empty set. ");
     assert_eq!(*peer_id, expected_node_id);
+    println!("Expected Peer ID received.");
 
-    tokio::time::sleep(Duration::from_secs(12)).await;
+    tokio::time::sleep(Duration::from_secs(120)).await;
 
     println!("Exiting..");
 }

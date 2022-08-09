@@ -31,8 +31,8 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeRequestHandler,
-    PiecesByRangeResponse, PiecesToPlot,
+    BootstrappedNetworkingParameters, Config, Node, NodeRunner, PiecesByRangeRequest,
+    PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_rpc_primitives::{FarmerProtocolInfo, MAX_SEGMENT_INDEXES_PER_REQUEST};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
@@ -425,7 +425,8 @@ impl SinglePlotFarm {
 
         let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
         let network_node_config = Config {
-            bootstrap_nodes,
+            networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
+                .boxed(),
             listen_on,
             // TODO: Do we still need it?
             value_getter: Arc::new({

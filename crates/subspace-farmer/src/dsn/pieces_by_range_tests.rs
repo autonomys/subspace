@@ -7,7 +7,8 @@ use std::sync::Arc;
 use subspace_core_primitives::{crypto, FlatPieces, Piece, PieceIndexHash};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    Config, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+    BootstrappedNetworkingParameters, Config, PiecesByRangeRequest, PiecesByRangeRequestHandler,
+    PiecesByRangeResponse, PiecesToPlot,
 };
 
 #[tokio::test]
@@ -66,7 +67,10 @@ async fn pieces_by_range_protocol_smoke() {
     drop(on_new_listener_handler);
 
     let config_2 = Config {
-        bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
+            node_1_addr.with(Protocol::P2p(node_1.id().into()))
+        ])
+        .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
@@ -77,6 +81,11 @@ async fn pieces_by_range_protocol_smoke() {
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
+
+    node_2
+        .wait_for_connected_peers()
+        .await
+        .expect("Unexpected Node failure");
 
     let (mut result_sender, mut result_receiver) = mpsc::unbounded();
     tokio::spawn(async move {
@@ -165,7 +174,10 @@ async fn get_pieces_by_range_smoke() {
     drop(on_new_listener_handler);
 
     let config_2 = Config {
-        bootstrap_nodes: vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))],
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
+            node_1_addr.with(Protocol::P2p(node_1.id().into()))
+        ])
+        .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
@@ -176,6 +188,11 @@ async fn get_pieces_by_range_smoke() {
     tokio::spawn(async move {
         node_runner_2.run().await;
     });
+
+    node_2
+        .wait_for_connected_peers()
+        .await
+        .expect("Unexpected Node failure");
 
     let mut stream = node_2
         .get_pieces(piece_index_from..piece_index_end)
