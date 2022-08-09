@@ -7,6 +7,7 @@ use crate::single_disk_farm::SingleDiskSemaphore;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::num::NonZeroU16;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
@@ -42,7 +43,9 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments
+        .create(salt, plot.clone(), &AtomicBool::new(false))
+        .unwrap();
 
     let client = MockRpcClient::new();
 

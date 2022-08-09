@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -42,6 +43,32 @@ impl Drop for JoinOnDrop {
 impl JoinOnDrop {
     pub(crate) fn new(handle: std::thread::JoinHandle<()>) -> Self {
         Self(Some(handle))
+    }
+}
+
+impl Deref for JoinOnDrop {
+    type Target = std::thread::JoinHandle<()>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("Only dropped in Drop impl; qed")
+    }
+}
+
+pub(crate) struct CallOnDrop(Option<Box<dyn FnOnce() + Send + 'static>>);
+
+impl Drop for CallOnDrop {
+    fn drop(&mut self) {
+        let callback = self.0.take().expect("Only removed on drop; qed");
+        callback();
+    }
+}
+
+impl CallOnDrop {
+    pub(crate) fn new<F>(callback: F) -> Self
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        Self(Some(Box::new(callback)))
     }
 }
 

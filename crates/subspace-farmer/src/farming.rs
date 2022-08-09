@@ -9,11 +9,13 @@ use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotFarmId;
+use crate::utils::{CallOnDrop, JoinOnDrop};
 use futures::future::{Fuse, FusedFuture};
 use futures::{FutureExt, StreamExt};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Instant;
 use subspace_core_primitives::{PublicKey, Salt, Solution};
@@ -159,6 +161,17 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
     let notification_handling_fut = async move {
         let mut salts = Salts::default();
+        let dropped = Arc::new(AtomicBool::new(false));
+        // It is important that `join_handles` comes before `_drop_guard` or else recommitments will
+        // not stop until fully done on drop
+        let mut join_handles = Vec::with_capacity(2);
+        let _drop_guard = CallOnDrop::new({
+            let dropped = Arc::clone(&dropped);
+
+            move || {
+                dropped.store(true, Ordering::SeqCst);
+            }
+        });
 
         while let Some(slot_info) = slot_info_notifications.next().await {
             debug!(?slot_info, "New slot");
@@ -170,6 +183,8 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                 &mut salts,
                 &slot_info,
                 &single_disk_semaphore,
+                &mut join_handles,
+                &dropped,
             );
 
             let maybe_solution_handle = tokio::task::spawn_blocking({
@@ -271,6 +286,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
 
 /// Compare salts in `slot_info` to those known from `salts` and start update plot commitments
 /// accordingly if necessary (in background)
+#[allow(clippy::too_many_arguments)]
 fn update_commitments(
     single_plot_farm_id: SinglePlotFarmId,
     plot: &Plot,
@@ -278,6 +294,8 @@ fn update_commitments(
     salts: &mut Salts,
     slot_info: &SlotInfo,
     single_disk_semaphore: &SingleDiskSemaphore,
+    join_handles: &mut Vec<JoinOnDrop>,
+    must_stop: &Arc<AtomicBool>,
 ) {
     let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
@@ -296,6 +314,7 @@ fn update_commitments(
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
             let span = info_span!("recommit", new_salt = %hex::encode(salt));
+            let must_stop = Arc::clone(must_stop);
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -309,7 +328,7 @@ fn update_commitments(
                     let started = Instant::now();
                     info!("Salt updated, recommitting in background");
 
-                    if let Err(error) = commitments.create(salt, plot) {
+                    if let Err(error) = commitments.create(salt, plot, &must_stop) {
                         error!(%error, "Failed to create commitment");
                     } else {
                         info!(
@@ -322,8 +341,14 @@ fn update_commitments(
                     let _ = current_recommitment_done_sender.send(());
                 });
 
-            if let Err(error) = result {
-                error!(%error, "Failed to spawn recommitment thread")
+            match result {
+                Ok(join_handle) => {
+                    join_handles.drain_filter(|join_handle| join_handle.is_finished());
+                    join_handles.push(JoinOnDrop::new(join_handle));
+                }
+                Err(error) => {
+                    error!(%error, "Failed to spawn recommitment thread")
+                }
             }
         }
     }
@@ -336,6 +361,7 @@ fn update_commitments(
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
             let span = info_span!("recommit", next_salt = %hex::encode(new_next_salt));
+            let must_stop = Arc::clone(must_stop);
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -354,7 +380,7 @@ fn update_commitments(
 
                     let started = Instant::now();
                     info!("Salt will be updated, recommitting in background");
-                    if let Err(error) = commitments.create(new_next_salt, plot) {
+                    if let Err(error) = commitments.create(new_next_salt, plot, &must_stop) {
                         error!(
                             %error,
                             "Recommitting salt in background failed",
@@ -367,8 +393,14 @@ fn update_commitments(
                     );
                 });
 
-            if let Err(error) = result {
-                error!(%error, "Failed to spawn recommitment thread")
+            match result {
+                Ok(join_handle) => {
+                    join_handles.drain_filter(|join_handle| join_handle.is_finished());
+                    join_handles.push(JoinOnDrop::new(join_handle));
+                }
+                Err(error) => {
+                    error!(%error, "Failed to spawn recommitment thread")
+                }
             }
         }
     }
