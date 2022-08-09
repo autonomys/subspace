@@ -3,7 +3,7 @@ use crate::rpc_client::RpcClient;
 use crate::single_plot_farm::{
     PlotFactory, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions, SinglePlotFarmSummary,
 };
-use crate::utils::get_plot_sizes;
+use crate::utils::{get_plot_sizes, CallOnDrop};
 use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
 use derive_more::{Display, From};
@@ -314,9 +314,16 @@ impl SingleDiskFarm {
 
         let single_disk_semaphore = SingleDiskSemaphore::new(disk_concurrency);
         let verification_client = archiving_client.clone();
+        let (farm_creation_start_sender, farm_creation_start_receiver) =
+            std::sync::mpsc::sync_channel(1);
+        // Makes sure background blocking task below is finished before this function's future is
+        // dropped
+        let _farm_creation_start_guard = CallOnDrop::new(move || {
+            let _ = farm_creation_start_receiver.recv();
+        });
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
-            single_disk_farm_info
+            let single_plot_farms = single_disk_farm_info
                 .single_plot_farms()
                 .into_par_iter()
                 .zip(plot_sizes)
@@ -353,7 +360,11 @@ impl SingleDiskFarm {
                         verification_client: verification_client.clone(),
                     })
                 })
-                .collect::<anyhow::Result<Vec<_>>>()
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            let _ = farm_creation_start_sender.send(());
+
+            anyhow::Ok::<Vec<SinglePlotFarm>>(single_plot_farms)
         })
         .await
         .expect("Not supposed to panic, crash if it does")?;
