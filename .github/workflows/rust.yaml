@@ -20,7 +20,7 @@ env:
 
 jobs:
   cargo-fmt:
-    runs-on: ${{ github.github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
 
     steps:
       - name: Checkout
@@ -59,9 +59,9 @@ jobs:
     strategy:
       matrix:
         os:
-          - ${{ github.github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+          - ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
           - macos-12
-          - ${{ github.github.repository_owner == 'subspace' && 'self-hosted-wnd' || 'windows-2022' }}
+          - ${{ github.repository_owner == 'subspace' && 'self-hosted-wnd-ms-servier-2019-10-x64-based' || 'windows-2022' }}
 
     runs-on: ${{ matrix.os }}
 
@@ -116,7 +116,7 @@ jobs:
         if: runner.os == 'macOS'
 
   cargo-docs:
-    runs-on: ${{ github.github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -152,9 +152,9 @@ jobs:
     strategy:
       matrix:
         os:
-          - ${{ github.github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+          - ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
           - macos-12
-          - ${{ github.github.repository_owner == 'subspace' && 'self-hosted-wnd' || 'windows-2022' }}
+          - ${{ github.repository_owner == 'subspace' && 'self-hosted-wnd-ms-servier-2019-10-x64-based' || 'windows-2022' }}
 
     runs-on: ${{ matrix.os }}
 
