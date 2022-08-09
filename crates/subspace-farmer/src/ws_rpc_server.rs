@@ -182,7 +182,7 @@ pub trait Rpc {
 ///     Arc::new(vec![object_mappings]),
 ///     Arc::new(vec![]),
 /// );
-/// let stop_handle = ws_server.start(rpc_server.into_rpc())?;
+/// let ws_server = ws_server.start(rpc_server.into_rpc())?;
 ///
 /// # Ok(())
 /// # }

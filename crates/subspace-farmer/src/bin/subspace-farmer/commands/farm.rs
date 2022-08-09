@@ -1,4 +1,5 @@
 use crate::utils::get_usable_plot_space;
+use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -17,7 +18,23 @@ use subspace_networking::Config;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tracing::{info, trace, warn};
 
-use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
+struct CallOnDrop(Option<Box<dyn FnOnce() + Send + 'static>>);
+
+impl Drop for CallOnDrop {
+    fn drop(&mut self) {
+        let callback = self.0.take().expect("Only removed on drop; qed");
+        callback();
+    }
+}
+
+impl CallOnDrop {
+    fn new<F>(callback: F) -> Self
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        Self(Some(Box::new(callback)))
+    }
+}
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -183,7 +200,16 @@ pub(crate) async fn farm_multi_disk(
         ),
         Arc::new(vec![]),
     );
-    let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
+    let _ws_server_guard = CallOnDrop::new({
+        let ws_server = ws_server.start(rpc_server.into_rpc())?;
+        let tokio_handle = tokio::runtime::Handle::current();
+
+        move || {
+            if let Ok(waiter) = ws_server.stop() {
+                tokio::task::block_in_place(move || tokio_handle.block_on(waiter));
+            }
+        }
+    });
 
     info!("WS RPC server listening on {ws_server_addr}");
 
@@ -345,7 +371,16 @@ pub(crate) async fn farm_legacy(
         Arc::new(vec![]),
         Arc::new(vec![object_mappings]),
     );
-    let _stop_handle = ws_server.start(rpc_server.into_rpc())?;
+    let _ws_server_guard = CallOnDrop::new({
+        let ws_server = ws_server.start(rpc_server.into_rpc())?;
+        let tokio_handle = tokio::runtime::Handle::current();
+
+        move || {
+            if let Ok(waiter) = ws_server.stop() {
+                tokio::task::block_in_place(move || tokio_handle.block_on(waiter));
+            }
+        }
+    });
 
     info!("WS RPC server listening on {ws_server_addr}");
 
