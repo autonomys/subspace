@@ -364,6 +364,9 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
+                // TODO: proper value
+                let block_import_throttling_buffer_size = 10;
+
                 let (mut primary_chain_node, config_dir) = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -469,7 +472,10 @@ fn main() -> Result<(), Error> {
                             .imported_block_notification_stream
                             .subscribe()
                             .then(|imported_block_notification| async move {
-                                imported_block_notification.block_number
+                                (
+                                    imported_block_notification.block_number,
+                                    imported_block_notification.block_import_acknowledgement_sender,
+                                )
                             }),
                         primary_chain_node
                             .new_slot_notification_stream
@@ -480,6 +486,7 @@ fn main() -> Result<(), Error> {
                                     slot_notification.new_slot_info.global_challenge,
                                 )
                             }),
+                        block_import_throttling_buffer_size,
                     );
 
                     let secondary_chain_node = secondary_chain_node_fut.await?;

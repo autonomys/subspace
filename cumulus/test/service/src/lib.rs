@@ -135,37 +135,41 @@ async fn run_executor(
         })?
     };
 
-    let secondary_chain_node =
-        cirrus_node::service::new_full::<
-            _,
-            _,
-            _,
-            _,
-            _,
-            cirrus_test_runtime::RuntimeApi,
-            RuntimeExecutor,
-        >(
-            secondary_chain_config,
-            primary_chain_full_node.client.clone(),
-            primary_chain_full_node.network.clone(),
-            &primary_chain_full_node.select_chain,
-            primary_chain_full_node
-                .imported_block_notification_stream
-                .subscribe()
-                .then(|imported_block_notification| async move {
-                    imported_block_notification.block_number
-                }),
-            primary_chain_full_node
-                .new_slot_notification_stream
-                .subscribe()
-                .then(|slot_notification| async move {
-                    (
-                        slot_notification.new_slot_info.slot,
-                        slot_notification.new_slot_info.global_challenge,
-                    )
-                }),
-        )
-        .await?;
+    let block_import_throttling_buffer_size = 10;
+    let secondary_chain_node = cirrus_node::service::new_full::<
+        _,
+        _,
+        _,
+        _,
+        _,
+        cirrus_test_runtime::RuntimeApi,
+        RuntimeExecutor,
+    >(
+        secondary_chain_config,
+        primary_chain_full_node.client.clone(),
+        primary_chain_full_node.network.clone(),
+        &primary_chain_full_node.select_chain,
+        primary_chain_full_node
+            .imported_block_notification_stream
+            .subscribe()
+            .then(|imported_block_notification| async move {
+                (
+                    imported_block_notification.block_number,
+                    imported_block_notification.block_import_acknowledgement_sender,
+                )
+            }),
+        primary_chain_full_node
+            .new_slot_notification_stream
+            .subscribe()
+            .then(|slot_notification| async move {
+                (
+                    slot_notification.new_slot_info.slot,
+                    slot_notification.new_slot_info.global_challenge,
+                )
+            }),
+        block_import_throttling_buffer_size,
+    )
+    .await?;
 
     let cirrus_node::service::NewFull {
         mut task_manager,
@@ -523,7 +527,7 @@ pub fn construct_extrinsic(
     )
 }
 
-/// Run a primary-chain validator node.
+/// Run a primary-chain validator node without the executor functionality.
 ///
 /// This is essentially a wrapper around
 /// [`run_validator_node`](subspace_test_service::run_validator_node).

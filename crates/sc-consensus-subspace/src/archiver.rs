@@ -442,8 +442,10 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                 while let Some(ImportedBlockNotification {
                     block_number,
                     mut root_block_sender,
+                    block_import_acknowledgement_sender,
                 }) = imported_block_notification_stream.next().await
                 {
+                    drop(block_import_acknowledgement_sender);
                     let block_number_to_archive =
                         match block_number.checked_sub(&confirmation_depth_k.into()) {
                             Some(block_number_to_archive) => block_number_to_archive,
