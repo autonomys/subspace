@@ -78,6 +78,21 @@ pub type BlockNumber = u32;
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
 
+/// Type of solution range.
+pub type SolutionRange = u64;
+
+/// BlockWeight type for fork choice rules.
+pub type BlockWeight = u128;
+
+/// Segment index type.
+pub type SegmentIndex = u64;
+
+/// Records root type.
+pub type RecordsRoot = Sha256Hash;
+
+/// Eon Index type.
+pub type EonIndex = u64;
+
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
