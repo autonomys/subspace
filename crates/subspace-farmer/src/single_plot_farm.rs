@@ -11,16 +11,18 @@ use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::dsn_archiving::start_archiving;
-use crate::utils::AbortingJoinHandle;
 use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use derive_more::{Display, From};
-use futures::future::{try_join, try_join_all};
+use futures::future::try_join_all;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_archiving::archiver::is_piece_valid;
@@ -31,8 +33,8 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    Config, Node, NodeRunner, PiecesByRangeRequest, PiecesByRangeRequestHandler,
-    PiecesByRangeResponse, PiecesToPlot,
+    Config, Node, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse,
+    PiecesToPlot,
 };
 use subspace_rpc_primitives::{FarmerProtocolInfo, MAX_SEGMENT_INDEXES_PER_REQUEST};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
@@ -325,12 +327,10 @@ pub struct SinglePlotFarm {
     plot: Plot,
     commitments: Commitments,
     object_mappings: ObjectMappings,
-    farming: Option<Farming>,
     node: Node,
-    node_runner: NodeRunner,
     single_disk_semaphore: SingleDiskSemaphore,
     span: Span,
-    background_task_handles: Vec<AbortingJoinHandle<()>>,
+    tasks: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>,
 }
 
 impl SinglePlotFarm {
@@ -501,7 +501,7 @@ impl SinglePlotFarm {
             ))
         };
 
-        let (node, node_runner) = Handle::current().block_on(async move {
+        let (node, mut node_runner) = Handle::current().block_on(async move {
             if let Some(relay_server_node) = relay_server_node {
                 relay_server_node.spawn(network_node_config).await
             } else {
@@ -524,19 +524,34 @@ impl SinglePlotFarm {
             )
         });
 
-        let mut farm = Self {
+        let tasks =
+            FuturesUnordered::<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>::new();
+
+        if let Some(mut farming) = farming {
+            tasks.push(Box::pin(async move {
+                farming.wait().await?;
+
+                Ok(())
+            }));
+        }
+
+        tasks.push(Box::pin(async move {
+            node_runner.run().await;
+
+            Ok(())
+        }));
+
+        let farm = Self {
             id,
             public_key,
             codec,
             plot,
             commitments,
             object_mappings,
-            farming,
             node: node.clone(),
-            node_runner,
             single_disk_semaphore,
             span: Span::current(),
-            background_task_handles: vec![],
+            tasks,
         };
 
         // Start DSN archiving
@@ -550,16 +565,16 @@ impl SinglePlotFarm {
                 farm.plotter(),
                 farm.single_disk_semaphore.clone(),
             );
-            let dsn_archiving_handle = tokio::spawn(async move {
+
+            farm.tasks.push(Box::pin(async move {
                 if let Err(error) = archiving_fut.await {
                     error!(%error, "DSN archiving task has ended with error");
                 } else {
                     warn!("DSN archiving task has finished");
                 }
-            });
 
-            farm.background_task_handles
-                .push(AbortingJoinHandle::new(dsn_archiving_handle));
+                Ok(())
+            }));
         }
 
         // Start DSN syncing
@@ -575,7 +590,7 @@ impl SinglePlotFarm {
                 true,
             );
 
-            let dsn_sync_handle = tokio::spawn(async move {
+            farm.tasks.push(Box::pin(async move {
                 match dsn_sync_fut.await {
                     Ok(()) => {
                         info!("DSN sync done successfully");
@@ -584,10 +599,9 @@ impl SinglePlotFarm {
                         error!(?error, "DSN sync failed");
                     }
                 }
-            });
 
-            farm.background_task_handles
-                .push(AbortingJoinHandle::new(dsn_sync_handle));
+                Ok(())
+            }));
         }
 
         Ok(farm)
@@ -669,16 +683,8 @@ impl SinglePlotFarm {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        if let Some(farming) = self.farming.as_mut() {
-            try_join(farming.wait(), async {
-                self.node_runner.run().await;
-
-                Ok(())
-            })
-            .instrument(self.span.clone())
-            .await?;
-        } else {
-            self.node_runner.run().instrument(self.span.clone()).await;
+        while let Some(result) = self.tasks.next().instrument(self.span.clone()).await {
+            result?;
         }
 
         Ok(())
