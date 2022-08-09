@@ -230,42 +230,41 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_farm| single_disk_farm.wait())
         .collect::<FuturesUnordered<_>>();
 
-    #[cfg(unix)]
-    {
-        select(
-            Box::pin(async move {
-                if let Some(signal) = signals.next().await {
-                    let signal = match signal {
-                        SIGINT => "SIGINT".to_string(),
-                        SIGTERM => "SIGTERM".to_string(),
-                        signal => format!("unexpected signal {signal}"),
-                    };
-                    info!("Received {signal}, shutting down farmer...");
-                }
+    select(
+        #[cfg(unix)]
+        Box::pin(async move {
+            if let Some(signal) = signals.next().await {
+                let signal = match signal {
+                    SIGINT => "SIGINT".to_string(),
+                    SIGTERM => "SIGTERM".to_string(),
+                    signal => format!("unexpected signal {signal}"),
+                };
+                info!("Received {signal}, shutting down farmer...");
+            }
 
-                anyhow::Ok(())
-            }),
-            Box::pin(async move {
-                while let Some(result) = single_disk_farms_stream.next().await {
-                    result?;
+            anyhow::Ok(())
+        }),
+        #[cfg(windows)]
+        Box::pin(async {
+            tokio::signal::ctrl_c().await?;
 
-                    info!("Farm exited successfully");
-                }
+            info!("Received Ctrl+C, shutting down farmer...");
 
-                anyhow::Ok(())
-            }),
-        )
-        .await
-        .factor_first()
-        .0
-    }
+            anyhow::Ok(())
+        }),
+        Box::pin(async move {
+            while let Some(result) = single_disk_farms_stream.next().await {
+                result?;
 
-    #[cfg(not(unix))]
-    while let Some(result) = single_disk_farms_stream.next().await {
-        result?;
+                info!("Farm exited successfully");
+            }
 
-        info!("Farm exited successfully");
-    }
+            anyhow::Ok(())
+        }),
+    )
+    .await
+    .factor_first()
+    .0
 }
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
@@ -428,28 +427,31 @@ pub(crate) async fn farm_legacy(
 
     info!("WS RPC server listening on {ws_server_addr}");
 
-    #[cfg(unix)]
-    {
-        select(
-            Box::pin(async move {
-                if let Some(signal) = signals.next().await {
-                    let signal = match signal {
-                        SIGINT => "SIGINT".to_string(),
-                        SIGTERM => "SIGTERM".to_string(),
-                        signal => format!("unexpected signal {signal}"),
-                    };
-                    info!("Received {signal}, shutting down farmer...");
-                }
+    select(
+        #[cfg(unix)]
+        Box::pin(async move {
+            if let Some(signal) = signals.next().await {
+                let signal = match signal {
+                    SIGINT => "SIGINT".to_string(),
+                    SIGTERM => "SIGTERM".to_string(),
+                    signal => format!("unexpected signal {signal}"),
+                };
+                info!("Received {signal}, shutting down farmer...");
+            }
 
-                anyhow::Ok(())
-            }),
-            Box::pin(multi_plots_farm.wait()),
-        )
-        .await
-        .factor_first()
-        .0
-    }
+            anyhow::Ok(())
+        }),
+        #[cfg(windows)]
+        Box::pin(async {
+            tokio::signal::ctrl_c().await?;
 
-    #[cfg(not(unix))]
-    multi_plots_farm.wait().await
+            info!("Received Ctrl+C, shutting down farmer...");
+
+            anyhow::Ok(())
+        }),
+        Box::pin(multi_plots_farm.wait()),
+    )
+    .await
+    .factor_first()
+    .0
 }
