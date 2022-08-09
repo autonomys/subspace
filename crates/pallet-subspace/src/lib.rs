@@ -52,8 +52,8 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, MERKLE_NUM_LEAVES, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, MERKLE_NUM_LEAVES,
+    PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -125,7 +125,7 @@ impl EonChangeTrigger for NormalEonChange {
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
     global_randomness: Randomness,
-    solution_range: u64,
+    solution_range: SolutionRange,
     salt: Salt,
     record_size: u32,
     recorded_history_segment_size: u32,
@@ -150,7 +150,7 @@ mod pallet {
     use sp_runtime::traits::One;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
-    use subspace_core_primitives::{Randomness, RootBlock, Sha256Hash};
+    use subspace_core_primitives::{Randomness, RootBlock, SegmentIndex, SolutionRange};
 
     pub(super) struct InitialSolutionRanges<T: Config> {
         _config: T,
@@ -176,9 +176,9 @@ mod pallet {
     #[derive(Debug, Encode, Decode, TypeInfo)]
     pub struct SolutionRangeOverride {
         /// Value that should be set as solution range
-        pub solution_range: u64,
+        pub solution_range: SolutionRange,
         /// Value that should be set as voting solution range
-        pub voting_solution_range: u64,
+        pub voting_solution_range: SolutionRange,
     }
 
     /// The Subspace Pallet
@@ -352,7 +352,7 @@ mod pallet {
     /// Current eon index.
     #[pallet::storage]
     #[pallet::getter(fn eon_index)]
-    pub type EonIndex<T> = StorageValue<_, u64, ValueQuery>;
+    pub type EonIndex<T> = StorageValue<_, subspace_core_primitives::EonIndex, ValueQuery>;
 
     /// The slot at which the block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
@@ -405,7 +405,8 @@ mod pallet {
     /// Mapping from segment index to corresponding merkle tree root of segment records.
     #[pallet::storage]
     #[pallet::getter(fn records_root)]
-    pub(super) type RecordsRoot<T> = CountedStorageMap<_, Twox64Concat, u64, Sha256Hash>;
+    pub(super) type RecordsRoot<T> =
+        CountedStorageMap<_, Twox64Concat, SegmentIndex, subspace_core_primitives::RecordsRoot>;
 
     /// Storage of previous vote verification data, updated on each block during finalization.
     #[pallet::storage]
@@ -736,7 +737,7 @@ impl<T: Config> Pallet<T> {
     /// returned `true`, and the caller is the only caller of this function.
     fn enact_eon_change(_block_number: T::BlockNumber) {
         let current_slot = *Self::current_slot();
-        let eon_index = current_slot
+        let eon_index: subspace_core_primitives::EonIndex = current_slot
             .checked_sub(*GenesisSlot::<T>::get())
             .expect("Current slot is never lower than genesis slot; qed")
             .checked_div(T::EonDuration::get())
@@ -755,7 +756,7 @@ impl<T: Config> Pallet<T> {
         Self::eon_start(EonIndex::<T>::get())
     }
 
-    fn eon_start(eon_index: u64) -> Slot {
+    fn eon_start(eon_index: subspace_core_primitives::EonIndex) -> Slot {
         // (eon_index * eon_duration) + genesis_slot
 
         const PROOF: &str =

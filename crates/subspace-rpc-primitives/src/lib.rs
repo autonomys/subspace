@@ -18,7 +18,7 @@
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use subspace_core_primitives::{
-    PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution,
+    PublicKey, RewardSignature, Salt, Sha256Hash, SlotNumber, Solution, SolutionRange,
 };
 
 /// Defines a limit for segment indexes array. It affects storage access on the runtime side.
@@ -54,9 +54,9 @@ pub struct SlotInfo {
     /// Salt for the next eon
     pub next_salt: Option<Salt>,
     /// Acceptable solution range for block authoring
-    pub solution_range: u64,
+    pub solution_range: SolutionRange,
     /// Acceptable solution range for voting
-    pub voting_solution_range: u64,
+    pub voting_solution_range: SolutionRange,
 }
 
 /// Response of a slot challenge consisting of an optional solution and

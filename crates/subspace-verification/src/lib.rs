@@ -26,9 +26,9 @@ use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    crypto, PieceIndex, PieceIndexHash, PublicKey, Randomness, RewardSignature, Salt, Sha256Hash,
-    Solution, Tag, TagSignature, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX,
-    SALT_SIZE, U256,
+    crypto, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
+    RewardSignature, Salt, Sha256Hash, SlotNumber, Solution, SolutionRange, Tag, TagSignature,
+    RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
 };
 use subspace_solving::{
     create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
@@ -128,9 +128,9 @@ where
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: u64) -> bool {
-    let target = u64::from_be_bytes(target);
-    let tag = u64::from_be_bytes(tag);
+pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: SolutionRange) -> bool {
+    let target = SolutionRange::from_be_bytes(target);
+    let tag = SolutionRange::from_be_bytes(tag);
 
     subspace_core_primitives::bidirectional_distance(&target, &tag) <= solution_range / 2
 }
@@ -160,7 +160,7 @@ fn is_within_max_plot(
 #[derive(Debug)]
 pub struct PieceCheckParams {
     /// Records root of segment to which piece belongs
-    pub records_root: Sha256Hash,
+    pub records_root: RecordsRoot,
     /// Position of the piece in the segment
     pub position: u64,
     /// Record size, system parameter
@@ -177,7 +177,7 @@ pub struct VerifySolutionParams<'a> {
     /// Global randomness
     pub global_randomness: &'a Randomness,
     /// Solution range
-    pub solution_range: u64,
+    pub solution_range: SolutionRange,
     /// Salt
     pub salt: Salt,
     /// Parameters for checking piece validity.
@@ -277,10 +277,10 @@ pub fn derive_randomness(
 
 /// Derives next solution range based on the total era slots and slot probability
 pub fn derive_next_solution_range(
-    start_slot: u64,
-    current_slot: u64,
+    start_slot: SlotNumber,
+    current_slot: SlotNumber,
     slot_probability: (u64, u64),
-    current_solution_range: u64,
+    current_solution_range: SolutionRange,
     era_duration: u64,
 ) -> u64 {
     // calculate total slots within this era
@@ -329,13 +329,13 @@ pub fn derive_next_salt_from_randomness(eon_index: u64, randomness: &Randomness)
 
 /// Derives next eon index if eon index should change based on the current slot.
 pub fn derive_next_eon_index(
-    parent_eon_index: u64,
+    parent_eon_index: EonIndex,
     eon_duration: u64,
-    genesis_slot: u64,
-    current_slot: u64,
-) -> Option<u64> {
+    genesis_slot: SlotNumber,
+    current_slot: SlotNumber,
+) -> Option<EonIndex> {
     // calculate current eon start slot from (eon_index * eon_duration) + genesis_slot
-    let current_eon_start_slot = parent_eon_index
+    let current_eon_start_slot: EonIndex = parent_eon_index
         .checked_mul(eon_duration)
         .and_then(|res| res.checked_add(genesis_slot))
         .expect("eon start slot should fit into u64");

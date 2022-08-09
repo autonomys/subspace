@@ -65,8 +65,8 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RootBlock, Sha256Hash, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
+    PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
@@ -146,9 +146,10 @@ const EON_NEXT_SALT_REVEAL: u64 = EON_DURATION_IN_SLOTS
 
 // We assume initial plot size starts with the a single recorded history segment (which is erasure
 // coded of course, hence `*2`).
-const INITIAL_SOLUTION_RANGE: u64 =
-    u64::MAX / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as u64 * SLOT_PROBABILITY.0
-        / SLOT_PROBABILITY.1;
+const INITIAL_SOLUTION_RANGE: SolutionRange = SolutionRange::MAX
+    / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as SolutionRange
+    * SLOT_PROBABILITY.0
+    / SLOT_PROBABILITY.1;
 
 /// Number of votes expected per block.
 ///
@@ -781,7 +782,7 @@ impl_runtime_apis! {
             Subspace::is_in_block_list(farmer_public_key)
         }
 
-        fn records_root(segment_index: u64) -> Option<Sha256Hash> {
+        fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
             Subspace::records_root(segment_index)
         }
 

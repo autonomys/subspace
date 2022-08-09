@@ -25,11 +25,9 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
-use frame_support::{
-    parameter_types,
-    traits::{ConstU32, ConstU64, CrateVersion, Get},
-    weights::RuntimeDbWeight,
-};
+use frame_support::parameter_types;
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get};
+use frame_support::weights::RuntimeDbWeight;
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
@@ -37,25 +35,25 @@ use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
 pub use sp_core::hash::H256;
 use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
-use sp_runtime::traits::NumberFor;
-use sp_runtime::{
-    create_runtime_str, impl_opaque_keys,
-    traits::{
-        BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
-        GetRuntimeBlockType, Header as HeaderT, IdentityLookup, Verify,
-    },
-    transaction_validity::{
-        InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
-        ValidTransaction,
-    },
-    ApplyExtrinsicResult, Perbill,
+use sp_runtime::traits::{
+    BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
+    GetRuntimeBlockType, Header as HeaderT, IdentityLookup, NumberFor, Verify,
 };
-use sp_std::{marker::PhantomData, prelude::*};
-use sp_trie::{trie_types::TrieDB, PrefixedMemoryDB, StorageProof};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    ValidTransaction,
+};
+use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
+use sp_std::marker::PhantomData;
+use sp_std::prelude::*;
+use sp_trie::trie_types::TrieDB;
+use sp_trie::{PrefixedMemoryDB, StorageProof};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{PIECE_SIZE, RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE};
+use subspace_core_primitives::{
+    RecordsRoot, SegmentIndex, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 use trie_db::{Trie, TrieMut};
 // bench on latest state.
 use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
@@ -901,7 +899,7 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
 
-                fn records_root(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
+                fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
                     <pallet_subspace::Pallet<Runtime>>::records_root(segment_index)
                 }
 
@@ -1161,7 +1159,7 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
 
-                fn records_root(segment_index: u64) -> Option<subspace_core_primitives::Sha256Hash> {
+                fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
                     <pallet_subspace::Pallet<Runtime>>::records_root(segment_index)
                 }
 

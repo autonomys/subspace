@@ -20,13 +20,7 @@
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
-use subspace_core_primitives::Sha256Hash;
-
-/// The cumulative weight of a Subspace block, i.e. sum of block weights starting
-/// at this block until the genesis block.
-///
-/// The closer solution's tag is to the target, the heavier it is.
-type SubspaceBlockWeight = u128;
+use subspace_core_primitives::{BlockWeight, RecordsRoot, SegmentIndex};
 
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
 where
@@ -49,7 +43,7 @@ fn block_weight_key<H: Encode>(block_hash: H) -> Vec<u8> {
 /// Write the cumulative chain-weight of a block to aux storage.
 pub(crate) fn write_block_weight<H, F, R>(
     block_hash: H,
-    block_weight: SubspaceBlockWeight,
+    block_weight: BlockWeight,
     write_aux: F,
 ) -> R
 where
@@ -64,19 +58,19 @@ where
 pub(crate) fn load_block_weight<H: Encode, B: AuxStore>(
     backend: &B,
     block_hash: H,
-) -> ClientResult<Option<SubspaceBlockWeight>> {
+) -> ClientResult<Option<BlockWeight>> {
     load_decode(backend, block_weight_key(block_hash).as_slice())
 }
 
 /// The aux storage key used to store the records root of the given segment.
-fn records_root_key(segment_index: u64) -> Vec<u8> {
+fn records_root_key(segment_index: SegmentIndex) -> Vec<u8> {
     (b"records_root", segment_index).encode()
 }
 
 /// Write the cumulative records root of a segment to aux storage.
 pub(crate) fn write_records_root<F, R>(
-    segment_index: u64,
-    records_root: &Sha256Hash,
+    segment_index: SegmentIndex,
+    records_root: &RecordsRoot,
     write_aux: F,
 ) -> R
 where
@@ -89,7 +83,7 @@ where
 /// Load the cumulative chain-weight associated with a block.
 pub(crate) fn load_records_root<B: AuxStore>(
     backend: &B,
-    segment_index: u64,
-) -> ClientResult<Option<Sha256Hash>> {
+    segment_index: SegmentIndex,
+) -> ClientResult<Option<RecordsRoot>> {
     load_decode(backend, records_root_key(segment_index).as_slice())
 }

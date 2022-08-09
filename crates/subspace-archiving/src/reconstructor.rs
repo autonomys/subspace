@@ -7,8 +7,8 @@ use core::mem;
 use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, PIECE_SIZE,
-    SHA256_HASH_SIZE,
+    ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, SegmentIndex,
+    PIECE_SIZE, SHA256_HASH_SIZE,
 };
 
 /// Reconstructor-related instantiation error.
@@ -54,8 +54,8 @@ pub enum ReconstructorError {
         error("Incorrect segment order, expected index {expected_segment_index}, actual {actual_segment_index}")
     )]
     IncorrectSegmentOrder {
-        expected_segment_index: u64,
-        actual_segment_index: u64,
+        expected_segment_index: SegmentIndex,
+        actual_segment_index: SegmentIndex,
     },
 }
 
@@ -80,7 +80,7 @@ pub struct Reconstructor {
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
     /// Index of last segment added to reconstructor
-    last_segment_index: Option<u64>,
+    last_segment_index: Option<SegmentIndex>,
     /// Partially reconstructed block waiting for more data
     partial_block: Option<Vec<u8>>,
 }
