@@ -172,7 +172,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
     // Create relay client transport and client.
     let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
-    let transport = build_transport(&keypair, timeout, yamux_config, relay_transport).await?;
+    let transport = build_transport(&keypair, timeout, yamux_config, relay_transport)?;
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -251,7 +251,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 }
 
 // Builds the transport stack that LibP2P will communicate over along with a relay client.
-async fn build_transport(
+fn build_transport(
     keypair: &identity::Keypair,
     timeout: Duration,
     yamux_config: YamuxConfig,

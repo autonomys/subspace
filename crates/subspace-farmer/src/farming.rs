@@ -9,10 +9,13 @@ use crate::plot::Plot;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::SinglePlotFarmId;
-use crate::utils::AbortingJoinHandle;
+use crate::utils::{CallOnDrop, JoinOnDrop};
 use futures::future::{Fuse, FusedFuture};
 use futures::{FutureExt, StreamExt};
-use std::sync::mpsc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Instant;
 use subspace_core_primitives::{PublicKey, Salt, Solution};
@@ -29,11 +32,11 @@ const TAGS_SEARCH_LIMIT: usize = 10;
 pub enum FarmingError {
     #[error("jsonrpsee error: {0}")]
     RpcError(Box<dyn std::error::Error + Send + Sync>),
-    #[error("Error joining task: {0}")]
-    JoinTask(tokio::task::JoinError),
     #[error("Plot read error: {0}")]
     PlotRead(std::io::Error),
 }
+
+type FarmingFut = Pin<Box<dyn Future<Output = Result<(), FarmingError>> + Send>>;
 
 /// `Farming` structure is an abstraction of the farming process for a single replica plot farming.
 ///
@@ -41,14 +44,15 @@ pub enum FarmingError {
 ///
 /// At high level it receives a new challenge from the consensus and tries to find solution for it
 /// in its `Commitments` database.
+#[must_use = "doesn't do anything unless `.wait()` method is called"]
 pub struct Farming {
-    handle: Fuse<AbortingJoinHandle<Result<(), FarmingError>>>,
+    farming_fut: Fuse<FarmingFut>,
 }
 
 /// Assumes `plot`, `commitment`, `client` and `identity` are already initialized
 impl Farming {
-    /// Returns an instance of farming, and also starts a concurrent background farming task
-    pub async fn start<T: RpcClient + Sync + Send + 'static>(
+    /// Create new farming instance
+    pub fn create<T: RpcClient + Sync + Send + 'static>(
         single_plot_farm_id: SinglePlotFarmId,
         plot: Plot,
         commitments: Commitments,
@@ -57,14 +61,10 @@ impl Farming {
         identity: Identity,
         reward_address: PublicKey,
     ) -> Self {
-        let (initialized_sender, initialized_receiver) = async_oneshot::oneshot();
-
-        // Get a handle for the background task, so that we can wait on it later if we want to
-        let farming_handle = tokio::spawn(
+        let farming_fut: FarmingFut = Box::pin(
             async move {
                 subscribe_to_slot_info(
                     single_plot_farm_id,
-                    initialized_sender,
                     &client,
                     &plot,
                     &commitments,
@@ -77,20 +77,17 @@ impl Farming {
             .in_current_span(),
         );
 
-        // Wait for initialization to finish, result doesn't matter here
-        let _ = initialized_receiver.await;
-
         Farming {
-            handle: AbortingJoinHandle::new(farming_handle).fuse(),
+            farming_fut: farming_fut.fuse(),
         }
     }
 
     /// Waits for the background farming to finish
     pub async fn wait(&mut self) -> Result<(), FarmingError> {
-        if self.handle.is_terminated() {
+        if self.farming_fut.is_terminated() {
             return Ok(());
         }
-        (&mut self.handle).await.map_err(FarmingError::JoinTask)?
+        (&mut self.farming_fut).await
     }
 }
 
@@ -105,7 +102,6 @@ struct Salts {
 #[allow(clippy::too_many_arguments)]
 async fn subscribe_to_slot_info<T: RpcClient>(
     single_plot_farm_id: SinglePlotFarmId,
-    mut initialized_sender: async_oneshot::Sender<()>,
     client: &T,
     plot: &Plot,
     commitments: &Commitments,
@@ -124,11 +120,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
         .await
         .map_err(FarmingError::RpcError)?;
 
-    if let Err(_closed) = initialized_sender.send(()) {
-        return Ok(());
-    }
-
-    let _reward_signing_task = AbortingJoinHandle::new(tokio::spawn({
+    let reward_signing_fut = {
         let identity = identity.clone();
         let client = client.clone();
 
@@ -162,112 +154,139 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                     }
                 }
             }
+
+            Ok(())
         }
-        .in_current_span()
-    }));
+    };
 
-    let mut salts = Salts::default();
-
-    while let Some(slot_info) = slot_info_notifications.next().await {
-        debug!(?slot_info, "New slot");
-
-        update_commitments(
-            single_plot_farm_id,
-            plot,
-            commitments,
-            &mut salts,
-            &slot_info,
-            &single_disk_semaphore,
-        );
-
-        let maybe_solution_handle = tokio::task::spawn_blocking({
-            let identity = identity.clone();
-            let commitments = commitments.clone();
-            let plot = plot.clone();
+    let notification_handling_fut = async move {
+        let mut salts = Salts::default();
+        let dropped = Arc::new(AtomicBool::new(false));
+        // It is important that `join_handles` comes before `_drop_guard` or else recommitments will
+        // not stop until fully done on drop
+        let mut join_handles = Vec::with_capacity(2);
+        let _drop_guard = CallOnDrop::new({
+            let dropped = Arc::clone(&dropped);
 
             move || {
-                let (local_challenge, target) =
-                    identity.derive_local_challenge_and_target(slot_info.global_challenge);
-
-                // Try to first find a block authoring solution, then if not found try to find a
-                // vote
-                let voting_tags = commitments.find_by_range(
-                    target,
-                    slot_info.voting_solution_range,
-                    slot_info.salt,
-                    TAGS_SEARCH_LIMIT,
-                );
-
-                let maybe_tag = if voting_tags.len() < TAGS_SEARCH_LIMIT {
-                    // We found all tags within voting solution range
-                    voting_tags.into_iter().next()
-                } else {
-                    let (tag, piece_offset) = voting_tags
-                        .into_iter()
-                        .next()
-                        .expect("Due to if condition vector is not empty; qed");
-
-                    if is_within_solution_range(target, tag, slot_info.solution_range) {
-                        // Found a tag within solution range for blocks
-                        Some((tag, piece_offset))
-                    } else {
-                        // There might be something that is within solution range for blocks
-                        commitments
-                            .find_by_range(
-                                target,
-                                slot_info.solution_range,
-                                slot_info.salt,
-                                TAGS_SEARCH_LIMIT,
-                            )
-                            .into_iter()
-                            .next()
-                            .or(Some((tag, piece_offset)))
-                    }
-                };
-
-                match maybe_tag {
-                    Some((tag, piece_offset)) => {
-                        let (encoding, piece_index) = plot
-                            .read_piece_with_index(piece_offset)
-                            .map_err(FarmingError::PlotRead)?;
-                        let solution = Solution {
-                            public_key: identity.public_key().to_bytes().into(),
-                            reward_address,
-                            piece_index,
-                            encoding,
-                            tag_signature: identity.create_tag_signature(tag),
-                            local_challenge,
-                            tag,
-                        };
-                        debug!("Solution found");
-                        trace!(?solution, "Solution found");
-
-                        Ok(Some(solution))
-                    }
-                    None => {
-                        debug!("Solution not found");
-                        Ok(None)
-                    }
-                }
+                dropped.store(true, Ordering::SeqCst);
             }
         });
 
-        let maybe_solution = maybe_solution_handle.await.unwrap()?;
+        while let Some(slot_info) = slot_info_notifications.next().await {
+            debug!(?slot_info, "New slot");
 
-        client
-            .submit_solution_response(SolutionResponse {
-                slot_number: slot_info.slot_number,
-                maybe_solution,
-            })
-            .await
-            .map_err(FarmingError::RpcError)?;
-    }
+            update_commitments(
+                single_plot_farm_id,
+                plot,
+                commitments,
+                &mut salts,
+                &slot_info,
+                &single_disk_semaphore,
+                &mut join_handles,
+                &dropped,
+            );
+
+            let maybe_solution_handle = tokio::task::spawn_blocking({
+                let identity = identity.clone();
+                let commitments = commitments.clone();
+                let plot = plot.clone();
+
+                move || {
+                    let (local_challenge, target) =
+                        identity.derive_local_challenge_and_target(slot_info.global_challenge);
+
+                    // Try to first find a block authoring solution, then if not found try to find a
+                    // vote
+                    let voting_tags = commitments.find_by_range(
+                        target,
+                        slot_info.voting_solution_range,
+                        slot_info.salt,
+                        TAGS_SEARCH_LIMIT,
+                    );
+
+                    let maybe_tag = if voting_tags.len() < TAGS_SEARCH_LIMIT {
+                        // We found all tags within voting solution range
+                        voting_tags.into_iter().next()
+                    } else {
+                        let (tag, piece_offset) = voting_tags
+                            .into_iter()
+                            .next()
+                            .expect("Due to if condition vector is not empty; qed");
+
+                        if is_within_solution_range(target, tag, slot_info.solution_range) {
+                            // Found a tag within solution range for blocks
+                            Some((tag, piece_offset))
+                        } else {
+                            // There might be something that is within solution range for blocks
+                            commitments
+                                .find_by_range(
+                                    target,
+                                    slot_info.solution_range,
+                                    slot_info.salt,
+                                    TAGS_SEARCH_LIMIT,
+                                )
+                                .into_iter()
+                                .next()
+                                .or(Some((tag, piece_offset)))
+                        }
+                    };
+
+                    match maybe_tag {
+                        Some((tag, piece_offset)) => {
+                            let (encoding, piece_index) = plot
+                                .read_piece_with_index(piece_offset)
+                                .map_err(FarmingError::PlotRead)?;
+                            let solution = Solution {
+                                public_key: identity.public_key().to_bytes().into(),
+                                reward_address,
+                                piece_index,
+                                encoding,
+                                tag_signature: identity.create_tag_signature(tag),
+                                local_challenge,
+                                tag,
+                            };
+                            debug!("Solution found");
+                            trace!(?solution, "Solution found");
+
+                            Ok(Some(solution))
+                        }
+                        None => {
+                            debug!("Solution not found");
+                            Ok(None)
+                        }
+                    }
+                }
+            });
+
+            let maybe_solution = maybe_solution_handle.await.unwrap()?;
+
+            client
+                .submit_solution_response(SolutionResponse {
+                    slot_number: slot_info.slot_number,
+                    maybe_solution,
+                })
+                .await
+                .map_err(FarmingError::RpcError)?;
+        }
+
+        Ok(())
+    };
+
+    futures::future::select(
+        Box::pin(reward_signing_fut),
+        Box::pin(notification_handling_fut),
+    )
+    .await
+    .factor_first()
+    .0?;
 
     Ok(())
 }
 
 /// Compare salts in `slot_info` to those known from `salts` and start update plot commitments
 /// accordingly if necessary (in background)
+#[allow(clippy::too_many_arguments)]
 fn update_commitments(
     single_plot_farm_id: SinglePlotFarmId,
     plot: &Plot,
@@ -275,6 +294,8 @@ fn update_commitments(
     salts: &mut Salts,
     slot_info: &SlotInfo,
     single_disk_semaphore: &SingleDiskSemaphore,
+    join_handles: &mut Vec<JoinOnDrop>,
+    must_stop: &Arc<AtomicBool>,
 ) {
     let mut current_recommitment_done_receiver = None;
     // Check if current salt has changed
@@ -293,6 +314,7 @@ fn update_commitments(
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
             let span = info_span!("recommit", new_salt = %hex::encode(salt));
+            let must_stop = Arc::clone(must_stop);
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -306,7 +328,7 @@ fn update_commitments(
                     let started = Instant::now();
                     info!("Salt updated, recommitting in background");
 
-                    if let Err(error) = commitments.create(salt, plot) {
+                    if let Err(error) = commitments.create(salt, plot, &must_stop) {
                         error!(%error, "Failed to create commitment");
                     } else {
                         info!(
@@ -319,8 +341,14 @@ fn update_commitments(
                     let _ = current_recommitment_done_sender.send(());
                 });
 
-            if let Err(error) = result {
-                error!(%error, "Failed to spawn recommitment thread")
+            match result {
+                Ok(join_handle) => {
+                    join_handles.drain_filter(|join_handle| join_handle.is_finished());
+                    join_handles.push(JoinOnDrop::new(join_handle));
+                }
+                Err(error) => {
+                    error!(%error, "Failed to spawn recommitment thread")
+                }
             }
         }
     }
@@ -333,6 +361,7 @@ fn update_commitments(
             let commitments = commitments.clone();
             let single_disk_semaphore = single_disk_semaphore.clone();
             let span = info_span!("recommit", next_salt = %hex::encode(new_next_salt));
+            let must_stop = Arc::clone(must_stop);
 
             let result = thread::Builder::new()
                 .name(format!(
@@ -351,7 +380,7 @@ fn update_commitments(
 
                     let started = Instant::now();
                     info!("Salt will be updated, recommitting in background");
-                    if let Err(error) = commitments.create(new_next_salt, plot) {
+                    if let Err(error) = commitments.create(new_next_salt, plot, &must_stop) {
                         error!(
                             %error,
                             "Recommitting salt in background failed",
@@ -364,8 +393,14 @@ fn update_commitments(
                     );
                 });
 
-            if let Err(error) = result {
-                error!(%error, "Failed to spawn recommitment thread")
+            match result {
+                Ok(join_handle) => {
+                    join_handles.drain_filter(|join_handle| join_handle.is_finished());
+                    join_handles.push(JoinOnDrop::new(join_handle));
+                }
+                Err(error) => {
+                    error!(%error, "Failed to spawn recommitment thread")
+                }
             }
         }
     }

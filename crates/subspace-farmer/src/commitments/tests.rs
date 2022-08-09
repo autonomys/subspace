@@ -2,6 +2,7 @@ use crate::commitments::Commitments;
 use crate::plot::Plot;
 use rand::prelude::*;
 use rand::rngs::StdRng;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Salt, Tag, PIECE_SIZE};
 use tempfile::TempDir;
@@ -33,7 +34,9 @@ fn create() {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot).unwrap();
+    commitments
+        .create(salt, plot, &AtomicBool::new(false))
+        .unwrap();
 
     let (tag, _) = commitments
         .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)
@@ -68,7 +71,9 @@ fn find_by_tag() {
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
 
-    commitments.create(salt, plot).unwrap();
+    commitments
+        .create(salt, plot, &AtomicBool::new(false))
+        .unwrap();
 
     {
         let target = [0u8, 0, 0, 0, 0, 0, 0, 1];
@@ -157,7 +162,9 @@ fn remove_commitments() {
     let commitments = Commitments::new(base_directory.path().join("commitments")).unwrap();
     let piece_indexes = (0..).take(pieces.count()).collect();
     plot.write_many(Arc::new(pieces), piece_indexes).unwrap();
-    commitments.create(salt, plot.clone()).unwrap();
+    commitments
+        .create(salt, plot.clone(), &AtomicBool::new(false))
+        .unwrap();
 
     let (_, offset) = commitments
         .find_by_range(correct_tag, solution_range, salt, TAGS_SEARCH_LIMIT)

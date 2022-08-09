@@ -1,6 +1,7 @@
 use crate::object_mappings::ObjectMappings;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{SinglePlotFarmId, SinglePlotPlotter};
+use crate::utils::JoinOnDrop;
 use futures::StreamExt;
 use parity_scale_codec::Decode;
 use std::{io, thread};
@@ -40,7 +41,7 @@ pub(super) async fn start_archiving(
 
     let span = Span::current();
     // Piece encoding are CPU-intensive operations.
-    thread::Builder::new()
+    let _join_handle = thread::Builder::new()
         .name(format!("dsn-archiving-{single_plot_farm_id}"))
         .spawn({
             move || {
@@ -91,6 +92,7 @@ pub(super) async fn start_archiving(
                 }
             }
         })
+        .map(JoinOnDrop::new)
         .map_err(StartDsnArchivingError::ArchivingThread)?;
 
     info!("Subscribing to pubsub archiving...");

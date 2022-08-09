@@ -11,6 +11,7 @@ use parking_lot::Mutex;
 use rayon::prelude::*;
 use rocksdb::{WriteBatch, DB};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{io, mem};
 use subspace_core_primitives::{Piece, Salt, Tag, PIECE_SIZE, TAG_SIZE};
@@ -95,7 +96,12 @@ impl Commitments {
     }
 
     /// Create commitments for all pieces for a given salt
-    pub fn create(&self, salt: Salt, plot: Plot) -> Result<(), CommitmentError> {
+    pub fn create(
+        &self,
+        salt: Salt,
+        plot: Plot,
+        must_stop: &AtomicBool,
+    ) -> Result<(), CommitmentError> {
         {
             let mut commitment_databases = self.inner.commitment_databases.lock();
 
@@ -133,6 +139,9 @@ impl Commitments {
         let piece_count = plot.piece_count();
         let mut tags_with_offset = Vec::with_capacity(TAGS_WRITE_BATCH_SIZE);
         for batch_start in (0..piece_count).step_by(PLOT_READ_BATCH_SIZE as usize) {
+            if must_stop.load(Ordering::SeqCst) {
+                return Ok(());
+            }
             let pieces_to_process =
                 (batch_start + PLOT_READ_BATCH_SIZE).min(piece_count) - batch_start;
             // TODO: Read next batch while creating tags for the previous one for faster

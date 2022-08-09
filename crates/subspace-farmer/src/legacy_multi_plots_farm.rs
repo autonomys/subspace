@@ -3,7 +3,7 @@ use crate::object_mappings::LegacyObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
-use crate::utils::get_plot_sizes;
+use crate::utils::{get_plot_sizes, CallOnDrop};
 use crate::ws_rpc_server::PieceGetter;
 use futures::stream::{FuturesUnordered, StreamExt};
 use rayon::prelude::*;
@@ -79,9 +79,16 @@ impl LegacyMultiPlotsFarm {
             SingleDiskSemaphore::new(NonZeroU16::try_from(16).expect("Non zero; qed"));
 
         let verification_client = archiving_client.clone();
+        let (farm_creation_start_sender, farm_creation_start_receiver) =
+            std::sync::mpsc::sync_channel(1);
+        // Makes sure background blocking task below is finished before this function's future is
+        // dropped
+        let _farm_creation_start_guard = CallOnDrop::new(move || {
+            let _ = farm_creation_start_receiver.recv();
+        });
         let single_plot_farms = tokio::task::spawn_blocking(move || {
             let handle = Handle::current();
-            plot_sizes
+            let single_plot_farms = plot_sizes
                 .into_par_iter()
                 .enumerate()
                 .map(move |(plot_index, allocated_plotting_space)| {
@@ -116,7 +123,11 @@ impl LegacyMultiPlotsFarm {
                         verification_client: verification_client.clone(),
                     })
                 })
-                .collect::<anyhow::Result<Vec<_>>>()
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            let _ = farm_creation_start_sender.send(());
+
+            anyhow::Ok::<Vec<SinglePlotFarm>>(single_plot_farms)
         })
         .await
         .expect("Not supposed to panic, crash if it does")?;
