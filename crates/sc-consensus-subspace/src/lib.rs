@@ -82,8 +82,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockNumber, RootBlock, Salt, Sha256Hash, Solution, MERKLE_NUM_LEAVES,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    BlockNumber, BlockWeight, RootBlock, Salt, SegmentIndex, Sha256Hash, Solution, SolutionRange,
+    MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
@@ -106,9 +106,9 @@ pub struct NewSlotInfo {
     /// Salt for the next eon
     pub next_salt: Option<Salt>,
     /// Acceptable solution range for block authoring
-    pub solution_range: u64,
+    pub solution_range: SolutionRange,
     /// Acceptable solution range for voting
-    pub voting_solution_range: u64,
+    pub voting_solution_range: SolutionRange,
 }
 
 /// New slot notification with slot information and sender for solution for the slot.
@@ -1055,7 +1055,8 @@ where
             return Err(Error::InvalidSalt(block_hash));
         }
 
-        let segment_index = pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+        let segment_index: SegmentIndex =
+            pre_digest.solution.piece_index / SegmentIndex::from(MERKLE_NUM_LEAVES);
         let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
 
         // This is not a very nice hack due to the fact that at the time first block is produced
@@ -1239,7 +1240,7 @@ where
             );
 
             // Verification of the local challenge was done before this
-            let target = u64::from_be_bytes(
+            let target = SolutionRange::from_be_bytes(
                 derive_target(
                     &PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
                         .expect("Always correct length; qed"),
@@ -1248,9 +1249,12 @@ where
                 )
                 .expect("Verification of the local challenge was done before this; qed"),
             );
-            let tag = u64::from_be_bytes(pre_digest.solution.tag);
+            let tag = SolutionRange::from_be_bytes(pre_digest.solution.tag);
 
-            u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
+            BlockWeight::from(
+                SolutionRange::MAX
+                    - subspace_core_primitives::bidirectional_distance(&target, &tag),
+            )
         };
         let total_weight = parent_weight + added_weight;
 

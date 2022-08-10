@@ -40,8 +40,8 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, Sha256Hash, Solution,
-    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, Salt, SegmentIndex, Solution,
+    SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
@@ -96,7 +96,7 @@ enum ConsensusLog {
     GlobalRandomness(Randomness),
     /// Solution range for this block/era.
     #[codec(index = 2)]
-    SolutionRange(u64),
+    SolutionRange(SolutionRange),
     /// Salt for this block/eon.
     #[codec(index = 3)]
     Salt(Salt),
@@ -105,13 +105,13 @@ enum ConsensusLog {
     NextGlobalRandomness(Randomness),
     /// Solution range for next block/era.
     #[codec(index = 5)]
-    NextSolutionRange(u64),
+    NextSolutionRange(SolutionRange),
     /// Salt for next block/eon.
     #[codec(index = 6)]
     NextSalt(Salt),
     /// Records roots.
     #[codec(index = 7)]
-    RecordsRoot((u64, Sha256Hash)),
+    RecordsRoot((SegmentIndex, RecordsRoot)),
 }
 
 /// Farmer vote.
@@ -348,7 +348,7 @@ sp_api::decl_runtime_apis! {
         fn total_pieces() -> u64;
 
         /// Get the merkle tree root of records for specified segment index
-        fn records_root(segment_index: u64) -> Option<Sha256Hash>;
+        fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot>;
 
         /// Returns `Vec<RootBlock>` if a given extrinsic has them.
         fn extract_root_blocks(ext: &Block::Extrinsic) -> Option<Vec<RootBlock>>;

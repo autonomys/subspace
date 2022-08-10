@@ -26,7 +26,9 @@ use sp_runtime::traits::Zero;
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
-use subspace_core_primitives::{PublicKey, Randomness, Salt, Sha256Hash, Solution};
+use subspace_core_primitives::{
+    EonIndex, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange,
+};
 use subspace_verification::{
     derive_next_eon_index, derive_next_salt_from_randomness, derive_randomness,
 };
@@ -66,10 +68,10 @@ pub trait CompatibleDigestItem: Sized {
     fn as_global_randomness(&self) -> Option<Randomness>;
 
     /// Construct a digest item which contains a solution range.
-    fn solution_range(solution_range: u64) -> Self;
+    fn solution_range(solution_range: SolutionRange) -> Self;
 
     /// If this item is a Subspace solution range, return it.
-    fn as_solution_range(&self) -> Option<u64>;
+    fn as_solution_range(&self) -> Option<SolutionRange>;
 
     /// Construct a digest item which contains a salt.
     fn salt(salt: Salt) -> Self;
@@ -84,10 +86,10 @@ pub trait CompatibleDigestItem: Sized {
     fn as_next_global_randomness(&self) -> Option<Randomness>;
 
     /// Construct a digest item which contains next solution range.
-    fn next_solution_range(solution_range: u64) -> Self;
+    fn next_solution_range(solution_range: SolutionRange) -> Self;
 
     /// If this item is a Subspace next solution range, return it.
-    fn as_next_solution_range(&self) -> Option<u64>;
+    fn as_next_solution_range(&self) -> Option<SolutionRange>;
 
     /// Construct a digest item which contains next salt.
     fn next_salt(salt: Salt) -> Self;
@@ -96,10 +98,10 @@ pub trait CompatibleDigestItem: Sized {
     fn as_next_salt(&self) -> Option<Salt>;
 
     /// Construct a digest item which contains records root.
-    fn records_root(segment_index: u64, records_root: Sha256Hash) -> Self;
+    fn records_root(segment_index: SegmentIndex, records_root: RecordsRoot) -> Self;
 
     /// If this item is a Subspace records root, return it.
-    fn as_records_root(&self) -> Option<(u64, Sha256Hash)>;
+    fn as_records_root(&self) -> Option<(SegmentIndex, RecordsRoot)>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -140,14 +142,14 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn solution_range(solution_range: u64) -> Self {
+    fn solution_range(solution_range: SolutionRange) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
             ConsensusLog::SolutionRange(solution_range).encode(),
         )
     }
 
-    fn as_solution_range(&self) -> Option<u64> {
+    fn as_solution_range(&self) -> Option<SolutionRange> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::SolutionRange(solution_range) = c {
                 Some(solution_range)
@@ -188,14 +190,14 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn next_solution_range(solution_range: u64) -> Self {
+    fn next_solution_range(solution_range: SolutionRange) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
             ConsensusLog::NextSolutionRange(solution_range).encode(),
         )
     }
 
-    fn as_next_solution_range(&self) -> Option<u64> {
+    fn as_next_solution_range(&self) -> Option<SolutionRange> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::NextSolutionRange(solution_range) = c {
                 Some(solution_range)
@@ -219,14 +221,14 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn records_root(segment_index: u64, records_root: Sha256Hash) -> Self {
+    fn records_root(segment_index: SegmentIndex, records_root: RecordsRoot) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
             ConsensusLog::RecordsRoot((segment_index, records_root)).encode(),
         )
     }
 
-    fn as_records_root(&self) -> Option<(u64, Sha256Hash)> {
+    fn as_records_root(&self) -> Option<(SegmentIndex, RecordsRoot)> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::RecordsRoot(records_root) = c {
                 Some(records_root)
@@ -350,17 +352,17 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     /// Global randomness
     pub global_randomness: Randomness,
     /// Solution range
-    pub solution_range: u64,
+    pub solution_range: SolutionRange,
     /// Salt
     pub salt: Salt,
     /// Next global randomness
     pub next_global_randomness: Option<Randomness>,
     /// Next solution range
-    pub next_solution_range: Option<u64>,
+    pub next_solution_range: Option<SolutionRange>,
     /// Next salt
     pub next_salt: Option<Salt>,
     /// Records roots
-    pub records_roots: BTreeMap<u64, Sha256Hash>,
+    pub records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -573,7 +575,7 @@ fn derive_next_global_randomness<Header: HeaderT>(
 
 fn derive_next_salt<Header: HeaderT>(
     eon_duration: u64,
-    current_eon_index: u64,
+    current_eon_index: EonIndex,
     genesis_slot: Slot,
     current_slot: Slot,
     maybe_randomness: Option<Randomness>,
@@ -604,9 +606,9 @@ fn derive_next_solution_range<Header: HeaderT>(
     era_duration: NumberOf<Header>,
     slot_probability: (u64, u64),
     current_slot: Slot,
-    current_solution_range: u64,
+    current_solution_range: SolutionRange,
     era_start_slot: Slot,
-) -> Result<Option<u64>, Error> {
+) -> Result<Option<SolutionRange>, Error> {
     if number.is_zero() || number % era_duration != Zero::zero() {
         return Ok(None);
     }
@@ -643,7 +645,7 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Current Era start slot.
     pub era_start_slot: Slot,
     /// Current eon index.
-    pub current_eon_index: u64,
+    pub current_eon_index: EonIndex,
     /// Randomness used to derive next salt.
     pub maybe_randomness: Option<Randomness>,
 }

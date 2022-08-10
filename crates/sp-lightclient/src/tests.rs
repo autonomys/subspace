@@ -1,7 +1,7 @@
 use crate::mock::{Header, MockStorage};
 use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
-    NumberOf, RecordsRoot, SaltDerivationInfo, SegmentIndex, SolutionRange, Storage,
+    NumberOf, SaltDerivationInfo, Storage,
 };
 use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
@@ -18,7 +18,8 @@ use sp_runtime::{Digest, DigestItem};
 use std::cmp::Ordering;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::{
-    Piece, Randomness, Salt, Solution, Tag, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange, Tag, PIECE_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,

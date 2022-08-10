@@ -36,8 +36,9 @@ use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RootBlock, Salt,
-    Sha256Hash, Solution, Tag, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RecordsRoot,
+    RootBlock, Salt, SegmentIndex, Sha256Hash, Solution, SolutionRange, Tag, PIECE_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
@@ -129,7 +130,7 @@ impl pallet_offences_subspace::Config for Test {
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 pub const SLOT_PROBABILITY: (u64, u64) = (3, 10);
 
-pub const INITIAL_SOLUTION_RANGE: u64 =
+pub const INITIAL_SOLUTION_RANGE: SolutionRange =
     u64::MAX / (1024 * 1024 * 1024 / 4096) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
@@ -334,10 +335,10 @@ pub fn generate_equivocation_proof(
     }
 }
 
-pub fn create_root_block(segment_index: u64) -> RootBlock {
+pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
     RootBlock::V0 {
         segment_index,
-        records_root: Sha256Hash::default(),
+        records_root: RecordsRoot::default(),
         prev_root_block_hash: Sha256Hash::default(),
         last_archived_block: LastArchivedBlock {
             number: 0,

@@ -5,7 +5,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::{RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -35,8 +35,8 @@ pub struct Inner {
     reward_signature_receiver: Arc<Mutex<mpsc::Receiver<RewardSignatureResponse>>>,
     archived_segments_sender: Mutex<Option<mpsc::Sender<ArchivedSegment>>>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
-    acknowledge_archived_segment_sender: mpsc::Sender<u64>,
-    acknowledge_archived_segment_receiver: Arc<Mutex<mpsc::Receiver<u64>>>,
+    acknowledge_archived_segment_sender: mpsc::Sender<SegmentIndex>,
+    acknowledge_archived_segment_receiver: Arc<Mutex<mpsc::Receiver<SegmentIndex>>>,
 }
 
 impl MockRpcClient {
@@ -224,7 +224,10 @@ impl RpcClient for MockRpcClient {
         Ok(Box::pin(receiver))
     }
 
-    async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), MockError> {
+    async fn acknowledge_archived_segment(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<(), MockError> {
         self.inner
             .acknowledge_archived_segment_sender
             .clone()
@@ -234,7 +237,10 @@ impl RpcClient for MockRpcClient {
         Ok(())
     }
 
-    async fn records_roots(&self, _: Vec<u64>) -> Result<Vec<Option<Sha256Hash>>, MockError> {
+    async fn records_roots(
+        &self,
+        _: Vec<SegmentIndex>,
+    ) -> Result<Vec<Option<RecordsRoot>>, MockError> {
         Ok(Default::default())
     }
 }

@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::objects::GlobalObject;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, Sha256Hash};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, SegmentIndex, Sha256Hash};
 use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
@@ -434,8 +434,8 @@ impl RpcServerImpl {
     }
 
     /// Read the whole segment by its index (just records, skipping witnesses)
-    fn read_segment(&self, segment_index: u64) -> Result<Segment, Error> {
-        let first_piece_in_segment = segment_index * u64::from(self.merkle_num_leaves);
+    fn read_segment(&self, segment_index: SegmentIndex) -> Result<Segment, Error> {
+        let first_piece_in_segment = segment_index * SegmentIndex::from(self.merkle_num_leaves);
         let mut segment_bytes =
             Vec::<u8>::with_capacity((self.merkle_num_leaves * self.record_size) as usize);
 

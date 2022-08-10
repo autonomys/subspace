@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::{RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -49,11 +49,11 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, Error>;
 
     /// Acknowledge receiving of archived segments
-    async fn acknowledge_archived_segment(&self, segment_index: u64) -> Result<(), Error>;
+    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> Result<(), Error>;
 
     /// Get records roots for the segments
     async fn records_roots(
         &self,
-        segment_indexes: Vec<u64>,
-    ) -> Result<Vec<Option<Sha256Hash>>, Error>;
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> Result<Vec<Option<RecordsRoot>>, Error>;
 }

@@ -35,7 +35,8 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, Salt, Sha256Hash, MERKLE_NUM_LEAVES, RECORD_SIZE,
+    BlockWeight, EonIndex, PublicKey, Randomness, RecordsRoot, RewardSignature, Salt, SegmentIndex,
+    SolutionRange, MERKLE_NUM_LEAVES, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -48,22 +49,6 @@ mod tests;
 
 #[cfg(test)]
 mod mock;
-
-// TODO(ved): move them to consensus primitives and change usages across
-/// Type of solution range.
-type SolutionRange = u64;
-
-/// BlockWeight type for fork choice rules.
-type BlockWeight = u128;
-
-/// Segment index type.
-type SegmentIndex = u64;
-
-/// Records root type.
-type RecordsRoot = Sha256Hash;
-
-/// Eon Index type.
-type EonIndex = u64;
 
 /// Chain constants.
 #[derive(Debug, Clone)]

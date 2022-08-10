@@ -78,6 +78,23 @@ pub type BlockNumber = u32;
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
 
+/// Type of solution range.
+pub type SolutionRange = u64;
+
+/// BlockWeight type for fork choice rules.
+///
+/// The closer solution's tag is to the target, the heavier it is.
+pub type BlockWeight = u128;
+
+/// Segment index type.
+pub type SegmentIndex = u64;
+
+/// Records root type.
+pub type RecordsRoot = Sha256Hash;
+
+/// Eon Index type.
+pub type EonIndex = u64;
+
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
@@ -427,9 +444,9 @@ pub enum RootBlock {
     #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
     V0 {
         /// Segment index
-        segment_index: u64,
+        segment_index: SegmentIndex,
         /// Merkle root of the records in a segment.
-        records_root: Sha256Hash,
+        records_root: RecordsRoot,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Sha256Hash,
         /// Last archived block
@@ -451,7 +468,7 @@ impl RootBlock {
     }
 
     /// Merkle root of the records in a segment.
-    pub fn records_root(&self) -> Sha256Hash {
+    pub fn records_root(&self) -> RecordsRoot {
         match self {
             Self::V0 { records_root, .. } => *records_root,
         }
