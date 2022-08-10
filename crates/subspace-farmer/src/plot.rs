@@ -344,18 +344,19 @@ impl Plot {
         })?
     }
 
-    /// Returns sequential piece indexes for piece retrieval
-    pub(crate) fn read_sequential_piece_indexes(
+    // TODO: Return (Vec<PieceIndex>, FlatPieces) instead
+    /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
+    pub(crate) fn get_sequential_pieces(
         &self,
         from_index_hash: PieceIndexHash,
         count: u64,
-    ) -> io::Result<Vec<PieceIndex>> {
+    ) -> io::Result<Vec<(PieceIndex, Piece)>> {
         let (result_sender, result_receiver) = mpsc::channel();
 
         self.inner
             .requests_sender
             .send(RequestWithPriority {
-                request: Request::ReadPieceIndexes {
+                request: Request::ReadSequentialPieces {
                     from_index_hash,
                     count,
                     result_sender,
@@ -373,22 +374,6 @@ impl Plot {
                 "Read piece indexes result sender was dropped: {error}",
             ))
         })?
-    }
-
-    // TODO: Return (Vec<PieceIndex>, FlatPieces) instead
-    /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
-    pub(crate) fn get_sequential_pieces(
-        &self,
-        from: PieceIndexHash,
-        count: u64,
-    ) -> io::Result<Vec<(PieceIndex, Piece)>> {
-        self.read_sequential_piece_indexes(from, count)?
-            .into_iter()
-            .map(|index| {
-                self.read_piece(PieceIndexHash::from_index(index))
-                    .map(|piece| (index, piece))
-            })
-            .collect()
     }
 
     pub fn on_progress_change(
