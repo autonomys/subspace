@@ -271,7 +271,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 fn build_transport(
     keypair: &identity::Keypair,
     timeout: Duration,
-    _yamux_config: YamuxConfig, // TODO: choose yamux or mplex
+    yamux_config: YamuxConfig,
     mplex_config: MplexConfig,
     relay_transport: ClientTransport,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
@@ -296,7 +296,10 @@ fn build_transport(
     Ok(transport
         .upgrade(core::upgrade::Version::V1Lazy)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(mplex_config)
+        .multiplex(core::upgrade::SelectUpgrade::new(
+            mplex_config,
+            yamux_config,
+        ))
         .timeout(timeout)
         .boxed())
 }
