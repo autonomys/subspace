@@ -13,6 +13,10 @@ use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
+// Defines max_concurrent_requests constant in the node rpc client.
+// It must be set for large plots.
+const WS_PRC_MAX_CONCURRENT_REQUESTS: usize = 1_000_000;
+
 /// `WsClient` wrapper.
 #[derive(Clone, Debug)]
 pub struct NodeRpcClient {
@@ -22,7 +26,12 @@ pub struct NodeRpcClient {
 impl NodeRpcClient {
     /// Create a new instance of [`RpcClient`].
     pub async fn new(url: &str) -> Result<Self, JsonError> {
-        let client = Arc::new(WsClientBuilder::default().build(url).await?);
+        let client = Arc::new(
+            WsClientBuilder::default()
+                .max_concurrent_requests(WS_PRC_MAX_CONCURRENT_REQUESTS)
+                .build(url)
+                .await?,
+        );
         Ok(Self { client })
     }
 }
