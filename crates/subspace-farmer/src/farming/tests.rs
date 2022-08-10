@@ -9,7 +9,7 @@ use futures::{SinkExt, StreamExt};
 use std::num::NonZeroU16;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, Tag, SHA256_HASH_SIZE};
+use subspace_core_primitives::{FlatPieces, Salt, SolutionRange, Tag, SHA256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
@@ -119,8 +119,8 @@ async fn farming_happy_path() {
         global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
-        solution_range: u64::MAX,
-        voting_solution_range: u64::MAX,
+        solution_range: SolutionRange::MAX,
+        voting_solution_range: SolutionRange::MAX,
     };
     let slots = vec![slot_info];
 
@@ -137,24 +137,24 @@ async fn farming_salt_change() {
         global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
-        solution_range: u64::MAX,
-        voting_solution_range: u64::MAX,
+        solution_range: SolutionRange::MAX,
+        voting_solution_range: SolutionRange::MAX,
     };
     let second_slot = SlotInfo {
         slot_number: 2,
         global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
-        solution_range: u64::MAX,
-        voting_solution_range: u64::MAX,
+        solution_range: SolutionRange::MAX,
+        voting_solution_range: SolutionRange::MAX,
     };
     let third_slot = SlotInfo {
         slot_number: 3,
         global_challenge: [1; SHA256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 2],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
-        solution_range: u64::MAX,
-        voting_solution_range: u64::MAX,
+        solution_range: SolutionRange::MAX,
+        voting_solution_range: SolutionRange::MAX,
     };
     let slots = vec![first_slot, second_slot, third_slot];
 

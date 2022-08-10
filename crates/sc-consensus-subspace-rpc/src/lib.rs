@@ -50,7 +50,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    Sha256Hash, Solution, MERKLE_NUM_LEAVES, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RecordsRoot, SegmentIndex, Solution, MERKLE_NUM_LEAVES, PIECE_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -98,10 +99,13 @@ pub trait SubspaceRpcApi {
     fn subscribe_archived_segment(&self);
 
     #[method(name = "subspace_acknowledgeArchivedSegment")]
-    async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()>;
+    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> RpcResult<()>;
 
     #[method(name = "subspace_recordsRoots")]
-    async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>>;
+    async fn records_roots(
+        &self,
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> RpcResult<Vec<Option<RecordsRoot>>>;
 }
 
 #[derive(Default)]
@@ -118,7 +122,7 @@ struct BlockSignatureSenders {
 
 #[derive(Default)]
 struct ArchivedSegmentAcknowledgementSenders {
-    segment_index: u64,
+    segment_index: SegmentIndex,
     senders: HashMap<u64, TracingUnboundedSender<()>>,
 }
 
@@ -494,7 +498,7 @@ where
         );
     }
 
-    async fn acknowledge_archived_segment(&self, segment_index: u64) -> RpcResult<()> {
+    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> RpcResult<()> {
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
@@ -527,7 +531,10 @@ where
         Ok(())
     }
 
-    async fn records_roots(&self, segment_indexes: Vec<u64>) -> RpcResult<Vec<Option<Sha256Hash>>> {
+    async fn records_roots(
+        &self,
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> RpcResult<Vec<Option<RecordsRoot>>> {
         if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
