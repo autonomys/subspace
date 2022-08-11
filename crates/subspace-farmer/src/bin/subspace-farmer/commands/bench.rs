@@ -150,11 +150,11 @@ pub(crate) async fn bench(
     };
 
     // Starting the relay server node.
-    let (relay_server_node, mut relay_node_runner) =
-        subspace_networking::create(Config {
-            relay_mode: RelayMode::Server,
-            ..Config::with_generated_keypair()
-        }).await?;
+    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
+        relay_mode: RelayMode::Server,
+        ..Config::with_generated_keypair()
+    })
+    .await?;
 
     tokio::spawn(async move {
         relay_node_runner.run().await;

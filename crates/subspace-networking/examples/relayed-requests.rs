@@ -4,7 +4,9 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler, RelayMode};
+use subspace_networking::{
+    BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler, RelayMode,
+};
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;

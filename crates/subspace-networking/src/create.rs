@@ -35,8 +35,8 @@ const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 
 /// Defines relay configuration for the Node
-#[derive(Clone)]
-pub enum RelayMode{
+#[derive(Clone, Debug)]
+pub enum RelayMode {
     /// No relay configured.
     NoRelay,
     /// The node enables the relay behaviour.
@@ -45,16 +45,15 @@ pub enum RelayMode{
     /// It uses a circuit relay server address as a parameter.
     ///
     /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
-    Client(Multiaddr)
+    Client(Multiaddr),
 }
 
 impl RelayMode {
     /// Defines whether the node has its relay behavior enabled.
-    pub fn is_relay_server_enabled(&self)-> bool{
+    pub fn is_relay_server(&self) -> bool {
         matches!(self, RelayMode::Server)
     }
 }
-
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -161,6 +160,9 @@ pub enum CreationError {
     /// Circuit relay client error.
     #[error("Circuit relay client error: {0}")]
     CircuitRelayClient(#[from] CircuitRelayClientError),
+    /// Circuit relay client error.
+    #[error("Expected relay server node.")]
+    RelayServerExpected,
     /// I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -196,7 +198,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let is_relay_server = relay_mode.is_relay_server_enabled();
+        let is_relay_server = relay_mode.is_relay_server();
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,

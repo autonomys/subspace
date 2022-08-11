@@ -597,7 +597,7 @@ impl SinglePlotFarm {
                 trace!("Started waiting for connected peers.");
                 let wait_result = dsn_sync_node.wait_for_connected_peers().await;
 
-                match wait_result{
+                match wait_result {
                     Ok(_) => {
                         trace!("Waiting for connected peers succeeded.");
                     }

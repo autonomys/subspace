@@ -30,7 +30,7 @@ use tracing::{debug, error, trace, warn};
 // Defines a threshold for starting new connection attempts to known peers.
 const CONNECTED_PEERS_THRESHOLD: usize = 10;
 // Defines a protocol name specific for the relay server
-const RELAY_HOP_PROTOCOL_NAME: &[u8; 31] = b"/libp2p/circuit/relay/0.2.0/hop";
+const RELAY_HOP_PROTOCOL_NAME: &[u8] = b"/libp2p/circuit/relay/0.2.0/hop";
 
 enum QueryResultSender {
     GetValue {

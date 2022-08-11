@@ -209,8 +209,7 @@ impl Node {
     }
 
     /// Configures circuit relay client using this node as circuit relay server. It expects Node
-    /// running in the relay server mode (which happens automatically when addresses to listen on
-    /// are provided).
+    /// running in the relay server mode.
     pub async fn spawn(&self, mut config: Config) -> Result<(Node, NodeRunner), CreationError> {
         if self.is_relay_server {
             let relay_server_memory_port = self.get_relay_server_memory_port().await?;
@@ -221,6 +220,8 @@ impl Node {
 
             config.relay_mode = RelayMode::Client(relay_server_address);
             config.parent_node.replace(self.clone());
+        } else {
+            return Err(CreationError::RelayServerExpected);
         }
 
         create(config).await
