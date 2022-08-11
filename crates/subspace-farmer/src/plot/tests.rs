@@ -1,6 +1,5 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE, U256};
 use tempfile::TempDir;
@@ -184,12 +183,8 @@ fn sequential_pieces_iterator() {
         .into_iter()
         .map(|(index, _)| index)
         .take(100)
-        .collect::<BTreeSet<_>>();
-    let expected_piece_indexes = piece_indexes[..got_indexes.len()]
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
-    assert_eq!(got_indexes, expected_piece_indexes);
+        .collect::<Vec<_>>();
+    assert_eq!(got_indexes, piece_indexes[..got_indexes.len()]);
 }
 
 #[test]
@@ -284,13 +279,13 @@ fn test_read_sequential_pieces() {
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         let expected_indexes = piece_index_hashes
             .iter()
             .skip(1)
             .take(2)
             .map(|(_, index)| *index)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         assert_eq!(indexes, expected_indexes);
     }
 
@@ -301,13 +296,13 @@ fn test_read_sequential_pieces() {
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         let expected_indexes = piece_index_hashes
             .iter()
             .skip(3)
             .take(2)
             .map(|(_, index)| *index)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         assert_eq!(indexes, expected_indexes);
     }
 
@@ -318,14 +313,14 @@ fn test_read_sequential_pieces() {
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         // This will wrap around number line, but will not reach the last pieces index hash
         let expected_indexes = piece_index_hashes
             .iter()
             .skip(3)
             .take(2)
             .map(|(_, index)| *index)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         assert_eq!(indexes, expected_indexes);
     }
 
@@ -336,14 +331,14 @@ fn test_read_sequential_pieces() {
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         // This will wrap around number line and capture `max`, but will not go any further
         let expected_indexes = piece_index_hashes
             .iter()
             .skip(4)
             .take(2)
             .map(|(_, index)| *index)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         assert_eq!(indexes, expected_indexes);
     }
 
@@ -354,7 +349,7 @@ fn test_read_sequential_pieces() {
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         // This will wrap around number line, capture `max` and crosses `min`, but will not
         // capture it because it crosses public key itself
         let expected_indexes = piece_index_hashes
@@ -362,7 +357,7 @@ fn test_read_sequential_pieces() {
             .skip(4)
             .take(2)
             .map(|(_, index)| *index)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         assert_eq!(indexes, expected_indexes);
     }
 
@@ -373,12 +368,12 @@ fn test_read_sequential_pieces() {
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         // This should read all piece indexes and nothing else
         let expected_indexes = piece_index_hashes
             .iter()
             .map(|(_, index)| *index)
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
         assert_eq!(indexes, expected_indexes);
     }
 }
