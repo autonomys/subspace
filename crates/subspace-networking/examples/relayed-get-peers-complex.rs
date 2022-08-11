@@ -6,7 +6,7 @@ use libp2p::{identity, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, RelayMode};
 
 #[tokio::main]
 async fn main() {
@@ -16,6 +16,7 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        relay_mode: RelayMode::Server,
         ..Config::with_generated_keypair()
     };
 
@@ -115,7 +116,7 @@ async fn main() {
         node_runner.run().await;
     });
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    node.wait_for_connected_peers().await.unwrap();
 
     // Prepare multihash to look for in Kademlia
     let key = Code::Identity.digest(&expected_kaypair.public().encode());

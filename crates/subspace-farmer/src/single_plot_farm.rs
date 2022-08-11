@@ -591,8 +591,21 @@ impl SinglePlotFarm {
                 sync_range_size,
                 true,
             );
+            let dsn_sync_node = farm.node.clone();
 
             farm.tasks.push(Box::pin(async move {
+                trace!("Started waiting for connected peers.");
+                let wait_result = dsn_sync_node.wait_for_connected_peers().await;
+
+                match wait_result {
+                    Ok(_) => {
+                        trace!("Waiting for connected peers succeeded.");
+                    }
+                    Err(error) => {
+                        error!(?error, "Waiting for connected peers failed.");
+                    }
+                };
+
                 match dsn_sync_fut.await {
                     Ok(()) => {
                         info!("DSN sync done successfully");
