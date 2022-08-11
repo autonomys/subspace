@@ -20,7 +20,16 @@ env:
 
 jobs:
   cargo-fmt:
-    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+    strategy:
+      matrix:
+        os:
+          - ${{
+                github.repository_owner == 'subspace'
+                  && 'self-hosted-ubuntu-2204-amd64-base'
+                  || 'ubuntu-22.04'
+            }}
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -59,9 +68,17 @@ jobs:
     strategy:
       matrix:
         os:
-          - ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+          - ${{ 
+                github.repository_owner == 'subspace' 
+                  && 'self-hosted-ubuntu-2204-amd64-base' 
+                  || 'ubuntu-22.04' 
+            }}
           - macos-12
-          - ${{ github.repository_owner == 'subspace' && 'self-hosted-wnd-ms-servier-2019-10-x64-based' || 'windows-2022' }}
+          - ${{ 
+                github.repository_owner == 'subspace' 
+                  && 'self-hosted-wnd-ms-servier-2019-10-x64-based' 
+                  || 'windows-2022' 
+            }}
 
     runs-on: ${{ matrix.os }}
 
@@ -116,7 +133,17 @@ jobs:
         if: runner.os == 'macOS'
 
   cargo-docs:
-    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+    strategy:
+      matrix:
+        os:
+          - ${{
+                github.repository_owner == 'subspace'
+                  && 'self-hosted-ubuntu-2204-amd64-base'
+                  || 'ubuntu-22.04'
+            }}
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -152,9 +179,17 @@ jobs:
     strategy:
       matrix:
         os:
-          - ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+          - ${{ 
+                github.repository_owner == 'subspace' 
+                  && 'self-hosted-ubuntu-2204-amd64-base' 
+                  || 'ubuntu-22.04' 
+            }}
           - macos-12
-          - ${{ github.repository_owner == 'subspace' && 'self-hosted-wnd-ms-servier-2019-10-x64-based' || 'windows-2022' }}
+          - ${{
+                github.repository_owner == 'subspace' 
+                  && 'self-hosted-wnd-ms-servier-2019-10-x64-based' 
+                  || 'windows-2022' 
+            }}
 
     runs-on: ${{ matrix.os }}
 

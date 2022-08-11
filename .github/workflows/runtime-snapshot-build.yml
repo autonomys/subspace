@@ -13,7 +13,17 @@ on:
 
 jobs:
   runtime:
-    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+    strategy:
+      matrix:
+        os:
+          - ${{
+                github.repository_owner == 'subspace'
+                  && 'self-hosted-ubuntu-2204-amd64-base'
+                  || 'ubuntu-22.04'
+            }}
+
+    runs-on: ${{ matrix.os }}
+
     permissions:
       contents: write
       packages: write

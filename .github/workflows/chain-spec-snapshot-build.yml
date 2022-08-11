@@ -13,7 +13,11 @@ on:
 
 jobs:
   chains-spec:
-    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+    runs-on: ${{ 
+                 github.repository_owner == 'subspace' 
+                   && 'self-hosted-ubuntu-2204-amd64-base' 
+                   || 'ubuntu-22.04' 
+             }}
     permissions:
       contents: write
       packages: write

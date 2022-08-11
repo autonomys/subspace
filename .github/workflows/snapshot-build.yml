@@ -18,12 +18,17 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
     permissions:
       contents: write
       packages: write
     strategy:
       matrix:
+        os:
+          - ${{
+                github.repository_owner == 'subspace'
+                  && 'self-hosted-ubuntu-2204-amd64-base'
+                  || 'ubuntu-22.04'
+            }}
         image:
           - farmer
           - node
@@ -37,6 +42,8 @@ jobs:
             dockerfile-suffix: '.aarch64'
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             image-suffix: '-aarch64'
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Set up QEMU
@@ -81,7 +88,11 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ${{ github.repository_owner == 'subspace' && 'self-hosted-ubuntu-2204-amd64-base' || 'ubuntu-22.04' }}
+          - os: ${{ 
+                    github.repository_owner == 'subspace' 
+                      && 'self-hosted-ubuntu-2204-amd64-base' 
+                      || 'ubuntu-22.04' 
+                }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             rustflags: ''
@@ -97,7 +108,11 @@ jobs:
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             rustflags: ''
-          - os: ${{ github.repository_owner == 'subspace' && 'self-hosted-wnd-ms-servier-2019-10-x64-based' || 'windows-2022' }}
+          - os: ${{ 
+                    github.repository_owner == 'subspace' 
+                      && 'self-hosted-wnd-ms-servier-2019-10-x64-based' 
+                      || 'windows-2022' 
+                }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-${{ github.ref_name }}
             rustflags: ''
