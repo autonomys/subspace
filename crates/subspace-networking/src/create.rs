@@ -34,6 +34,28 @@ use tracing::info;
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 
+/// Defines relay configuration for the Node
+#[derive(Clone)]
+pub enum RelayMode{
+    /// No relay configured.
+    NoRelay,
+    /// The node enables the relay behaviour.
+    Server,
+    /// Client relay configuration (enables relay client behavior).
+    /// It uses a circuit relay server address as a parameter.
+    ///
+    /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
+    Client(Multiaddr)
+}
+
+impl RelayMode {
+    /// Defines whether the node has its relay behavior enabled.
+    pub fn is_relay_server_enabled(&self)-> bool{
+        matches!(self, RelayMode::Server)
+    }
+}
+
+
 /// [`Node`] configuration.
 #[derive(Clone)]
 pub struct Config {
@@ -60,10 +82,8 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// Circuit relay server address.
-    ///
-    /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
-    pub relay_server_address: Option<Multiaddr>,
+    /// Defines relay mode for the Node,
+    pub relay_mode: RelayMode,
     /// Parent node instance (if any) to keep alive.
     ///
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
@@ -127,7 +147,7 @@ impl Config {
             yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            relay_server_address: None,
+            relay_mode: RelayMode::NoRelay,
             parent_node: None,
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
@@ -163,7 +183,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         yamux_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        relay_server_address,
+        relay_mode,
         parent_node,
         networking_parameters_registry,
         request_response_protocols,
@@ -176,7 +196,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let is_relay_server = !listen_on.is_empty() && relay_server_address.is_none();
+        let is_relay_server = relay_mode.is_relay_server_enabled();
 
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
@@ -215,10 +235,11 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         }
 
         // Setup relay addresses
-        if let Some(relay_server_address) = relay_server_address {
+        if let RelayMode::Client(relay_server_address) = relay_mode {
             // Setup circuit for the accepting relay client. This will reserve a circuit.
             swarm.listen_on(relay_server_address)?;
         }
+
         if is_relay_server {
             // Will potentially act as relay server for which memory transport is necessary
             swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;

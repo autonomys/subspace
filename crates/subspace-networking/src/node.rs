@@ -1,4 +1,4 @@
-use crate::create::{create, Config, CreationError};
+use crate::create::{create, Config, CreationError, RelayMode};
 use crate::node_runner::NodeRunner;
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_responses;
@@ -212,14 +212,16 @@ impl Node {
     /// running in the relay server mode (which happens automatically when addresses to listen on
     /// are provided).
     pub async fn spawn(&self, mut config: Config) -> Result<(Node, NodeRunner), CreationError> {
-        let relay_server_memory_port = self.get_relay_server_memory_port().await?;
+        if self.is_relay_server {
+            let relay_server_memory_port = self.get_relay_server_memory_port().await?;
 
-        config.relay_server_address.replace(
-            Multiaddr::from(Protocol::Memory(relay_server_memory_port))
+            let relay_server_address = Multiaddr::from(Protocol::Memory(relay_server_memory_port))
                 .with(Protocol::P2p(self.id().into()))
-                .with(Protocol::P2pCircuit),
-        );
-        config.parent_node.replace(self.clone());
+                .with(Protocol::P2pCircuit);
+
+            config.relay_mode = RelayMode::Client(relay_server_address);
+            config.parent_node.replace(self.clone());
+        }
 
         create(config).await
     }
