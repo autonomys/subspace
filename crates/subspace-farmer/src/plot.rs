@@ -354,12 +354,7 @@ impl Plot {
         count: u64,
     ) -> io::Result<Vec<(PieceIndex, Piece)>> {
         let (result_sender, result_receiver) = mpsc::channel();
-
-        let mut pieces = Vec::with_capacity(count as usize);
-        for count in std::iter::repeat(Self::PIECES_PER_REQUEST)
-            .take((count / Self::PIECES_PER_REQUEST) as usize)
-            .chain(std::iter::once(count % Self::PIECES_PER_REQUEST))
-        {
+        let receive_pieces = |from_index_hash, count| {
             self.inner
                 .requests_sender
                 .send(RequestWithPriority {
@@ -376,21 +371,35 @@ impl Plot {
                     ))
                 })?;
 
-            let new_pieces = result_receiver.recv().map_err(|error| {
+            result_receiver.recv().map_err(|error| {
                 io::Error::other(format!(
                     "Read piece indexes result sender was dropped: {error}",
                 ))
-            })??;
+            })?
+        };
 
-            if new_pieces.is_empty() {
-                break;
+        let mut pieces = Vec::with_capacity(count as usize);
+        for count in std::iter::repeat(Self::PIECES_PER_REQUEST)
+            .take((count / Self::PIECES_PER_REQUEST) as usize)
+        {
+            let mut new_pieces = receive_pieces(from_index_hash, count)?;
+            if count > new_pieces.len() as u64 {
+                pieces.extend(new_pieces);
+                return Ok(pieces);
             }
 
             from_index_hash = new_pieces
-                .last()
-                .map(|(idx, _)| PieceIndexHash::from_index(*idx))
+                .pop()
+                .map(|(idx, _)| PieceIndexHash::from_index(idx))
                 .expect("Vector is not empty");
             pieces.extend(new_pieces)
+        }
+
+        if count % Self::PIECES_PER_REQUEST != 0 {
+            pieces.extend(receive_pieces(
+                from_index_hash,
+                count % Self::PIECES_PER_REQUEST,
+            )?);
         }
 
         Ok(pieces)
