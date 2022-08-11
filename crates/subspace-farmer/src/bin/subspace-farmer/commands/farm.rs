@@ -15,7 +15,7 @@ use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::Config;
+use subspace_networking::{Config, RelayMode};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::signal;
 use tracing::{info, trace, warn};
@@ -111,6 +111,7 @@ pub(crate) async fn farm_multi_disk(
     let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
         listen_on,
         allow_non_globals_in_dht: true,
+        relay_mode: RelayMode::Server,
         ..Config::with_generated_keypair()
     })
     .await?;
@@ -347,6 +348,7 @@ pub(crate) async fn farm_legacy(
     let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
         listen_on,
         allow_non_globals_in_dht: true,
+        relay_mode: RelayMode::Server,
         ..Config::with_generated_keypair()
     })
     .await?;

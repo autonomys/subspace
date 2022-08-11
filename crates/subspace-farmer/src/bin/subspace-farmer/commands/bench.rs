@@ -20,7 +20,7 @@ use subspace_farmer::legacy_multi_plots_farm::{
 use subspace_farmer::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::{LegacyObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
-use subspace_networking::Config;
+use subspace_networking::{Config, RelayMode};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
@@ -151,7 +151,10 @@ pub(crate) async fn bench(
 
     // Starting the relay server node.
     let (relay_server_node, mut relay_node_runner) =
-        subspace_networking::create(Config::with_generated_keypair()).await?;
+        subspace_networking::create(Config {
+            relay_mode: RelayMode::Server,
+            ..Config::with_generated_keypair()
+        }).await?;
 
     tokio::spawn(async move {
         relay_node_runner.run().await;

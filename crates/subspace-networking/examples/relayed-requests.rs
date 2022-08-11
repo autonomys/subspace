@@ -4,9 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler,
-};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler, RelayMode};
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;
@@ -28,6 +26,7 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
+        relay_mode: RelayMode::Server,
         ..Config::with_generated_keypair()
     };
 
