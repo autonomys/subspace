@@ -307,6 +307,17 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // verify next digest items
         let constants = self.store.chain_constants();
+        let genesis_slot = self.find_genesis_slot(&header)?;
+        // re-check if the salt was revealed and eon also changes with this header, then derive randomness
+        let parent_salt_derivation_info = SaltDerivationInfo {
+            eon_index: parent_header.salt_derivation_info.eon_index,
+            maybe_randomness: parent_header.salt_derivation_info.maybe_randomness.or(self
+                .randomness_for_next_salt(
+                    parent_header.salt_derivation_info.eon_index,
+                    genesis_slot,
+                    &digests.pre_digest,
+                )?),
+        };
         verify_next_digests::<Header>(NextDigestsVerificationParams {
             number: *header.number(),
             header_digests: &digests,
@@ -314,10 +325,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             era_duration: constants.era_duration,
             slot_probability: constants.slot_probability,
             eon_duration: constants.eon_duration,
-            genesis_slot: self.find_genesis_slot(&header)?,
+            genesis_slot,
             era_start_slot: parent_header.era_start_slot,
-            current_eon_index: parent_header.salt_derivation_info.eon_index,
-            maybe_randomness: parent_header.salt_derivation_info.maybe_randomness,
+            current_eon_index: parent_salt_derivation_info.eon_index,
+            maybe_randomness: parent_salt_derivation_info.maybe_randomness,
         })?;
 
         // slot must be strictly increasing from the parent header
@@ -376,7 +387,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // TODO(ved); extract an equivocations from the header
 
         let salt_derivation_info =
-            self.next_salt_derivation_info(&header, &parent_header.salt_derivation_info)?;
+            self.next_salt_derivation_info(&header, &parent_salt_derivation_info)?;
 
         // check if era has changed
         let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
