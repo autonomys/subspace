@@ -344,36 +344,56 @@ impl Plot {
         })?
     }
 
+    const PIECES_PER_REQUEST: u64 = 1000;
+
     // TODO: Return (Vec<PieceIndex>, FlatPieces) instead
     /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
     pub(crate) fn get_sequential_pieces(
         &self,
-        from_index_hash: PieceIndexHash,
+        mut from_index_hash: PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<(PieceIndex, Piece)>> {
         let (result_sender, result_receiver) = mpsc::channel();
 
-        self.inner
-            .requests_sender
-            .send(RequestWithPriority {
-                request: Request::ReadSequentialPieces {
-                    from_index_hash,
-                    count,
-                    result_sender,
-                },
-                priority: RequestPriority::Low,
-            })
-            .map_err(|error| {
-                io::Error::other(format!(
-                    "Failed sending read piece indexes request: {error}"
-                ))
-            })?;
+        let mut pieces = Vec::with_capacity(count as usize);
+        for count in std::iter::repeat(Self::PIECES_PER_REQUEST)
+            .take((count / Self::PIECES_PER_REQUEST) as usize)
+            .chain(std::iter::once(count % Self::PIECES_PER_REQUEST))
+        {
+            self.inner
+                .requests_sender
+                .send(RequestWithPriority {
+                    request: Request::ReadSequentialPieces {
+                        from_index_hash,
+                        count,
+                        result_sender: result_sender.clone(),
+                    },
+                    priority: RequestPriority::Low,
+                })
+                .map_err(|error| {
+                    io::Error::other(format!(
+                        "Failed sending read piece indexes request: {error}"
+                    ))
+                })?;
 
-        result_receiver.recv().map_err(|error| {
-            io::Error::other(format!(
-                "Read piece indexes result sender was dropped: {error}",
-            ))
-        })?
+            let new_pieces = result_receiver.recv().map_err(|error| {
+                io::Error::other(format!(
+                    "Read piece indexes result sender was dropped: {error}",
+                ))
+            })??;
+
+            if new_pieces.is_empty() {
+                break;
+            }
+
+            from_index_hash = new_pieces
+                .last()
+                .map(|(idx, _)| PieceIndexHash::from_index(*idx))
+                .expect("Vector is not empty");
+            pieces.extend(new_pieces)
+        }
+
+        Ok(pieces)
     }
 
     pub fn on_progress_change(

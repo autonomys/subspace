@@ -173,7 +173,7 @@ impl<T: PlotFile> PlotWorker<T> {
                             result_sender,
                         } => {
                             let result = self
-                                .read_piece_indexes_and_offsets(from_index_hash, count)
+                                .read_piece_offsets_and_indexes(from_index_hash, count)
                                 .and_then(|mut indexes_and_offsets| {
                                     indexes_and_offsets.sort_by_key(|(off, _)| *off);
                                     indexes_and_offsets
@@ -182,7 +182,13 @@ impl<T: PlotFile> PlotWorker<T> {
                                             let mut buf = Piece::default();
                                             self.plot.read(off, &mut buf).map(|()| (idx, buf))
                                         })
-                                        .collect()
+                                        .collect::<Result<Vec<_>, _>>()
+                                        .map(|mut vec| {
+                                            vec.sort_by_key(|(idx, _)| {
+                                                PieceIndexHash::from_index(*idx)
+                                            });
+                                            vec
+                                        })
                                 });
                             let _ = result_sender.send(result);
                         }
@@ -329,7 +335,7 @@ impl<T: PlotFile> PlotWorker<T> {
         })
     }
 
-    fn read_piece_indexes_and_offsets(
+    fn read_piece_offsets_and_indexes(
         &mut self,
         from: PieceIndexHash,
         count: u64,
