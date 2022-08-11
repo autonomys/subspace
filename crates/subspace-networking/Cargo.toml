@@ -48,6 +48,7 @@ features = [
     "gossipsub",
     "identify",
     "kad",
+    "mplex",
     "noise",
     "ping",
     "relay",

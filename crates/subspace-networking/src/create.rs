@@ -15,6 +15,7 @@ use libp2p::gossipsub::{
 };
 use libp2p::identify::IdentifyConfig;
 use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
+use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
@@ -33,6 +34,9 @@ use tracing::info;
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
+// Defines max_negotiating_inbound_streams constant for the swarm.
+// It must be set for large plots.
+const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 
 /// [`Node`] configuration.
 #[derive(Clone)]
@@ -56,6 +60,8 @@ pub struct Config {
     pub value_getter: ValueGetter,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
+    /// Mplex multiplexing configuration.
+    pub mplex_config: MplexConfig,
     /// Should non-global addresses be added to the DHT?
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
@@ -99,6 +105,8 @@ impl Config {
         // consumed.
         yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
+        let mplex_config = MplexConfig::default();
+
         let gossipsub = GossipsubConfigBuilder::default()
             .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
             // TODO: Do we want message signing?
@@ -124,13 +132,14 @@ impl Config {
             kademlia,
             gossipsub,
             value_getter: Arc::new(|_key| None),
-            yamux_config,
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             relay_server_address: None,
             parent_node: None,
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
+            yamux_config,
+            mplex_config,
         }
     }
 }
@@ -161,6 +170,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         gossipsub,
         value_getter,
         yamux_config,
+        mplex_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
         relay_server_address,
@@ -172,7 +182,13 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
     // Create relay client transport and client.
     let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
-    let transport = build_transport(&keypair, timeout, yamux_config, relay_transport)?;
+    let transport = build_transport(
+        &keypair,
+        timeout,
+        yamux_config,
+        mplex_config,
+        relay_transport,
+    )?;
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -193,6 +209,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             .executor(Box::new(|fut| {
                 tokio::spawn(fut);
             }))
+            .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
             .build();
 
         // Setup listen_on addresses
@@ -255,6 +272,7 @@ fn build_transport(
     keypair: &identity::Keypair,
     timeout: Duration,
     yamux_config: YamuxConfig,
+    mplex_config: MplexConfig,
     relay_transport: ClientTransport,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
@@ -278,7 +296,10 @@ fn build_transport(
     Ok(transport
         .upgrade(core::upgrade::Version::V1Lazy)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(yamux_config)
+        .multiplex(core::upgrade::SelectUpgrade::new(
+            mplex_config,
+            yamux_config,
+        ))
         .timeout(timeout)
         .boxed())
 }
