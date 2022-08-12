@@ -382,16 +382,19 @@ impl Plot {
         for count in std::iter::repeat(Self::PIECES_PER_REQUEST)
             .take((count / Self::PIECES_PER_REQUEST) as usize)
         {
-            let mut new_pieces = receive_pieces(from_index_hash, count)?;
+            let new_pieces = receive_pieces(from_index_hash, count)?;
             if count > new_pieces.len() as u64 {
                 pieces.extend(new_pieces);
                 return Ok(pieces);
             }
 
             from_index_hash = new_pieces
-                .pop()
-                .map(|(idx, _)| PieceIndexHash::from_index(idx))
+                .last()
+                .map(|(idx, _)| PieceIndexHash::from_index(*idx))
                 .expect("Vector is not empty");
+            from_index_hash = U256::from(from_index_hash)
+                .saturating_add(&U256::one())
+                .into();
             pieces.extend(new_pieces)
         }
 
