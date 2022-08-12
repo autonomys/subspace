@@ -342,7 +342,7 @@ impl<T: PlotFile> PlotWorker<T> {
         let mut piece_index_hashes_and_offsets = self
             .piece_index_hash_to_offset_db
             .get_sequential(from, count as usize);
-        piece_index_hashes_and_offsets.sort_by_key(|(_, off)| *off);
+        piece_index_hashes_and_offsets.sort_unstable_by_key(|(_, off)| *off);
         piece_index_hashes_and_offsets
             .into_iter()
             .map(|(_, offset)| {
