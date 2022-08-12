@@ -10,7 +10,7 @@ pub struct PeerInfoRequest;
 pub enum PeerSyncStatus {
     /// Synchronization is not supported for this peer.
     NotSupported,
-    /// Peer is ready to provide data for the synchronization.
+    /// Peer is ready to provide data for synchronization.
     Ready,
     /// Peer is synchronizing itself.
     Syncing,

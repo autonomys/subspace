@@ -2,12 +2,16 @@ use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
+use scopeguard::guard;
 use std::ops::Range;
 use subspace_core_primitives::{
     FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::core::multihash::{Code, MultihashDigest};
-use subspace_networking::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::libp2p::PeerId;
+use subspace_networking::{
+    PeerInfoRequest, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+};
 use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
@@ -91,6 +95,12 @@ pub struct SyncOptions {
 pub trait DSNSync {
     type Error: std::error::Error + Send + Sync + 'static;
 
+    /// Notifies about the start of the peer synchronization from the DSN.
+    fn notify_sync_start(&self);
+
+    /// Notifies about the end of the peer synchronization from the DSN.
+    fn notify_sync_end(&self);
+
     /// Get pieces from the network which fall within the range
     async fn get_pieces(
         &mut self,
@@ -106,6 +116,10 @@ pub struct NoSync;
 impl DSNSync for NoSync {
     type Error = std::convert::Infallible;
 
+    fn notify_sync_start(&self) {}
+
+    fn notify_sync_end(&self) {}
+
     async fn get_pieces(
         &mut self,
         _range: Range<PieceIndexHash>,
@@ -117,6 +131,14 @@ impl DSNSync for NoSync {
 #[async_trait::async_trait]
 impl DSNSync for subspace_networking::Node {
     type Error = GetPiecesByRangeError;
+
+    fn notify_sync_start(&self) {
+        self.sync_status_handler().toggle_on();
+    }
+
+    fn notify_sync_end(&self) {
+        self.sync_status_handler().toggle_off();
+    }
 
     async fn get_pieces(
         &mut self,
@@ -137,10 +159,42 @@ impl DSNSync for subspace_networking::Node {
             .await
             .map_err(GetPiecesByRangeError::CannotGetClosestPeers)?;
 
-        // select first peer for the piece-by-range protocol
-        let peer_id = *peers
-            .first()
-            .ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
+        // select appropriate peer for the piece-by-range protocol
+        if peers.is_empty() {
+            return Err(GetPiecesByRangeError::NoClosestPiecesFound);
+        }
+
+        let mut peer_id: Option<PeerId> = None;
+        for peer_id_candidate in peers {
+            let result = self
+                .send_generic_request(peer_id_candidate, PeerInfoRequest)
+                .await;
+
+            trace!(
+                peer_id = %peer_id_candidate,
+                "Peer info request returned {:?}",
+                result
+            );
+
+            match result {
+                Ok(response) => {
+                    if response.peer_info.status == PeerSyncStatus::Ready {
+                        peer_id = Some(peer_id_candidate);
+                    } else {
+                        trace!(
+                            peer_id = %peer_id_candidate,
+                            status = ?response.peer_info.status,
+                            "Peer was not selected for synchronization."
+                        );
+                    }
+                }
+                Err(err) => {
+                    error!(peer_id = %peer_id_candidate, %err, "Peer info request returned an error");
+                }
+            }
+        }
+
+        let peer_id = peer_id.ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
 
         trace!(%peer_id, ?start, ?end, "Peer found");
 
@@ -218,11 +272,15 @@ pub trait OnSync {
 }
 
 /// Syncs the closest pieces to the public key from the provided DSN.
-pub async fn sync<DSN, OP>(mut dsn: DSN, options: SyncOptions, on_sync: OP) -> anyhow::Result<()>
+pub async fn sync<DSN, OP>(dsn: DSN, options: SyncOptions, on_sync: OP) -> anyhow::Result<()>
 where
     DSN: DSNSync + Send + Sized,
     OP: OnSync,
 {
+    dsn.notify_sync_start();
+    // We redefine dsn variable to call notify_sync_end() at return of the scope or panic
+    let mut dsn = guard(dsn, |dsn| dsn.notify_sync_end());
+
     let SyncOptions {
         max_plot_size,
         total_pieces,

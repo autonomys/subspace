@@ -8000,6 +8000,7 @@ dependencies = [
  "rayon",
  "rocksdb",
  "schnorrkel",
+ "scopeguard",
  "serde",
  "serde_json",
  "ss58-registry",
