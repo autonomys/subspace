@@ -63,8 +63,8 @@ Installing OpenCL GPU drivers or using farmer executable without `opencl` in fil
 .\NODE_FILE_NAME.exe `
 --chain gemini-1 `
 --execution wasm `
---pruning 1024 `
---keep-blocks 1024 `
+--blocks-pruning 1024 `
+--state-pruning 1024 `
 --validator `
 --name INSERT_YOUR_ID
 ```
@@ -132,8 +132,8 @@ GPU is not required generally for farmer to work and is not used at all after in
 ./NODE_FILE_NAME \
   --chain gemini-1 \
   --execution wasm \
-  --pruning 1024 \
-  --keep-blocks 1024 \
+  --blocks-pruning 1024 \
+  --state-pruning 1024 \
   --validator \
   --name INSERT_YOUR_ID
 ```
@@ -185,8 +185,8 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ./NODE_FILE_NAME \
   --chain gemini-1 \
   --execution wasm \
-  --pruning 1024 \
-  --keep-blocks 1024 \
+  --blocks-pruning 1024 \
+  --state-pruning 1024 \
   --validator \
   --name INSERT_YOUR_ID
 ```
@@ -246,8 +246,8 @@ services:
       "--chain", "gemini-1",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
-      "--pruning", "1024",
-      "--keep-blocks", "1024",
+      "--blocks-pruning", "1024",
+      "--state-pruning", "1024",
       "--port", "30333",
       "--rpc-cors", "all",
       "--rpc-methods", "safe",
@@ -365,11 +365,11 @@ Examples:
 Instructions above will get you full node (doesn't store the history and state of the whole blockchain, only last 1024
 blocks). If you want to opt in to storing the whole history (archival node), remove following parameters (lines) from
 above instructions before starting your node:
-* `--pruning 1024`
-* `--keep-blocks 1024`
+* `--blocks-pruning 1024`
+* `--state-pruning 1024`
 
 And instead add this:
-* `--pruning archive`
+* `--state-pruning archive-canonical`
 
 Archival node is useful if you run an RPC node and want to support querying older blockchain history.
 
