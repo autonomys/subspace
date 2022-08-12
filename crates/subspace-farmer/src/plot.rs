@@ -113,6 +113,8 @@ impl fmt::Debug for Plot {
 }
 
 impl Plot {
+    const PIECES_PER_REQUEST: u64 = 1000;
+
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create(
         single_plot_farm_id: &SinglePlotFarmId,
@@ -344,51 +346,66 @@ impl Plot {
         })?
     }
 
-    /// Returns sequential piece indexes for piece retrieval
-    pub(crate) fn read_sequential_piece_indexes(
-        &self,
-        from_index_hash: PieceIndexHash,
-        count: u64,
-    ) -> io::Result<Vec<PieceIndex>> {
-        let (result_sender, result_receiver) = mpsc::channel();
-
-        self.inner
-            .requests_sender
-            .send(RequestWithPriority {
-                request: Request::ReadPieceIndexes {
-                    from_index_hash,
-                    count,
-                    result_sender,
-                },
-                priority: RequestPriority::Low,
-            })
-            .map_err(|error| {
-                io::Error::other(format!(
-                    "Failed sending read piece indexes request: {error}"
-                ))
-            })?;
-
-        result_receiver.recv().map_err(|error| {
-            io::Error::other(format!(
-                "Read piece indexes result sender was dropped: {error}",
-            ))
-        })?
-    }
-
     // TODO: Return (Vec<PieceIndex>, FlatPieces) instead
     /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
     pub(crate) fn get_sequential_pieces(
         &self,
-        from: PieceIndexHash,
+        mut from_index_hash: PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<(PieceIndex, Piece)>> {
-        self.read_sequential_piece_indexes(from, count)?
-            .into_iter()
-            .map(|index| {
-                self.read_piece(PieceIndexHash::from_index(index))
-                    .map(|piece| (index, piece))
-            })
-            .collect()
+        let (result_sender, result_receiver) = mpsc::channel();
+        let receive_pieces = |from_index_hash, count| {
+            self.inner
+                .requests_sender
+                .send(RequestWithPriority {
+                    request: Request::ReadSequentialPieces {
+                        from_index_hash,
+                        count,
+                        result_sender: result_sender.clone(),
+                    },
+                    priority: RequestPriority::Low,
+                })
+                .map_err(|error| {
+                    io::Error::other(format!(
+                        "Failed sending read piece indexes request: {error}"
+                    ))
+                })?;
+
+            result_receiver.recv().map_err(|error| {
+                io::Error::other(format!(
+                    "Read piece indexes result sender was dropped: {error}",
+                ))
+            })?
+        };
+
+        let mut pieces = Vec::with_capacity(count as usize);
+        for count in std::iter::repeat(Self::PIECES_PER_REQUEST)
+            .take((count / Self::PIECES_PER_REQUEST) as usize)
+        {
+            let new_pieces = receive_pieces(from_index_hash, count)?;
+            if count > new_pieces.len() as u64 {
+                pieces.extend(new_pieces);
+                return Ok(pieces);
+            }
+
+            from_index_hash = new_pieces
+                .last()
+                .map(|(idx, _)| PieceIndexHash::from_index(*idx))
+                .expect("Vector is not empty");
+            from_index_hash = U256::from(from_index_hash)
+                .saturating_add(&U256::one())
+                .into();
+            pieces.extend(new_pieces)
+        }
+
+        if count % Self::PIECES_PER_REQUEST != 0 {
+            pieces.extend(receive_pieces(
+                from_index_hash,
+                count % Self::PIECES_PER_REQUEST,
+            )?);
+        }
+
+        Ok(pieces)
     }
 
     pub fn on_progress_change(

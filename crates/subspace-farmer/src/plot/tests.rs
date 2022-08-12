@@ -1,7 +1,7 @@
 use crate::plot::{PieceDistance, Plot};
 use rand::prelude::*;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE, U256};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE, U256};
 use tempfile::TempDir;
 
 fn init() {
@@ -267,17 +267,19 @@ fn test_read_sequential_pieces() {
     // Zero count should return no indexes
     {
         let indexes = plot
-            .read_sequential_piece_indexes(PieceIndexHash::from([0; 32]), 0)
+            .get_sequential_pieces(PieceIndexHash::from([0; 32]), 0)
             .unwrap();
-        let expected_indexes: Vec<PieceIndex> = vec![];
-        assert_eq!(indexes, expected_indexes);
+        assert_eq!(indexes, vec![]);
     }
 
     // Non-wrapping simple case start at the left side of number line
     {
         let indexes = plot
-            .read_sequential_piece_indexes(piece_index_hashes[1].0, 2)
-            .unwrap();
+            .get_sequential_pieces(piece_index_hashes[1].0, 2)
+            .unwrap()
+            .into_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
         let expected_indexes = piece_index_hashes
             .iter()
             .skip(1)
@@ -290,8 +292,11 @@ fn test_read_sequential_pieces() {
     // Non-wrapping simple case start at the right side of number line
     {
         let indexes = plot
-            .read_sequential_piece_indexes(piece_index_hashes[3].0, 2)
-            .unwrap();
+            .get_sequential_pieces(piece_index_hashes[3].0, 2)
+            .unwrap()
+            .into_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
         let expected_indexes = piece_index_hashes
             .iter()
             .skip(3)
@@ -304,8 +309,11 @@ fn test_read_sequential_pieces() {
     // Wrapping before reaching `max`
     {
         let indexes = plot
-            .read_sequential_piece_indexes(piece_index_hashes[3].0, 2)
-            .unwrap();
+            .get_sequential_pieces(piece_index_hashes[3].0, 2)
+            .unwrap()
+            .into_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
         // This will wrap around number line, but will not reach the last pieces index hash
         let expected_indexes = piece_index_hashes
             .iter()
@@ -319,8 +327,11 @@ fn test_read_sequential_pieces() {
     // Wrapping that crosses `max`, but doesn't reach `min`
     {
         let indexes = plot
-            .read_sequential_piece_indexes(piece_index_hashes[4].0, 2)
-            .unwrap();
+            .get_sequential_pieces(piece_index_hashes[4].0, 2)
+            .unwrap()
+            .into_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
         // This will wrap around number line and capture `max`, but will not go any further
         let expected_indexes = piece_index_hashes
             .iter()
@@ -334,8 +345,11 @@ fn test_read_sequential_pieces() {
     // Wrapping that crosses `max`, and crosses `min`
     {
         let indexes = plot
-            .read_sequential_piece_indexes(piece_index_hashes[4].0, 3)
-            .unwrap();
+            .get_sequential_pieces(piece_index_hashes[4].0, 2)
+            .unwrap()
+            .into_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
         // This will wrap around number line, capture `max` and crosses `min`, but will not
         // capture it because it crosses public key itself
         let expected_indexes = piece_index_hashes
@@ -350,8 +364,11 @@ fn test_read_sequential_pieces() {
     // Wrapping case, read more than there is pieces from zero
     {
         let indexes = plot
-            .read_sequential_piece_indexes(PieceIndexHash::from([0; 32]), 10)
-            .unwrap();
+            .get_sequential_pieces(PieceIndexHash::from([0; 32]), 10)
+            .unwrap()
+            .into_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
         // This should read all piece indexes and nothing else
         let expected_indexes = piece_index_hashes
             .iter()

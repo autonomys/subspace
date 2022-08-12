@@ -301,6 +301,11 @@ impl IndexHashToOffsetDB {
                             .expect("Key read from database must always have correct length; qed"),
                     ));
 
+                    if matches!(piece_index_hashes_and_offsets.last(), Some((last_index_hash, _)) if *last_index_hash > index_hash)
+                    {
+                        break;
+                    }
+
                     piece_index_hashes_and_offsets.push((index_hash, offset));
 
                     iter.next();
