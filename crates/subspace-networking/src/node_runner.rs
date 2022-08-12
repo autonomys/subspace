@@ -29,6 +29,8 @@ use tracing::{debug, error, trace, warn};
 
 // Defines a threshold for starting new connection attempts to known peers.
 const CONNECTED_PEERS_THRESHOLD: usize = 10;
+// Defines a protocol name specific for the relay server
+const RELAY_HOP_PROTOCOL_NAME: &[u8] = b"/libp2p/circuit/relay/0.2.0/hop";
 
 enum QueryResultSender {
     GetValue {
@@ -267,46 +269,68 @@ impl NodeRunner {
 
     async fn handle_identify_event(&mut self, event: IdentifyEvent) {
         if let IdentifyEvent::Received { peer_id, mut info } = event {
+            let local_peer_id = *self.swarm.local_peer_id();
+
             if info.listen_addrs.len() > 30 {
                 debug!(
-                    "Node {} has reported more than 30 addresses; it is identified by {} and {}",
-                    peer_id, info.protocol_version, info.agent_version
+                    %local_peer_id,
+                    %peer_id,
+                    "Node has reported more than 30 addresses; it is identified by {} and {}",
+                    info.protocol_version, info.agent_version
                 );
                 info.listen_addrs.truncate(30);
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
-
-            if info
+            let kademlia_enabled = info
                 .protocols
                 .iter()
-                .any(|protocol| protocol.as_bytes() == kademlia.protocol_name())
-            {
+                .any(|protocol| protocol.as_bytes() == kademlia.protocol_name());
+            let relay_server_enabled = info
+                .protocols
+                .iter()
+                .any(|protocol| protocol.as_bytes() == RELAY_HOP_PROTOCOL_NAME);
+
+            let proper_protocols_supported = !relay_server_enabled && kademlia_enabled;
+            if proper_protocols_supported {
                 for address in info.listen_addrs {
                     if !self.allow_non_globals_in_dht && !utils::is_global_address_or_dns(&address)
                     {
                         trace!(
-                            "Ignoring self-reported non-global address {} from {}.",
-                            address,
-                            peer_id
+                            %local_peer_id,
+                            %peer_id,
+                            %address,
+                            "Ignoring self-reported non-global address.",
                         );
                         continue;
                     }
 
                     trace!(
-                        "Adding self-reported address {} from {} to Kademlia DHT {}.",
-                        address,
-                        peer_id,
+                        %local_peer_id,
+                        %peer_id,
+                        %address,
+                        "Adding self-reported address to Kademlia DHT ({}).",
                         String::from_utf8_lossy(kademlia.protocol_name()),
                     );
                     kademlia.add_address(&peer_id, address);
                 }
             } else {
-                trace!(
-                    "{} doesn't support our Kademlia DHT protocol {}",
-                    peer_id,
-                    String::from_utf8_lossy(kademlia.protocol_name())
-                );
+                if !kademlia_enabled {
+                    trace!(
+                        %local_peer_id,
+                        %peer_id,
+                        "Peer doesn't support our Kademlia DHT protocol ({}). Adding to the DTH skipped.",
+                        String::from_utf8_lossy(kademlia.protocol_name())
+                    )
+                }
+
+                if relay_server_enabled {
+                    trace!(
+                        %local_peer_id,
+                        %peer_id,
+                        "Peer identified as a relay server. Adding to the DHT skipped.",
+                    )
+                }
             }
         }
     }
