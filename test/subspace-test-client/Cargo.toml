@@ -34,4 +34,4 @@ subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-solving = { path = "../../crates/subspace-solving" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
-zeroize = "1.5.6"
+zeroize = "1.5.7"

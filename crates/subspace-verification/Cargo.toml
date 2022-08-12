@@ -25,7 +25,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.31", optional = true }
+thiserror = { version = "1.0.32", optional = true }
 
 [features]
 default = ["std"]

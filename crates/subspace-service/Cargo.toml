@@ -59,8 +59,8 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
-thiserror = "1.0.31"
-tracing = "0.1.35"
+thiserror = "1.0.32"
+tracing = "0.1.36"
 
 sp-session = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }

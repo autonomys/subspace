@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-std = "1.12.0"
-async-trait = "0.1.56"
+async-trait = "0.1.57"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }

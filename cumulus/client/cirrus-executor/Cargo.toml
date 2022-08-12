@@ -23,16 +23,16 @@ sp-trie = { git = "https://github.com/subspace/substrate", rev = "6b8553511112af
 
 # Other dependencies
 codec = { package = "parity-scale-codec", version = "3.1.5", features = [ "derive" ] }
-crossbeam = "0.8.1"
+crossbeam = "0.8.2"
 futures = { version = "0.3.21", features = ["compat"] }
 futures-timer = "3.0.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
-merkletree = "0.21.0"
+merkletree = "0.22.0"
 parking_lot = "0.12.1"
-tracing = "0.1.35"
-thiserror = "1.0.29"
-tokio = { version = "1.20.0", features = ["macros"] }
+tracing = "0.1.36"
+thiserror = "1.0.32"
+tokio = { version = "1.20.1", features = ["macros"] }
 
 cirrus-block-builder = { path = "../block-builder" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }

@@ -22,7 +22,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 cirrus-node = { version = "0.1.0", path = "../../cumulus/node" }
 cirrus-runtime = { version = "0.1.0", path = "../../cumulus/runtime" }
-clap = { version = "3.2.12", features = ["derive"] }
+clap = { version = "3.2.16", features = ["derive"] }
 dirs = "4.0.0"
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155", default-features = false, features = ["runtime-benchmarks"] }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
@@ -38,8 +38,8 @@ sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/subst
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155", default-features = false, features = ["wasmtime"] }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
-serde = "1.0.139"
-serde_json = "1.0.82"
+serde = "1.0.143"
+serde_json = "1.0.83"
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-executor = { version = "0.1.0", path = "../sp-executor" }
@@ -50,8 +50,8 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
-thiserror = "1.0.31"
-tokio = { version = "1.20.0" }
+thiserror = "1.0.32"
+tokio = { version = "1.20.1" }
 
 [build-dependencies]
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }

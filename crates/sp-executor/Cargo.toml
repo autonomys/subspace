@@ -24,7 +24,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-trie = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
-thiserror = { version = "1.0.31", optional = true }
+thiserror = { version = "1.0.32", optional = true }
 
 [features]
 default = ["std"]

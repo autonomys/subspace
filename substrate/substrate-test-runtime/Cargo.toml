@@ -37,7 +37,6 @@ frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-trie = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
-trie-db = { version = "0.23.0", default-features = false }
 parity-util-mem = { version = "0.11.0", default-features = false, features = ["primitive-types"] }
 sc-service = { version = "0.10.0-dev", default-features = false, optional = true, features = ["test-helpers"], git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-state-machine = { version = "0.12.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
@@ -47,7 +46,7 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 # 3rd party
 cfg-if = "1.0"
 log = { version = "0.4.17", default-features = false }
-serde = { version = "1.0.139", optional = true, features = ["derive"] }
+serde = { version = "1.0.143", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
@@ -94,7 +93,6 @@ std = [
 	"sc-service",
 	"sp-trie/std",
 	"sp-transaction-pool/std",
-	"trie-db/std",
 	"subspace-core-primitives/std",
 ]
 # Special feature to disable logging

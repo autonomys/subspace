@@ -23,7 +23,7 @@ sp-std = { version = "4.0.0-dev", default-features = false, git = "https://githu
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
-serde = "1.0.139"
+serde = "1.0.143"
 sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }

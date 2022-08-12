@@ -6,7 +6,7 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.56"
+async-trait = "0.1.57"
 sc-consensus = { git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-consensus = { git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
