@@ -22,7 +22,8 @@
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::PendingSubscription;
+use jsonrpsee::types::SubscriptionResult;
+use jsonrpsee::SubscriptionSink;
 use log::{error, warn};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -250,7 +251,7 @@ where
         Ok(())
     }
 
-    fn subscribe_slot_info(&self, pending: PendingSubscription) {
+    fn subscribe_slot_info(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
         let executor = self.executor.clone();
         let solution_response_senders = self.solution_response_senders.clone();
 
@@ -328,16 +329,16 @@ where
                 });
 
         let fut = async move {
-            if let Some(mut sink) = pending.accept() {
-                sink.pipe_from_stream(stream).await;
-            }
+            sink.pipe_from_stream(stream).await;
         };
 
         self.executor
             .spawn("subspace-slot-info-subscription", Some("rpc"), fut.boxed());
+
+        Ok(())
     }
 
-    fn subscribe_reward_signing(&self, pending: PendingSubscription) {
+    fn subscribe_reward_signing(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
         let executor = self.executor.clone();
         let reward_signature_senders = self.reward_signature_senders.clone();
 
@@ -409,9 +410,7 @@ where
         );
 
         let fut = async move {
-            if let Some(mut sink) = pending.accept() {
-                sink.pipe_from_stream(stream).await;
-            }
+            sink.pipe_from_stream(stream).await;
         };
 
         self.executor.spawn(
@@ -419,6 +418,8 @@ where
             Some("rpc"),
             fut.boxed(),
         );
+
+        Ok(())
     }
 
     fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()> {
@@ -437,7 +438,7 @@ where
         Ok(())
     }
 
-    fn subscribe_archived_segment(&self, pending: PendingSubscription) {
+    fn subscribe_archived_segment(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
@@ -486,9 +487,7 @@ where
             });
 
         let fut = async move {
-            if let Some(mut sink) = pending.accept() {
-                sink.pipe_from_stream(stream).await;
-            }
+            sink.pipe_from_stream(stream).await;
         };
 
         self.executor.spawn(
@@ -496,6 +495,8 @@ where
             Some("rpc"),
             fut.boxed(),
         );
+
+        Ok(())
     }
 
     async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> RpcResult<()> {

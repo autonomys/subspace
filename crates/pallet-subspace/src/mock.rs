@@ -49,7 +49,8 @@ type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
 frame_support::construct_runtime!(
-    pub enum Test where
+    pub struct Test
+    where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
@@ -297,7 +298,7 @@ pub fn generate_equivocation_proof(
         System::reset_events();
         System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
-        Timestamp::set_timestamp(current_block);
+        Timestamp::set_timestamp(*current_slot * Subspace::slot_duration());
         System::finalize()
     };
 

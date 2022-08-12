@@ -243,7 +243,7 @@ impl Archiver {
 
         // We take N data records and will creates the same number of parity records, hence `*2`
         let merkle_num_leaves = segment_size / record_size * 2;
-        let witness_size = SHA256_HASH_SIZE * merkle_num_leaves.log2() as usize;
+        let witness_size = SHA256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
         if record_size + witness_size != PIECE_SIZE {
             return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
         }

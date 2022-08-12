@@ -19,8 +19,8 @@ rayon = { version = "1.5.3", optional = true }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sloth256-189 = { version = "0.4.2", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.31", optional = true }
-tracing = { version = "0.1.35", default-features = false }
+thiserror = { version = "1.0.32", optional = true }
+tracing = { version = "0.1.36", default-features = false }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["min_const_gen"] }

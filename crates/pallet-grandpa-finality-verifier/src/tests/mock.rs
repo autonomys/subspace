@@ -12,7 +12,7 @@ type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<TestRunt
 use crate as grandpa;
 
 construct_runtime! {
-    pub enum TestRuntime where
+    pub struct TestRuntime where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,

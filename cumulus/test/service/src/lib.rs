@@ -26,14 +26,14 @@ use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
 use sc_network::config::TransportConfig;
-use sc_network::{multiaddr, NetworkService};
+use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
 use sc_service::config::{
-    DatabaseSource, KeepBlocks, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
+    DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
 };
 use sc_service::{
-    BasePath, Configuration, Error as ServiceError, NetworkStarter, Role, RpcHandlers,
-    TFullBackend, TFullClient, TaskManager,
+    BasePath, BlocksPruning, Configuration, Error as ServiceError, NetworkStarter, Role,
+    RpcHandlers, TFullBackend, TFullClient, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -327,7 +327,7 @@ impl TestNodeBuilder {
                 .await
                 .expect("could not start secondary chain node");
 
-        let peer_id = *network.local_peer_id();
+        let peer_id = network.local_peer_id();
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         TestNode {
@@ -399,7 +399,7 @@ pub fn node_config(
         state_cache_size: 67108864,
         state_cache_child_ratio: None,
         state_pruning: Some(PruningMode::ArchiveAll),
-        keep_blocks: KeepBlocks::All,
+        blocks_pruning: BlocksPruning::All,
         chain_spec: spec,
         wasm_method: WasmExecutionMethod::Interpreted,
         // NOTE: we enforce the use of the native runtime to make the errors more debuggable

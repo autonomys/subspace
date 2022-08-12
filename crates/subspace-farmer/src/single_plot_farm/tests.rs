@@ -20,7 +20,7 @@ use tempfile::TempDir;
 use tracing::error;
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.log2() as usize; // 96
+const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize; // 96
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE; // 4000
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
 
