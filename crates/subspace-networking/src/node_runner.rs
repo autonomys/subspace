@@ -587,9 +587,11 @@ impl NodeRunner {
             Command::CheckConnectedPeers { result_sender } => {
                 let connected_peers_present = self.swarm.connected_peers().next().is_some();
 
-                let kademlia_connection_initiated = connected_peers_present
-                    .then_some(self.swarm.behaviour_mut().kademlia.bootstrap().is_ok())
-                    .unwrap_or(false);
+                let kademlia_connection_initiated = if connected_peers_present {
+                    self.swarm.behaviour_mut().kademlia.bootstrap().is_ok()
+                } else {
+                    false
+                };
 
                 let _ = result_sender.send(kademlia_connection_initiated);
             }
