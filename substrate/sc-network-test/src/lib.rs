@@ -42,10 +42,7 @@ use sc_client_api::{
 	BlockBackend, BlockImportNotification, BlockchainEvents, FinalityNotification,
 	FinalityNotifications, ImportNotifications,
 };
-use sc_consensus::{
-	BasicQueue, BlockCheckParams, BlockImport, BlockImportParams, BoxJustificationImport,
-	ForkChoiceStrategy, ImportResult, JustificationImport, LongestChain, Verifier,
-};
+use sc_consensus::{BasicQueue, BlockCheckParams, BlockImport, BlockImportParams, BoxJustificationImport, ForkChoiceStrategy, ImportResult, JustificationImport, JustificationSyncLink, LongestChain, Verifier};
 pub use sc_network::config::EmptyTransactionPool;
 use sc_network::{
 	config::{
@@ -55,20 +52,15 @@ use sc_network::{
 	Multiaddr, NetworkService, NetworkWorker,
 };
 pub use sc_network_common::config::ProtocolId;
+use sc_network_common::service::{NetworkBlock, NetworkStateInfo, NetworkSyncForkRequest};
 use sc_network_light::light_client_requests::handler::LightClientRequestHandler;
-use sc_network_sync::{
-	block_request_handler::BlockRequestHandler, state_request_handler::StateRequestHandler,
-	ChainSync,
-};
+use sc_network_sync::{block_request_handler::BlockRequestHandler, state_request_handler::StateRequestHandler, ChainSync};
 use sc_service::client::Client;
 use sp_blockchain::{
 	well_known_cache_keys::{self, Id as CacheKeyId},
 	HeaderBackend, Info as BlockchainInfo, Result as ClientResult,
 };
-use sp_consensus::{
-	block_validation::{BlockAnnounceValidator, DefaultBlockAnnounceValidator},
-	BlockOrigin, Error as ConsensusError,
-};
+use sp_consensus::{block_validation::{BlockAnnounceValidator, DefaultBlockAnnounceValidator}, BlockOrigin, Error as ConsensusError, SyncOracle};
 use sp_core::H256;
 use sp_runtime::{
 	generic::{BlockId, OpaqueDigestItemId},
@@ -236,7 +228,7 @@ where
 {
 	/// Get this peer ID.
 	pub fn id(&self) -> PeerId {
-		*self.network.service().local_peer_id()
+		self.network.service().local_peer_id()
 	}
 
 	/// Returns true if we're major syncing.
@@ -749,7 +741,7 @@ where
 			let addrs = connect_to
 				.iter()
 				.map(|v| {
-					let peer_id = *self.peer(*v).network_service().local_peer_id();
+					let peer_id = self.peer(*v).network_service().local_peer_id();
 					let multiaddr = self.peer(*v).listen_addr.clone();
 					MultiaddrWithPeerId { peer_id, multiaddr }
 				})
@@ -760,31 +752,48 @@ where
 
 		let protocol_id = ProtocolId::from("test-protocol-name");
 
+		let fork_id = Some(String::from("test-fork-id"));
+
 		let block_request_protocol_config = {
 			let (handler, protocol_config) =
-				BlockRequestHandler::new(&protocol_id, client.clone(), 50);
+				BlockRequestHandler::new(&protocol_id, None, client.clone(), 50);
 			self.spawn_task(handler.run().boxed());
 			protocol_config
 		};
 
 		let state_request_protocol_config = {
 			let (handler, protocol_config) =
-				StateRequestHandler::new(&protocol_id, client.clone(), 50);
+				StateRequestHandler::new(&protocol_id, None, client.clone(), 50);
 			self.spawn_task(handler.run().boxed());
 			protocol_config
 		};
 
 		let light_client_request_protocol_config = {
 			let (handler, protocol_config) =
-				LightClientRequestHandler::new(&protocol_id, client.clone());
+				LightClientRequestHandler::new(&protocol_id, None, client.clone());
 			self.spawn_task(handler.run().boxed());
 			protocol_config
 		};
 
-		let max_parallel_downloads = network_config.max_parallel_downloads;
 		let block_announce_validator = config
 			.block_announce_validator
 			.unwrap_or_else(|| Box::new(DefaultBlockAnnounceValidator));
+		let chain_sync = ChainSync::new(
+			match network_config.sync_mode {
+				SyncMode::Full => sc_network_common::sync::SyncMode::Full,
+				SyncMode::Fast { skip_proofs, storage_chain_mode } =>
+					sc_network_common::sync::SyncMode::LightState {
+						skip_proofs,
+						storage_chain_mode,
+					},
+				SyncMode::Warp => sc_network_common::sync::SyncMode::Warp,
+			},
+			client.clone(),
+			block_announce_validator,
+			network_config.max_parallel_downloads,
+			None,
+		)
+			.unwrap();
 		let network = NetworkWorker::new(sc_network::config::Params {
 			role: if config.is_authority { Role::Authority } else { Role::Full },
 			executor: None,
@@ -795,24 +804,14 @@ where
 			chain: client.clone(),
 			transaction_pool: Arc::new(EmptyTransactionPool),
 			protocol_id,
+			fork_id,
 			import_queue,
-			create_chain_sync: Box::new(move |sync_mode, chain, warp_sync_provider| {
-				match ChainSync::new(
-					sync_mode,
-					chain,
-					block_announce_validator,
-					max_parallel_downloads,
-					warp_sync_provider,
-				) {
-					Ok(chain_sync) => Ok(Box::new(chain_sync)),
-					Err(error) => Err(Box::new(error).into()),
-				}
-			}),
+			chain_sync: Box::new(chain_sync),
 			metrics_registry: None,
 			block_request_protocol_config,
 			state_request_protocol_config,
 			light_client_request_protocol_config,
-			warp_sync: None,
+			warp_sync_protocol_config: None,
 		})
 		.unwrap();
 
@@ -821,7 +820,7 @@ where
 		self.mut_peers(move |peers| {
 			for peer in peers.iter_mut() {
 				peer.network
-					.add_known_address(*network.service().local_peer_id(), listen_addr.clone());
+					.add_known_address(network.service().local_peer_id(), listen_addr.clone());
 			}
 
 			let imported_blocks_stream = Box::pin(client.import_notification_stream().fuse());

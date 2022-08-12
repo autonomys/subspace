@@ -112,7 +112,7 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 ///   data stored on the network
 pub const MERKLE_NUM_LEAVES: u32 = 256;
 /// Size of witness for a segment record (in bytes).
-pub const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.log2();
+pub const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
