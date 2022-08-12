@@ -23,12 +23,12 @@ use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
-use sc_network::multiaddr;
+use sc_network::{multiaddr, NetworkStateInfo};
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
 };
 use sc_service::{
-    BasePath, Configuration, KeepBlocks, NetworkStarter, Role, RpcHandlers, TaskManager,
+    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, RpcHandlers, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -103,7 +103,7 @@ pub fn node_config(
         state_cache_size: 16777216,
         state_cache_child_ratio: None,
         state_pruning: Default::default(),
-        keep_blocks: KeepBlocks::All,
+        blocks_pruning: BlocksPruning::All,
         chain_spec: Box::new(spec),
         wasm_method: WasmExecutionMethod::Interpreted,
         wasm_runtime_overrides: Default::default(),
@@ -200,7 +200,7 @@ pub async fn run_validator_node(
         ..
     } = primary_chain_node;
 
-    let peer_id = *network.local_peer_id();
+    let peer_id = network.local_peer_id();
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
     (

@@ -27,7 +27,7 @@ fdlimit = "0.2"
 fs2 = "0.4.3"
 futures = "0.3.21"
 hex = { version = "0.4.3", features = ["serde"] }
-jsonrpsee = { version = "0.14.0", features = ["client", "macros", "server"] }
+jsonrpsee = { version = "0.15.1", features = ["client", "macros", "server"] }
 libc = "0.2.126"
 lru = "0.7.8"
 num-traits = "0.2.15"

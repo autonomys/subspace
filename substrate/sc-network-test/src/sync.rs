@@ -18,6 +18,7 @@
 
 use super::*;
 use futures::{executor::block_on, Future};
+use sc_network_common::service::NetworkBlock;
 use sp_consensus::{block_validation::Validation, BlockOrigin};
 use sp_runtime::Justifications;
 use substrate_test_runtime::Header;

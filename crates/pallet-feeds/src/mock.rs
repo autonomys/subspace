@@ -13,7 +13,7 @@ type Block = frame_system::mocking::MockBlock<Test>;
 type FeedId = u64;
 
 frame_support::construct_runtime!(
-    pub enum Test where
+    pub struct Test where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
