@@ -320,8 +320,8 @@ fn build_transport(
         .upgrade(core::upgrade::Version::V1Lazy)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
         .multiplex(core::upgrade::SelectUpgrade::new(
-            mplex_config,
             yamux_config,
+            mplex_config,
         ))
         .timeout(timeout)
         .boxed())
