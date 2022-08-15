@@ -938,12 +938,7 @@ impl<T: Config> Pallet<T> {
                 next_global_randomness,
             ));
         }
-        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
-            // Deposit next solution range data such that light client can validate blocks later.
-            frame_system::Pallet::<T>::deposit_log(DigestItem::next_solution_range(
-                next_solution_range,
-            ));
-        }
+
         {
             let salts = Salts::<T>::get();
             if salts.switch_next_block {
@@ -956,6 +951,15 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
+        // Deposit the next solution range in the block finalization to account for solution range override extrinsic and
+        // era change happens in the same block.
+        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+            // Deposit next solution range data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::next_solution_range(
+                next_solution_range,
+            ));
+        }
+
         PorRandomness::<T>::take();
 
         if let Some((public_key, slot, _reward_address)) = CurrentBlockAuthorInfo::<T>::take() {
