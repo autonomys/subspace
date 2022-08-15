@@ -250,9 +250,7 @@ fn valid_header(
             slot,
             probability,
             solution_range,
-            era_duration
-                .try_into()
-                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+            era_duration,
         );
 
         digests.push(DigestItem::next_solution_range(

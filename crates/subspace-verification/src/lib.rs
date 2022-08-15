@@ -26,7 +26,7 @@ use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    crypto, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
+    crypto, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
     RewardSignature, Salt, Sha256Hash, SlotNumber, Solution, SolutionRange, Tag, TagSignature,
     RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
 };
@@ -281,7 +281,7 @@ pub fn derive_next_solution_range(
     current_slot: SlotNumber,
     slot_probability: (u64, u64),
     current_solution_range: SolutionRange,
-    era_duration: u64,
+    era_duration: BlockNumber,
 ) -> u64 {
     // calculate total slots within this era
     let era_slot_count = current_slot - start_slot;

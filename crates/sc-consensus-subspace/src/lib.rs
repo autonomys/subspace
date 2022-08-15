@@ -28,6 +28,7 @@ mod slot_worker;
 #[cfg(test)]
 mod tests;
 
+use crate::aux_schema::EonIndexEntry;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use archiver::start_subspace_archiver;
@@ -63,16 +64,17 @@ use sp_consensus::{
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
-    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
+    extract_pre_digest, extract_subspace_digest_items, verify_next_digests, Error as DigestError,
+    NextDigestsVerificationParams, PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
-    check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationError,
-    VerificationParams,
+    check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
+    VerificationError, VerificationParams,
 };
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{One, Zero};
+use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
@@ -82,11 +84,13 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockNumber, BlockWeight, RootBlock, Salt, SegmentIndex, Sha256Hash, Solution, SolutionRange,
-    MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    BlockNumber, BlockWeight, EonIndex, Randomness, RootBlock, Salt, SegmentIndex, Sha256Hash,
+    Solution, SolutionRange, MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
+use subspace_verification::{
+    derive_randomness, Error as VerificationPrimitiveError, VerifySolutionParams,
+};
 
 // TODO: Hack for Gemini 1b launch.
 const GEMINI_1B_GENESIS_HASH: &[u8] = &[
@@ -842,7 +846,11 @@ where
 impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block>
+        + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
@@ -867,12 +875,20 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn block_import_verification(
         &self,
         block_hash: Block::Hash,
         origin: BlockOrigin,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
+        chain_constants: &ChainConstants,
+        genesis_slot: Slot,
+        era_start_slot: Slot,
+        current_eon_index: EonIndex,
+        next_eon_randomness: Option<Randomness>,
+        should_adjust_solution_range: &mut bool,
+        maybe_next_solution_range_override: &mut Option<SolutionRange>,
         subspace_digest_items: &SubspaceDigestItems<
             FarmerPublicKey,
             FarmerPublicKey,
@@ -1155,7 +1171,300 @@ where
             }
         }
 
+        if !is_gemini_1b {
+            verify_next_digests::<Block::Header>(NextDigestsVerificationParams {
+                number: block_number,
+                header_digests: subspace_digest_items,
+                global_randomness_interval: chain_constants.global_randomness_interval().into(),
+                era_duration: chain_constants.era_duration().into(),
+                slot_probability: chain_constants.slot_probability(),
+                eon_duration: chain_constants.eon_duration(),
+                genesis_slot,
+                era_start_slot,
+                current_eon_index,
+                maybe_randomness: next_eon_randomness,
+                should_adjust_solution_range,
+                maybe_next_solution_range_override,
+            })?;
+        }
+
         Ok(())
+    }
+
+    fn find_era_start_slot(
+        &self,
+        block_number: NumberFor<Block>,
+        parent_block_hash: Block::Hash,
+        genesis_slot: Slot,
+        chain_constants: &ChainConstants,
+    ) -> Result<Slot, ConsensusError> {
+        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
+        //  breaking compatibility.
+        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
+
+        let era_index = (block_number - One::one()) / chain_constants.era_duration().into();
+        // Extract era start slot, taking into account potential forks at era boundary
+        let era_start_slots = match aux_schema::load_era_start_slot(self.client.as_ref(), era_index)
+            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+        {
+            Some(era_start_slots) => era_start_slots,
+            None => {
+                return if block_number.is_one() {
+                    Ok(genesis_slot)
+                } else if is_gemini_1b {
+                    // Known value for Gemini 1b
+                    Ok(1_654_115_926.into())
+                } else {
+                    Err(ConsensusError::ClientImport(format!(
+                        "Era start slot for era index {era_index} not found"
+                    )))
+                };
+            }
+        };
+
+        if era_start_slots.len() == 1 {
+            let (_block_hash, slot) = era_start_slots
+                .into_iter()
+                .next()
+                .expect("Length checked above; qed");
+
+            return Ok(slot);
+        }
+
+        let first_block_number_in_era = era_index * chain_constants.era_duration().into();
+        let mut block_hash = parent_block_hash;
+        let first_block_in_era = loop {
+            match self.client.header_metadata(block_hash) {
+                Ok(header_metadata) => {
+                    if header_metadata.number == first_block_number_in_era {
+                        break block_hash;
+                    }
+
+                    block_hash = header_metadata.parent;
+                }
+                Err(error) => {
+                    return Err(ConsensusError::ClientImport(format!(
+                        "Failed to read block {block_hash} during search for start block for era \
+                        index {era_index}: {error}"
+                    )));
+                }
+            }
+        };
+
+        let maybe_era_start_slot = era_start_slots.into_iter().find_map(|(block_hash, slot)| {
+            if first_block_in_era == block_hash {
+                Some(slot)
+            } else {
+                None
+            }
+        });
+
+        match maybe_era_start_slot {
+            Some(era_start_slot) => Ok(era_start_slot),
+            None => Err(ConsensusError::ClientImport(format!(
+                "Failed to find era start slot for era index {era_index}, must be an \
+                    implementation error"
+            ))),
+        }
+    }
+
+    fn find_eon_index(
+        &self,
+        block_number: NumberFor<Block>,
+        parent_block_hash: Block::Hash,
+        eon_indexes: &[EonIndexEntry<NumberFor<Block>, Block::Hash>],
+    ) -> Result<EonIndexEntry<NumberFor<Block>, Block::Hash>, ConsensusError> {
+        let mut ready_eon_indexes = eon_indexes
+            .iter()
+            .filter(|eon_index_entry| {
+                let (_starts_at_slot, starts_at_block) = eon_index_entry.starts_at;
+                // Relevant EON must start before current block number
+                starts_at_block <= block_number
+            })
+            .copied()
+            .collect::<Vec<_>>();
+
+        if ready_eon_indexes.len() == 1 {
+            return Ok(ready_eon_indexes
+                .into_iter()
+                .next()
+                .expect("Length checked above; qed"));
+        }
+
+        ready_eon_indexes.sort_unstable_by_key(|eon_index_entry| {
+            let (starts_at_slot, _starts_at_block) = eon_index_entry.starts_at;
+            starts_at_slot
+        });
+
+        // In case of multiple potential eon index entries available, find one that belongs to the
+        // correct fork
+        for eon_index_entry in ready_eon_indexes.into_iter().rev() {
+            let eon_index = eon_index_entry.eon_index;
+            let (randomness_block_number, randomness_block_hash) = eon_index_entry.randomness_block;
+            // Edge-case when randomness is used immediately after reveal
+            if randomness_block_hash == parent_block_hash {
+                return Ok(eon_index_entry);
+            }
+
+            let mut block_hash = parent_block_hash;
+            loop {
+                match self.client.header_metadata(block_hash) {
+                    Ok(header_metadata) => {
+                        let parent_hash = header_metadata.parent;
+
+                        if parent_hash == randomness_block_hash {
+                            return Ok(eon_index_entry);
+                        }
+
+                        let parent_block_number =
+                            match header_metadata.number.checked_sub(&One::one()) {
+                                Some(parent_block_number) => parent_block_number,
+                                None => {
+                                    break;
+                                }
+                            };
+
+                        // No need to check further, this is an eon entry for a different wrong fork
+                        if parent_block_number <= randomness_block_number {
+                            break;
+                        }
+
+                        block_hash = parent_hash;
+                    }
+                    Err(error) => {
+                        return Err(ConsensusError::ClientImport(format!(
+                            "Failed to read block {block_hash} during search for start block for \
+                            parent block when checking entry for eon index {eon_index}: {error}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        Err(ConsensusError::ClientImport(format!(
+            "Failed to find eon index entry for block {block_number}, must be an implementation \
+            error"
+        )))
+    }
+
+    // Extract next eon randomness, taking into account potential forks
+    #[allow(clippy::type_complexity)]
+    fn find_next_eon_randomness(
+        &self,
+        next_eon_randomnesses: &[(NumberFor<Block>, Block::Hash, Randomness)],
+        eon_index: EonIndex,
+        block_number: NumberFor<Block>,
+        parent_block_hash: Block::Hash,
+        chain_constants: &ChainConstants,
+    ) -> Result<Option<(NumberFor<Block>, Block::Hash, Randomness)>, ConsensusError> {
+        if next_eon_randomnesses.is_empty() {
+            return Ok(None);
+        }
+
+        if next_eon_randomnesses.len() == 1 {
+            let (
+                next_eon_randomness_block_number,
+                next_eon_randomness_block_hash,
+                next_eon_randomness,
+            ) = next_eon_randomnesses
+                .first()
+                .expect("Length checked above; qed");
+
+            // Single entry below archiving point is accepted immediately
+            if *next_eon_randomness_block_number
+                < block_number.saturating_sub(chain_constants.confirmation_depth_k().into())
+            {
+                return Ok(Some((
+                    *next_eon_randomness_block_number,
+                    *next_eon_randomness_block_hash,
+                    *next_eon_randomness,
+                )));
+            }
+        }
+
+        for (
+            next_eon_randomness_block_number,
+            next_eon_randomness_block_hash,
+            next_eon_randomness,
+        ) in next_eon_randomnesses
+        {
+            if next_eon_randomness_block_hash == &parent_block_hash {
+                return Ok(Some((
+                    *next_eon_randomness_block_number,
+                    *next_eon_randomness_block_hash,
+                    *next_eon_randomness,
+                )));
+            }
+        }
+
+        let mut block_hash = parent_block_hash;
+        loop {
+            match self.client.header_metadata(block_hash) {
+                Ok(header_metadata) => {
+                    for (
+                        next_eon_randomness_block_number,
+                        next_eon_randomness_block_hash,
+                        next_eon_randomness,
+                    ) in next_eon_randomnesses
+                    {
+                        if *next_eon_randomness_block_hash == header_metadata.parent {
+                            return Ok(Some((
+                                *next_eon_randomness_block_number,
+                                *next_eon_randomness_block_hash,
+                                *next_eon_randomness,
+                            )));
+                        }
+                    }
+
+                    block_hash = header_metadata.parent;
+                }
+                Err(error) => {
+                    return Err(ConsensusError::ClientImport(format!(
+                        "Failed to read block {block_hash} during search for next eon randomness \
+                        for eon index {eon_index}: {error}"
+                    )));
+                }
+            }
+        }
+    }
+
+    /// Returns randomness used to derive the next salt if the next salt is revealed after importing header.
+    fn derive_next_eon_randomness(
+        &self,
+        eon_index: EonIndex,
+        genesis_slot: Slot,
+        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        chain_constants: &ChainConstants,
+    ) -> Result<Option<Randomness>, ConsensusError> {
+        let next_salt_reveal_slot = chain_constants
+            .eon_next_salt_reveal()
+            .checked_add(
+                eon_index
+                    .checked_mul(chain_constants.eon_duration())
+                    .and_then(|res| res.checked_add(u64::from(genesis_slot)))
+                    .expect("Eon start slot always fits into u64; qed"),
+            )
+            .expect("Will never exceed u64; qed");
+
+        // salt will be revealed after importing this header.
+        // derive randomness at this header and store it for later verification
+        let maybe_randomness = if pre_digest.slot >= next_salt_reveal_slot {
+            let randomness = derive_randomness(
+                &subspace_core_primitives::PublicKey::from(&pre_digest.solution.public_key),
+                pre_digest.solution.tag,
+                &pre_digest.solution.tag_signature,
+            )
+            .map_err(|error| {
+                ConsensusError::ClientImport(format!(
+                    "Failed to derive next eon randomness: {error}"
+                ))
+            })?;
+            Some(randomness)
+        } else {
+            None
+        };
+
+        Ok(maybe_randomness)
     }
 }
 
@@ -1189,6 +1498,10 @@ where
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
+        let parent_block_hash = *block.header.parent_hash();
+        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
+        //  breaking compatibility.
+        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
 
         // Early exit if block already in chain
         match self.client.status(BlockId::Hash(block_hash)) {
@@ -1208,11 +1521,130 @@ where
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
         let skip_state_computation = matches!(block.state_action, StateAction::Skip);
 
+        let chain_constants = if is_gemini_1b {
+            // Known values for Gemini 1b
+            ChainConstants::V0 {
+                confirmation_depth_k: 100,
+                global_randomness_interval: 100,
+                era_duration: 2016,
+                slot_probability: (1, 6),
+                eon_duration: 3600 * 24 * 7,
+                eon_next_salt_reveal: 3600 * 24 * 6,
+            }
+        } else {
+            match aux_schema::load_chain_constants(self.client.as_ref())
+                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+            {
+                Some(chain_constants) => chain_constants,
+                None => {
+                    // This is only called on the very first block for which we always have runtime
+                    // storage access
+                    self.client
+                        .runtime_api()
+                        .chain_constants(&BlockId::Hash(*block.header.parent_hash()))
+                        .map_err(Error::<Block::Header>::RuntimeApi)
+                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                }
+            }
+        };
+        let mut genesis_slot = aux_schema::load_genesis_slot(self.client.as_ref())
+            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+            .unwrap_or_default();
+
+        // Special case, in block 1 we update genesis slot
+        if block_number.is_one() {
+            if !genesis_slot.is_zero() {
+                warn!(
+                    target: "subspace",
+                    "Switching fork on block 1, replacing old genesis slot {} with {}, this can \
+                    break the chain",
+                    genesis_slot,
+                    subspace_digest_items.pre_digest.slot
+                );
+            }
+            genesis_slot = subspace_digest_items.pre_digest.slot;
+        }
+
+        let era_start_slot = self.find_era_start_slot(
+            block_number,
+            parent_block_hash,
+            genesis_slot,
+            &chain_constants,
+        )?;
+
+        let mut eon_indexes = aux_schema::load_eon_indexes(self.client.as_ref())
+            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+            .unwrap_or_default();
+
+        // Special case, filling information about genesis eon
+        if block_number.is_one() && eon_indexes.is_empty() {
+            eon_indexes.push(EonIndexEntry {
+                eon_index: 0,
+                randomness: Randomness::default(),
+                randomness_block: (0u32.into(), self.client.info().genesis_hash),
+                starts_at: (subspace_digest_items.pre_digest.slot, 0u32.into()),
+            });
+        }
+
+        let eon_index_entry = self.find_eon_index(block_number, parent_block_hash, &eon_indexes)?;
+        let mut next_eon_randomnesses = aux_schema::load_next_eon_randomness::<
+            NumberFor<Block>,
+            Block::Hash,
+            _,
+        >(self.client.as_ref(), eon_index_entry.eon_index)
+        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+        .unwrap_or_default();
+
+        let next_eon_randomness = match self.find_next_eon_randomness(
+            &next_eon_randomnesses,
+            eon_index_entry.eon_index,
+            block_number,
+            parent_block_hash,
+            &chain_constants,
+        )? {
+            Some(next_eon_randomness) => Some(next_eon_randomness),
+            None => match self.derive_next_eon_randomness(
+                eon_index_entry.eon_index,
+                genesis_slot,
+                &subspace_digest_items.pre_digest,
+                &chain_constants,
+            )? {
+                Some(next_eon_randomness) => {
+                    debug!(
+                        target: "subspace",
+                        "Derived randomness at block {block_number}: {next_eon_randomness:?}",
+                    );
+                    next_eon_randomnesses.push((block_number, block_hash, next_eon_randomness));
+                    aux_schema::write_next_eon_randomness(
+                        eon_index_entry.eon_index,
+                        &next_eon_randomnesses,
+                        |values| {
+                            block
+                                .auxiliary
+                                .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                        },
+                    );
+
+                    Some((block_number, block_hash, next_eon_randomness))
+                }
+                None => None,
+            },
+        };
+
         self.block_import_verification(
             block_hash,
             block.origin,
             block.header.clone(),
             block.body.clone(),
+            &chain_constants,
+            genesis_slot,
+            era_start_slot,
+            eon_index_entry.eon_index,
+            next_eon_randomness.map(|(_block_number, _block_hash, randomness)| randomness),
+            // TODO: Support disabling solution range
+            &mut false,
+            // TODO: Support overriding solution range
+            &mut None,
             &subspace_digest_items,
             skip_state_computation,
         )
@@ -1283,6 +1715,86 @@ where
                     .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
             });
         }
+
+        // In the very first block we need to store chain constants and genesis slot for further use
+        if block_number.is_one() {
+            aux_schema::write_chain_constants(&chain_constants, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+
+            aux_schema::write_genesis_slot(genesis_slot, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+
+            aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
+
+        // Check if era has changed and store corresponding era start slot.
+        //
+        // Special case when the current header is one, then first era begins or era duration
+        // interval has reached, so era has changed.
+        if block_number.is_one()
+            || block_number % chain_constants.era_duration().into() == Zero::zero()
+        {
+            let next_era_index = block_number / chain_constants.era_duration().into();
+            let mut next_era_start_slot =
+                aux_schema::load_era_start_slot(self.client.as_ref(), next_era_index)
+                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                    .unwrap_or_default();
+            next_era_start_slot.push((block_hash, pre_digest.slot));
+
+            aux_schema::write_era_start_slot(next_era_index, &next_era_start_slot, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
+
+        // Check if the eon is about to be changed
+        let maybe_next_eon_index = subspace_verification::derive_next_eon_index(
+            eon_index_entry.eon_index,
+            chain_constants.eon_duration(),
+            u64::from(genesis_slot),
+            u64::from(pre_digest.slot),
+        );
+
+        if let Some(next_eon_index) = maybe_next_eon_index {
+            let (
+                next_eon_randomness_block_number,
+                next_eon_randomness_block_hash,
+                next_eon_randomness,
+            ) = next_eon_randomness.ok_or_else(|| {
+                ConsensusError::ClientImport(
+                    "Next eon randomness was expected, but not present".to_string(),
+                )
+            })?;
+            eon_indexes.push(EonIndexEntry {
+                eon_index: next_eon_index,
+                randomness: next_eon_randomness,
+                randomness_block: (
+                    next_eon_randomness_block_number,
+                    next_eon_randomness_block_hash,
+                ),
+                starts_at: (pre_digest.slot, block_number),
+            });
+
+            aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
+
+        // TODO: Prune era start slot values that are finalized
+        // TODO: Prune old eon indexes and randomnesses
 
         // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
         // range), if there's a tie we go with the longest chain.

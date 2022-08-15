@@ -8327,7 +8327,6 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-executor",

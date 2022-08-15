@@ -32,6 +32,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
 use sp_application_crypto::{ecdsa, ed25519, sr25519, RuntimeAppPublic};
+use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, SignedVote};
 pub use sp_core::hash::H256;
 use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
@@ -46,7 +47,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_trie::trie_types::TrieDB;
+use sp_trie::trie_types::{TrieDB, TrieDBMutV1 as TrieDBMut};
 use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
@@ -54,9 +55,6 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::{
     RecordsRoot, SegmentIndex, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-// bench on latest state.
-use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
-use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
 
 // Include the WASM binary
 #[cfg(feature = "std")]
@@ -911,6 +909,10 @@ cfg_if! {
                 fn root_plot_public_key() -> Option<FarmerPublicKey> {
                     <pallet_subspace::Pallet<Runtime>>::root_plot_public_key()
                 }
+
+                fn chain_constants() -> ChainConstants {
+                    <pallet_subspace::Pallet<Runtime>>::chain_constants()
+                }
             }
 
             impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
@@ -1170,6 +1172,10 @@ cfg_if! {
 
                 fn root_plot_public_key() -> Option<FarmerPublicKey> {
                     <pallet_subspace::Pallet<Runtime>>::root_plot_public_key()
+                }
+
+                fn chain_constants() -> ChainConstants {
+                    <pallet_subspace::Pallet<Runtime>>::chain_constants()
                 }
             }
 

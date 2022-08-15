@@ -40,7 +40,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
@@ -356,7 +356,7 @@ mod pallet {
     #[pallet::getter(fn eon_index)]
     pub type EonIndex<T> = StorageValue<_, subspace_core_primitives::EonIndex, ValueQuery>;
 
-    /// The slot at which the block was created. This is 0 until the first block of the chain.
+    /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
     #[pallet::getter(fn genesis_slot)]
     pub type GenesisSlot<T> = StorageValue<_, Slot, ValueQuery>;
@@ -1108,6 +1108,23 @@ impl<T: Config> Pallet<T> {
             * 2;
 
         u64::from(archived_segments) * u64::from(archived_segment_size)
+    }
+
+    pub fn chain_constants() -> ChainConstants {
+        ChainConstants::V0 {
+            confirmation_depth_k: T::ConfirmationDepthK::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            global_randomness_interval: T::GlobalRandomnessUpdateInterval::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            era_duration: T::EraDuration::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            slot_probability: T::SlotProbability::get(),
+            eon_duration: T::EonDuration::get(),
+            eon_next_salt_reveal: T::EonNextSaltReveal::get(),
+        }
     }
 }
 

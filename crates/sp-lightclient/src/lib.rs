@@ -79,7 +79,7 @@ pub struct ChainConstants<Header: HeaderT> {
     /// Eon duration at which next derived Salt is used.
     pub eon_duration: u64,
 
-    /// Interval after the eon change when next salt is revealed
+    /// Interval after the eon change when next eon salt is revealed
     pub next_salt_reveal_interval: u64,
 }
 

@@ -20,7 +20,9 @@
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
-use subspace_core_primitives::{BlockWeight, RecordsRoot, SegmentIndex};
+use sp_consensus_slots::Slot;
+use sp_consensus_subspace::ChainConstants;
+use subspace_core_primitives::{BlockWeight, EonIndex, Randomness, RecordsRoot, SegmentIndex};
 
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
 where
@@ -86,4 +88,164 @@ pub(crate) fn load_records_root<B: AuxStore>(
     segment_index: SegmentIndex,
 ) -> ClientResult<Option<RecordsRoot>> {
     load_decode(backend, records_root_key(segment_index).as_slice())
+}
+
+/// The aux storage key used to store the chain constants.
+fn chain_constants_key() -> Vec<u8> {
+    b"chain_constants".encode()
+}
+
+/// Write chain constants to aux storage.
+pub(crate) fn write_chain_constants<F, R>(chain_constants: &ChainConstants, write_aux: F) -> R
+where
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = chain_constants_key();
+    chain_constants.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load chain constants.
+pub(crate) fn load_chain_constants<Backend>(
+    backend: &Backend,
+) -> ClientResult<Option<ChainConstants>>
+where
+    Backend: AuxStore,
+{
+    load_decode(backend, chain_constants_key().as_slice())
+}
+
+/// The aux storage key used to store genesis slot.
+fn genesis_slot_key() -> Vec<u8> {
+    b"genesis_slot".encode()
+}
+
+/// Write genesis slot to aux storage.
+pub(crate) fn write_genesis_slot<F, R>(genesis_slot: Slot, write_aux: F) -> R
+where
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = genesis_slot_key();
+    genesis_slot.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load genesis slot.
+pub(crate) fn load_genesis_slot<Backend>(backend: &Backend) -> ClientResult<Option<Slot>>
+where
+    Backend: AuxStore,
+{
+    load_decode(backend, genesis_slot_key().as_slice())
+}
+
+/// The aux storage key used to store era start slots corresponding to specified era index.
+fn era_start_slot_key<EraIndex>(era_index: EraIndex) -> Vec<u8>
+where
+    EraIndex: Encode,
+{
+    (b"era_start_slot", era_index).encode()
+}
+
+/// Write era start slots corresponding to specified era index to aux storage.
+pub(crate) fn write_era_start_slot<EraIndex, BlockHash, F, R>(
+    era_index: EraIndex,
+    era_start_slot: &[(BlockHash, Slot)],
+    write_aux: F,
+) -> R
+where
+    EraIndex: Encode,
+    BlockHash: Encode,
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = era_start_slot_key(era_index);
+    era_start_slot.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load era start slots corresponding to specified era index.
+pub(crate) fn load_era_start_slot<EraIndex, BlockHash, Backend>(
+    backend: &Backend,
+    era_index: EraIndex,
+) -> ClientResult<Option<Vec<(BlockHash, Slot)>>>
+where
+    EraIndex: Encode,
+    BlockHash: Decode,
+    Backend: AuxStore,
+{
+    load_decode(backend, era_start_slot_key(era_index).as_slice())
+}
+
+/// The aux storage key used to store eon indexes.
+fn eon_indexes_key() -> Vec<u8> {
+    b"eon_indexes".encode()
+}
+
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub(super) struct EonIndexEntry<BlockNumber, BlockHash>
+where
+    BlockNumber: Copy + Encode + Decode,
+    BlockHash: Copy + Encode + Decode,
+{
+    pub(super) eon_index: EonIndex,
+    pub(super) randomness: Randomness,
+    pub(super) randomness_block: (BlockNumber, BlockHash),
+    pub(super) starts_at: (Slot, BlockNumber),
+}
+
+/// Write eon indexes to aux storage.
+pub(crate) fn write_eon_indexes<BlockNumber, BlockHash, F, R>(
+    eon_indexes: &[EonIndexEntry<BlockNumber, BlockHash>],
+    write_aux: F,
+) -> R
+where
+    BlockNumber: Copy + Encode + Decode,
+    BlockHash: Copy + Encode + Decode,
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = eon_indexes_key();
+    eon_indexes.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load eon indexes.
+pub(crate) fn load_eon_indexes<BlockNumber, BlockHash, Backend>(
+    backend: &Backend,
+) -> ClientResult<Option<Vec<EonIndexEntry<BlockNumber, BlockHash>>>>
+where
+    BlockNumber: Copy + Encode + Decode,
+    BlockHash: Copy + Encode + Decode,
+    Backend: AuxStore,
+{
+    load_decode(backend, eon_indexes_key().as_slice())
+}
+
+/// The aux storage key used to store next eon randomness.
+fn next_eon_randomness_key(eon_index: EonIndex) -> Vec<u8> {
+    (b"next_eon_randomness", eon_index).encode()
+}
+
+/// Write next eon randomness to aux storage.
+///
+/// If `next_eon_randomness` is empty, corresponding data is removed from auxiliary storage.
+pub(crate) fn write_next_eon_randomness<BlockNumber, BlockHash, F, R>(
+    eon_index: EonIndex,
+    next_eon_randomness: &[(BlockNumber, BlockHash, Randomness)],
+    write_aux: F,
+) -> R
+where
+    BlockNumber: Encode,
+    BlockHash: Encode,
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = next_eon_randomness_key(eon_index);
+    next_eon_randomness.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load next eon randomness.
+pub(crate) fn load_next_eon_randomness<BlockNumber, BlockHash, Backend>(
+    backend: &Backend,
+    eon_index: EonIndex,
+) -> ClientResult<Option<Vec<(BlockNumber, BlockHash, Randomness)>>>
+where
+    BlockNumber: Decode,
+    BlockHash: Decode,
+    Backend: AuxStore,
+{
+    load_decode(backend, next_eon_randomness_key(eon_index).as_slice())
 }
