@@ -145,6 +145,8 @@ where
 }
 
 /// Write era start slots corresponding to specified era index to aux storage.
+///
+/// If `era_start_slot` is empty, corresponding data is removed from auxiliary storage.
 pub(crate) fn write_era_start_slot<EraIndex, BlockHash, F, R>(
     era_index: EraIndex,
     era_start_slot: &[(BlockHash, Slot)],
@@ -153,10 +155,14 @@ pub(crate) fn write_era_start_slot<EraIndex, BlockHash, F, R>(
 where
     EraIndex: Encode,
     BlockHash: Encode,
-    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+    F: FnOnce(&[(Vec<u8>, Option<&[u8]>)]) -> R,
 {
     let key = era_start_slot_key(era_index);
-    era_start_slot.using_encoded(|s| write_aux(&[(key, s)]))
+    if era_start_slot.is_empty() {
+        write_aux(&[(key, None)])
+    } else {
+        era_start_slot.using_encoded(|s| write_aux(&[(key, Some(s))]))
+    }
 }
 
 /// Load era start slots corresponding to specified era index.
@@ -220,7 +226,7 @@ fn next_eon_randomness_key(eon_index: EonIndex) -> Vec<u8> {
     (b"next_eon_randomness", eon_index).encode()
 }
 
-/// Write next eon randomness to aux storage.
+/// Write eon indexes to aux storage.
 ///
 /// If `next_eon_randomness` is empty, corresponding data is removed from auxiliary storage.
 pub(crate) fn write_next_eon_randomness<BlockNumber, BlockHash, F, R>(
@@ -231,10 +237,14 @@ pub(crate) fn write_next_eon_randomness<BlockNumber, BlockHash, F, R>(
 where
     BlockNumber: Encode,
     BlockHash: Encode,
-    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+    F: FnOnce(&[(Vec<u8>, Option<&[u8]>)]) -> R,
 {
     let key = next_eon_randomness_key(eon_index);
-    next_eon_randomness.using_encoded(|s| write_aux(&[(key, s)]))
+    if next_eon_randomness.is_empty() {
+        write_aux(&[(key, None)])
+    } else {
+        next_eon_randomness.using_encoded(|s| write_aux(&[(key, Some(s))]))
+    }
 }
 
 /// Load next eon randomness.

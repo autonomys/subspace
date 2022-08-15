@@ -16,8 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![doc = include_str!("../README.md")]
-#![feature(try_blocks)]
-#![feature(int_log)]
+#![feature(drain_filter, int_log, try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -1195,6 +1194,7 @@ where
         &self,
         block_number: NumberFor<Block>,
         parent_block_hash: Block::Hash,
+        era_index: NumberFor<Block>,
         genesis_slot: Slot,
         chain_constants: &ChainConstants,
     ) -> Result<Slot, ConsensusError> {
@@ -1202,7 +1202,6 @@ where
         //  breaking compatibility.
         let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
 
-        let era_index = (block_number - One::one()) / chain_constants.era_duration().into();
         // Extract era start slot, taking into account potential forks at era boundary
         let era_start_slots = match aux_schema::load_era_start_slot(self.client.as_ref(), era_index)
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
@@ -1565,9 +1564,11 @@ where
             genesis_slot = subspace_digest_items.pre_digest.slot;
         }
 
+        let era_index = (block_number - One::one()) / chain_constants.era_duration().into();
         let era_start_slot = self.find_era_start_slot(
             block_number,
             parent_block_hash,
+            era_index,
             genesis_slot,
             &chain_constants,
         )?;
@@ -1619,9 +1620,11 @@ where
                         eon_index_entry.eon_index,
                         &next_eon_randomnesses,
                         |values| {
-                            block
-                                .auxiliary
-                                .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                            block.auxiliary.extend(
+                                values
+                                    .iter()
+                                    .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                            )
                         },
                     );
 
@@ -1752,9 +1755,11 @@ where
             next_era_start_slot.push((block_hash, pre_digest.slot));
 
             aux_schema::write_era_start_slot(next_era_index, &next_era_start_slot, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                block.auxiliary.extend(
+                    values
+                        .iter()
+                        .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                )
             });
         }
 
@@ -1793,8 +1798,60 @@ where
             });
         }
 
-        // TODO: Prune era start slot values that are finalized
-        // TODO: Prune old eon indexes and randomnesses
+        // Prune era start slots that are too old to be useful
+        if let Some(previous_block_number) = block_number.checked_sub(&2u32.into()) {
+            let previous_block_era_index =
+                previous_block_number / chain_constants.era_duration().into();
+
+            if previous_block_era_index != era_index {
+                if let Some(prune_era_index) = previous_block_era_index.checked_sub(&One::one()) {
+                    aux_schema::write_era_start_slot::<_, Block::Hash, _, ()>(
+                        prune_era_index,
+                        &[],
+                        |values| {
+                            block.auxiliary.extend(
+                                values
+                                    .iter()
+                                    .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                            )
+                        },
+                    );
+                }
+            }
+        }
+
+        // Delete eon indexes and randomnesses that are too old to be useful anymore
+        {
+            let mut eon_indexes_updated = false;
+            for eon_index_entry in eon_indexes.drain_filter(|eon_index_entry| {
+                let (starts_at_slot, _starts_at_block) = eon_index_entry.starts_at;
+                starts_at_slot
+                    < pre_digest
+                        .slot
+                        .saturating_sub(chain_constants.eon_duration() * 2)
+            }) {
+                eon_indexes_updated = true;
+                aux_schema::write_next_eon_randomness::<NumberFor<Block>, Block::Hash, _, ()>(
+                    eon_index_entry.eon_index,
+                    &[],
+                    |values| {
+                        block.auxiliary.extend(
+                            values
+                                .iter()
+                                .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                        )
+                    },
+                );
+            }
+
+            if eon_indexes_updated {
+                aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
+            }
+        }
 
         // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
         // range), if there's a tie we go with the longest chain.
