@@ -654,27 +654,54 @@ fn derive_next_salt<Header: HeaderT>(
     Ok(None)
 }
 
-fn derive_next_solution_range<Header: HeaderT>(
+struct DeriveNextSolutionRangeParams<'a, Header: HeaderT> {
     number: NumberOf<Header>,
     era_duration: NumberOf<Header>,
     slot_probability: (u64, u64),
     current_slot: Slot,
     current_solution_range: SolutionRange,
     era_start_slot: Slot,
+    should_adjust_solution_range: &'a bool,
+    maybe_next_solution_range_override: &'a mut Option<SolutionRange>,
+}
+
+fn derive_next_solution_range<Header: HeaderT>(
+    params: DeriveNextSolutionRangeParams<Header>,
 ) -> Result<Option<SolutionRange>, Error> {
+    let DeriveNextSolutionRangeParams {
+        number,
+        era_duration,
+        slot_probability,
+        current_slot,
+        current_solution_range,
+        era_start_slot,
+        should_adjust_solution_range,
+        maybe_next_solution_range_override,
+    } = params;
+
     if number.is_zero() || number % era_duration != Zero::zero() {
         return Ok(None);
     }
 
-    let next_solution_range = subspace_verification::derive_next_solution_range(
-        u64::from(era_start_slot),
-        u64::from(current_slot),
-        slot_probability,
-        current_solution_range,
-        era_duration
-            .try_into()
-            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
-    );
+    // if the solution range should not be adjusted, return the current solution range
+    let next_solution_range = if !should_adjust_solution_range {
+        current_solution_range
+    } else if let Some(solution_range_override) = maybe_next_solution_range_override {
+        // era has change so take this override and reset it
+        let solution_range = *solution_range_override;
+        *maybe_next_solution_range_override = None;
+        solution_range
+    } else {
+        subspace_verification::derive_next_solution_range(
+            u64::from(era_start_slot),
+            u64::from(current_slot),
+            slot_probability,
+            current_solution_range,
+            era_duration
+                .try_into()
+                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+        )
+    };
 
     Ok(Some(next_solution_range))
 }
@@ -701,34 +728,77 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     pub current_eon_index: EonIndex,
     /// Randomness used to derive next salt.
     pub maybe_randomness: Option<Randomness>,
+    /// Should the solution range be adjusted on era change.
+    /// If the digest logs indicate that solution range adjustment has been enabled, value is updated.
+    pub should_adjust_solution_range: &'a mut bool,
+    /// Next Solution range override.
+    /// If the digest logs indicate that solution range override is provided, value is updated.
+    pub maybe_next_solution_range_override: &'a mut Option<SolutionRange>,
 }
 
 /// Derives and verifies next digest items based on their respective intervals.
 pub fn verify_next_digests<Header: HeaderT>(
     params: NextDigestsVerificationParams<Header>,
 ) -> Result<(), Error> {
+    let NextDigestsVerificationParams {
+        number,
+        header_digests,
+        global_randomness_interval,
+        era_duration,
+        slot_probability,
+        eon_duration,
+        genesis_slot,
+        era_start_slot,
+        current_eon_index,
+        maybe_randomness,
+        should_adjust_solution_range,
+        maybe_next_solution_range_override,
+    } = params;
+
     // verify if the randomness is supposed to derived at this block header
     let expected_next_randomness = derive_next_global_randomness::<Header>(
-        params.number,
-        params.global_randomness_interval,
-        &params.header_digests.pre_digest,
+        number,
+        global_randomness_interval,
+        &header_digests.pre_digest,
     )?;
-    if expected_next_randomness != params.header_digests.next_global_randomness {
+    if expected_next_randomness != header_digests.next_global_randomness {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextGlobalRandomness,
         ));
     }
 
+    // verify solution range adjustment and override
+    // if the adjustment is already enabled, then error out
+    if *should_adjust_solution_range
+        && header_digests
+            .enable_solution_range_adjustment_and_override
+            .is_some()
+    {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
+        ));
+    }
+
+    if let Some(solution_range_override) =
+        header_digests.enable_solution_range_adjustment_and_override
+    {
+        *should_adjust_solution_range = true;
+        *maybe_next_solution_range_override = solution_range_override;
+    }
+
     // verify if the solution range should be derived at this block header
-    let expected_next_solution_range = derive_next_solution_range::<Header>(
-        params.number,
-        params.era_duration,
-        params.slot_probability,
-        params.header_digests.pre_digest.slot,
-        params.header_digests.solution_range,
-        params.era_start_slot,
-    )?;
-    if expected_next_solution_range != params.header_digests.next_solution_range {
+    let expected_next_solution_range =
+        derive_next_solution_range::<Header>(DeriveNextSolutionRangeParams {
+            number,
+            era_duration,
+            slot_probability,
+            current_slot: header_digests.pre_digest.slot,
+            current_solution_range: header_digests.solution_range,
+            era_start_slot,
+            should_adjust_solution_range,
+            maybe_next_solution_range_override,
+        })?;
+    if expected_next_solution_range != header_digests.next_solution_range {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextSolutionRange,
         ));
@@ -736,16 +806,17 @@ pub fn verify_next_digests<Header: HeaderT>(
 
     // verify if the next derived salt should be present in the block header
     let expected_next_salt = derive_next_salt::<Header>(
-        params.eon_duration,
-        params.current_eon_index,
-        params.genesis_slot,
-        params.header_digests.pre_digest.slot,
-        params.maybe_randomness,
+        eon_duration,
+        current_eon_index,
+        genesis_slot,
+        header_digests.pre_digest.slot,
+        maybe_randomness,
     )?;
-    if expected_next_salt != params.header_digests.next_salt {
+    if expected_next_salt != header_digests.next_salt {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextSalt,
         ));
     }
+
     Ok(())
 }
