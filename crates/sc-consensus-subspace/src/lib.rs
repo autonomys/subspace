@@ -880,6 +880,7 @@ where
         >,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
+        let block_number = *header.number();
         let parent_hash = *header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
@@ -934,70 +935,46 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let (correct_global_randomness, correct_solution_range, correct_salt) =
-            if header.number().is_one() {
-                // Genesis block doesn't contain usual digest items, we need to query runtime API
-                // instead
-                let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                    self.client.as_ref(),
-                    &parent_block_id,
-                )?;
-                let (correct_solution_range, _) = slot_worker::extract_solution_ranges_for_block(
-                    self.client.as_ref(),
-                    &parent_block_id,
-                )?;
-                let (correct_salt, _) =
-                    slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?;
+        let (correct_global_randomness, correct_solution_range, correct_salt) = if block_number
+            .is_one()
+        {
+            // Genesis block doesn't contain usual digest items, we need to query runtime API
+            // instead
+            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+                self.client.as_ref(),
+                &parent_block_id,
+            )?;
+            let (correct_solution_range, _) = slot_worker::extract_solution_ranges_for_block(
+                self.client.as_ref(),
+                &parent_block_id,
+            )?;
+            let (correct_salt, _) =
+                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?;
 
-                (
-                    correct_global_randomness,
-                    correct_solution_range,
-                    correct_salt,
-                )
-            } else {
-                let parent_subspace_digest_items = extract_subspace_digest_items::<
-                    _,
-                    FarmerPublicKey,
-                    FarmerPublicKey,
-                    FarmerSignature,
-                >(&parent_header)?;
+            (
+                correct_global_randomness,
+                correct_solution_range,
+                correct_salt,
+            )
+        } else {
+            let parent_subspace_digest_items = extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&parent_header)?;
 
-                let correct_global_randomness =
-                    match parent_subspace_digest_items.next_global_randomness {
-                        Some(global_randomness) => global_randomness,
-                        None => {
-                            // TODO: Remove `if` branch when breaking protocol
-                            if is_gemini_1b {
-                                match slot_worker::extract_global_randomness_for_block(
-                                    self.client.as_ref(),
-                                    &parent_block_id,
-                                ) {
-                                    Ok(global_randomness) => global_randomness,
-                                    Err(error) => {
-                                        return if skip_runtime_access {
-                                            Ok(())
-                                        } else {
-                                            Err(error.into())
-                                        };
-                                    }
-                                }
-                            } else {
-                                parent_subspace_digest_items.global_randomness
-                            }
-                        }
-                    };
-
-                let correct_solution_range = match parent_subspace_digest_items.next_solution_range
-                {
-                    Some(solution_range) => solution_range,
+            let correct_global_randomness =
+                match parent_subspace_digest_items.next_global_randomness {
+                    Some(global_randomness) => global_randomness,
                     None => {
                         // TODO: Remove `if` branch when breaking protocol
                         if is_gemini_1b {
-                            match slot_worker::extract_solution_ranges_for_block(
+                            match slot_worker::extract_global_randomness_for_block(
                                 self.client.as_ref(),
                                 &parent_block_id,
                             ) {
-                                Ok((solution_range, _voting_solution_range)) => solution_range,
+                                Ok(global_randomness) => global_randomness,
                                 Err(error) => {
                                     return if skip_runtime_access {
                                         Ok(())
@@ -1007,41 +984,65 @@ where
                                 }
                             }
                         } else {
-                            parent_subspace_digest_items.solution_range
+                            parent_subspace_digest_items.global_randomness
                         }
                     }
                 };
 
-                let correct_salt = match parent_subspace_digest_items.next_salt {
-                    Some(salt) => salt,
-                    None => {
-                        // TODO: Remove `if` branch when breaking protocol
-                        if is_gemini_1b {
-                            match slot_worker::extract_salt_for_block(
-                                self.client.as_ref(),
-                                &parent_block_id,
-                            ) {
-                                Ok((salt, _next_salt)) => salt,
-                                Err(error) => {
-                                    return if skip_runtime_access {
-                                        Ok(())
-                                    } else {
-                                        Err(error.into())
-                                    };
-                                }
+            let correct_solution_range = match parent_subspace_digest_items.next_solution_range {
+                Some(solution_range) => solution_range,
+                None => {
+                    // TODO: Remove `if` branch when breaking protocol
+                    if is_gemini_1b {
+                        match slot_worker::extract_solution_ranges_for_block(
+                            self.client.as_ref(),
+                            &parent_block_id,
+                        ) {
+                            Ok((solution_range, _voting_solution_range)) => solution_range,
+                            Err(error) => {
+                                return if skip_runtime_access {
+                                    Ok(())
+                                } else {
+                                    Err(error.into())
+                                };
                             }
-                        } else {
-                            parent_subspace_digest_items.salt
                         }
+                    } else {
+                        parent_subspace_digest_items.solution_range
                     }
-                };
-
-                (
-                    correct_global_randomness,
-                    correct_solution_range,
-                    correct_salt,
-                )
+                }
             };
+
+            let correct_salt = match parent_subspace_digest_items.next_salt {
+                Some(salt) => salt,
+                None => {
+                    // TODO: Remove `if` branch when breaking protocol
+                    if is_gemini_1b {
+                        match slot_worker::extract_salt_for_block(
+                            self.client.as_ref(),
+                            &parent_block_id,
+                        ) {
+                            Ok((salt, _next_salt)) => salt,
+                            Err(error) => {
+                                return if skip_runtime_access {
+                                    Ok(())
+                                } else {
+                                    Err(error.into())
+                                };
+                            }
+                        }
+                    } else {
+                        parent_subspace_digest_items.salt
+                    }
+                }
+            };
+
+            (
+                correct_global_randomness,
+                correct_solution_range,
+                correct_salt,
+            )
+        };
 
         if subspace_digest_items.global_randomness != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
@@ -1061,7 +1062,7 @@ where
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
-        let mut maybe_records_root = if header.number().is_one() {
+        let mut maybe_records_root = if block_number.is_one() {
             let archived_segments =
                 Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
                     .expect("Incorrect parameters for archiver")
