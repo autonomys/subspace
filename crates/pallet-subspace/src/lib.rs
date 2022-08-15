@@ -145,9 +145,11 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
+    use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
     use sp_runtime::traits::One;
+    use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, SegmentIndex, SolutionRange};
@@ -515,7 +517,13 @@ mod pallet {
             Self::do_enable_solution_range_adjustment(
                 solution_range_override,
                 voting_solution_range_override,
-            )
+            )?;
+
+            frame_system::Pallet::<T>::deposit_log(
+                DigestItem::enable_solution_range_adjustment_and_override(solution_range_override),
+            );
+
+            Ok(())
         }
 
         /// Farmer vote, currently only used for extra rewards to farmers.

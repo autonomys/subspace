@@ -112,6 +112,9 @@ enum ConsensusLog {
     /// Records roots.
     #[codec(index = 7)]
     RecordsRoot((SegmentIndex, RecordsRoot)),
+    /// Enable Solution range adjustment and Override Solution Range.
+    #[codec(index = 8)]
+    EnableSolutionRangeAdjustmentAndOverride(Option<SolutionRange>),
 }
 
 /// Farmer vote.

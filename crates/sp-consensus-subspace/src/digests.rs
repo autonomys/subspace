@@ -102,6 +102,14 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace records root, return it.
     fn as_records_root(&self) -> Option<(SegmentIndex, RecordsRoot)>;
+
+    /// Construct digest item than indicates enabling of solution range adjustment and override next solution range.
+    fn enable_solution_range_adjustment_and_override(
+        override_solution_range: Option<SolutionRange>,
+    ) -> Self;
+
+    /// If this item is a Subspace Enable solution range adjustment and override next solution range, return it.
+    fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -237,6 +245,29 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
+
+    fn enable_solution_range_adjustment_and_override(
+        maybe_override_solution_range: Option<SolutionRange>,
+    ) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(maybe_override_solution_range)
+                .encode(),
+        )
+    }
+
+    fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
+                maybe_override_solution_range,
+            ) = c
+            {
+                Some(maybe_override_solution_range)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Various kinds of digest types used in errors
@@ -262,6 +293,8 @@ pub enum ErrorDigestType {
     RecordsRoot,
     /// Generic consensus
     Consensus,
+    /// Enable solution range adjustment and override solution range
+    EnableSolutionRangeAdjustmentAndOverride,
 }
 
 impl fmt::Display for ErrorDigestType {
@@ -296,6 +329,9 @@ impl fmt::Display for ErrorDigestType {
             }
             ErrorDigestType::Consensus => {
                 write!(f, "Consensus")
+            }
+            ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride => {
+                write!(f, "EnableSolutionRangeAdjustmentAndOverride")
             }
         }
     }
@@ -363,6 +399,8 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub next_salt: Option<Salt>,
     /// Records roots
     pub records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
+    /// Enable solution range adjustment and Override solution range
+    pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -384,6 +422,7 @@ where
     let mut maybe_next_solution_range = None;
     let mut maybe_next_salt = None;
     let mut records_roots = BTreeMap::new();
+    let mut maybe_enable_and_override_solution_range = None;
 
     for log in header.digest().logs() {
         match log {
@@ -478,6 +517,19 @@ where
                             return Err(Error::Duplicate(ErrorDigestType::NextSalt));
                         }
                     }
+                    ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
+                        override_solution_range,
+                    ) => match maybe_enable_and_override_solution_range {
+                        None => {
+                            maybe_enable_and_override_solution_range
+                                .replace(override_solution_range);
+                        }
+                        Some(_) => {
+                            return Err(Error::Duplicate(
+                                ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
+                            ));
+                        }
+                    },
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -518,6 +570,7 @@ where
         next_solution_range: maybe_next_solution_range,
         next_salt: maybe_next_salt,
         records_roots,
+        enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
     })
 }
 

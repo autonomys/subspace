@@ -136,15 +136,13 @@ impl<Header: HeaderT> HeaderExt<Header> {
     /// If next digests are not present, then we fallback to the current ones.
     fn extract_next_digest_items(&self) -> Result<NextDigestItems, ImportError<Header>> {
         let SubspaceDigestItems {
-            pre_digest: _,
-            signature: _,
             global_randomness,
             solution_range,
             salt,
             next_global_randomness,
             next_solution_range,
             next_salt,
-            records_roots: _,
+            ..
         } = extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
             &self.header,
         )?;
