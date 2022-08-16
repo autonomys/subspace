@@ -16,9 +16,11 @@ include = [
 ]
 
 [dependencies]
+anyhow = "1.0.61"
 async-trait = "0.1.57"
 bytes = "1.2.1"
 chrono = {version = "0.4.21", features = ["clock", "serde", "std",]}
+clap = { version = "3.2.16", features = ["color", "derive"] }
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 futures = "0.3.21"
@@ -37,6 +39,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 thiserror = "1.0.32"
 tokio = { version = "1.20.1", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
 tracing = "0.1.36"
+tracing-subscriber = "0.3.15"
 typenum = "1.15.0"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
@@ -61,7 +64,4 @@ features = [
 ]
 
 [dev-dependencies]
-anyhow = "1.0.61"
-clap = { version = "3.2.16", features = ["color", "derive"] }
 rand = "0.8.5"
-tracing-subscriber = "0.3.15"
