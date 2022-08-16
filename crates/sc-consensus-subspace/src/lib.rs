@@ -1565,13 +1565,18 @@ where
         }
 
         let era_index = (block_number - One::one()) / chain_constants.era_duration().into();
-        let era_start_slot = self.find_era_start_slot(
-            block_number,
-            parent_block_hash,
-            era_index,
-            genesis_slot,
-            &chain_constants,
-        )?;
+        let era_start_slot = if is_gemini_1b {
+            // This logic is not supported in Gemini 1b
+            0.into()
+        } else {
+            self.find_era_start_slot(
+                block_number,
+                parent_block_hash,
+                era_index,
+                genesis_slot,
+                &chain_constants,
+            )?
+        };
 
         let mut eon_indexes = aux_schema::load_eon_indexes(self.client.as_ref())
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
@@ -1587,7 +1592,17 @@ where
             });
         }
 
-        let eon_index_entry = self.find_eon_index(block_number, parent_block_hash, &eon_indexes)?;
+        let eon_index_entry = if is_gemini_1b {
+            // This logic is not supported in Gemini 1b
+            EonIndexEntry {
+                eon_index: 0,
+                randomness: Default::default(),
+                randomness_block: (0u32.into(), Default::default()),
+                starts_at: (Default::default(), 0u32.into()),
+            }
+        } else {
+            self.find_eon_index(block_number, parent_block_hash, &eon_indexes)?
+        };
         let mut next_eon_randomnesses = aux_schema::load_next_eon_randomness::<
             NumberFor<Block>,
             Block::Hash,
@@ -1702,111 +1717,143 @@ where
                 .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
         });
 
-        for (&segment_index, records_root) in &subspace_digest_items.records_roots {
-            if aux_schema::load_records_root(self.client.as_ref(), segment_index)
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                .is_some()
-            {
-                return Err(ConsensusError::ClientImport(
-                    Error::<Block::Header>::DuplicatedRecordsRoot(segment_index).to_string(),
-                ));
+        if !is_gemini_1b {
+            for (&segment_index, records_root) in &subspace_digest_items.records_roots {
+                if aux_schema::load_records_root(self.client.as_ref(), segment_index)
+                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                    .is_some()
+                {
+                    return Err(ConsensusError::ClientImport(
+                        Error::<Block::Header>::DuplicatedRecordsRoot(segment_index).to_string(),
+                    ));
+                }
+
+                aux_schema::write_records_root(segment_index, records_root, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
             }
 
-            aux_schema::write_records_root(segment_index, records_root, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
-        }
+            // In the very first block we need to store chain constants and genesis slot for further use
+            if block_number.is_one() {
+                aux_schema::write_chain_constants(&chain_constants, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
 
-        // In the very first block we need to store chain constants and genesis slot for further use
-        if block_number.is_one() {
-            aux_schema::write_chain_constants(&chain_constants, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
+                aux_schema::write_genesis_slot(genesis_slot, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
 
-            aux_schema::write_genesis_slot(genesis_slot, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
+                aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
+            }
 
-            aux_schema::write_eon_indexes(&eon_indexes, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
-        }
+            // Check if era has changed and store corresponding era start slot.
+            //
+            // Special case when the current header is one, then first era begins or era duration
+            // interval has reached, so era has changed.
+            if block_number.is_one()
+                || block_number % chain_constants.era_duration().into() == Zero::zero()
+            {
+                let next_era_index = block_number / chain_constants.era_duration().into();
+                let mut next_era_start_slot =
+                    aux_schema::load_era_start_slot(self.client.as_ref(), next_era_index)
+                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                        .unwrap_or_default();
+                next_era_start_slot.push((block_hash, pre_digest.slot));
 
-        // Check if era has changed and store corresponding era start slot.
-        //
-        // Special case when the current header is one, then first era begins or era duration
-        // interval has reached, so era has changed.
-        if block_number.is_one()
-            || block_number % chain_constants.era_duration().into() == Zero::zero()
-        {
-            let next_era_index = block_number / chain_constants.era_duration().into();
-            let mut next_era_start_slot =
-                aux_schema::load_era_start_slot(self.client.as_ref(), next_era_index)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                    .unwrap_or_default();
-            next_era_start_slot.push((block_hash, pre_digest.slot));
+                aux_schema::write_era_start_slot(next_era_index, &next_era_start_slot, |values| {
+                    block.auxiliary.extend(
+                        values
+                            .iter()
+                            .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                    )
+                });
+            }
 
-            aux_schema::write_era_start_slot(next_era_index, &next_era_start_slot, |values| {
-                block.auxiliary.extend(
-                    values
-                        .iter()
-                        .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
-                )
-            });
-        }
+            // Check if the eon is about to be changed
+            let maybe_next_eon_index = subspace_verification::derive_next_eon_index(
+                eon_index_entry.eon_index,
+                chain_constants.eon_duration(),
+                u64::from(genesis_slot),
+                u64::from(pre_digest.slot),
+            );
 
-        // Check if the eon is about to be changed
-        let maybe_next_eon_index = subspace_verification::derive_next_eon_index(
-            eon_index_entry.eon_index,
-            chain_constants.eon_duration(),
-            u64::from(genesis_slot),
-            u64::from(pre_digest.slot),
-        );
-
-        if let Some(next_eon_index) = maybe_next_eon_index {
-            let (
-                next_eon_randomness_block_number,
-                next_eon_randomness_block_hash,
-                next_eon_randomness,
-            ) = next_eon_randomness.ok_or_else(|| {
-                ConsensusError::ClientImport(
-                    "Next eon randomness was expected, but not present".to_string(),
-                )
-            })?;
-            eon_indexes.push(EonIndexEntry {
-                eon_index: next_eon_index,
-                randomness: next_eon_randomness,
-                randomness_block: (
+            if let Some(next_eon_index) = maybe_next_eon_index {
+                let (
                     next_eon_randomness_block_number,
                     next_eon_randomness_block_hash,
-                ),
-                starts_at: (pre_digest.slot, block_number),
-            });
+                    next_eon_randomness,
+                ) = next_eon_randomness.ok_or_else(|| {
+                    ConsensusError::ClientImport(
+                        "Next eon randomness was expected, but not present".to_string(),
+                    )
+                })?;
+                eon_indexes.push(EonIndexEntry {
+                    eon_index: next_eon_index,
+                    randomness: next_eon_randomness,
+                    randomness_block: (
+                        next_eon_randomness_block_number,
+                        next_eon_randomness_block_hash,
+                    ),
+                    starts_at: (pre_digest.slot, block_number),
+                });
 
-            aux_schema::write_eon_indexes(&eon_indexes, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
-        }
+                aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
+            }
 
-        // Prune era start slots that are too old to be useful
-        if let Some(previous_block_number) = block_number.checked_sub(&2u32.into()) {
-            let previous_block_era_index =
-                previous_block_number / chain_constants.era_duration().into();
+            // Prune era start slots that are too old to be useful
+            if let Some(previous_block_number) = block_number.checked_sub(&2u32.into()) {
+                let previous_block_era_index =
+                    previous_block_number / chain_constants.era_duration().into();
 
-            if previous_block_era_index != era_index {
-                if let Some(prune_era_index) = previous_block_era_index.checked_sub(&One::one()) {
-                    aux_schema::write_era_start_slot::<_, Block::Hash, _, ()>(
-                        prune_era_index,
+                if previous_block_era_index != era_index {
+                    if let Some(prune_era_index) = previous_block_era_index.checked_sub(&One::one())
+                    {
+                        aux_schema::write_era_start_slot::<_, Block::Hash, _, ()>(
+                            prune_era_index,
+                            &[],
+                            |values| {
+                                block.auxiliary.extend(
+                                    values
+                                        .iter()
+                                        .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                                )
+                            },
+                        );
+                    }
+                }
+            }
+
+            // Delete eon indexes and randomnesses that are too old to be useful anymore
+            {
+                let mut eon_indexes_updated = false;
+                for eon_index_entry in eon_indexes.drain_filter(|eon_index_entry| {
+                    let (starts_at_slot, _starts_at_block) = eon_index_entry.starts_at;
+                    starts_at_slot
+                        < pre_digest
+                            .slot
+                            .saturating_sub(chain_constants.eon_duration() * 2)
+                }) {
+                    eon_indexes_updated = true;
+                    debug!(
+                        target: "subspace",
+                        "Pruning auxiliary storage for eon {}", eon_index_entry.eon_index,
+                    );
+                    aux_schema::write_next_eon_randomness::<NumberFor<Block>, Block::Hash, _, ()>(
+                        eon_index_entry.eon_index,
                         &[],
                         |values| {
                             block.auxiliary.extend(
@@ -1817,39 +1864,14 @@ where
                         },
                     );
                 }
-            }
-        }
 
-        // Delete eon indexes and randomnesses that are too old to be useful anymore
-        {
-            let mut eon_indexes_updated = false;
-            for eon_index_entry in eon_indexes.drain_filter(|eon_index_entry| {
-                let (starts_at_slot, _starts_at_block) = eon_index_entry.starts_at;
-                starts_at_slot
-                    < pre_digest
-                        .slot
-                        .saturating_sub(chain_constants.eon_duration() * 2)
-            }) {
-                eon_indexes_updated = true;
-                aux_schema::write_next_eon_randomness::<NumberFor<Block>, Block::Hash, _, ()>(
-                    eon_index_entry.eon_index,
-                    &[],
-                    |values| {
-                        block.auxiliary.extend(
-                            values
-                                .iter()
-                                .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
-                        )
-                    },
-                );
-            }
-
-            if eon_indexes_updated {
-                aux_schema::write_eon_indexes(&eon_indexes, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
+                if eon_indexes_updated {
+                    aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                        block
+                            .auxiliary
+                            .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                    });
+                }
             }
         }
 
