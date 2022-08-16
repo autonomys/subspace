@@ -538,11 +538,11 @@ impl SinglePlotFarm {
             let mut peer_sync_status_provider = peer_sync_status_provider.lock();
 
             *peer_sync_status_provider = Box::new(move || {
-                sync_status_node
-                    .sync_status_handler()
-                    .status()
-                    .then_some(PeerSyncStatus::Syncing)
-                    .unwrap_or(PeerSyncStatus::Ready)
+                if sync_status_node.sync_status_handler().status() {
+                    PeerSyncStatus::Syncing
+                } else {
+                    PeerSyncStatus::Ready
+                }
             });
         }
 
