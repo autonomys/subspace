@@ -194,7 +194,7 @@ pub struct Node {
     is_relay_server: bool,
     relay_server_memory_port: Arc<Mutex<Option<u64>>>,
     /// Indicates whether the peer data synchronization is in progress
-    sync_status: Arc<NodeSynchronizationStatusHandler>,
+    sync_status: NodeSynchronizationStatusHandler,
 }
 
 /// Provides operations for managing thread-safe node synchronization status.
@@ -234,13 +234,13 @@ impl Node {
             shared,
             is_relay_server,
             relay_server_memory_port: Arc::new(Mutex::new(None)),
-            sync_status: Arc::new(NodeSynchronizationStatusHandler::new()),
+            sync_status: NodeSynchronizationStatusHandler::new(),
         }
     }
 
     /// Node's synchronization status handler.
     pub fn sync_status_handler(&self) -> NodeSynchronizationStatusHandler {
-        (*self.sync_status).clone()
+        self.sync_status.clone()
     }
 
     /// Node's own local ID.
