@@ -30,6 +30,8 @@ enum Command {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
+    info!("Bootstrap Node started",);
+
     let command: Command = Command::parse();
 
     match command {
