@@ -20,8 +20,9 @@ use subspace_core_primitives::{
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, PiecesByRangeRequest, PiecesByRangeRequestHandler,
-    PiecesByRangeResponse, PiecesToPlot,
+    BootstrappedNetworkingParameters, Config, PeerInfo, PeerInfoRequestHandler, PeerInfoResponse,
+    PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse,
+    PiecesToPlot,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tempfile::TempDir;
@@ -55,6 +56,10 @@ struct TestDSN(BTreeMap<PieceIndexHash, (Piece, PieceIndex)>);
 #[async_trait::async_trait]
 impl DSNSync for TestDSN {
     type Error = std::convert::Infallible;
+
+    fn notify_sync_start(&self) {}
+
+    fn notify_sync_end(&self) {}
 
     async fn get_pieces(
         &mut self,
@@ -567,29 +572,38 @@ async fn get_pieces_by_range_smoke() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![PiecesByRangeRequestHandler::create(move |req| {
-            let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+        request_response_protocols: vec![
+            PiecesByRangeRequestHandler::create(move |req| {
+                let request_index = REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
 
-            // Only two responses
-            if request_index == 2 {
-                return None;
-            }
+                // Only two responses
+                if request_index == 2 {
+                    return None;
+                }
 
-            if request_index == 0 {
-                Some(PiecesByRangeResponse {
-                    pieces: response_data[request_index].clone(),
-                    next_piece_index_hash: Some(piece_index_continue),
+                if request_index == 0 {
+                    Some(PiecesByRangeResponse {
+                        pieces: response_data[request_index].clone(),
+                        next_piece_index_hash: Some(piece_index_continue),
+                    })
+                } else {
+                    // New request starts from from the previous response.
+                    assert_eq!(req.start, piece_index_continue);
+
+                    Some(PiecesByRangeResponse {
+                        pieces: response_data[request_index].clone(),
+                        next_piece_index_hash: None,
+                    })
+                }
+            }),
+            PeerInfoRequestHandler::create(|_| {
+                Some(PeerInfoResponse {
+                    peer_info: PeerInfo {
+                        status: PeerSyncStatus::Ready,
+                    },
                 })
-            } else {
-                // New request starts from from the previous response.
-                assert_eq!(req.start, piece_index_continue);
-
-                Some(PiecesByRangeResponse {
-                    pieces: response_data[request_index].clone(),
-                    next_piece_index_hash: None,
-                })
-            }
-        })],
+            }),
+        ],
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
@@ -622,7 +636,16 @@ async fn get_pieces_by_range_smoke() {
         .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
-        request_response_protocols: vec![PiecesByRangeRequestHandler::create(|_request| None)],
+        request_response_protocols: vec![
+            PiecesByRangeRequestHandler::create(|_request| None),
+            PeerInfoRequestHandler::create(|_| {
+                Some(PeerInfoResponse {
+                    peer_info: PeerInfo {
+                        status: PeerSyncStatus::Ready,
+                    },
+                })
+            }),
+        ],
         ..Config::with_generated_keypair()
     };
 
