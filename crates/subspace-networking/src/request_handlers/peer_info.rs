@@ -8,11 +8,13 @@ pub struct PeerInfoRequest;
 /// Defines peer synchronization status.
 #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
 pub enum PeerSyncStatus {
+    /// Special status for starting peer. Receiving it in the running mode means an error.
+    Unknown,
     /// Synchronization is not supported for this peer.
     NotSupported,
     /// Peer is ready to provide data for synchronization.
     Ready,
-    /// Peer is synchronizing itself.
+    /// Peer is synchronizing.
     Syncing,
 }
 

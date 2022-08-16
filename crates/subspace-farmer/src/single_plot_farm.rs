@@ -431,7 +431,7 @@ impl SinglePlotFarm {
 
         let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
         let peer_sync_status_provider: Arc<Mutex<PeerSyncStatusProvider>> =
-            Arc::new(Mutex::new(Box::new(|| PeerSyncStatus::Ready)));
+            Arc::new(Mutex::new(Box::new(|| PeerSyncStatus::Unknown)));
         let network_node_config = Config {
             networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
                 .boxed(),
