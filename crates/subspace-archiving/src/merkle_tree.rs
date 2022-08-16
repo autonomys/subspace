@@ -111,7 +111,7 @@ impl<'a> Witness<'a> {
             let mut path = Vec::with_capacity(self.merkle_num_leaves);
             let mut local_position = position;
 
-            for _ in 0..self.merkle_num_leaves.log2() {
+            for _ in 0..self.merkle_num_leaves.ilog2() {
                 path.push(local_position % 2 == 0);
                 local_position /= 2;
             }

@@ -14,7 +14,7 @@ use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_consensus::BlockOrigin;
+use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::ByteArray;
 use sp_executor::{

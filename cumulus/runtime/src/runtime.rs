@@ -247,7 +247,7 @@ impl cirrus_pallet_executive::Config for Runtime {
 //
 // NOTE: Currently cirrus runtime does not naturally support the pallets with inherent extrinsics.
 construct_runtime!(
-    pub enum Runtime where
+    pub struct Runtime where
         Block = Block,
         NodeBlock = opaque::Block,
         UncheckedExtrinsic = UncheckedExtrinsic,

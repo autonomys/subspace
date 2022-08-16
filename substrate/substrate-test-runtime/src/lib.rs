@@ -47,14 +47,13 @@ use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Per
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_trie::trie_types::TrieDB;
-use sp_trie::{PrefixedMemoryDB, StorageProof};
+use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::{
     RecordsRoot, SegmentIndex, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use trie_db::{Trie, TrieMut};
 // bench on latest state.
 use sp_consensus_subspace::{FarmerPublicKey, SignedVote};
 use sp_trie::trie_types::TrieDBMutV1 as TrieDBMut;
