@@ -326,6 +326,9 @@ fn import_blocks_until(
                 maybe_randomness: None,
             },
             era_start_slot: era_start_slot.into(),
+            should_adjust_solution_range: true,
+            maybe_current_solution_range_override: None,
+            maybe_next_solution_range_override: None,
             test_overrides: Default::default(),
         };
         store.store_header(header_ext, true);

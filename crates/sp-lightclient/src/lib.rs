@@ -103,6 +103,12 @@ pub struct HeaderExt<Header> {
     pub salt_derivation_info: SaltDerivationInfo,
     /// Slot at which current era started.
     pub era_start_slot: Slot,
+    /// Should adjust solution range on era change.
+    pub should_adjust_solution_range: bool,
+    /// Solution range override for the current era.
+    pub maybe_current_solution_range_override: Option<SolutionRange>,
+    /// Solution range override for the next era.
+    pub maybe_next_solution_range_override: Option<SolutionRange>,
 
     #[cfg(test)]
     test_overrides: mock::TestOverrides,
@@ -146,6 +152,11 @@ impl<Header: HeaderT> HeaderExt<Header> {
         } = extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
             &self.header,
         )?;
+
+        // if there is override for solution range for current era, override it
+        let solution_range = self
+            .maybe_current_solution_range_override
+            .unwrap_or(solution_range);
 
         #[cfg(test)]
         let solution_range = {
@@ -298,8 +309,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             .header(*header.parent_hash())
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
-        // TODO(ved): check for farmer equivocation
-
         // verify global randomness, solution range, and salt from the parent header
         let digests = self.verify_header_digest_with_parent(&parent_header, &header)?;
 
@@ -316,6 +325,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                     &digests.pre_digest,
                 )?),
         };
+
+        let mut should_adjust_solution_range = parent_header.should_adjust_solution_range;
+        let mut maybe_next_solution_range_override =
+            parent_header.maybe_next_solution_range_override;
         verify_next_digests::<Header>(NextDigestsVerificationParams {
             number: *header.number(),
             header_digests: &digests,
@@ -327,6 +340,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             era_start_slot: parent_header.era_start_slot,
             current_eon_index: parent_salt_derivation_info.eon_index,
             maybe_randomness: parent_salt_derivation_info.maybe_randomness,
+            should_adjust_solution_range: &mut should_adjust_solution_range,
+            maybe_next_solution_range_override: &mut maybe_next_solution_range_override,
         })?;
 
         // slot must be strictly increasing from the parent header
@@ -382,8 +397,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             }
         };
 
-        // TODO(ved); extract an equivocations from the header
-
         let salt_derivation_info =
             self.next_salt_derivation_info(&header, &parent_salt_derivation_info)?;
 
@@ -394,12 +407,33 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             parent_header.era_start_slot
         };
 
+        // check if we should update current solution range override
+        let mut maybe_current_solution_range_override =
+            parent_header.maybe_current_solution_range_override;
+
+        // if there is override of solution range in this header, use it
+        if let Some(current_solution_range_override) =
+            digests.enable_solution_range_adjustment_and_override
+        {
+            maybe_current_solution_range_override = current_solution_range_override;
+        }
+
+        // check if the era has changed and there is a current solution range override, reset it
+        if maybe_current_solution_range_override.is_some()
+            && Self::has_era_changed(&header, constants.era_duration)
+        {
+            maybe_current_solution_range_override = None
+        }
+
         // store header
         let header_ext = HeaderExt {
             header,
             total_weight,
             salt_derivation_info,
             era_start_slot,
+            should_adjust_solution_range,
+            maybe_current_solution_range_override,
+            maybe_next_solution_range_override,
 
             #[cfg(test)]
             test_overrides: Default::default(),
