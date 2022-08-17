@@ -41,7 +41,7 @@ RUN \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-farmer \
-        --target x86_64-unknown-linux-gnu && \
+        --target $(uname -p)-unknown-linux-gnu && \
     mv target/*/*/subspace-farmer subspace-farmer && \
     rm -rf target
 

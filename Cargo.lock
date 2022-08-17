@@ -4636,6 +4636,7 @@ dependencies = [
  "rand 0.8.5",
  "scale-info",
  "schnorrkel",
+ "serde",
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",

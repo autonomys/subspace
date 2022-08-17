@@ -40,6 +40,7 @@ use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
+pub use pallet_subspace::AllowAuthoringBy;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
