@@ -22,7 +22,9 @@ use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::ChainConstants;
-use subspace_core_primitives::{BlockWeight, EonIndex, Randomness, RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{
+    BlockWeight, EonIndex, Randomness, RecordsRoot, SegmentIndex, SolutionRange,
+};
 
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
 where
@@ -258,4 +260,37 @@ where
     Backend: AuxStore,
 {
     load_decode(backend, next_eon_randomness_key(eon_index).as_slice())
+}
+
+#[derive(Debug, Copy, Clone, Encode, Decode, Eq, PartialEq)]
+pub(super) struct SolutionRangeParameters {
+    pub(super) should_adjust: bool,
+    pub(super) next_override: Option<SolutionRange>,
+}
+
+/// The aux storage key used to store solution range parameters.
+fn solution_range_parameters_key() -> Vec<u8> {
+    b"solution_range_parameters".encode()
+}
+
+/// Write solution range parameters to aux storage.
+pub(crate) fn write_solution_range_parameters<F, R>(
+    solution_range_parameters: &SolutionRangeParameters,
+    write_aux: F,
+) -> R
+where
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = solution_range_parameters_key();
+    solution_range_parameters.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load solution range parameters.
+pub(crate) fn load_solution_range_parameters<Backend>(
+    backend: &Backend,
+) -> ClientResult<Option<SolutionRangeParameters>>
+where
+    Backend: AuxStore,
+{
+    load_decode(backend, solution_range_parameters_key().as_slice())
 }

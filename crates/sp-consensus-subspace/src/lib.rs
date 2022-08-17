@@ -430,6 +430,9 @@ sp_api::decl_runtime_apis! {
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;
 
+        /// Whether solution range adjustment is enabled.
+        fn should_adjust_solution_range() -> bool;
+
         /// Get Subspace blockchain constants
         fn chain_constants() -> ChainConstants;
     }

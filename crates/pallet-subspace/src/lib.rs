@@ -384,6 +384,7 @@ mod pallet {
 
     /// Storage to check if the solution range is to be adjusted for next era
     #[pallet::storage]
+    #[pallet::getter(fn should_adjust_solution_range)]
     pub type ShouldAdjustSolutionRange<T: Config> =
         StorageValue<_, bool, ValueQuery, T::ShouldAdjustSolutionRange>;
 

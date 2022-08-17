@@ -910,6 +910,10 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::root_plot_public_key()
                 }
 
+                fn should_adjust_solution_range() -> bool {
+                    <pallet_subspace::Pallet<Runtime>>::should_adjust_solution_range()
+                }
+
                 fn chain_constants() -> ChainConstants {
                     <pallet_subspace::Pallet<Runtime>>::chain_constants()
                 }
@@ -1172,6 +1176,10 @@ cfg_if! {
 
                 fn root_plot_public_key() -> Option<FarmerPublicKey> {
                     <pallet_subspace::Pallet<Runtime>>::root_plot_public_key()
+                }
+
+                fn should_adjust_solution_range() -> bool {
+                    <pallet_subspace::Pallet<Runtime>>::should_adjust_solution_range()
                 }
 
                 fn chain_constants() -> ChainConstants {

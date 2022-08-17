@@ -27,7 +27,7 @@ mod slot_worker;
 #[cfg(test)]
 mod tests;
 
-use crate::aux_schema::EonIndexEntry;
+use crate::aux_schema::{EonIndexEntry, SolutionRangeParameters};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use archiver::start_subspace_archiver;
@@ -1546,6 +1546,43 @@ where
                 }
             }
         };
+
+        let (mut solution_range_parameters, old_solution_range_parameters) = if is_gemini_1b {
+            // Known values for Gemini 1b
+            (
+                SolutionRangeParameters {
+                    should_adjust: false,
+                    next_override: None,
+                },
+                None,
+            )
+        } else {
+            match aux_schema::load_solution_range_parameters(self.client.as_ref())
+                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+            {
+                Some(solution_range_parameters) => {
+                    (solution_range_parameters, Some(solution_range_parameters))
+                }
+                None => {
+                    // This is only called on the very first block for which we always have runtime
+                    // storage access
+                    let should_adjust = self
+                        .client
+                        .runtime_api()
+                        .should_adjust_solution_range(&BlockId::Hash(*block.header.parent_hash()))
+                        .map_err(Error::<Block::Header>::RuntimeApi)
+                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+                    (
+                        SolutionRangeParameters {
+                            should_adjust,
+                            next_override: None,
+                        },
+                        None,
+                    )
+                }
+            }
+        };
+
         let mut genesis_slot = aux_schema::load_genesis_slot(self.client.as_ref())
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
             .unwrap_or_default();
@@ -1659,10 +1696,8 @@ where
             era_start_slot,
             eon_index_entry.eon_index,
             next_eon_randomness.map(|(_block_number, _block_hash, randomness)| randomness),
-            // TODO: Support disabling solution range
-            &mut false,
-            // TODO: Support overriding solution range
-            &mut None,
+            &mut solution_range_parameters.should_adjust,
+            &mut solution_range_parameters.next_override,
             &subspace_digest_items,
             skip_state_computation,
         )
@@ -1750,6 +1785,18 @@ where
                 });
 
                 aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
+            }
+
+            // Store updated solution range parameters if we didn't store them before or if they
+            // changed.
+            if old_solution_range_parameters.is_none()
+                || old_solution_range_parameters != Some(solution_range_parameters)
+            {
+                aux_schema::write_solution_range_parameters(&solution_range_parameters, |values| {
                     block
                         .auxiliary
                         .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))

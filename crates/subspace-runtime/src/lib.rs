@@ -795,6 +795,10 @@ impl_runtime_apis! {
             Subspace::root_plot_public_key()
         }
 
+        fn should_adjust_solution_range() -> bool {
+            Subspace::should_adjust_solution_range()
+        }
+
         fn chain_constants() -> ChainConstants {
             Subspace::chain_constants()
         }
