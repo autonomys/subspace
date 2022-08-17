@@ -20,6 +20,7 @@ log = { version = "0.4.17", default-features = false }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
+serde = { version = "1.0.143", optional = true, default-features = false, features = ["derive"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-io = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
@@ -48,6 +49,8 @@ std = [
 	"pallet-timestamp/std",
 	"scale-info/std",
 	"schnorrkel/std",
+	"serde",
+	"serde/std",
 	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
 	"sp-io/std",
