@@ -654,15 +654,15 @@ fn derive_next_salt<Header: HeaderT>(
     Ok(None)
 }
 
-struct DeriveNextSolutionRangeParams<'a, Header: HeaderT> {
+struct DeriveNextSolutionRangeParams<Header: HeaderT> {
     number: NumberOf<Header>,
     era_duration: NumberOf<Header>,
     slot_probability: (u64, u64),
     current_slot: Slot,
     current_solution_range: SolutionRange,
     era_start_slot: Slot,
-    should_adjust_solution_range: &'a bool,
-    maybe_next_solution_range_override: &'a mut Option<SolutionRange>,
+    should_adjust_solution_range: bool,
+    maybe_next_solution_range_override: Option<SolutionRange>,
 }
 
 fn derive_next_solution_range<Header: HeaderT>(
@@ -688,9 +688,7 @@ fn derive_next_solution_range<Header: HeaderT>(
         current_solution_range
     } else if let Some(solution_range_override) = maybe_next_solution_range_override {
         // era has change so take this override and reset it
-        let solution_range = *solution_range_override;
-        *maybe_next_solution_range_override = None;
-        solution_range
+        solution_range_override
     } else {
         subspace_verification::derive_next_solution_range(
             u64::from(era_start_slot),
@@ -795,9 +793,14 @@ pub fn verify_next_digests<Header: HeaderT>(
             current_slot: header_digests.pre_digest.slot,
             current_solution_range: header_digests.solution_range,
             era_start_slot,
-            should_adjust_solution_range,
-            maybe_next_solution_range_override,
+            should_adjust_solution_range: *should_adjust_solution_range,
+            maybe_next_solution_range_override: *maybe_next_solution_range_override,
         })?;
+
+    if expected_next_solution_range.is_some() {
+        // Whatever override we had, it is no longer necessary
+        maybe_next_solution_range_override.take();
+    }
     if expected_next_solution_range != header_digests.next_solution_range {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextSolutionRange,
