@@ -43,7 +43,7 @@ RUN \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-node \
-        --target x86_64-unknown-linux-gnu && \
+        --target $(uname -p)-unknown-linux-gnu && \
     mv target/*/*/subspace-node subspace-node && \
     rm -rf target
 
