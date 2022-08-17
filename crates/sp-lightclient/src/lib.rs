@@ -109,6 +109,8 @@ pub struct HeaderExt<Header> {
     pub maybe_current_solution_range_override: Option<SolutionRange>,
     /// Solution range override for the next era.
     pub maybe_next_solution_range_override: Option<SolutionRange>,
+    /// Restrict block authoring to this public key.
+    pub maybe_root_plot_public_key: Option<FarmerPublicKey>,
 
     #[cfg(test)]
     test_overrides: mock::TestOverrides,
@@ -260,6 +262,8 @@ pub enum ImportError<Header: HeaderT> {
     HeaderIsBelowArchivingDepth(HeaderBelowArchivingDepthError<Header>),
     /// Missing records root for a given segment index.
     MissingRecordsRoot(SegmentIndex),
+    /// Incorrect block author.
+    IncorrectBlockAuthor(FarmerPublicKey),
 }
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
@@ -310,7 +314,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
 
         // verify global randomness, solution range, and salt from the parent header
-        let digests = self.verify_header_digest_with_parent(&parent_header, &header)?;
+        let header_digests = self.verify_header_digest_with_parent(&parent_header, &header)?;
 
         // verify next digest items
         let constants = self.store.chain_constants();
@@ -322,16 +326,25 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .randomness_for_next_salt(
                     parent_header.salt_derivation_info.eon_index,
                     genesis_slot,
-                    &digests.pre_digest,
+                    &header_digests.pre_digest,
                 )?),
         };
+
+        let mut maybe_root_plot_public_key = parent_header.maybe_root_plot_public_key;
+        if let Some(root_plot_public_key) = &maybe_root_plot_public_key {
+            if root_plot_public_key != &header_digests.pre_digest.solution.public_key {
+                return Err(ImportError::IncorrectBlockAuthor(
+                    header_digests.pre_digest.solution.public_key,
+                ));
+            }
+        }
 
         let mut should_adjust_solution_range = parent_header.should_adjust_solution_range;
         let mut maybe_next_solution_range_override =
             parent_header.maybe_next_solution_range_override;
         verify_next_digests::<Header>(NextDigestsVerificationParams {
             number: *header.number(),
-            header_digests: &digests,
+            header_digests: &header_digests,
             global_randomness_interval: constants.global_randomness_interval,
             era_duration: constants.era_duration,
             slot_probability: constants.slot_probability,
@@ -342,29 +355,32 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             maybe_randomness: parent_salt_derivation_info.maybe_randomness,
             should_adjust_solution_range: &mut should_adjust_solution_range,
             maybe_next_solution_range_override: &mut maybe_next_solution_range_override,
+            maybe_root_plot_public_key: &mut maybe_root_plot_public_key,
         })?;
 
         // slot must be strictly increasing from the parent header
-        Self::verify_slot(&parent_header.header, &digests.pre_digest)?;
+        Self::verify_slot(&parent_header.header, &header_digests.pre_digest)?;
 
         // verify block signature
-        Self::verify_block_signature(&mut header, &digests.pre_digest.solution.public_key)?;
+        Self::verify_block_signature(&mut header, &header_digests.pre_digest.solution.public_key)?;
 
         // verify solution
         let max_plot_size = self.store.chain_constants().max_plot_size;
-        let segment_index = digests.pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
-        let position = digests.pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+        let segment_index =
+            header_digests.pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+        let position =
+            header_digests.pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
         let records_root =
             self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
         let total_pieces = self.total_pieces(parent_header.header.hash())?;
 
         verify_solution(
-            &digests.pre_digest.solution,
-            digests.pre_digest.slot.into(),
+            &header_digests.pre_digest.solution,
+            header_digests.pre_digest.slot.into(),
             VerifySolutionParams {
-                global_randomness: &digests.global_randomness,
-                solution_range: digests.solution_range,
-                salt: digests.salt,
+                global_randomness: &header_digests.global_randomness,
+                solution_range: header_digests.solution_range,
+                salt: header_digests.salt,
                 piece_check_params: Some(PieceCheckParams {
                     records_root,
                     position,
@@ -376,8 +392,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         )
         .map_err(ImportError::InvalidSolution)?;
 
-        let block_weight =
-            Self::calculate_block_weight(&digests.global_randomness, &digests.pre_digest);
+        let block_weight = Self::calculate_block_weight(
+            &header_digests.global_randomness,
+            &header_digests.pre_digest,
+        );
         let total_weight = parent_header.total_weight + block_weight;
 
         // last best header should ideally be parent header. if not check for forks and pick the best chain
@@ -402,7 +420,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // check if era has changed
         let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
-            digests.pre_digest.slot
+            header_digests.pre_digest.slot
         } else {
             parent_header.era_start_slot
         };
@@ -413,7 +431,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // if there is override of solution range in this header, use it
         if let Some(current_solution_range_override) =
-            digests.enable_solution_range_adjustment_and_override
+            header_digests.enable_solution_range_adjustment_and_override
         {
             maybe_current_solution_range_override = current_solution_range_override;
         }
@@ -434,6 +452,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             should_adjust_solution_range,
             maybe_current_solution_range_override,
             maybe_next_solution_range_override,
+            maybe_root_plot_public_key,
 
             #[cfg(test)]
             test_overrides: Default::default(),

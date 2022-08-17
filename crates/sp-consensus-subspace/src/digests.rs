@@ -22,7 +22,7 @@ use log::trace;
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::Zero;
+use sp_runtime::traits::{One, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
@@ -110,6 +110,12 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace Enable solution range adjustment and override next solution range, return it.
     fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
+
+    /// Construct digest item than indicates update of root plot public key.
+    fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self;
+
+    /// If this item is a Subspace update of root plot public key, return it.
+    fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -268,6 +274,23 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
+
+    fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key).encode(),
+        )
+    }
+
+    fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key) = c {
+                Some(root_plot_public_key)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Various kinds of digest types used in errors
@@ -295,6 +318,8 @@ pub enum ErrorDigestType {
     Consensus,
     /// Enable solution range adjustment and override solution range
     EnableSolutionRangeAdjustmentAndOverride,
+    /// Root plot public key was updated
+    RootPlotPublicKeyUpdate,
 }
 
 impl fmt::Display for ErrorDigestType {
@@ -332,6 +357,9 @@ impl fmt::Display for ErrorDigestType {
             }
             ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride => {
                 write!(f, "EnableSolutionRangeAdjustmentAndOverride")
+            }
+            ErrorDigestType::RootPlotPublicKeyUpdate => {
+                write!(f, "RootPlotPublicKeyUpdate")
             }
         }
     }
@@ -401,6 +429,8 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
     /// Enable solution range adjustment and Override solution range
     pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
+    /// Root plot public key was updated
+    pub root_plot_public_key_update: Option<Option<FarmerPublicKey>>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -423,6 +453,7 @@ where
     let mut maybe_next_salt = None;
     let mut records_roots = BTreeMap::new();
     let mut maybe_enable_and_override_solution_range = None;
+    let mut maybe_root_plot_public_key_update = None;
 
     for log in header.digest().logs() {
         match log {
@@ -530,6 +561,19 @@ where
                             ));
                         }
                     },
+                    ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key_update) => {
+                        match maybe_enable_and_override_solution_range {
+                            None => {
+                                maybe_root_plot_public_key_update
+                                    .replace(root_plot_public_key_update);
+                            }
+                            Some(_) => {
+                                return Err(Error::Duplicate(
+                                    ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
+                                ));
+                            }
+                        }
+                    }
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -571,6 +615,7 @@ where
         next_salt: maybe_next_salt,
         records_roots,
         enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
+        root_plot_public_key_update: maybe_root_plot_public_key_update,
     })
 }
 
@@ -732,6 +777,9 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Next Solution range override.
     /// If the digest logs indicate that solution range override is provided, value is updated.
     pub maybe_next_solution_range_override: &'a mut Option<SolutionRange>,
+    /// Root plot public key.
+    /// Value is updated when digest items contain an update.
+    pub maybe_root_plot_public_key: &'a mut Option<FarmerPublicKey>,
 }
 
 /// Derives and verifies next digest items based on their respective intervals.
@@ -751,6 +799,7 @@ pub fn verify_next_digests<Header: HeaderT>(
         maybe_randomness,
         should_adjust_solution_range,
         maybe_next_solution_range_override,
+        maybe_root_plot_public_key: root_plot_public_key,
     } = params;
 
     // verify if the randomness is supposed to derived at this block header
@@ -805,6 +854,23 @@ pub fn verify_next_digests<Header: HeaderT>(
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextSolutionRange,
         ));
+    }
+
+    if let Some(updated_root_plot_public_key) = &header_digests.root_plot_public_key_update {
+        match updated_root_plot_public_key {
+            Some(updated_root_plot_public_key) => {
+                if number.is_one() && root_plot_public_key.is_none() {
+                    root_plot_public_key.replace(updated_root_plot_public_key.clone());
+                } else {
+                    return Err(Error::NextDigestVerificationError(
+                        ErrorDigestType::RootPlotPublicKeyUpdate,
+                    ));
+                }
+            }
+            None => {
+                root_plot_public_key.take();
+            }
+        }
     }
 
     // verify if the next derived salt should be present in the block header

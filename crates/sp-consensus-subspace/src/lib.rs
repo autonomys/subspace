@@ -115,6 +115,9 @@ enum ConsensusLog {
     /// Enable Solution range adjustment and Override Solution Range.
     #[codec(index = 8)]
     EnableSolutionRangeAdjustmentAndOverride(Option<SolutionRange>),
+    /// Root plot public key was updated.
+    #[codec(index = 9)]
+    RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
 }
 
 /// Farmer vote.

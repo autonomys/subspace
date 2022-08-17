@@ -570,6 +570,8 @@ mod pallet {
 
             AllowAuthoringByAnyone::<T>::put(true);
             RootPlotPublicKey::<T>::take();
+            // Deposit root plot public key update such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::root_plot_public_key_update(None));
 
             Ok(())
         }
@@ -809,6 +811,13 @@ impl<T: Config> Pallet<T> {
                         }
                     } else {
                         maybe_root_plot_public_key.replace(farmer_public_key.clone());
+                        // Deposit root plot public key update such that light client can validate
+                        // blocks later.
+                        frame_system::Pallet::<T>::deposit_log(
+                            DigestItem::root_plot_public_key_update(Some(
+                                farmer_public_key.clone(),
+                            )),
+                        );
                     }
                 });
             }

@@ -21,7 +21,7 @@ use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::ChainConstants;
+use sp_consensus_subspace::{ChainConstants, FarmerPublicKey};
 use subspace_core_primitives::{
     BlockWeight, EonIndex, Randomness, RecordsRoot, SegmentIndex, SolutionRange,
 };
@@ -293,4 +293,31 @@ where
     Backend: AuxStore,
 {
     load_decode(backend, solution_range_parameters_key().as_slice())
+}
+
+/// The aux storage key used to store root plot public key.
+fn root_plot_public_key_key() -> Vec<u8> {
+    b"root_plot_public_key".encode()
+}
+
+/// Write root plot public key to aux storage.
+pub(crate) fn write_root_plot_public_key<F, R>(
+    root_plot_public_key: &Option<FarmerPublicKey>,
+    write_aux: F,
+) -> R
+where
+    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
+{
+    let key = root_plot_public_key_key();
+    root_plot_public_key.using_encoded(|s| write_aux(&[(key, s)]))
+}
+
+/// Load root plot public key.
+pub(crate) fn load_root_plot_public_key<Backend>(
+    backend: &Backend,
+) -> ClientResult<Option<Option<FarmerPublicKey>>>
+where
+    Backend: AuxStore,
+{
+    load_decode(backend, root_plot_public_key_key().as_slice())
 }

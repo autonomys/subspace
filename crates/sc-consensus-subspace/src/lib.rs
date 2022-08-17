@@ -70,6 +70,7 @@ use sp_consensus_subspace::{
     check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
     VerificationError, VerificationParams,
 };
+use sp_core::crypto::UncheckedFrom;
 use sp_core::{ByteArray, H256};
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
@@ -888,6 +889,7 @@ where
         next_eon_randomness: Option<Randomness>,
         should_adjust_solution_range: &mut bool,
         maybe_next_solution_range_override: &mut Option<SolutionRange>,
+        root_plot_public_key: &mut Option<FarmerPublicKey>,
         subspace_digest_items: &SubspaceDigestItems<
             FarmerPublicKey,
             FarmerPublicKey,
@@ -901,15 +903,25 @@ where
 
         let pre_digest = &subspace_digest_items.pre_digest;
 
-        // TODO: Think about achieving the same without doing runtime API call
-        if !skip_runtime_access {
-            let maybe_root_plot_public_key = self
-                .client
-                .runtime_api()
-                .root_plot_public_key(&parent_block_id)?;
+        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
+        //  breaking compatibility.
+        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
 
-            if let Some(root_plot_public_key) = maybe_root_plot_public_key {
-                if pre_digest.solution.public_key != root_plot_public_key {
+        if !skip_runtime_access {
+            if is_gemini_1b {
+                let maybe_root_plot_public_key = self
+                    .client
+                    .runtime_api()
+                    .root_plot_public_key(&parent_block_id)?;
+
+                if let Some(root_plot_public_key) = maybe_root_plot_public_key {
+                    if pre_digest.solution.public_key != root_plot_public_key {
+                        // Only root plot public key is allowed.
+                        return Err(Error::OnlyRootPlotPublicKeyAllowed);
+                    }
+                }
+            } else if let Some(root_plot_public_key) = root_plot_public_key {
+                if &pre_digest.solution.public_key != root_plot_public_key {
                     // Only root plot public key is allowed.
                     return Err(Error::OnlyRootPlotPublicKeyAllowed);
                 }
@@ -940,10 +952,6 @@ where
                 pre_digest.solution.public_key.clone(),
             ));
         }
-
-        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
-        //  breaking compatibility.
-        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
 
         let parent_header = self
             .client
@@ -1184,6 +1192,7 @@ where
                 maybe_randomness: next_eon_randomness,
                 should_adjust_solution_range,
                 maybe_next_solution_range_override,
+                maybe_root_plot_public_key: root_plot_public_key,
             })?;
         }
 
@@ -1583,6 +1592,35 @@ where
             }
         };
 
+        let (mut root_plot_public_key, old_root_plot_public_key) = if is_gemini_1b {
+            // Known values for Gemini 1b
+            (
+                Some(FarmerPublicKey::unchecked_from([
+                    0x54, 0x26, 0x37, 0xb0, 0xd4, 0x43, 0x08, 0x7a, 0x34, 0x08, 0x08, 0xbb, 0x02,
+                    0x1a, 0x05, 0x19, 0x6f, 0x68, 0x1a, 0x1b, 0x3d, 0xae, 0x24, 0x75, 0x93, 0x2b,
+                    0x72, 0x03, 0xf7, 0x84, 0x1e, 0x5a,
+                ])),
+                None,
+            )
+        } else {
+            match aux_schema::load_root_plot_public_key(self.client.as_ref())
+                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+            {
+                Some(root_plot_public_key) => (root_plot_public_key.clone(), root_plot_public_key),
+                None => {
+                    // This is only called on the very first block for which we always have runtime
+                    // storage access
+                    let root_plot_public_key = self
+                        .client
+                        .runtime_api()
+                        .root_plot_public_key(&BlockId::Hash(*block.header.parent_hash()))
+                        .map_err(Error::<Block::Header>::RuntimeApi)
+                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+                    (root_plot_public_key, None)
+                }
+            }
+        };
+
         let mut genesis_slot = aux_schema::load_genesis_slot(self.client.as_ref())
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
             .unwrap_or_default();
@@ -1698,6 +1736,7 @@ where
             next_eon_randomness.map(|(_block_number, _block_hash, randomness)| randomness),
             &mut solution_range_parameters.should_adjust,
             &mut solution_range_parameters.next_override,
+            &mut root_plot_public_key,
             &subspace_digest_items,
             skip_state_computation,
         )
@@ -1797,6 +1836,15 @@ where
                 || old_solution_range_parameters != Some(solution_range_parameters)
             {
                 aux_schema::write_solution_range_parameters(&solution_range_parameters, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
+            }
+
+            // Store updated root plot public key on the first block or when changed.
+            if block_number.is_one() || old_root_plot_public_key != root_plot_public_key {
+                aux_schema::write_root_plot_public_key(&root_plot_public_key, |values| {
                     block
                         .auxiliary
                         .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))

@@ -327,6 +327,7 @@ fn import_blocks_until(
             should_adjust_solution_range: true,
             maybe_current_solution_range_override: None,
             maybe_next_solution_range_override: None,
+            maybe_root_plot_public_key: None,
             test_overrides: Default::default(),
         };
         store.store_header(header_ext, true);
@@ -1007,3 +1008,6 @@ fn test_salt_reveal_and_eon_change_in_same_block() {
         Some(randomness)
     );
 }
+
+// TODO: Tests for locked solution range and override
+// TODO: Tests for root plot public key enforcement
