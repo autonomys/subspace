@@ -14,7 +14,7 @@ pub struct PiecesToPlot {
 }
 
 /// Pieces-by-range protocol request. Assumes requests with paging.
-#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Encode, Decode)]
 pub struct PiecesByRangeRequest {
     /// Start of the requested range
     pub start: PieceIndexHash,

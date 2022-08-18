@@ -5,13 +5,10 @@ use num_traits::{WrappingAdd, WrappingSub};
 use scopeguard::guard;
 use std::ops::Range;
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
+    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
 };
 use subspace_networking::libp2p::core::multihash::{Code, MultihashDigest};
-use subspace_networking::libp2p::PeerId;
-use subspace_networking::{
-    PeerInfoRequest, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
-};
+use subspace_networking::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
 use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
@@ -68,14 +65,14 @@ mod private {
 
 #[derive(Debug, thiserror::Error)]
 pub enum GetPiecesByRangeError {
-    /// Cannot find closest pieces by range.
-    #[error("Cannot find closest pieces by range")]
-    NoClosestPiecesFound,
     /// Cannot get closest peers from DHT.
-    #[error("Cannot get closest peers from DHT")]
+    #[error("Cannot get closest peers from DHT: {0}")]
     CannotGetClosestPeers(#[source] subspace_networking::GetClosestPeersError),
+    /// There are no farmers which support our protocol
+    #[error("There are no farmers which support our protocol")]
+    NoSupportedFarmer,
     /// Node runner was dropped, impossible to get pieces by range.
-    #[error("Node runner was dropped, impossible to get pieces by range")]
+    #[error("Node runner was dropped, impossible to get pieces by range: {0}")]
     NodeRunnerDropped(#[source] subspace_networking::SendRequestError),
 }
 
@@ -154,47 +151,44 @@ impl DSNSync for subspace_networking::Node {
 
         // obtain closest peers to the middle of the range
         let key = Code::Identity.digest(&middle);
-        let peers = self
-            .get_closest_peers(key)
-            .await
-            .map_err(GetPiecesByRangeError::CannotGetClosestPeers)?;
+        let peer_id = {
+            // Dummy request to test whether peer supports `PiecesByRangeRequest`
+            let test_request = PiecesByRangeRequest {
+                start: PieceIndexHash::from([0; SHA256_HASH_SIZE]),
+                end: PieceIndexHash::from({
+                    let mut end = [0; SHA256_HASH_SIZE];
+                    end[0] = 1;
+                    end
+                }),
+            };
+            let node = self.clone();
 
-        // select appropriate peer for the piece-by-range protocol
-        if peers.is_empty() {
-            return Err(GetPiecesByRangeError::NoClosestPiecesFound);
-        }
+            backoff::future::retry(
+                backoff::ExponentialBackoffBuilder::new()
+                    .with_max_elapsed_time(Some(std::time::Duration::from_secs(1)))
+                    .build(),
+                move || {
+                    let node = node.clone();
+                    async move {
+                        let peers = node
+                            .get_closest_peers(key)
+                            .await
+                            .map_err(GetPiecesByRangeError::CannotGetClosestPeers)?;
+                        tracing::debug!(?peers, "Received peers");
 
-        let mut peer_id: Option<PeerId> = None;
-        for peer_id_candidate in peers {
-            let result = self
-                .send_generic_request(peer_id_candidate, PeerInfoRequest)
-                .await;
+                        // select first peer for the piece-by-range protocol
+                        for id in peers.into_iter().take(5) {
+                            if node.send_generic_request(id, test_request).await.is_ok() {
+                                return Ok(id);
+                            }
+                        }
 
-            trace!(
-                peer_id = %peer_id_candidate,
-                "Peer info request returned {:?}",
-                result
-            );
-
-            match result {
-                Ok(response) => {
-                    if response.peer_info.status == PeerSyncStatus::Ready {
-                        peer_id = Some(peer_id_candidate);
-                    } else {
-                        trace!(
-                            peer_id = %peer_id_candidate,
-                            status = ?response.peer_info.status,
-                            "Peer was not selected for synchronization."
-                        );
+                        Err(GetPiecesByRangeError::NoSupportedFarmer.into())
                     }
-                }
-                Err(err) => {
-                    error!(peer_id = %peer_id_candidate, %err, "Peer info request returned an error");
-                }
-            }
-        }
-
-        let peer_id = peer_id.ok_or(GetPiecesByRangeError::NoClosestPiecesFound)?;
+                },
+            )
+            .await?
+        };
 
         trace!(%peer_id, ?start, ?end, "Peer found");
 

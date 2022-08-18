@@ -460,7 +460,7 @@ async fn test_dsn_sync() {
 
 #[tokio::test]
 async fn pieces_by_range_protocol_smoke() {
-    let request = PiecesByRangeRequest {
+    let expected_request = PiecesByRangeRequest {
         start: PieceIndexHash::from([1u8; 32]),
         end: PieceIndexHash::from([1u8; 32]),
     };
@@ -477,7 +477,6 @@ async fn pieces_by_range_protocol_smoke() {
         next_piece_index_hash: None,
     };
 
-    let expected_request = request.clone();
     let expected_response = response.clone();
 
     let config_1 = Config {
@@ -537,7 +536,7 @@ async fn pieces_by_range_protocol_smoke() {
     let (mut result_sender, mut result_receiver) = mpsc::unbounded();
     tokio::spawn(async move {
         let resp = node_2
-            .send_generic_request(node_1.id(), request)
+            .send_generic_request(node_1.id(), expected_request)
             .await
             .unwrap();
 
