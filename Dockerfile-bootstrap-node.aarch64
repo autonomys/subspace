@@ -61,10 +61,6 @@ FROM arm64v8/ubuntu:20.04
 
 COPY --from=0 /code/subspace-bootstrap-node /subspace-bootstrap-node
 
-RUN mkdir /var/subspace && chown nobody:nogroup /var/subspace
-
-VOLUME /var/subspace
-
 USER nobody:nogroup
 
 ENTRYPOINT ["/subspace-bootstrap-node"]
