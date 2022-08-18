@@ -27,6 +27,7 @@ jobs:
         image:
           - farmer
           - node
+          - bootstrap-node
         platform:
           - arch: linux/amd64
             dockerfile-suffix: ''
@@ -68,7 +69,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v2
         with:
-          file: Dockerfile-${{ matrix.image }}${{ matrix.dockerfile-suffix }}
+          file: Dockerfile-${{ matrix.image }}${{ matrix.platform.dockerfile-suffix }}
           platforms: ${{ matrix.platform.arch }}
           # Only push for releases
           push: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}

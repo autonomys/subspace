@@ -20,6 +20,7 @@ use futures::future::try_join_all;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use num_traits::Zero;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -34,8 +35,9 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, Node, PiecesByRangeRequest,
-    PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+    BootstrappedNetworkingParameters, Config, Node, PeerInfo, PeerInfoRequestHandler,
+    PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeRequestHandler,
+    PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_rpc_primitives::{FarmerProtocolInfo, MAX_SEGMENT_INDEXES_PER_REQUEST};
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
@@ -68,6 +70,9 @@ impl SinglePlotFarmId {
         Self::Ulid(Ulid::new())
     }
 }
+
+/// An alias defining a peer status providing callback.
+pub type PeerSyncStatusProvider = Box<dyn Fn() -> PeerSyncStatus + Send>;
 
 /// Important information about the contents of the `SinglePlotFarm`
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -425,6 +430,8 @@ impl SinglePlotFarm {
         let commitments = Commitments::new(metadata_directory.join("commitments"))?;
 
         let codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
+        let peer_sync_status_provider: Arc<Mutex<PeerSyncStatusProvider>> =
+            Arc::new(Mutex::new(Box::new(|| PeerSyncStatus::Unknown)));
         let network_node_config = Config {
             networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
                 .boxed(),
@@ -455,47 +462,61 @@ impl SinglePlotFarm {
                         .map(|piece| piece.to_vec())
                 }
             }),
-            request_response_protocols: vec![PiecesByRangeRequestHandler::create({
-                let plot = plot.clone();
-                let codec = codec.clone();
+            request_response_protocols: vec![
+                PiecesByRangeRequestHandler::create({
+                    let plot = plot.clone();
+                    let codec = codec.clone();
 
-                // TODO: also ask for how many pieces to read
-                move |&PiecesByRangeRequest { start, end }| {
-                    let mut pieces_and_indexes = plot
-                        .get_sequential_pieces(start, SYNC_PIECES_AT_ONCE)
-                        .ok()?;
+                    // TODO: also ask for how many pieces to read
+                    move |&PiecesByRangeRequest { start, end }| {
+                        let mut pieces_and_indexes = plot
+                            .get_sequential_pieces(start, SYNC_PIECES_AT_ONCE)
+                            .ok()?;
 
-                    let next_piece_index_hash = if let Some(idx) = pieces_and_indexes
-                        .iter()
-                        .position(|(piece_index, _)| PieceIndexHash::from_index(*piece_index) > end)
-                    {
-                        pieces_and_indexes.truncate(idx);
-                        None
-                    } else if pieces_and_indexes.len() == 1 {
-                        None
-                    } else {
-                        pieces_and_indexes
-                            .pop()
-                            .map(|(index, _)| PieceIndexHash::from_index(index))
-                    };
+                        let next_piece_index_hash = if let Some(idx) =
+                            pieces_and_indexes.iter().position(|(piece_index, _)| {
+                                PieceIndexHash::from_index(*piece_index) > end
+                            }) {
+                            pieces_and_indexes.truncate(idx);
+                            None
+                        } else if pieces_and_indexes.len() == 1 {
+                            None
+                        } else {
+                            pieces_and_indexes
+                                .pop()
+                                .map(|(index, _)| PieceIndexHash::from_index(index))
+                        };
 
-                    let (piece_indexes, pieces) = pieces_and_indexes
-                        .into_iter()
-                        .flat_map(|(index, mut piece)| {
-                            codec.decode(&mut piece, index).ok()?;
-                            Some((index, piece))
+                        let (piece_indexes, pieces) = pieces_and_indexes
+                            .into_iter()
+                            .flat_map(|(index, mut piece)| {
+                                codec.decode(&mut piece, index).ok()?;
+                                Some((index, piece))
+                            })
+                            .unzip();
+
+                        Some(PiecesByRangeResponse {
+                            pieces: PiecesToPlot {
+                                piece_indexes,
+                                pieces,
+                            },
+                            next_piece_index_hash,
                         })
-                        .unzip();
+                    }
+                }),
+                PeerInfoRequestHandler::create({
+                    let peer_sync_status_provider = peer_sync_status_provider.clone();
+                    move |_req| {
+                        let peer_sync_status_provider = peer_sync_status_provider.lock();
 
-                    Some(PiecesByRangeResponse {
-                        pieces: PiecesToPlot {
-                            piece_indexes,
-                            pieces,
-                        },
-                        next_piece_index_hash,
-                    })
-                }
-            })],
+                        Some(PeerInfoResponse {
+                            peer_info: PeerInfo {
+                                status: peer_sync_status_provider(),
+                            },
+                        })
+                    }
+                }),
+            ],
             allow_non_globals_in_dht: true,
             ..Config::with_keypair(sr25519::Keypair::from(
                 sr25519::SecretKey::from_bytes(identity.secret_key().to_bytes())
@@ -510,6 +531,20 @@ impl SinglePlotFarm {
                 subspace_networking::create(network_node_config).await
             }
         })?;
+
+        // Replace the default peer sync status provider based on actual Node status.
+        {
+            let sync_status_node = node.clone();
+            let mut peer_sync_status_provider = peer_sync_status_provider.lock();
+
+            *peer_sync_status_provider = Box::new(move || {
+                if sync_status_node.sync_status_handler().status() {
+                    PeerSyncStatus::Syncing
+                } else {
+                    PeerSyncStatus::Ready
+                }
+            });
+        }
 
         info!("Network peer ID {}", node.id());
 
@@ -608,7 +643,7 @@ impl SinglePlotFarm {
 
                 match dsn_sync_fut.await {
                     Ok(()) => {
-                        info!("DSN sync done successfully");
+                        info!("DSN sync finished.");
                     }
                     Err(error) => {
                         error!(?error, "DSN sync failed");

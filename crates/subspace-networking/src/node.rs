@@ -15,6 +15,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -192,6 +193,39 @@ pub struct Node {
     shared: Arc<Shared>,
     is_relay_server: bool,
     relay_server_memory_port: Arc<Mutex<Option<u64>>>,
+    /// Indicates whether the peer data synchronization is in progress
+    sync_status: NodeSynchronizationStatusHandler,
+}
+
+/// Provides operations for managing thread-safe node synchronization status.
+#[derive(Debug, Clone)]
+pub struct NodeSynchronizationStatusHandler {
+    syncing: Arc<AtomicBool>,
+}
+
+impl NodeSynchronizationStatusHandler {
+    /// Constructor. Set initial sync status to false.
+    pub(crate) fn new() -> Self {
+        Self {
+            syncing: Arc::new(AtomicBool::new(false)),
+        }
+    }
+    /// Sets sync status.
+    pub fn toggle_on(&self) {
+        trace!("Toggle syncing on.");
+        self.syncing.store(true, Ordering::Relaxed);
+    }
+
+    /// Unsets sync status.
+    pub fn toggle_off(&self) {
+        trace!("Toggle syncing off.");
+        self.syncing.store(false, Ordering::Relaxed);
+    }
+
+    /// Returns the current node synchronization status.
+    pub fn status(&self) -> bool {
+        self.syncing.load(Ordering::Relaxed)
+    }
 }
 
 impl Node {
@@ -200,7 +234,13 @@ impl Node {
             shared,
             is_relay_server,
             relay_server_memory_port: Arc::new(Mutex::new(None)),
+            sync_status: NodeSynchronizationStatusHandler::new(),
         }
+    }
+
+    /// Node's synchronization status handler.
+    pub fn sync_status_handler(&self) -> NodeSynchronizationStatusHandler {
+        self.sync_status.clone()
     }
 
     /// Node's own local ID.

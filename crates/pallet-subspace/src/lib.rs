@@ -292,14 +292,27 @@ mod pallet {
         type WeightInfo: WeightInfo;
     }
 
+    #[derive(Debug, Default, Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    pub enum AllowAuthoringBy {
+        /// Anyone can author new blocks at genesis.
+        #[default]
+        Anyone,
+        /// Author of the first block will be able to author blocks going forward unless unlocked
+        /// for everyone.
+        FirstFarmer,
+        /// Specified root farmer is allowed to author blocks unless unlocked for everyone.
+        RootFarmer(FarmerPublicKey),
+    }
+
     #[pallet::genesis_config]
     pub struct GenesisConfig {
         /// Whether rewards should be enabled.
         pub enable_rewards: bool,
         /// Whether storage access should be enabled.
         pub enable_storage_access: bool,
-        /// Allow block authoring by anyone or just root.
-        pub allow_authoring_by_anyone: bool,
+        /// Who can author blocks at genesis.
+        pub allow_authoring_by: AllowAuthoringBy,
     }
 
     #[cfg(feature = "std")]
@@ -308,7 +321,7 @@ mod pallet {
             Self {
                 enable_rewards: true,
                 enable_storage_access: true,
-                allow_authoring_by_anyone: true,
+                allow_authoring_by: AllowAuthoringBy::Anyone,
             }
         }
     }
@@ -320,7 +333,18 @@ mod pallet {
                 EnableRewards::<T>::put::<T::BlockNumber>(One::one());
             }
             IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
-            AllowAuthoringByAnyone::<T>::put(self.allow_authoring_by_anyone);
+            match &self.allow_authoring_by {
+                AllowAuthoringBy::Anyone => {
+                    AllowAuthoringByAnyone::<T>::put(true);
+                }
+                AllowAuthoringBy::FirstFarmer => {
+                    AllowAuthoringByAnyone::<T>::put(false);
+                }
+                AllowAuthoringBy::RootFarmer(root_farmer) => {
+                    AllowAuthoringByAnyone::<T>::put(false);
+                    RootPlotPublicKey::<T>::put(root_farmer.clone());
+                }
+            }
         }
     }
 
