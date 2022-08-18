@@ -6,8 +6,8 @@ use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, SSC, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig,
+    SystemConfig, VestingConfig, SSC, WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
@@ -93,7 +93,7 @@ fn create_genesis_config(
         subspace: SubspaceConfig {
             enable_rewards: false,
             enable_storage_access: false,
-            allow_authoring_by_anyone: true,
+            allow_authoring_by: AllowAuthoringBy::Anyone,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {

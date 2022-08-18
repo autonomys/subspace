@@ -27,8 +27,8 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_core::crypto::Ss58Codec;
 use sp_executor::ExecutorId;
 use subspace_runtime::{
-    BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
-    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig,
+    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -68,7 +68,7 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 struct GenesisParams {
     enable_rewards: bool,
     enable_storage_access: bool,
-    allow_authoring_by_anyone: bool,
+    allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
 }
 
@@ -141,7 +141,7 @@ pub fn gemini_config_compiled(
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
-                    allow_authoring_by_anyone: false,
+                    allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: false,
                 },
             )
@@ -236,7 +236,7 @@ pub fn x_net_config_compiled(
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
-                    allow_authoring_by_anyone: false,
+                    allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
                 },
             )
@@ -292,7 +292,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
-                    allow_authoring_by_anyone: true,
+                    allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
                 },
             )
@@ -350,7 +350,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
-                    allow_authoring_by_anyone: true,
+                    allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
                 },
             )
@@ -384,7 +384,7 @@ fn subspace_genesis_config(
     let GenesisParams {
         enable_rewards,
         enable_storage_access,
-        allow_authoring_by_anyone,
+        allow_authoring_by,
         enable_executor,
     } = genesis_params;
 
@@ -402,7 +402,7 @@ fn subspace_genesis_config(
         subspace: SubspaceConfig {
             enable_rewards,
             enable_storage_access,
-            allow_authoring_by_anyone,
+            allow_authoring_by,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {
