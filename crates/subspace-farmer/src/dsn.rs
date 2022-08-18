@@ -5,10 +5,12 @@ use num_traits::{WrappingAdd, WrappingSub};
 use scopeguard::guard;
 use std::ops::Range;
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, SHA256_HASH_SIZE, U256,
+    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::core::multihash::{Code, MultihashDigest};
-use subspace_networking::{PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot};
+use subspace_networking::{
+    PeerInfoRequest, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+};
 use tracing::{debug, error, trace, warn};
 
 #[cfg(test)]
@@ -152,15 +154,6 @@ impl DSNSync for subspace_networking::Node {
         // obtain closest peers to the middle of the range
         let key = Code::Identity.digest(&middle);
         let peer_id = {
-            // Dummy request to test whether peer supports `PiecesByRangeRequest`
-            let test_request = PiecesByRangeRequest {
-                start: PieceIndexHash::from([0; SHA256_HASH_SIZE]),
-                end: PieceIndexHash::from({
-                    let mut end = [0; SHA256_HASH_SIZE];
-                    end[0] = 1;
-                    end
-                }),
-            };
             let node = self.clone();
 
             backoff::future::retry(
@@ -178,7 +171,12 @@ impl DSNSync for subspace_networking::Node {
 
                         // select first peer for the piece-by-range protocol
                         for id in peers.into_iter().take(5) {
-                            if node.send_generic_request(id, test_request).await.is_ok() {
+                            if node
+                                .send_generic_request(id, PeerInfoRequest)
+                                .await
+                                .map(|response| response.peer_info.status == PeerSyncStatus::Ready)
+                                .unwrap_or_default()
+                            {
                                 return Ok(id);
                             }
                         }
