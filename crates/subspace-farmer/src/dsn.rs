@@ -174,12 +174,11 @@ impl DSNSync for subspace_networking::Node {
                         // select first peer for the piece-by-range protocol
                         for id in peers {
                             match node.send_generic_request(id, PeerInfoRequest).await {
-                                Ok(PeerInfoResponse {
-                                    peer_info: PeerInfo { status },
-                                }) if status == PeerSyncStatus::Ready => return Ok(id),
-                                Ok(PeerInfoResponse {
-                                    peer_info: PeerInfo { status },
-                                }) => trace!(%id, ?status, "Peer is not ready for synchronization"),
+                                Ok(PeerInfoResponse { peer_info: PeerInfo { status }}) => if status == PeerSyncStatus::Ready {
+                                    return Ok(id)
+                                } else {
+                                    trace!(%id, ?status, "Peer is not ready for synchronization")
+                                },
                                 Err(err) => {
                                     debug!(%id, %err, "Peer info request returned an error")
                                 }
