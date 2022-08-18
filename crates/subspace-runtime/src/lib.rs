@@ -48,7 +48,8 @@ pub use pallet_subspace::AllowAuthoringBy;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote, SolutionRanges, Vote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote,
+    SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
@@ -793,6 +794,14 @@ impl_runtime_apis! {
 
         fn root_plot_public_key() -> Option<FarmerPublicKey> {
             Subspace::root_plot_public_key()
+        }
+
+        fn should_adjust_solution_range() -> bool {
+            Subspace::should_adjust_solution_range()
+        }
+
+        fn chain_constants() -> ChainConstants {
+            Subspace::chain_constants()
         }
     }
 

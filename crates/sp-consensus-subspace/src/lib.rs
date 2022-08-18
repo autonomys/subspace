@@ -40,8 +40,8 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, Salt, SegmentIndex, Solution,
-    SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    BlockNumber, PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, Salt,
+    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
@@ -112,6 +112,12 @@ enum ConsensusLog {
     /// Records roots.
     #[codec(index = 7)]
     RecordsRoot((SegmentIndex, RecordsRoot)),
+    /// Enable Solution range adjustment and Override Solution Range.
+    #[codec(index = 8)]
+    EnableSolutionRangeAdjustmentAndOverride(Option<SolutionRange>),
+    /// Root plot public key was updated.
+    #[codec(index = 9)]
+    RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
 }
 
 /// Farmer vote.
@@ -289,9 +295,80 @@ pub struct Salts {
     pub switch_next_block: bool,
 }
 
+// TODO: Likely add more stuff here
+/// Subspace blockchain constants.
+#[derive(Debug, Encode, Decode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, TypeInfo)]
+pub enum ChainConstants {
+    /// V0 of the chain constants.
+    V0 {
+        /// Depth `K` after which a block enters the recorded history.
+        confirmation_depth_k: BlockNumber,
+        /// Number of blocks between global randomness updates.
+        global_randomness_interval: BlockNumber,
+        /// Era duration in blocks.
+        era_duration: BlockNumber,
+        /// Slot probability.
+        slot_probability: (u64, u64),
+        /// Eon duration in slots.
+        eon_duration: u64,
+        /// Interval after the eon change when next eon salt is revealed
+        eon_next_salt_reveal: u64,
+    },
+}
+
+impl ChainConstants {
+    /// Depth `K` after which a block enters the recorded history.
+    pub fn confirmation_depth_k(&self) -> BlockNumber {
+        let Self::V0 {
+            confirmation_depth_k,
+            ..
+        } = self;
+        *confirmation_depth_k
+    }
+
+    /// Number of blocks between global randomness updates.
+    pub fn global_randomness_interval(&self) -> BlockNumber {
+        let Self::V0 {
+            global_randomness_interval,
+            ..
+        } = self;
+        *global_randomness_interval
+    }
+
+    /// Era duration in blocks.
+    pub fn era_duration(&self) -> BlockNumber {
+        let Self::V0 { era_duration, .. } = self;
+        *era_duration
+    }
+
+    /// Slot probability.
+    pub fn slot_probability(&self) -> (u64, u64) {
+        let Self::V0 {
+            slot_probability, ..
+        } = self;
+        *slot_probability
+    }
+
+    /// Eon duration in slots.
+    pub fn eon_duration(&self) -> u64 {
+        let Self::V0 { eon_duration, .. } = self;
+        *eon_duration
+    }
+
+    /// Interval after the eon change when next eon salt is revealed
+    pub fn eon_next_salt_reveal(&self) -> u64 {
+        let Self::V0 {
+            eon_next_salt_reveal,
+            ..
+        } = self;
+        *eon_next_salt_reveal
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
+        // TODO: Remove, it is available in constants already
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number;
@@ -355,6 +432,12 @@ sp_api::decl_runtime_apis! {
 
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;
+
+        /// Whether solution range adjustment is enabled.
+        fn should_adjust_solution_range() -> bool;
+
+        /// Get Subspace blockchain constants
+        fn chain_constants() -> ChainConstants;
     }
 }
 
