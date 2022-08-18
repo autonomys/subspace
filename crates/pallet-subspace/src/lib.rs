@@ -40,7 +40,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
@@ -145,9 +145,11 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
+    use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
     use sp_runtime::traits::One;
+    use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
     use subspace_core_primitives::{Randomness, RootBlock, SegmentIndex, SolutionRange};
@@ -378,7 +380,7 @@ mod pallet {
     #[pallet::getter(fn eon_index)]
     pub type EonIndex<T> = StorageValue<_, subspace_core_primitives::EonIndex, ValueQuery>;
 
-    /// The slot at which the block was created. This is 0 until the first block of the chain.
+    /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
     #[pallet::getter(fn genesis_slot)]
     pub type GenesisSlot<T> = StorageValue<_, Slot, ValueQuery>;
@@ -406,6 +408,7 @@ mod pallet {
 
     /// Storage to check if the solution range is to be adjusted for next era
     #[pallet::storage]
+    #[pallet::getter(fn should_adjust_solution_range)]
     pub type ShouldAdjustSolutionRange<T: Config> =
         StorageValue<_, bool, ValueQuery, T::ShouldAdjustSolutionRange>;
 
@@ -539,7 +542,13 @@ mod pallet {
             Self::do_enable_solution_range_adjustment(
                 solution_range_override,
                 voting_solution_range_override,
-            )
+            )?;
+
+            frame_system::Pallet::<T>::deposit_log(
+                DigestItem::enable_solution_range_adjustment_and_override(solution_range_override),
+            );
+
+            Ok(())
         }
 
         /// Farmer vote, currently only used for extra rewards to farmers.
@@ -585,6 +594,8 @@ mod pallet {
 
             AllowAuthoringByAnyone::<T>::put(true);
             RootPlotPublicKey::<T>::take();
+            // Deposit root plot public key update such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::root_plot_public_key_update(None));
 
             Ok(())
         }
@@ -824,6 +835,13 @@ impl<T: Config> Pallet<T> {
                         }
                     } else {
                         maybe_root_plot_public_key.replace(farmer_public_key.clone());
+                        // Deposit root plot public key update such that light client can validate
+                        // blocks later.
+                        frame_system::Pallet::<T>::deposit_log(
+                            DigestItem::root_plot_public_key_update(Some(
+                                farmer_public_key.clone(),
+                            )),
+                        );
                     }
                 });
             }
@@ -954,12 +972,7 @@ impl<T: Config> Pallet<T> {
                 next_global_randomness,
             ));
         }
-        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
-            // Deposit next solution range data such that light client can validate blocks later.
-            frame_system::Pallet::<T>::deposit_log(DigestItem::next_solution_range(
-                next_solution_range,
-            ));
-        }
+
         {
             let salts = Salts::<T>::get();
             if salts.switch_next_block {
@@ -972,6 +985,15 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
+        // Deposit the next solution range in the block finalization to account for solution range override extrinsic and
+        // era change happens in the same block.
+        if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
+            // Deposit next solution range data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::next_solution_range(
+                next_solution_range,
+            ));
+        }
+
         PorRandomness::<T>::take();
 
         if let Some((public_key, slot, _reward_address)) = CurrentBlockAuthorInfo::<T>::take() {
@@ -1120,6 +1142,23 @@ impl<T: Config> Pallet<T> {
             * 2;
 
         u64::from(archived_segments) * u64::from(archived_segment_size)
+    }
+
+    pub fn chain_constants() -> ChainConstants {
+        ChainConstants::V0 {
+            confirmation_depth_k: T::ConfirmationDepthK::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            global_randomness_interval: T::GlobalRandomnessUpdateInterval::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            era_duration: T::EraDuration::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            slot_probability: T::SlotProbability::get(),
+            eon_duration: T::EonDuration::get(),
+            eon_next_salt_reveal: T::EonNextSaltReveal::get(),
+        }
     }
 }
 

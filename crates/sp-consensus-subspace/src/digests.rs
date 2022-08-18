@@ -22,7 +22,7 @@ use log::trace;
 use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::Zero;
+use sp_runtime::traits::{One, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
@@ -102,6 +102,20 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace records root, return it.
     fn as_records_root(&self) -> Option<(SegmentIndex, RecordsRoot)>;
+
+    /// Construct digest item than indicates enabling of solution range adjustment and override next solution range.
+    fn enable_solution_range_adjustment_and_override(
+        override_solution_range: Option<SolutionRange>,
+    ) -> Self;
+
+    /// If this item is a Subspace Enable solution range adjustment and override next solution range, return it.
+    fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
+
+    /// Construct digest item than indicates update of root plot public key.
+    fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self;
+
+    /// If this item is a Subspace update of root plot public key, return it.
+    fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -237,6 +251,46 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
+
+    fn enable_solution_range_adjustment_and_override(
+        maybe_override_solution_range: Option<SolutionRange>,
+    ) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(maybe_override_solution_range)
+                .encode(),
+        )
+    }
+
+    fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
+                maybe_override_solution_range,
+            ) = c
+            {
+                Some(maybe_override_solution_range)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key).encode(),
+        )
+    }
+
+    fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key) = c {
+                Some(root_plot_public_key)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Various kinds of digest types used in errors
@@ -262,6 +316,10 @@ pub enum ErrorDigestType {
     RecordsRoot,
     /// Generic consensus
     Consensus,
+    /// Enable solution range adjustment and override solution range
+    EnableSolutionRangeAdjustmentAndOverride,
+    /// Root plot public key was updated
+    RootPlotPublicKeyUpdate,
 }
 
 impl fmt::Display for ErrorDigestType {
@@ -296,6 +354,12 @@ impl fmt::Display for ErrorDigestType {
             }
             ErrorDigestType::Consensus => {
                 write!(f, "Consensus")
+            }
+            ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride => {
+                write!(f, "EnableSolutionRangeAdjustmentAndOverride")
+            }
+            ErrorDigestType::RootPlotPublicKeyUpdate => {
+                write!(f, "RootPlotPublicKeyUpdate")
             }
         }
     }
@@ -363,6 +427,10 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub next_salt: Option<Salt>,
     /// Records roots
     pub records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
+    /// Enable solution range adjustment and Override solution range
+    pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
+    /// Root plot public key was updated
+    pub root_plot_public_key_update: Option<Option<FarmerPublicKey>>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -384,6 +452,8 @@ where
     let mut maybe_next_solution_range = None;
     let mut maybe_next_salt = None;
     let mut records_roots = BTreeMap::new();
+    let mut maybe_enable_and_override_solution_range = None;
+    let mut maybe_root_plot_public_key_update = None;
 
     for log in header.digest().logs() {
         match log {
@@ -478,6 +548,32 @@ where
                             return Err(Error::Duplicate(ErrorDigestType::NextSalt));
                         }
                     }
+                    ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
+                        override_solution_range,
+                    ) => match maybe_enable_and_override_solution_range {
+                        None => {
+                            maybe_enable_and_override_solution_range
+                                .replace(override_solution_range);
+                        }
+                        Some(_) => {
+                            return Err(Error::Duplicate(
+                                ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
+                            ));
+                        }
+                    },
+                    ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key_update) => {
+                        match maybe_enable_and_override_solution_range {
+                            None => {
+                                maybe_root_plot_public_key_update
+                                    .replace(root_plot_public_key_update);
+                            }
+                            Some(_) => {
+                                return Err(Error::Duplicate(
+                                    ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
+                                ));
+                            }
+                        }
+                    }
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -518,6 +614,8 @@ where
         next_solution_range: maybe_next_solution_range,
         next_salt: maybe_next_salt,
         records_roots,
+        enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
+        root_plot_public_key_update: maybe_root_plot_public_key_update,
     })
 }
 
@@ -601,27 +699,52 @@ fn derive_next_salt<Header: HeaderT>(
     Ok(None)
 }
 
-fn derive_next_solution_range<Header: HeaderT>(
+struct DeriveNextSolutionRangeParams<Header: HeaderT> {
     number: NumberOf<Header>,
     era_duration: NumberOf<Header>,
     slot_probability: (u64, u64),
     current_slot: Slot,
     current_solution_range: SolutionRange,
     era_start_slot: Slot,
+    should_adjust_solution_range: bool,
+    maybe_next_solution_range_override: Option<SolutionRange>,
+}
+
+fn derive_next_solution_range<Header: HeaderT>(
+    params: DeriveNextSolutionRangeParams<Header>,
 ) -> Result<Option<SolutionRange>, Error> {
+    let DeriveNextSolutionRangeParams {
+        number,
+        era_duration,
+        slot_probability,
+        current_slot,
+        current_solution_range,
+        era_start_slot,
+        should_adjust_solution_range,
+        maybe_next_solution_range_override,
+    } = params;
+
     if number.is_zero() || number % era_duration != Zero::zero() {
         return Ok(None);
     }
 
-    let next_solution_range = subspace_verification::derive_next_solution_range(
-        u64::from(era_start_slot),
-        u64::from(current_slot),
-        slot_probability,
-        current_solution_range,
-        era_duration
-            .try_into()
-            .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
-    );
+    // if the solution range should not be adjusted, return the current solution range
+    let next_solution_range = if !should_adjust_solution_range {
+        current_solution_range
+    } else if let Some(solution_range_override) = maybe_next_solution_range_override {
+        // era has change so take this override and reset it
+        solution_range_override
+    } else {
+        subspace_verification::derive_next_solution_range(
+            u64::from(era_start_slot),
+            u64::from(current_slot),
+            slot_probability,
+            current_solution_range,
+            era_duration
+                .try_into()
+                .unwrap_or_else(|_| panic!("Era duration is always within u64; qed")),
+        )
+    };
 
     Ok(Some(next_solution_range))
 }
@@ -648,51 +771,121 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     pub current_eon_index: EonIndex,
     /// Randomness used to derive next salt.
     pub maybe_randomness: Option<Randomness>,
+    /// Should the solution range be adjusted on era change.
+    /// If the digest logs indicate that solution range adjustment has been enabled, value is updated.
+    pub should_adjust_solution_range: &'a mut bool,
+    /// Next Solution range override.
+    /// If the digest logs indicate that solution range override is provided, value is updated.
+    pub maybe_next_solution_range_override: &'a mut Option<SolutionRange>,
+    /// Root plot public key.
+    /// Value is updated when digest items contain an update.
+    pub maybe_root_plot_public_key: &'a mut Option<FarmerPublicKey>,
 }
 
 /// Derives and verifies next digest items based on their respective intervals.
 pub fn verify_next_digests<Header: HeaderT>(
     params: NextDigestsVerificationParams<Header>,
 ) -> Result<(), Error> {
+    let NextDigestsVerificationParams {
+        number,
+        header_digests,
+        global_randomness_interval,
+        era_duration,
+        slot_probability,
+        eon_duration,
+        genesis_slot,
+        era_start_slot,
+        current_eon_index,
+        maybe_randomness,
+        should_adjust_solution_range,
+        maybe_next_solution_range_override,
+        maybe_root_plot_public_key: root_plot_public_key,
+    } = params;
+
     // verify if the randomness is supposed to derived at this block header
     let expected_next_randomness = derive_next_global_randomness::<Header>(
-        params.number,
-        params.global_randomness_interval,
-        &params.header_digests.pre_digest,
+        number,
+        global_randomness_interval,
+        &header_digests.pre_digest,
     )?;
-    if expected_next_randomness != params.header_digests.next_global_randomness {
+    if expected_next_randomness != header_digests.next_global_randomness {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextGlobalRandomness,
         ));
     }
 
+    // verify solution range adjustment and override
+    // if the adjustment is already enabled, then error out
+    if *should_adjust_solution_range
+        && header_digests
+            .enable_solution_range_adjustment_and_override
+            .is_some()
+    {
+        return Err(Error::NextDigestVerificationError(
+            ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
+        ));
+    }
+
+    if let Some(solution_range_override) =
+        header_digests.enable_solution_range_adjustment_and_override
+    {
+        *should_adjust_solution_range = true;
+        *maybe_next_solution_range_override = solution_range_override;
+    }
+
     // verify if the solution range should be derived at this block header
-    let expected_next_solution_range = derive_next_solution_range::<Header>(
-        params.number,
-        params.era_duration,
-        params.slot_probability,
-        params.header_digests.pre_digest.slot,
-        params.header_digests.solution_range,
-        params.era_start_slot,
-    )?;
-    if expected_next_solution_range != params.header_digests.next_solution_range {
+    let expected_next_solution_range =
+        derive_next_solution_range::<Header>(DeriveNextSolutionRangeParams {
+            number,
+            era_duration,
+            slot_probability,
+            current_slot: header_digests.pre_digest.slot,
+            current_solution_range: header_digests.solution_range,
+            era_start_slot,
+            should_adjust_solution_range: *should_adjust_solution_range,
+            maybe_next_solution_range_override: *maybe_next_solution_range_override,
+        })?;
+
+    if expected_next_solution_range.is_some() {
+        // Whatever override we had, it is no longer necessary
+        maybe_next_solution_range_override.take();
+    }
+    if expected_next_solution_range != header_digests.next_solution_range {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextSolutionRange,
         ));
     }
 
+    if let Some(updated_root_plot_public_key) = &header_digests.root_plot_public_key_update {
+        match updated_root_plot_public_key {
+            Some(updated_root_plot_public_key) => {
+                if number.is_one() && root_plot_public_key.is_none() {
+                    root_plot_public_key.replace(updated_root_plot_public_key.clone());
+                } else {
+                    return Err(Error::NextDigestVerificationError(
+                        ErrorDigestType::RootPlotPublicKeyUpdate,
+                    ));
+                }
+            }
+            None => {
+                root_plot_public_key.take();
+            }
+        }
+    }
+
     // verify if the next derived salt should be present in the block header
     let expected_next_salt = derive_next_salt::<Header>(
-        params.eon_duration,
-        params.current_eon_index,
-        params.genesis_slot,
-        params.header_digests.pre_digest.slot,
-        params.maybe_randomness,
+        eon_duration,
+        current_eon_index,
+        genesis_slot,
+        header_digests.pre_digest.slot,
+        maybe_randomness,
     )?;
-    if expected_next_salt != params.header_digests.next_salt {
+    if expected_next_salt != header_digests.next_salt {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextSalt,
         ));
     }
+
     Ok(())
 }

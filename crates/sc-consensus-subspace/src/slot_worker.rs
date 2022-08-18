@@ -278,7 +278,7 @@ where
 
                     maybe_pre_digest.replace(PreDigest { solution, slot });
                 } else if !parent_header.number().is_zero() {
-                    // Not sending vote on top of genesis bloc since root blocks since piece
+                    // Not sending vote on top of genesis block since root blocks since piece
                     // verification wouldn't be possible due to empty records root
                     info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
