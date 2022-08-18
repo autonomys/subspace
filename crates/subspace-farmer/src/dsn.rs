@@ -9,7 +9,8 @@ use subspace_core_primitives::{
 };
 use subspace_networking::libp2p::core::multihash::{Code, MultihashDigest};
 use subspace_networking::{
-    PeerInfoRequest, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeResponse, PiecesToPlot,
+    PeerInfo, PeerInfoRequest, PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest,
+    PiecesByRangeResponse, PiecesToPlot,
 };
 use tracing::{debug, error, trace, warn};
 
@@ -17,6 +18,7 @@ use tracing::{debug, error, trace, warn};
 mod tests;
 
 const PIECES_CHANNEL_BUFFER_SIZE: usize = 20;
+const GET_CLOSEST_PEER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(7);
 
 pub type PieceIndexHashNumber = U256;
 
@@ -158,7 +160,7 @@ impl DSNSync for subspace_networking::Node {
 
             backoff::future::retry(
                 backoff::ExponentialBackoffBuilder::new()
-                    .with_max_elapsed_time(Some(std::time::Duration::from_secs(1)))
+                    .with_max_elapsed_time(Some(GET_CLOSEST_PEER_TIMEOUT))
                     .build(),
                 move || {
                     let node = node.clone();
@@ -170,18 +172,23 @@ impl DSNSync for subspace_networking::Node {
                         tracing::debug!(?peers, "Received peers");
 
                         // select first peer for the piece-by-range protocol
-                        for id in peers.into_iter().take(5) {
-                            if node
-                                .send_generic_request(id, PeerInfoRequest)
-                                .await
-                                .map(|response| response.peer_info.status == PeerSyncStatus::Ready)
-                                .unwrap_or_default()
-                            {
-                                return Ok(id);
+                        for id in peers {
+                            match node.send_generic_request(id, PeerInfoRequest).await {
+                                Ok(PeerInfoResponse {
+                                    peer_info: PeerInfo { status },
+                                }) if status == PeerSyncStatus::Ready => return Ok(id),
+                                Ok(PeerInfoResponse {
+                                    peer_info: PeerInfo { status },
+                                }) => trace!(%id, ?status, "Peer is not ready for synchronization"),
+                                Err(err) => {
+                                    debug!(%id, %err, "Peer info request returned an error")
+                                }
                             }
                         }
 
-                        Err(GetPiecesByRangeError::NoSupportedFarmer.into())
+                        Err(backoff::Error::transient(
+                            GetPiecesByRangeError::NoSupportedFarmer,
+                        ))
                     }
                 },
             )

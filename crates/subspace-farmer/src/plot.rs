@@ -113,6 +113,7 @@ impl fmt::Debug for Plot {
 }
 
 impl Plot {
+    /// A bit more than 4M. Should correspond to requested range size from DSN.
     const PIECES_PER_REQUEST: u64 = 1100;
 
     /// Creates a new plot for persisting encoded pieces to disk

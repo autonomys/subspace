@@ -46,6 +46,7 @@ use tokio::runtime::Handle;
 use tracing::{error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
+/// A bit more than 4M. Should correspond to requested range size from DSN.
 const SYNC_PIECES_AT_ONCE: u64 = 1100;
 /// 100 MiB worth of object mappings per plot
 const MAX_OBJECT_MAPPINGS_SIZE: u64 = 100 * 1024 * 1024;
