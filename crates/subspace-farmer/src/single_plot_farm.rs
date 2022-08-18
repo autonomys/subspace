@@ -46,7 +46,7 @@ use tokio::runtime::Handle;
 use tracing::{error, info, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
-const SYNC_PIECES_AT_ONCE: u64 = 5000;
+const SYNC_PIECES_AT_ONCE: u64 = 1100;
 /// 100 MiB worth of object mappings per plot
 const MAX_OBJECT_MAPPINGS_SIZE: u64 = 100 * 1024 * 1024;
 
