@@ -291,7 +291,9 @@ impl NodeRunner {
                 .iter()
                 .any(|protocol| protocol.as_bytes() == RELAY_HOP_PROTOCOL_NAME);
 
-            let proper_protocols_supported = !relay_server_enabled && kademlia_enabled;
+            // TODO: figure out how to filter peers by supported protocols
+            // let proper_protocols_supported = !relay_server_enabled && kademlia_enabled;
+            let proper_protocols_supported = kademlia_enabled;
             if proper_protocols_supported {
                 for address in info.listen_addrs {
                     if !self.allow_non_globals_in_dht && !utils::is_global_address_or_dns(&address)
