@@ -20,11 +20,6 @@ async fn main() {
             // Return the reversed digest as a value
             Some(key.digest().iter().copied().rev().collect())
         }),
-        reserved_peers: vec![
-            "/ip4/127.0.0.1/tcp/10000/p2p/12D3L7AVCq2tGsUgGtYDhh7SbhU8EUeRCraUX5AaSLqC8JHXsYCA"
-                .parse()
-                .unwrap(),
-        ],
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };

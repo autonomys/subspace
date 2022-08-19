@@ -13,7 +13,7 @@ use tracing::info;
 enum Command {
     /// Start bootstrap node
     Start {
-        /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
+        /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
         #[clap(long, alias = "bootstrap-node")]
         bootstrap_nodes: Vec<Multiaddr>,
         /// Keypair for node identity, can be obtained with `generate-keypair` command
@@ -21,6 +21,9 @@ enum Command {
         /// Multiaddr to listen on for subspace networking, multiple are supported
         #[clap(default_value = "/ip4/0.0.0.0/tcp/0")]
         listen_on: Vec<Multiaddr>,
+        /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
+        #[clap(long, alias = "reserved-peer")]
+        reserved_peers: Vec<Multiaddr>,
     },
     /// Generate a new keypair
     GenerateKeypair,
@@ -39,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
             bootstrap_nodes,
             keypair,
             listen_on,
+            reserved_peers,
         } => {
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
@@ -47,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
                 .boxed(),
                 listen_on,
                 allow_non_globals_in_dht: true,
+                reserved_peers,
                 ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
             };
             let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
