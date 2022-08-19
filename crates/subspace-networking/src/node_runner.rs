@@ -161,10 +161,10 @@ impl NodeRunner {
         if !self.reserved_peers.is_empty() {
             trace!(%local_peer_id, "Checking reserved peers connection: {:?}", self.reserved_peers);
 
-            let reserved_peers = HashMap::<PeerId, Multiaddr>::from_iter(
-                convert_multiaddresses(self.reserved_peers.clone()).into_iter(),
-            );
-            let connected_peers_id_set = HashSet::from_iter(connected_peers.clone());
+            let reserved_peers = convert_multiaddresses(self.reserved_peers.clone())
+                .into_iter()
+                .collect::<HashMap<_, _>>();
+            let connected_peers_id_set = connected_peers.iter().cloned().collect();
             let reserved_peers_id_set = reserved_peers.keys().cloned().collect::<HashSet<_>>();
 
             let missing_reserved_peer_ids =
