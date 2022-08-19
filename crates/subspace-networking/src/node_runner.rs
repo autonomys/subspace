@@ -165,12 +165,10 @@ impl NodeRunner {
                 convert_multiaddresses(self.reserved_peers.clone()).into_iter(),
             );
             let connected_peers_id_set = HashSet::from_iter(connected_peers.clone());
-            let reserved_peers_id_set =
-                HashSet::<PeerId>::from_iter(reserved_peers.clone().into_iter().map(|(id, _)| id));
+            let reserved_peers_id_set = reserved_peers.keys().cloned().collect::<HashSet<_>>();
 
-            let missing_reserved_peer_ids = reserved_peers_id_set
-                .difference(&connected_peers_id_set)
-                .collect::<Vec<_>>();
+            let missing_reserved_peer_ids =
+                reserved_peers_id_set.difference(&connected_peers_id_set);
 
             for peer_id in missing_reserved_peer_ids {
                 if let Some(addr) = reserved_peers.get(peer_id) {
