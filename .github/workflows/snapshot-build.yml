@@ -27,6 +27,7 @@ jobs:
         image:
           - farmer
           - node
+          - bootstrap-node
         platform:
           - arch: linux/amd64
             dockerfile-suffix: ''

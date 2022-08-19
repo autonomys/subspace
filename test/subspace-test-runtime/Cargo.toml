@@ -41,7 +41,6 @@ scale-info = { version = "2.1.2", default-features = false, features = ["derive"
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155", default-features = false, version = "4.0.0-dev"}
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-subspace" }
-sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
 sp-executor = { version = "0.1.0", default-features = false, path = "../../crates/sp-executor" }
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155", default-features = false, version = "4.0.0-dev"}
@@ -92,7 +91,6 @@ std = [
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-consensus-subspace/std",
-	"sp-consensus-slots/std",
 	"sp-core/std",
 	"sp-executor/std",
 	"sp-inherents/std",
