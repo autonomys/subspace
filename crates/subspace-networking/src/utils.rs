@@ -2,9 +2,10 @@
 mod tests;
 
 use libp2p::multiaddr::Protocol;
-use libp2p::Multiaddr;
+use libp2p::{Multiaddr, PeerId};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use tracing::warn;
 
 /// This test is successful only for global IP addresses and DNS names.
 pub(crate) fn is_global_address_or_dns(addr: &Multiaddr) -> bool {
@@ -61,4 +62,34 @@ impl<T: Clone> CollectionBatcher<T> {
             .take(self.batch_size.get())
             .collect::<Vec<_>>()
     }
+}
+
+// Convenience alias for peer ID and its multiaddresses.
+pub(crate) type PeerAddress = (PeerId, Multiaddr);
+
+// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
+// It logs incorrect multiaddresses.
+pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
+    addresses
+        .into_iter()
+        .filter_map(|multiaddr| {
+            let mut modified_multiaddr = multiaddr.clone();
+
+            let peer_id: Option<PeerId> = modified_multiaddr.pop().and_then(|protocol| {
+                if let Protocol::P2p(peer_id) = protocol {
+                    peer_id.try_into().ok()
+                } else {
+                    None
+                }
+            });
+
+            if let Some(peer_id) = peer_id {
+                Some((peer_id, modified_multiaddr))
+            } else {
+                warn!(%multiaddr, "Incorrect multiaddr provided.");
+
+                None
+            }
+        })
+        .collect()
 }

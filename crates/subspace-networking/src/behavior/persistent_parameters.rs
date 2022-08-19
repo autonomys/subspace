@@ -1,4 +1,4 @@
-use crate::utils::CollectionBatcher;
+use crate::utils::{convert_multiaddresses, CollectionBatcher, PeerAddress};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::future::Fuse;
@@ -18,13 +18,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::time::{sleep, Sleep};
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 // Defines optional time for address dial failure
 type FailureTime = Option<DateTime<Utc>>;
-
-// Convenience alias for peer ID and its multiaddresses.
-type PeerAddress = (PeerId, Multiaddr);
 
 // Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: usize = 100;
@@ -78,7 +75,7 @@ impl BootstrappedNetworkingParameters {
     }
 
     fn bootstrap_addresses(&self) -> Vec<PeerAddress> {
-        convert_bootstrap_addresses(self.bootstrap_addresses.clone())
+        convert_multiaddresses(self.bootstrap_addresses.clone())
     }
 
     pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
@@ -192,7 +189,7 @@ impl NetworkingParametersManager {
     // Returns boostrap addresses from networking parameters initialization.
     // It removes p2p-protocol suffix.
     fn bootstrap_addresses(&self) -> Vec<PeerAddress> {
-        convert_bootstrap_addresses(self.bootstrap_addresses.clone())
+        convert_multiaddresses(self.bootstrap_addresses.clone())
     }
 
     // Helps create a copy of the internal LruCache
@@ -369,33 +366,6 @@ impl NetworkingParameters {
 
         peers_cache
     }
-}
-
-// Helper function. Converts boostrap addresses to a tuple with peer ID removing the peer Id suffix.
-// It logs incorrect multiaddresses.
-fn convert_bootstrap_addresses(bootstrap_addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
-    bootstrap_addresses
-        .into_iter()
-        .filter_map(|multiaddr| {
-            let mut modified_multiaddr = multiaddr.clone();
-
-            let peer_id: Option<PeerId> = modified_multiaddr.pop().and_then(|protocol| {
-                if let Protocol::P2p(peer_id) = protocol {
-                    peer_id.try_into().ok()
-                } else {
-                    None
-                }
-            });
-
-            if let Some(peer_id) = peer_id {
-                Some((peer_id, modified_multiaddr))
-            } else {
-                warn!(%multiaddr, "Incorrect multiaddr provided for bootstrap");
-
-                None
-            }
-        })
-        .collect()
 }
 
 // Removes a P2p protocol suffix from the multiaddress if any.

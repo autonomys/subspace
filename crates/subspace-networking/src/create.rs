@@ -2,7 +2,7 @@ pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
-use crate::node_runner::NodeRunner;
+use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::BootstrappedNetworkingParameters;
@@ -98,6 +98,8 @@ pub struct Config {
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
+    /// Defines set of peers with a permanent connection (and reconnection if necessary).
+    pub reserved_peers: Vec<Multiaddr>,
 }
 
 impl fmt::Debug for Config {
@@ -159,6 +161,7 @@ impl Config {
             request_response_protocols: Vec::new(),
             yamux_config,
             mplex_config,
+            reserved_peers: Vec::new(),
         }
     }
 }
@@ -199,6 +202,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         parent_node,
         networking_parameters_registry,
         request_response_protocols,
+        reserved_peers,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
     // Create relay client transport and client.
@@ -271,15 +275,16 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         let shared_weak = Arc::downgrade(&shared);
 
         let node = Node::new(shared, is_relay_server);
-        let node_runner = NodeRunner::new(
+        let node_runner = NodeRunner::new(NodeRunnerConfig {
             allow_non_globals_in_dht,
             is_relay_server,
             command_receiver,
             swarm,
             shared_weak,
-            initial_random_query_interval,
+            next_random_query_interval: initial_random_query_interval,
             networking_parameters_registry,
-        );
+            reserved_peers,
+        });
 
         Ok((node, node_runner))
     });

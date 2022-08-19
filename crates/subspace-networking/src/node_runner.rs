@@ -3,6 +3,7 @@ use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
+use crate::utils::convert_multiaddresses;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use futures::future::Fuse;
@@ -17,10 +18,10 @@ use libp2p::kad::{
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{AddressScore, DialError, SwarmEvent};
-use libp2p::{futures, PeerId, Swarm};
+use libp2p::{futures, Multiaddr, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Weak;
 use std::time::Duration;
@@ -64,17 +65,34 @@ pub struct NodeRunner {
     peer_dialing_timeout: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    /// Defines set of peers with a permanent connection (and reconnection if necessary).
+    reserved_peers: Vec<Multiaddr>,
+}
+
+// Helper struct for NodeRunner configuration (clippy requirement).
+pub(crate) struct NodeRunnerConfig {
+    pub allow_non_globals_in_dht: bool,
+    pub is_relay_server: bool,
+    pub command_receiver: mpsc::Receiver<Command>,
+    pub swarm: Swarm<Behavior>,
+    pub shared_weak: Weak<Shared>,
+    pub next_random_query_interval: Duration,
+    pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    pub reserved_peers: Vec<Multiaddr>,
 }
 
 impl NodeRunner {
     pub(crate) fn new(
-        allow_non_globals_in_dht: bool,
-        is_relay_server: bool,
-        command_receiver: mpsc::Receiver<Command>,
-        swarm: Swarm<Behavior>,
-        shared_weak: Weak<Shared>,
-        initial_random_query_interval: Duration,
-        networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+        NodeRunnerConfig {
+            allow_non_globals_in_dht,
+            is_relay_server,
+            command_receiver,
+            swarm,
+            shared_weak,
+            next_random_query_interval,
+            networking_parameters_registry,
+            reserved_peers,
+        }: NodeRunnerConfig,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
@@ -82,7 +100,7 @@ impl NodeRunner {
             command_receiver,
             swarm,
             shared_weak,
-            next_random_query_interval: initial_random_query_interval,
+            next_random_query_interval,
             query_id_receivers: HashMap::default(),
             next_subscription_id: 0,
             topic_subscription_senders: HashMap::default(),
@@ -91,6 +109,7 @@ impl NodeRunner {
             // We'll make the first dial right away and continue at the interval.
             peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
+            reserved_peers,
         }
     }
 
@@ -135,9 +154,30 @@ impl NodeRunner {
     }
 
     async fn handle_peer_dialing(&mut self) {
-        let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
         let local_peer_id = *self.swarm.local_peer_id();
+        let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
 
+        // Handle reserved peers first.
+        if !self.reserved_peers.is_empty() {
+            trace!(%local_peer_id, "Checking reserved peers connection: {:?}", self.reserved_peers);
+
+            let reserved_peers = convert_multiaddresses(self.reserved_peers.clone())
+                .into_iter()
+                .collect::<HashMap<_, _>>();
+            let connected_peers_id_set = connected_peers.iter().cloned().collect();
+            let reserved_peers_id_set = reserved_peers.keys().cloned().collect::<HashSet<_>>();
+
+            let missing_reserved_peer_ids =
+                reserved_peers_id_set.difference(&connected_peers_id_set);
+
+            for peer_id in missing_reserved_peer_ids {
+                if let Some(addr) = reserved_peers.get(peer_id) {
+                    self.dial_peer(*peer_id, addr.clone());
+                }
+            }
+        }
+
+        // Maintain minimum connected peers number.
         if connected_peers.len() < CONNECTED_PEERS_THRESHOLD {
             debug!(
                 %local_peer_id,
@@ -157,22 +197,27 @@ impl NodeRunner {
                     continue;
                 }
 
-                trace!(%local_peer_id, remote_peer_id=%peer_id, %addr, "Dialing address ...");
-
-                let dial_opts = DialOpts::peer_id(peer_id)
-                    .addresses(vec![addr.clone()])
-                    .build();
-
-                if let Err(err) = self.swarm.dial(dial_opts) {
-                    warn!(
-                        %err,
-                        %local_peer_id,
-                        remote_peer_id = %peer_id,
-                        %addr,
-                        "Unexpected error: failed to dial an address."
-                    );
-                }
+                self.dial_peer(peer_id, addr)
             }
+        }
+    }
+
+    fn dial_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
+        let local_peer_id = *self.swarm.local_peer_id();
+        trace!(%local_peer_id, remote_peer_id=%peer_id, %addr, "Dialing address ...");
+
+        let dial_opts = DialOpts::peer_id(peer_id)
+            .addresses(vec![addr.clone()])
+            .build();
+
+        if let Err(err) = self.swarm.dial(dial_opts) {
+            warn!(
+                %err,
+                %local_peer_id,
+                remote_peer_id = %peer_id,
+                %addr,
+                "Unexpected error: failed to dial an address."
+            );
         }
     }
 
