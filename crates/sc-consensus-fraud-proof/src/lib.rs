@@ -106,19 +106,16 @@ where
             // TODO: reset the ExecutorApi api version and remove this check when the network is reset.
             if api_version >= 2 {
                 if let Some(extrinsics) = &block.body {
-                    for extrinsic in extrinsics.iter() {
-                        let api_result = self
-                            .client
-                            .runtime_api()
-                            .extract_fraud_proof(&parent_block_id, extrinsic);
+                    let fraud_proofs = self
+                        .client
+                        .runtime_api()
+                        .extract_fraud_proofs(&parent_block_id, extrinsics.clone())
+                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
-                        if let Some(fraud_proof) =
-                            api_result.map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                        {
-                            self.fraud_proof_verifier
-                                .verify_fraud_proof(&fraud_proof)
-                                .map_err(|e| ConsensusError::Other(Box::new(e)))?;
-                        }
+                    for fraud_proof in fraud_proofs {
+                        self.fraud_proof_verifier
+                            .verify_fraud_proof(&fraud_proof)
+                            .map_err(|e| ConsensusError::Other(Box::new(e)))?;
                     }
                 }
             }

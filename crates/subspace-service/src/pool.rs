@@ -145,9 +145,13 @@ where
         // `extract_fraud_proof` is added since ExecutorApi version 2
         // TODO: reset the ExecutorApi api version and remove this check when the network is reset.
         if executor_api_version >= 2 {
-            match self.client.runtime_api().extract_fraud_proof(at, &uxt) {
-                Ok(maybe_fraud_proof) => {
-                    if let Some(fraud_proof) = maybe_fraud_proof {
+            match self
+                .client
+                .runtime_api()
+                .extract_fraud_proofs(at, vec![uxt.clone()])
+            {
+                Ok(fraud_proofs) => {
+                    if let Some(fraud_proof) = fraud_proofs.into_iter().next() {
                         let inner = self.inner.clone();
                         let spawner = self.spawner.clone();
                         let fraud_proof_verifier = self.verifier.clone();
