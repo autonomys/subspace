@@ -5,6 +5,7 @@ use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
+use crate::utils::convert_multiaddresses;
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -283,7 +284,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             shared_weak,
             next_random_query_interval: initial_random_query_interval,
             networking_parameters_registry,
-            reserved_peers,
+            reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
         });
 
         Ok((node, node_runner))
