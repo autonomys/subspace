@@ -8,6 +8,9 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{BootstrappedNetworkingParameters, Config};
 use tracing::info;
 
+// The default maximum connection (in and out) number for the peer.
+const MAX_ESTABLISHED_CONNECTIONS: u32 = 5000;
+
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 enum Command {
@@ -24,6 +27,9 @@ enum Command {
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[clap(long, alias = "reserved-peer")]
         reserved_peers: Vec<Multiaddr>,
+        /// Defines max total (in and out) connections for the peer.
+        #[clap(long)]
+        max_connections_limit: Option<u32>,
     },
     /// Generate a new keypair
     GenerateKeypair,
@@ -43,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
             keypair,
             listen_on,
             reserved_peers,
+            max_connections_limit,
         } => {
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
@@ -52,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
                 listen_on,
                 allow_non_globals_in_dht: true,
                 reserved_peers,
+                max_established_total: max_connections_limit.unwrap_or(MAX_ESTABLISHED_CONNECTIONS),
                 ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
             };
             let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
