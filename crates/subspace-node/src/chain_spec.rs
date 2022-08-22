@@ -34,7 +34,6 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-const GEMINI_1_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-1.json");
 const X_NET_1_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-1.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
@@ -70,102 +69,6 @@ struct GenesisParams {
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
-}
-
-pub fn gemini_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String>
-{
-    ConsensusChainSpec::from_json_bytes(GEMINI_1_CHAIN_SPEC)
-}
-
-pub fn gemini_config_compiled(
-) -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
-    Ok(ConsensusChainSpec::from_genesis(
-        // Name
-        "Subspace Gemini 1",
-        // ID
-        "subspace_gemini_1b",
-        ChainType::Custom("Subspace Gemini 1".to_string()),
-        || {
-            let sudo_account =
-                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
-                    .expect("Wrong root account address");
-
-            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
-            let vesting_schedules = TOKEN_GRANTS
-                .iter()
-                .flat_map(|&(account_address, amount)| {
-                    let account_id = AccountId::from_ss58check(account_address)
-                        .expect("Wrong vesting account address");
-                    let amount: Balance = amount * SSC;
-
-                    // TODO: Adjust start block to real value before mainnet launch
-                    let start_block = 100_000_000;
-                    let one_month_in_blocks =
-                        u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
-                            .expect("One month of blocks always fits in u32; qed");
-
-                    // Add balance so it can be locked
-                    balances.push((account_id.clone(), amount));
-
-                    [
-                        // 1/4 of tokens are released after 1 year.
-                        (
-                            account_id.clone(),
-                            start_block,
-                            one_month_in_blocks * 12,
-                            1,
-                            amount / 4,
-                        ),
-                        // 1/48 of tokens are released every month after that for 3 more years.
-                        (
-                            account_id,
-                            start_block + one_month_in_blocks * 12,
-                            one_month_in_blocks,
-                            36,
-                            amount / 48,
-                        ),
-                    ]
-                })
-                .collect::<Vec<_>>();
-            subspace_genesis_config(
-                WASM_BINARY.expect("Wasm binary must be built for Gemini"),
-                sudo_account,
-                balances,
-                vesting_schedules,
-                (
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
-                        .expect("Wrong Executor account address"),
-                    ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
-                        .expect("Wrong Executor authority address"),
-                ),
-                GenesisParams {
-                    enable_rewards: false,
-                    enable_storage_access: false,
-                    allow_authoring_by: AllowAuthoringBy::FirstFarmer,
-                    enable_executor: false,
-                },
-            )
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        Some(
-            TelemetryEndpoints::new(vec![
-                (POLKADOT_TELEMETRY_URL.into(), 1),
-                (SUBSPACE_TELEMETRY_URL.into(), 1),
-            ])
-            .map_err(|error| error.to_string())?,
-        ),
-        // Protocol ID
-        Some("subspace-gemini-1b"),
-        None,
-        // Properties
-        Some(chain_spec_properties()),
-        // Extensions
-        ChainSpecExtensions {
-            execution_chain_spec: secondary_chain::chain_spec::gemini_config(),
-        },
-    ))
 }
 
 pub fn x_net_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
