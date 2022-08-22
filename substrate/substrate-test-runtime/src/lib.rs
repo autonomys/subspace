@@ -26,7 +26,7 @@ pub mod system;
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
 use frame_support::parameter_types;
-use frame_support::traits::{ConstU32, ConstU64, CrateVersion, Get};
+use frame_support::traits::{ConstU32, ConstU64, CrateVersion};
 use frame_support::weights::RuntimeDbWeight;
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
@@ -612,7 +612,6 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
-    type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 }>;
     type ExpectedVotesPerBlock = ConstU32<9>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
@@ -831,7 +830,7 @@ cfg_if! {
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
                 fn max_plot_size() -> u64 {
-                    <Self as pallet_subspace::Config>::MaxPlotSize::get()
+                    <pallet_subspace::Pallet<Runtime>>::max_plot_size()
                 }
 
                 fn total_pieces() -> u64 {
@@ -1087,7 +1086,7 @@ cfg_if! {
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
                 fn max_plot_size() -> u64 {
-                    <Self as pallet_subspace::Config>::MaxPlotSize::get()
+                    <pallet_subspace::Pallet<Runtime>>::max_plot_size()
                 }
 
                 fn total_pieces() -> u64 {

@@ -69,6 +69,7 @@ struct GenesisParams {
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
+    max_plot_size: u64,
 }
 
 pub fn x_net_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
@@ -141,6 +142,8 @@ pub fn x_net_config_compiled(
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
+                    // 100GiB
+                    max_plot_size: 100 * 1024 * 1024 * 1024,
                 },
             )
         },
@@ -197,6 +200,8 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
+                    // 100GiB
+                    max_plot_size: 100 * 1024 * 1024 * 1024,
                 },
             )
         },
@@ -255,6 +260,8 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenes
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
+                    // 100GiB
+                    max_plot_size: 100 * 1024 * 1024 * 1024,
                 },
             )
         },
@@ -289,6 +296,7 @@ fn subspace_genesis_config(
         enable_storage_access,
         allow_authoring_by,
         enable_executor,
+        max_plot_size,
     } = genesis_params;
 
     GenesisConfig {
@@ -306,6 +314,7 @@ fn subspace_genesis_config(
             enable_rewards,
             enable_storage_access,
             allow_authoring_by,
+            max_plot_size,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {

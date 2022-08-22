@@ -243,10 +243,6 @@ mod pallet {
         #[pallet::constant]
         type ConfirmationDepthK: Get<Self::BlockNumber>;
 
-        /// Maximum number of pieces in each plot
-        #[pallet::constant]
-        type MaxPlotSize: Get<u64>;
-
         /// Number of votes expected per block.
         ///
         /// This impacts solution range for votes in consensus.
@@ -303,6 +299,8 @@ mod pallet {
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
+        /// Maximum plot size in bytes.
+        pub max_plot_size: u64,
     }
 
     #[cfg(feature = "std")]
@@ -312,6 +310,8 @@ mod pallet {
                 enable_rewards: true,
                 enable_storage_access: true,
                 allow_authoring_by: AllowAuthoringBy::Anyone,
+                // 100GiB by default
+                max_plot_size: 100 * 1024 * 1024 * 1024,
             }
         }
     }
@@ -335,6 +335,7 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
+            MaxPlotSize::<T>::put(self.max_plot_size);
         }
     }
 
@@ -467,6 +468,11 @@ mod pallet {
     /// Allow block authoring by anyone or just root.
     #[pallet::storage]
     pub(super) type AllowAuthoringByAnyone<T> = StorageValue<_, bool, ValueQuery>;
+
+    /// Maximum plot size in bytes.
+    #[pallet::storage]
+    #[pallet::getter(fn max_plot_size)]
+    pub(super) type MaxPlotSize<T> = StorageValue<_, u64, ValueQuery>;
 
     /// Root plot public key.
     ///
@@ -1282,7 +1288,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
         },
         record_size: RECORD_SIZE,
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-        max_plot_size: T::MaxPlotSize::get(),
+        max_plot_size: Pallet::<T>::max_plot_size(),
         total_pieces: Pallet::<T>::total_pieces(),
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
