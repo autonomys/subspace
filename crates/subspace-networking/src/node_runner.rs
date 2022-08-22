@@ -66,6 +66,8 @@ pub struct NodeRunner {
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
+    /// Overall swarm connection limit.
+    max_established_total: u32,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -78,6 +80,7 @@ pub(crate) struct NodeRunnerConfig {
     pub next_random_query_interval: Duration,
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     pub reserved_peers: HashMap<PeerId, Multiaddr>,
+    pub max_established_total: u32,
 }
 
 impl NodeRunner {
@@ -91,6 +94,7 @@ impl NodeRunner {
             next_random_query_interval,
             networking_parameters_registry,
             reserved_peers,
+            max_established_total,
         }: NodeRunnerConfig,
     ) -> Self {
         Self {
@@ -109,6 +113,7 @@ impl NodeRunner {
             peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
             reserved_peers,
+            max_established_total,
         }
     }
 
@@ -163,18 +168,47 @@ impl NodeRunner {
             let connected_peers_id_set = connected_peers.iter().cloned().collect();
             let reserved_peers_id_set = self.reserved_peers.keys().cloned().collect::<HashSet<_>>();
 
-            let missing_reserved_peer_ids =
-                reserved_peers_id_set.difference(&connected_peers_id_set);
+            let missing_reserved_peer_ids = reserved_peers_id_set
+                .difference(&connected_peers_id_set)
+                .collect::<Vec<_>>();
 
-            for peer_id in missing_reserved_peer_ids {
-                if let Some(addr) = self.reserved_peers.get(peer_id) {
-                    self.dial_peer(*peer_id, addr.clone());
+            if !missing_reserved_peer_ids.is_empty() {
+                // Free connection slots for reserved peers if required.
+                let peers_to_disconnect_number = (connected_peers_id_set.len()
+                    + missing_reserved_peer_ids.len())
+                .saturating_sub(self.max_established_total as usize);
+
+                if peers_to_disconnect_number > 0 {
+                    let peers_to_disconnect = connected_peers
+                        .clone()
+                        .into_iter()
+                        .take(peers_to_disconnect_number as usize);
+
+                    for peer_id in peers_to_disconnect {
+                        let result = self.swarm.disconnect_peer_id(peer_id);
+
+                        trace!(
+                            %local_peer_id,
+                            %peer_id,
+                            ?result,
+                            "Disconnect peer to free slots for reserved peers."
+                        );
+                    }
+                }
+
+                // Establish missing connections to reserved peers.
+                for peer_id in missing_reserved_peer_ids {
+                    if let Some(addr) = self.reserved_peers.get(peer_id) {
+                        self.dial_peer(*peer_id, addr.clone());
+                    }
                 }
             }
         }
 
         // Maintain minimum connected peers number.
-        if connected_peers.len() < CONNECTED_PEERS_THRESHOLD {
+        if connected_peers.len() < CONNECTED_PEERS_THRESHOLD
+            && connected_peers.len() < self.max_established_total as usize
+        {
             debug!(
                 %local_peer_id,
                 connected_peers=connected_peers.len(),
