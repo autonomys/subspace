@@ -28,7 +28,7 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::{
     crypto, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
     RewardSignature, Salt, Sha256Hash, SlotNumber, Solution, SolutionRange, Tag, TagSignature,
-    RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
+    PIECE_SIZE, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
 };
 use subspace_solving::{
     create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
@@ -145,7 +145,8 @@ fn is_within_max_plot(
     if total_pieces < max_plot_size {
         return true;
     }
-    let max_distance_one_direction = U256::MAX / total_pieces * max_plot_size / 2;
+    let max_distance_one_direction =
+        U256::MAX / total_pieces * (max_plot_size / PIECE_SIZE as u64) / 2;
     subspace_core_primitives::bidirectional_distance(
         &U256::from(PieceIndexHash::from_index(piece_index)),
         &U256::from_be_bytes(
@@ -165,7 +166,7 @@ pub struct PieceCheckParams {
     pub position: u64,
     /// Record size, system parameter
     pub record_size: u32,
-    /// Max plot size in pieces, system parameter
+    /// Maximum plot size in bytes, system parameter
     pub max_plot_size: u64,
     /// Total number of pieces in the whole archival history
     pub total_pieces: u64,

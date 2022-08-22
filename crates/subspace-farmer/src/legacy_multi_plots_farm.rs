@@ -1,5 +1,4 @@
 use crate::archiving::Archiving;
-use crate::object_mappings::LegacyObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::single_plot_farm::{PlotFactory, SinglePlotFarm, SinglePlotFarmOptions};
@@ -24,7 +23,6 @@ pub struct Options<C> {
     pub archiving_client: C,
     /// Independent client used for farming, such that it is not blocked by archiving
     pub farming_client: C,
-    pub object_mappings: LegacyObjectMappings,
     pub reward_address: PublicKey,
     /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
     pub bootstrap_nodes: Vec<Multiaddr>,
@@ -37,6 +35,7 @@ pub struct Options<C> {
     pub relay_server_node: Option<Node>,
 }
 
+// TODO: Remove once tests and benches migrate away from it
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 ///
 /// It is needed because of the limit of a single plot size from the consensus
@@ -62,7 +61,6 @@ impl LegacyMultiPlotsFarm {
             farmer_protocol_info,
             archiving_client,
             farming_client,
-            object_mappings,
             reward_address,
             bootstrap_nodes,
             listen_on,
@@ -140,7 +138,6 @@ impl LegacyMultiPlotsFarm {
                     .iter()
                     .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
                     .collect(),
-                vec![object_mappings],
                 archiving_client,
                 {
                     let plotters = single_plot_farms

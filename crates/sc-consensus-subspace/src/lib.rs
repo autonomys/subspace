@@ -70,8 +70,7 @@ use sp_consensus_subspace::{
     check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
     VerificationError, VerificationParams,
 };
-use sp_core::crypto::UncheckedFrom;
-use sp_core::{ByteArray, H256};
+use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
@@ -84,19 +83,13 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockNumber, BlockWeight, EonIndex, Randomness, RootBlock, Salt, SegmentIndex, Sha256Hash,
-    Solution, SolutionRange, MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    BlockWeight, EonIndex, Randomness, RootBlock, Salt, SegmentIndex, Sha256Hash, Solution,
+    SolutionRange, MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
     derive_randomness, Error as VerificationPrimitiveError, VerifySolutionParams,
 };
-
-// TODO: Hack for Gemini 1b launch.
-const GEMINI_1B_GENESIS_HASH: &[u8] = &[
-    158, 232, 110, 239, 195, 204, 97, 199, 26, 119, 81, 187, 167, 242, 94, 68, 45, 162, 81, 47, 64,
-    142, 98, 134, 21, 59, 60, 204, 5, 93, 204, 240,
-];
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -664,22 +657,6 @@ where
         .map_err(Error::<Block::Header>::from)?;
         let pre_digest = subspace_digest_items.pre_digest;
 
-        // TODO: Hack for Gemini 1b launch. These blocks should have correct block author.
-        if *block.header.number() <= 33_581_u32.into()
-            && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
-            && pre_digest.solution.public_key.as_slice()
-                != [
-                    0x54, 0x26, 0x37, 0xb0, 0xd4, 0x43, 0x08, 0x7a, 0x34, 0x08, 0x08, 0xbb, 0x02,
-                    0x1a, 0x05, 0x19, 0x6f, 0x68, 0x1a, 0x1b, 0x3d, 0xae, 0x24, 0x75, 0x93, 0x2b,
-                    0x72, 0x03, 0xf7, 0x84, 0x1e, 0x5a,
-                ]
-        {
-            return Err(
-                "Unexpected block author during early history of Gemini 1b, please ignore this \
-                message"
-                    .to_string(),
-            );
-        }
         // Check if farmer's plot is burned.
         // TODO: Add to header and store in aux storage?
         if self
@@ -719,21 +696,6 @@ where
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
         let checked_header = {
-            // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
-            if *block.header.number() >= 33_672_u32.into()
-                && self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH
-                && subspace_digest_items.solution_range == 12_009_599_006_321_322_u64
-            {
-                debug!(
-                    target: "subspace",
-                    "Ignoring block from non-canonical fork"
-                );
-                return Err(Error::<Block::Header>::InvalidSolutionRange(
-                    block.post_hash.unwrap_or_default(),
-                )
-                .into());
-            }
-
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
@@ -903,24 +865,8 @@ where
 
         let pre_digest = &subspace_digest_items.pre_digest;
 
-        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
-        //  breaking compatibility.
-        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
-
         if !skip_runtime_access {
-            if is_gemini_1b {
-                let maybe_root_plot_public_key = self
-                    .client
-                    .runtime_api()
-                    .root_plot_public_key(&parent_block_id)?;
-
-                if let Some(root_plot_public_key) = maybe_root_plot_public_key {
-                    if pre_digest.solution.public_key != root_plot_public_key {
-                        // Only root plot public key is allowed.
-                        return Err(Error::OnlyRootPlotPublicKeyAllowed);
-                    }
-                }
-            } else if let Some(root_plot_public_key) = root_plot_public_key {
+            if let Some(root_plot_public_key) = root_plot_public_key {
                 if &pre_digest.solution.public_key != root_plot_public_key {
                     // Only root plot public key is allowed.
                     return Err(Error::OnlyRootPlotPublicKeyAllowed);
@@ -990,74 +936,17 @@ where
             let correct_global_randomness =
                 match parent_subspace_digest_items.next_global_randomness {
                     Some(global_randomness) => global_randomness,
-                    None => {
-                        // TODO: Remove `if` branch when breaking protocol
-                        if is_gemini_1b {
-                            match slot_worker::extract_global_randomness_for_block(
-                                self.client.as_ref(),
-                                &parent_block_id,
-                            ) {
-                                Ok(global_randomness) => global_randomness,
-                                Err(error) => {
-                                    return if skip_runtime_access {
-                                        Ok(())
-                                    } else {
-                                        Err(error.into())
-                                    };
-                                }
-                            }
-                        } else {
-                            parent_subspace_digest_items.global_randomness
-                        }
-                    }
+                    None => parent_subspace_digest_items.global_randomness,
                 };
 
             let correct_solution_range = match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
-                None => {
-                    // TODO: Remove `if` branch when breaking protocol
-                    if is_gemini_1b {
-                        match slot_worker::extract_solution_ranges_for_block(
-                            self.client.as_ref(),
-                            &parent_block_id,
-                        ) {
-                            Ok((solution_range, _voting_solution_range)) => solution_range,
-                            Err(error) => {
-                                return if skip_runtime_access {
-                                    Ok(())
-                                } else {
-                                    Err(error.into())
-                                };
-                            }
-                        }
-                    } else {
-                        parent_subspace_digest_items.solution_range
-                    }
-                }
+                None => parent_subspace_digest_items.solution_range,
             };
 
             let correct_salt = match parent_subspace_digest_items.next_salt {
                 Some(salt) => salt,
-                None => {
-                    // TODO: Remove `if` branch when breaking protocol
-                    if is_gemini_1b {
-                        match slot_worker::extract_salt_for_block(
-                            self.client.as_ref(),
-                            &parent_block_id,
-                        ) {
-                            Ok((salt, _next_salt)) => salt,
-                            Err(error) => {
-                                return if skip_runtime_access {
-                                    Ok(())
-                                } else {
-                                    Err(error.into())
-                                };
-                            }
-                        }
-                    } else {
-                        parent_subspace_digest_items.salt
-                    }
-                }
+                None => parent_subspace_digest_items.salt,
             };
 
             (
@@ -1085,7 +974,7 @@ where
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
-        let mut maybe_records_root = if block_number.is_one() {
+        let maybe_records_root = if block_number.is_one() {
             let archived_segments =
                 Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
                     .expect("Incorrect parameters for archiver")
@@ -1106,14 +995,6 @@ where
         } else {
             aux_schema::load_records_root(self.client.as_ref(), segment_index)?
         };
-
-        // TODO: Remove when breaking protocol
-        if maybe_records_root.is_none() && !skip_runtime_access && is_gemini_1b {
-            maybe_records_root = self
-                .client
-                .runtime_api()
-                .records_root(&parent_block_id, segment_index)?;
-        }
 
         let records_root = maybe_records_root.ok_or(Error::RecordsRootNotFound(segment_index))?;
 
@@ -1178,23 +1059,21 @@ where
             }
         }
 
-        if !is_gemini_1b {
-            verify_next_digests::<Block::Header>(NextDigestsVerificationParams {
-                number: block_number,
-                header_digests: subspace_digest_items,
-                global_randomness_interval: chain_constants.global_randomness_interval().into(),
-                era_duration: chain_constants.era_duration().into(),
-                slot_probability: chain_constants.slot_probability(),
-                eon_duration: chain_constants.eon_duration(),
-                genesis_slot,
-                era_start_slot,
-                current_eon_index,
-                maybe_randomness: next_eon_randomness,
-                should_adjust_solution_range,
-                maybe_next_solution_range_override,
-                maybe_root_plot_public_key: root_plot_public_key,
-            })?;
-        }
+        verify_next_digests::<Block::Header>(NextDigestsVerificationParams {
+            number: block_number,
+            header_digests: subspace_digest_items,
+            global_randomness_interval: chain_constants.global_randomness_interval().into(),
+            era_duration: chain_constants.era_duration().into(),
+            slot_probability: chain_constants.slot_probability(),
+            eon_duration: chain_constants.eon_duration(),
+            genesis_slot,
+            era_start_slot,
+            current_eon_index,
+            maybe_randomness: next_eon_randomness,
+            should_adjust_solution_range,
+            maybe_next_solution_range_override,
+            maybe_root_plot_public_key: root_plot_public_key,
+        })?;
 
         Ok(())
     }
@@ -1207,10 +1086,6 @@ where
         genesis_slot: Slot,
         chain_constants: &ChainConstants,
     ) -> Result<Slot, ConsensusError> {
-        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
-        //  breaking compatibility.
-        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
-
         // Extract era start slot, taking into account potential forks at era boundary
         let era_start_slots = match aux_schema::load_era_start_slot(self.client.as_ref(), era_index)
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
@@ -1219,9 +1094,6 @@ where
             None => {
                 return if block_number.is_one() {
                     Ok(genesis_slot)
-                } else if is_gemini_1b {
-                    // Known value for Gemini 1b
-                    Ok(1_654_115_926.into())
                 } else {
                     Err(ConsensusError::ClientImport(format!(
                         "Era start slot for era index {era_index} not found"
@@ -1507,9 +1379,6 @@ where
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
         let parent_block_hash = *block.header.parent_hash();
-        // TODO: Hack for Gemini 1b, should not be necessary for newer networks, remove when
-        //  breaking compatibility.
-        let is_gemini_1b = self.client.info().genesis_hash.as_ref() == GEMINI_1B_GENESIS_HASH;
 
         // Early exit if block already in chain
         match self.client.status(BlockId::Hash(block_hash)) {
@@ -1529,43 +1398,10 @@ where
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
         let skip_state_computation = matches!(block.state_action, StateAction::Skip);
 
-        let chain_constants = if is_gemini_1b {
-            // Known values for Gemini 1b
-            ChainConstants::V0 {
-                confirmation_depth_k: 100,
-                global_randomness_interval: 100,
-                era_duration: 2016,
-                slot_probability: (1, 6),
-                eon_duration: 3600 * 24 * 7,
-                eon_next_salt_reveal: 3600 * 24 * 6,
-            }
-        } else {
-            match aux_schema::load_chain_constants(self.client.as_ref())
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-            {
-                Some(chain_constants) => chain_constants,
-                None => {
-                    // This is only called on the very first block for which we always have runtime
-                    // storage access
-                    self.client
-                        .runtime_api()
-                        .chain_constants(&BlockId::Hash(*block.header.parent_hash()))
-                        .map_err(Error::<Block::Header>::RuntimeApi)
-                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                }
-            }
-        };
+        let chain_constants = get_chain_constants(self.client.as_ref())
+            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
-        let (mut solution_range_parameters, old_solution_range_parameters) = if is_gemini_1b {
-            // Known values for Gemini 1b
-            (
-                SolutionRangeParameters {
-                    should_adjust: false,
-                    next_override: None,
-                },
-                None,
-            )
-        } else {
+        let (mut solution_range_parameters, old_solution_range_parameters) =
             match aux_schema::load_solution_range_parameters(self.client.as_ref())
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
             {
@@ -1589,20 +1425,9 @@ where
                         None,
                     )
                 }
-            }
-        };
+            };
 
-        let (mut root_plot_public_key, old_root_plot_public_key) = if is_gemini_1b {
-            // Known values for Gemini 1b
-            (
-                Some(FarmerPublicKey::unchecked_from([
-                    0x54, 0x26, 0x37, 0xb0, 0xd4, 0x43, 0x08, 0x7a, 0x34, 0x08, 0x08, 0xbb, 0x02,
-                    0x1a, 0x05, 0x19, 0x6f, 0x68, 0x1a, 0x1b, 0x3d, 0xae, 0x24, 0x75, 0x93, 0x2b,
-                    0x72, 0x03, 0xf7, 0x84, 0x1e, 0x5a,
-                ])),
-                None,
-            )
-        } else {
+        let (mut root_plot_public_key, old_root_plot_public_key) =
             match aux_schema::load_root_plot_public_key(self.client.as_ref())
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
             {
@@ -1618,8 +1443,7 @@ where
                         .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
                     (root_plot_public_key, None)
                 }
-            }
-        };
+            };
 
         let mut genesis_slot = aux_schema::load_genesis_slot(self.client.as_ref())
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
@@ -1640,18 +1464,13 @@ where
         }
 
         let era_index = (block_number - One::one()) / chain_constants.era_duration().into();
-        let era_start_slot = if is_gemini_1b {
-            // This logic is not supported in Gemini 1b
-            0.into()
-        } else {
-            self.find_era_start_slot(
-                block_number,
-                parent_block_hash,
-                era_index,
-                genesis_slot,
-                &chain_constants,
-            )?
-        };
+        let era_start_slot = self.find_era_start_slot(
+            block_number,
+            parent_block_hash,
+            era_index,
+            genesis_slot,
+            &chain_constants,
+        )?;
 
         let mut eon_indexes = aux_schema::load_eon_indexes(self.client.as_ref())
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
@@ -1667,17 +1486,7 @@ where
             });
         }
 
-        let eon_index_entry = if is_gemini_1b {
-            // This logic is not supported in Gemini 1b
-            EonIndexEntry {
-                eon_index: 0,
-                randomness: Default::default(),
-                randomness_block: (0u32.into(), Default::default()),
-                starts_at: (Default::default(), 0u32.into()),
-            }
-        } else {
-            self.find_eon_index(block_number, parent_block_hash, &eon_indexes)?
-        };
+        let eon_index_entry = self.find_eon_index(block_number, parent_block_hash, &eon_indexes)?;
         let mut next_eon_randomnesses = aux_schema::load_next_eon_randomness::<
             NumberFor<Block>,
             Block::Hash,
@@ -1791,44 +1600,36 @@ where
                 .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
         });
 
-        if !is_gemini_1b {
-            for (&segment_index, records_root) in &subspace_digest_items.records_roots {
-                if aux_schema::load_records_root(self.client.as_ref(), segment_index)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                    .is_some()
-                {
-                    return Err(ConsensusError::ClientImport(
-                        Error::<Block::Header>::DuplicatedRecordsRoot(segment_index).to_string(),
-                    ));
-                }
-
-                aux_schema::write_records_root(segment_index, records_root, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
+        for (&segment_index, records_root) in &subspace_digest_items.records_roots {
+            if aux_schema::load_records_root(self.client.as_ref(), segment_index)
+                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                .is_some()
+            {
+                return Err(ConsensusError::ClientImport(
+                    Error::<Block::Header>::DuplicatedRecordsRoot(segment_index).to_string(),
+                ));
             }
 
-            // In the very first block we need to store chain constants and genesis slot for further use
-            if block_number.is_one() {
-                aux_schema::write_chain_constants(&chain_constants, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
+            aux_schema::write_records_root(segment_index, records_root, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
 
-                aux_schema::write_genesis_slot(genesis_slot, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
+        // In the very first block we need to store chain constants and genesis slot for further use
+        if block_number.is_one() {
+            aux_schema::write_genesis_slot(genesis_slot, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
 
-                aux_schema::write_eon_indexes(&eon_indexes, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
-            }
+            aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
 
             // Store updated solution range parameters if we didn't store them before or if they
             // changed.
@@ -2034,6 +1835,39 @@ where
     }
 }
 
+fn get_chain_constants<Block, Client>(
+    client: &Client,
+) -> Result<ChainConstants, Error<Block::Header>>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+{
+    match aux_schema::load_chain_constants(client)? {
+        Some(chain_constants) => Ok(chain_constants),
+        None => {
+            // This is only called on the very first block for which we always have runtime
+            // storage access
+            let chain_constants = client
+                .runtime_api()
+                .chain_constants(&BlockId::Hash(client.info().best_hash))
+                .map_err(Error::<Block::Header>::RuntimeApi)?;
+
+            aux_schema::write_chain_constants(&chain_constants, |values| {
+                client.insert_aux(
+                    &values
+                        .iter()
+                        .map(|(key, value)| (key.as_slice(), *value))
+                        .collect::<Vec<_>>(),
+                    &[],
+                )
+            })?;
+
+            Ok(chain_constants)
+        }
+    }
+}
+
 /// Produce a Subspace block-import object to be used later on in the construction of an
 /// import-queue.
 ///
@@ -2069,17 +1903,9 @@ where
     let (imported_block_notification_sender, imported_block_notification_stream) =
         notification::channel("subspace_imported_block_notification_stream");
 
-    let best_block_id = BlockId::Hash(client.info().best_hash);
-
-    let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
-        client
-            .runtime_api()
-            .confirmation_depth_k(&best_block_id)
-            .expect("Failed to get `confirmation_depth_k` from runtime API"),
-    )
-    .unwrap_or_else(|_| {
-        panic!("Confirmation depth K can't be converted into BlockNumber");
-    });
+    let confirmation_depth_k = get_chain_constants(client.as_ref())
+        .expect("Must always be able to get chain constants")
+        .confirmation_depth_k();
 
     let link = SubspaceLink {
         config,

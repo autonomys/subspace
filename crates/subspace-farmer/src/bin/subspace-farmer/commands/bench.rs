@@ -19,12 +19,12 @@ use subspace_farmer::legacy_multi_plots_farm::{
 };
 use subspace_farmer::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
-use subspace_farmer::{LegacyObjectMappings, PieceOffset, Plot, PlotFile, RpcClient};
+use subspace_farmer::{PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_networking::{Config, RelayMode};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
-use tracing::{info, trace, warn};
+use tracing::{trace, warn};
 
 #[derive(Default)]
 pub struct BenchPlotMock;
@@ -124,14 +124,6 @@ pub(crate) async fn bench(
         }
     }
 
-    info!("Opening object mapping");
-    let object_mappings = tokio::task::spawn_blocking({
-        let path = base_directory.as_ref().join("object-mappings");
-
-        move || LegacyObjectMappings::open_or_create(path)
-    })
-    .await??;
-
     let plot_factory = move |options: PlotFactoryOptions<'_>| match write_to_disk {
         WriteToDisk::Nothing => Plot::with_plot_file(
             options.single_plot_farm_id,
@@ -168,7 +160,6 @@ pub(crate) async fn bench(
             farmer_protocol_info,
             archiving_client: client.clone(),
             farming_client: client.clone(),
-            object_mappings: object_mappings.clone(),
             reward_address: PublicKey::default(),
             bootstrap_nodes: vec![],
             listen_on: vec![],

@@ -1,4 +1,4 @@
-use crate::object_mappings::{LegacyObjectMappings, ObjectMappings};
+use crate::object_mappings::ObjectMappings;
 use crate::rpc_client::RpcClient;
 use crate::utils::{AbortingJoinHandle, JoinOnDrop};
 use futures::StreamExt;
@@ -48,7 +48,6 @@ impl Archiving {
     pub async fn start<Client, OPTP>(
         farmer_protocol_info: FarmerProtocolInfo,
         object_mappings: Vec<ObjectMappings>,
-        legacy_object_mappings: Vec<LegacyObjectMappings>,
         client: Client,
         mut on_pieces_to_plot: OPTP,
     ) -> Result<Archiving, ArchivingError>
@@ -106,12 +105,6 @@ impl Archiving {
                                 error!(%error, "Failed to store object mappings for pieces");
                             }
                         }
-                        for object_mappings in &legacy_object_mappings {
-                            if let Err(error) = object_mappings.store(&object_mapping) {
-                                error!(%error, "Failed to store legacy object mappings for pieces");
-                            }
-                        }
-
                         info!(segment_index, "Plotted segment");
 
                         if let Err(()) = acknowledgement_sender.send(()) {

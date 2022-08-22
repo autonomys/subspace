@@ -243,19 +243,9 @@ mod pallet {
         #[pallet::constant]
         type ConfirmationDepthK: Get<Self::BlockNumber>;
 
-        // TODO: Remove when breaking protocol
-        /// The size of data in one piece (in bytes).
-        #[pallet::constant]
-        type RecordSize: Get<u32>;
-
         /// Maximum number of pieces in each plot
         #[pallet::constant]
         type MaxPlotSize: Get<u64>;
-
-        // TODO: Remove when breaking protocol
-        /// Recorded history is encoded and plotted in segments of this size (in bytes).
-        #[pallet::constant]
-        type RecordedHistorySegmentSize: Get<u32>;
 
         /// Number of votes expected per block.
         ///

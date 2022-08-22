@@ -72,7 +72,6 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
     PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
@@ -255,9 +254,7 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
-    type RecordSize = ConstU32<RECORD_SIZE>;
     type MaxPlotSize = ConstU64<MAX_PLOT_SIZE>;
-    type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
@@ -1005,24 +1002,12 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
-            <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
-        }
-
         fn total_pieces() -> u64 {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
-        fn record_size() -> u32 {
-            RECORD_SIZE
-        }
-
         fn max_plot_size() -> u64 {
             <Self as pallet_subspace::Config>::MaxPlotSize::get()
-        }
-
-        fn recorded_history_segment_size() -> u32 {
-            RECORDED_HISTORY_SEGMENT_SIZE
         }
 
         fn slot_duration() -> Duration {

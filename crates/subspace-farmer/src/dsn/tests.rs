@@ -2,7 +2,7 @@ use crate::dsn::{sync, DSNSync, NoSync, OnSync, PieceIndexHashNumber, SyncOption
 use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::{LegacyObjectMappings, Plot};
+use crate::Plot;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -176,15 +176,6 @@ async fn test_dsn_sync() {
         acknowledge_archived_segment_sender,
     );
 
-    let object_mappings = tokio::task::spawn_blocking({
-        let path = seeder_base_directory.as_ref().join("object-mappings");
-
-        move || LegacyObjectMappings::open_or_create(path)
-    })
-    .await
-    .unwrap()
-    .unwrap();
-
     let plot_factory = move |options: PlotFactoryOptions<'_>| {
         Plot::open_or_create(
             options.single_plot_farm_id,
@@ -201,7 +192,6 @@ async fn test_dsn_sync() {
             farmer_protocol_info,
             archiving_client: rpc_client.clone(),
             farming_client: rpc_client.clone(),
-            object_mappings: object_mappings.clone(),
             reward_address: subspace_core_primitives::PublicKey::default(),
             listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
             bootstrap_nodes: vec![],
@@ -321,22 +311,12 @@ async fn test_dsn_sync() {
 
     let syncer_multi_farming = loop {
         {
-            let object_mappings = tokio::task::spawn_blocking({
-                let path = syncer_base_directory.as_ref().join("object-mappings");
-
-                move || LegacyObjectMappings::open_or_create(path)
-            })
-            .await
-            .unwrap()
-            .unwrap();
-
             let syncer_multi_farming = LegacyMultiPlotsFarm::new(
                 MultiFarmingOptions {
                     base_directory: syncer_base_directory.as_ref().to_owned(),
                     farmer_protocol_info,
                     archiving_client: rpc_client.clone(),
                     farming_client: rpc_client.clone(),
-                    object_mappings: object_mappings.clone(),
                     reward_address: subspace_core_primitives::PublicKey::default(),
                     bootstrap_nodes: vec![seeder_multiaddr.clone()],
                     listen_on: vec![],

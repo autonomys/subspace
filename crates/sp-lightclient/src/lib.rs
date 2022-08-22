@@ -60,7 +60,7 @@ pub struct ChainConstants<Header: HeaderT> {
     /// to verify the Block #1 digests.
     pub genesis_digest_items: NextDigestItems,
 
-    /// Maximum number of pieces in a given plot.
+    /// Maximum plot size in bytes.
     pub max_plot_size: u64,
 
     /// Genesis block records roots to verify the Block #1 and other block solutions until Block #1 is finalized.
