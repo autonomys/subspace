@@ -1405,11 +1405,20 @@ where
             None => {
                 // This is only called on the very first block for which we always have runtime
                 // storage access
-                self.client
+                let chain_constants = self
+                    .client
                     .runtime_api()
                     .chain_constants(&BlockId::Hash(*block.header.parent_hash()))
                     .map_err(Error::<Block::Header>::RuntimeApi)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+
+                aux_schema::write_chain_constants(&chain_constants, |values| {
+                    block
+                        .auxiliary
+                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+                });
+
+                chain_constants
             }
         };
 
@@ -1631,12 +1640,6 @@ where
 
         // In the very first block we need to store chain constants and genesis slot for further use
         if block_number.is_one() {
-            aux_schema::write_chain_constants(&chain_constants, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
-
             aux_schema::write_genesis_slot(genesis_slot, |values| {
                 block
                     .auxiliary
