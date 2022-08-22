@@ -121,13 +121,6 @@ where
         slot: Slot,
         _epoch_data: &Self::EpochData,
     ) -> Option<Self::Claim> {
-        // TODO: Hack for Gemini 1b launch. These blocks are already produced, avoid claiming them.
-        if *parent_header.number() <= 33_671_u32.into()
-            && self.client.info().genesis_hash.as_ref() == crate::GEMINI_1B_GENESIS_HASH
-        {
-            return None;
-        }
-
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
         let parent_block_id = BlockId::Hash(parent_header.hash());
@@ -140,18 +133,6 @@ where
         let (salt, next_salt) =
             extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let global_challenge = derive_global_challenge(&global_randomness, slot.into());
-
-        // TODO: Hack for Gemini 1b launch. Solution range should have been updated already.
-        if *parent_header.number() >= 33_671_u32.into()
-            && self.client.info().genesis_hash.as_ref() == crate::GEMINI_1B_GENESIS_HASH
-            && solution_range == 12_009_599_006_321_322_u64
-        {
-            error!(
-                target: "subspace",
-                "Node is running on non-canonical fork, full node and farmer reset is required"
-            );
-            return None;
-        }
 
         let maybe_root_plot_public_key = self
             .client

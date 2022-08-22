@@ -255,9 +255,7 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
-    type RecordSize = ConstU32<RECORD_SIZE>;
     type MaxPlotSize = ConstU64<MAX_PLOT_SIZE>;
-    type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;

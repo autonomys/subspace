@@ -163,8 +163,6 @@ impl Config for Test {
     type ExpectedBlockTime = ConstU64<1>;
     type MaxPlotSize = MaxPlotSize;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type RecordSize = RecordSize;
-    type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
