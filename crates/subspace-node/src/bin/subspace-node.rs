@@ -21,7 +21,6 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
-use sc_client_api::HeaderBackend;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
@@ -186,40 +185,13 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Some(Subcommand::PurgeChain(cmd)) => {
-            // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
-            //  wipe old data from disks of our users
-            if cmd.base.shared_params.base_path().is_none() {
-                let old_dirs = &[
-                    "subspace-node-x86_64-macos-11-snapshot-2022-jan-05",
-                    "subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05",
-                    "subspace-node-x86_64-windows-2019-snapshot-2022-jan-05.exe",
-                    "subspace-node-x86_64-windows-2022-snapshot-2022-jan-05.exe",
-                    "subspace-node-macos-x86_64-snapshot-2022-mar-09",
-                    "subspace-node-ubuntu-x86_64-snapshot-2022-mar-09",
-                    "subspace-node-windows-x86_64-snapshot-2022-mar-09.exe",
-                ];
-                if let Some(base_dir) = dirs::data_local_dir() {
-                    for old_dir in old_dirs {
-                        let _ = std::fs::remove_dir_all(base_dir.join(old_dir));
-                    }
-                }
-            }
-
-            // Delete testnet data folder
-            // TODO: Remove this after next snapshot, this is a compatibility layer to make sure we
-            //  wipe old data from disks of our users
+            // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
                 let _ = std::fs::remove_dir_all(
                     base_dir
                         .join("subspace-node")
                         .join("chains")
-                        .join("subspace_test"),
-                );
-                let _ = std::fs::remove_dir_all(
-                    base_dir
-                        .join("subspace-node")
-                        .join("chains")
-                        .join("subspace_gemini_1a"),
+                        .join("subspace_gemini_1b"),
                 );
             }
 
@@ -367,17 +339,12 @@ fn main() -> Result<(), Error> {
                 // TODO: proper value
                 let block_import_throttling_buffer_size = 10;
 
-                let (mut primary_chain_node, config_dir) = {
+                let mut primary_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "PrimaryChain"
                     );
                     let _enter = span.enter();
-
-                    let config_dir = primary_chain_config
-                        .base_path
-                        .as_ref()
-                        .map(|base_path| base_path.config_dir("subspace_gemini_1b"));
 
                     let dsn_config = {
                         let network_keypair = primary_chain_config
@@ -405,20 +372,17 @@ fn main() -> Result<(), Error> {
                         dsn_config,
                     };
 
-                    let primary_chain_node =
-                        subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
-                            primary_chain_config,
-                            true,
-                            SlotProportion::new(2f32 / 3f32),
-                        )
-                        .await
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to build a full subspace node: {error:?}"
-                            ))
-                        })?;
-
-                    (primary_chain_node, config_dir)
+                    subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
+                        primary_chain_config,
+                        true,
+                        SlotProportion::new(2f32 / 3f32),
+                    )
+                    .await
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node: {error:?}"
+                        ))
+                    })?
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
@@ -496,27 +460,6 @@ fn main() -> Result<(), Error> {
                         .add_child(secondary_chain_node.task_manager);
 
                     secondary_chain_node.network_starter.start_network();
-                }
-
-                // TODO: Workaround for regression in Gemini 1b 2022-jun-08 release:
-                //  we need to reset network identity of the node to remove it from block list of
-                //  other nodes on the network
-                if primary_chain_node.client.info().best_number == 33670 {
-                    if let Some(config_dir) = config_dir {
-                        let workaround_file =
-                            config_dir.join("network").join("gemini_1b_workaround");
-                        if !workaround_file.exists() {
-                            let _ = std::fs::write(workaround_file, &[]);
-                            let _ = std::fs::remove_file(
-                                config_dir.join("network").join("secret_ed25519"),
-                            );
-                            return Err(Error::Other(
-                                "Applied workaround for upgrade from gemini-1b-2022-jun-08, \
-                                please restart this node"
-                                    .to_string(),
-                            ));
-                        }
-                    }
                 }
 
                 primary_chain_node.network_starter.start_network();
