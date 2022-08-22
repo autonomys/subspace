@@ -52,9 +52,7 @@ use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{
-    RecordsRoot, SegmentIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
-};
+use subspace_core_primitives::{RecordsRoot, SegmentIndex};
 
 // Include the WASM binary
 #[cfg(feature = "std")]
@@ -836,16 +834,8 @@ cfg_if! {
                     <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
 
-                fn record_size() -> u32 {
-                    RECORD_SIZE
-                }
-
                 fn total_pieces() -> u64 {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
-                }
-
-                fn recorded_history_segment_size() -> u32 {
-                    RECORDED_HISTORY_SEGMENT_SIZE
                 }
 
                 fn slot_duration() -> core::time::Duration {
@@ -1096,20 +1086,12 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn record_size() -> u32 {
-                    RECORD_SIZE
-                }
-
                 fn max_plot_size() -> u64 {
                     <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
 
                 fn total_pieces() -> u64 {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
-                }
-
-                fn recorded_history_segment_size() -> u32 {
-                    RECORDED_HISTORY_SEGMENT_SIZE
                 }
 
                 fn slot_duration() -> core::time::Duration {

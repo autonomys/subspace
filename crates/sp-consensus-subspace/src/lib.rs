@@ -368,16 +368,6 @@ impl ChainConstants {
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
-        // TODO: Remove, this is a protocol constant
-        /// The size of data in one piece (in bytes).
-        #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
-        fn record_size() -> u32;
-
-        // TODO: Remove, this is a protocol constant
-        /// Recorded history is encoded and plotted in segments of this size (in bytes).
-        #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
-        fn recorded_history_segment_size() -> u32;
-
         /// Maximum plot size in bytes
         fn max_plot_size() -> u64;
 

@@ -720,14 +720,6 @@ impl_runtime_apis! {
             <Self as pallet_subspace::Config>::MaxPlotSize::get()
         }
 
-        fn record_size() -> u32 {
-            RECORD_SIZE
-        }
-
-        fn recorded_history_segment_size() -> u32 {
-            RECORDED_HISTORY_SEGMENT_SIZE
-        }
-
         fn slot_duration() -> Duration {
             Duration::from_millis(Subspace::slot_duration())
         }

@@ -72,7 +72,6 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
     PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
@@ -1007,16 +1006,8 @@ impl_runtime_apis! {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
-        fn record_size() -> u32 {
-            RECORD_SIZE
-        }
-
         fn max_plot_size() -> u64 {
             <Self as pallet_subspace::Config>::MaxPlotSize::get()
-        }
-
-        fn recorded_history_segment_size() -> u32 {
-            RECORDED_HISTORY_SEGMENT_SIZE
         }
 
         fn slot_duration() -> Duration {
