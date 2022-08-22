@@ -13,7 +13,7 @@ use subspace_farmer::legacy_multi_plots_farm::{
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-use subspace_farmer::{LegacyObjectMappings, NodeRpcClient, Plot, RpcClient};
+use subspace_farmer::{NodeRpcClient, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{Config, RelayMode};
 use subspace_rpc_primitives::FarmerProtocolInfo;
@@ -242,7 +242,6 @@ pub(crate) async fn farm_multi_disk(
                 })
                 .collect::<Vec<_>>(),
         ),
-        Arc::new(vec![]),
     );
     let _ws_server_guard = CallOnDrop::new({
         let ws_server = ws_server.start(rpc_server.into_rpc())?;
@@ -336,14 +335,6 @@ pub(crate) async fn farm_legacy(
         ..
     } = farmer_protocol_info;
 
-    info!("Opening object mapping");
-    let object_mappings = tokio::task::spawn_blocking({
-        let path = base_directory.join("object-mappings");
-
-        move || LegacyObjectMappings::open_or_create(path)
-    })
-    .await??;
-
     // Starting the relay server node.
     let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
         listen_on,
@@ -379,7 +370,6 @@ pub(crate) async fn farm_legacy(
             farmer_protocol_info,
             archiving_client,
             farming_client,
-            object_mappings: object_mappings.clone(),
             reward_address,
             bootstrap_nodes,
             listen_on: vec![],
@@ -427,8 +417,13 @@ pub(crate) async fn farm_legacy(
         record_size.get(),
         recorded_history_segment_size,
         Arc::new(multi_plots_farm.piece_getter()),
-        Arc::new(vec![]),
-        Arc::new(vec![object_mappings]),
+        Arc::new(
+            multi_plots_farm
+                .single_plot_farms()
+                .iter()
+                .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
+                .collect(),
+        ),
     );
     let _ws_server_guard = CallOnDrop::new({
         let ws_server = ws_server.start(rpc_server.into_rpc())?;

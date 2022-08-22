@@ -96,7 +96,6 @@ async fn plotting_happy_path() {
     let archiving_instance = Archiving::start(
         farmer_protocol_info,
         vec![object_mappings],
-        vec![],
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,
@@ -210,7 +209,6 @@ async fn plotting_piece_eviction() {
     let archiving_instance = Archiving::start(
         farmer_protocol_info,
         vec![object_mappings],
-        vec![],
         client.clone(),
         move |pieces_to_plot| match single_plot_plotter.plot_pieces(pieces_to_plot) {
             Ok(()) => true,

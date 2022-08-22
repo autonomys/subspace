@@ -238,7 +238,6 @@ struct Command {
     tmp: bool,
 }
 
-// TODO: Add graceful shutdown handling, without it temporary directory may be left not deleted
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::registry()

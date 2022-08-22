@@ -1,4 +1,4 @@
-use crate::object_mappings::{LegacyObjectMappings, ObjectMappingError, ObjectMappings};
+use crate::object_mappings::{ObjectMappingError, ObjectMappings};
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
@@ -180,7 +180,6 @@ pub trait Rpc {
 ///     3480 * 128,
 ///     Arc::new(SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot)),
 ///     Arc::new(vec![object_mappings]),
-///     Arc::new(vec![]),
 /// );
 /// let ws_server = ws_server.start(rpc_server.into_rpc())?;
 ///
@@ -192,7 +191,6 @@ pub struct RpcServerImpl {
     merkle_num_leaves: u32,
     piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
     object_mappings: Arc<Vec<ObjectMappings>>,
-    legacy_object_mappings: Arc<Vec<LegacyObjectMappings>>,
 }
 
 impl RpcServerImpl {
@@ -201,14 +199,12 @@ impl RpcServerImpl {
         recorded_history_segment_size: u32,
         piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
         object_mappings: Arc<Vec<ObjectMappings>>,
-        legacy_object_mappings: Arc<Vec<LegacyObjectMappings>>,
     ) -> Self {
         Self {
             record_size,
             merkle_num_leaves: recorded_history_segment_size / record_size * 2,
             piece_getter,
             object_mappings,
-            legacy_object_mappings,
         }
     }
 
@@ -488,11 +484,6 @@ impl RpcServer for RpcServerImpl {
                 let maybe_global_object = object_mappings.retrieve(&object_id.into())?;
 
                 if let Some(global_object) = maybe_global_object {
-                    return Ok(Some(global_object));
-                }
-            }
-            for object_mappings in self.legacy_object_mappings.iter() {
-                if let Ok(Some(global_object)) = object_mappings.retrieve(&object_id.into()) {
                     return Ok(Some(global_object));
                 }
             }
