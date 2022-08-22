@@ -408,6 +408,7 @@ impl From<Error> for String {
 }
 
 /// Digest items extracted from a header into convenient form
+#[derive(Debug)]
 pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     /// Pre-runtime digest
     pub pre_digest: PreDigest<PublicKey, RewardAddress>,
