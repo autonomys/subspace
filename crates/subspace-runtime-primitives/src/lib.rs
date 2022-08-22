@@ -22,13 +22,12 @@ use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::MultiSignature;
 use sp_std::vec::Vec;
 pub use subspace_core_primitives::BlockNumber;
-use subspace_core_primitives::PIECE_SIZE;
 
 // TODO: Proper value here
 pub const CONFIRMATION_DEPTH_K: BlockNumber = 100;
-///Maximum number of pieces in each plot
+/// Maximum plot size in bytes
 // TODO: Proper value here
-pub const MAX_PLOT_SIZE: u64 = 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64;
+pub const MAX_PLOT_SIZE: u64 = 100 * 1024 * 1024 * 1024;
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
 // TODO: Proper value here

@@ -383,7 +383,7 @@ sp_api::decl_runtime_apis! {
         #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]
         fn recorded_history_segment_size() -> u32;
 
-        /// Maximum number of pieces in each plot
+        /// Maximum plot size in bytes
         fn max_plot_size() -> u64;
 
         /// The slot duration in milliseconds for Subspace.

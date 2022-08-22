@@ -53,7 +53,7 @@ use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::{
-    RecordsRoot, SegmentIndex, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RecordsRoot, SegmentIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 
 // Include the WASM binary
@@ -614,7 +614,7 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
-    type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 / PIECE_SIZE as u64 }>;
+    type MaxPlotSize = ConstU64<{ 10 * 1024 * 1024 * 1024 }>;
     type ExpectedVotesPerBlock = ConstU32<9>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
