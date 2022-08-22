@@ -2,6 +2,7 @@ mod commands;
 mod ss58;
 mod utils;
 
+use crate::utils::get_usable_plot_space;
 use anyhow::Result;
 use bytesize::ByteSize;
 use clap::{ArgEnum, Parser, ValueHint};
@@ -273,7 +274,7 @@ async fn main() -> Result<()> {
             info!("Done");
         }
         Subcommand::Farm(farming_args) => {
-            if command.farm.is_empty() {
+            let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {
                     fs::create_dir_all(&base_path).unwrap_or_else(|error| {
                         panic!(
@@ -283,7 +284,20 @@ async fn main() -> Result<()> {
                     });
                 }
 
-                commands::farm_legacy(base_path, farming_args).await?;
+                let plot_size = farming_args.plot_size.as_u64();
+
+                if plot_size < 1024 * 1024 {
+                    return Err(anyhow::anyhow!(
+                        "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
+                        plot_size
+                    ));
+                }
+
+                vec![DiskFarm {
+                    plot_directory: base_path.clone(),
+                    metadata_directory: base_path,
+                    allocated_plotting_space: get_usable_plot_space(plot_size),
+                }]
             } else {
                 for farm in &command.farm {
                     if !farm.plot_directory.exists() {
@@ -299,8 +313,11 @@ async fn main() -> Result<()> {
                         );
                     }
                 }
-                commands::farm_multi_disk(command.farm, farming_args).await?;
-            }
+
+                command.farm
+            };
+
+            commands::farm_multi_disk(disk_farms, farming_args).await?;
         }
         Subcommand::Info => {
             if command.farm.is_empty() {

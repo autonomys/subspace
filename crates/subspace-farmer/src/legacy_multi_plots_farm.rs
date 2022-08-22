@@ -35,6 +35,7 @@ pub struct Options<C> {
     pub relay_server_node: Option<Node>,
 }
 
+// TODO: Remove once tests and benches migrate away from it
 /// Abstraction around having multiple `Plot`s, `Farming`s and `Plotting`s.
 ///
 /// It is needed because of the limit of a single plot size from the consensus
