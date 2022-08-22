@@ -114,7 +114,7 @@ impl fmt::Debug for Plot {
 
 impl Plot {
     /// A bit more than 4M. Should correspond to requested range size from DSN.
-    const PIECES_PER_REQUEST: u64 = 1100;
+    const PIECES_PER_REQUEST: usize = 1100;
 
     /// Creates a new plot for persisting encoded pieces to disk
     pub fn open_or_create(
@@ -351,62 +351,80 @@ impl Plot {
     /// Returns pieces and their indexes starting from supplied piece index hash (`from`)
     pub(crate) fn get_sequential_pieces(
         &self,
-        mut from_index_hash: PieceIndexHash,
+        from_index_hash: PieceIndexHash,
         count: u64,
     ) -> io::Result<Vec<(PieceIndex, Piece)>> {
-        let (result_sender, result_receiver) = mpsc::channel();
-        let receive_pieces = |from_index_hash, count| {
+        let offsets_and_indexes = {
+            let (result_sender, result_receiver) = mpsc::channel();
             self.inner
                 .requests_sender
                 .send(RequestWithPriority {
-                    request: Request::ReadSequentialPieces {
+                    request: Request::FindPieceOffsetsAndIndexes {
                         from_index_hash,
                         count,
-                        result_sender: result_sender.clone(),
+                        result_sender,
                     },
                     priority: RequestPriority::Low,
                 })
                 .map_err(|error| {
                     io::Error::other(format!(
-                        "Failed sending read piece indexes request: {error}"
+                        "Failed sending read piece offsets and indexes request: {error}"
                     ))
                 })?;
 
-            result_receiver.recv().map_err(|error| {
+            let mut offsets_and_indexes = result_receiver.recv().map_err(|error| {
                 io::Error::other(format!(
-                    "Read piece indexes result sender was dropped: {error}",
+                    "Read piece offsets and indexes result sender was dropped: {error}",
                 ))
-            })?
+            })??;
+
+            offsets_and_indexes.sort_unstable_by_key(|(piece_offset, _piece_index)| *piece_offset);
+
+            offsets_and_indexes
         };
 
-        let mut pieces = Vec::with_capacity(count as usize);
-        for count in std::iter::repeat(Self::PIECES_PER_REQUEST)
-            .take((count / Self::PIECES_PER_REQUEST) as usize)
-        {
-            let new_pieces = receive_pieces(from_index_hash, count)?;
-            if count > new_pieces.len() as u64 {
-                pieces.extend(new_pieces);
-                return Ok(pieces);
-            }
+        let mut result_pieces = Vec::with_capacity(offsets_and_indexes.len());
+        for partial_offsets_and_indexes in offsets_and_indexes.chunks(Self::PIECES_PER_REQUEST) {
+            let (result_sender, result_receiver) = mpsc::channel();
+            self.inner
+                .requests_sender
+                .send(RequestWithPriority {
+                    request: Request::ReadManyEncodingsByOffset {
+                        piece_offsets: partial_offsets_and_indexes
+                            .iter()
+                            .map(|(piece_offset, _piece_index)| piece_offset)
+                            .copied()
+                            .collect(),
+                        result_sender,
+                    },
+                    priority: RequestPriority::Low,
+                })
+                .map_err(|error| {
+                    io::Error::other(format!(
+                        "Failed sending read encodings by offset request: {error}"
+                    ))
+                })?;
 
-            from_index_hash = new_pieces
-                .last()
-                .map(|(idx, _)| PieceIndexHash::from_index(*idx))
-                .expect("Vector is not empty");
-            from_index_hash = U256::from(from_index_hash)
-                .saturating_add(&U256::one())
-                .into();
-            pieces.extend(new_pieces)
+            let pieces = result_receiver.recv().map_err(|error| {
+                io::Error::other(format!(
+                    "Read encodings by offset result sender was dropped: {error}",
+                ))
+            })??;
+
+            result_pieces.extend(
+                partial_offsets_and_indexes
+                    .iter()
+                    .map(|(_piece_offset, piece_index)| piece_index)
+                    .copied()
+                    .zip(pieces),
+            );
         }
 
-        if count % Self::PIECES_PER_REQUEST != 0 {
-            pieces.extend(receive_pieces(
-                from_index_hash,
-                count % Self::PIECES_PER_REQUEST,
-            )?);
-        }
+        // TODO: Move this out to the requester (if needed at all)
+        result_pieces
+            .sort_unstable_by_key(|(piece_index, _)| PieceIndexHash::from_index(*piece_index));
 
-        Ok(pieces)
+        Ok(result_pieces)
     }
 
     pub fn on_progress_change(
