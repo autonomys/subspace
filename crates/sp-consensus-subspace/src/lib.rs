@@ -368,11 +368,6 @@ impl ChainConstants {
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
-        // TODO: Remove, it is available in constants already
-        /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
-        /// to the client-dependent transaction confirmation depth `k`).
-        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number;
-
         // TODO: Remove, this is a protocol constant
         /// The size of data in one piece (in bytes).
         #[deprecated = "This is a protocol constant, can be found in subspace-core-primitives"]

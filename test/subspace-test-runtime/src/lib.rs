@@ -1003,10 +1003,6 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
-            <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
-        }
-
         fn total_pieces() -> u64 {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }

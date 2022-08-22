@@ -38,7 +38,7 @@ use sp_core::OpaqueMetadata;
 use sp_inherents::{CheckInherentsResult, InherentData};
 use sp_runtime::traits::{
     BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
-    GetRuntimeBlockType, Header as HeaderT, IdentityLookup, NumberFor, Verify,
+    GetRuntimeBlockType, IdentityLookup, NumberFor, Verify,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -832,10 +832,6 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
-                    <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
-                }
-
                 fn max_plot_size() -> u64 {
                     <Self as pallet_subspace::Config>::MaxPlotSize::get()
                 }
@@ -1100,10 +1096,6 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
-                    <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
-                }
-
                 fn record_size() -> u32 {
                     RECORD_SIZE
                 }

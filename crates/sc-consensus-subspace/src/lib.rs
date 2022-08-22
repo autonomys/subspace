@@ -83,8 +83,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockNumber, BlockWeight, EonIndex, Randomness, RootBlock, Salt, SegmentIndex, Sha256Hash,
-    Solution, SolutionRange, MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    BlockWeight, EonIndex, Randomness, RootBlock, Salt, SegmentIndex, Sha256Hash, Solution,
+    SolutionRange, MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -1398,29 +1398,8 @@ where
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
         let skip_state_computation = matches!(block.state_action, StateAction::Skip);
 
-        let chain_constants = match aux_schema::load_chain_constants(self.client.as_ref())
-            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-        {
-            Some(chain_constants) => chain_constants,
-            None => {
-                // This is only called on the very first block for which we always have runtime
-                // storage access
-                let chain_constants = self
-                    .client
-                    .runtime_api()
-                    .chain_constants(&BlockId::Hash(*block.header.parent_hash()))
-                    .map_err(Error::<Block::Header>::RuntimeApi)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
-
-                aux_schema::write_chain_constants(&chain_constants, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
-
-                chain_constants
-            }
-        };
+        let chain_constants = get_chain_constants(self.client.as_ref())
+            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
         let (mut solution_range_parameters, old_solution_range_parameters) =
             match aux_schema::load_solution_range_parameters(self.client.as_ref())
@@ -1856,6 +1835,39 @@ where
     }
 }
 
+fn get_chain_constants<Block, Client>(
+    client: &Client,
+) -> Result<ChainConstants, Error<Block::Header>>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+{
+    match aux_schema::load_chain_constants(client)? {
+        Some(chain_constants) => Ok(chain_constants),
+        None => {
+            // This is only called on the very first block for which we always have runtime
+            // storage access
+            let chain_constants = client
+                .runtime_api()
+                .chain_constants(&BlockId::Hash(client.info().best_hash))
+                .map_err(Error::<Block::Header>::RuntimeApi)?;
+
+            aux_schema::write_chain_constants(&chain_constants, |values| {
+                client.insert_aux(
+                    &values
+                        .iter()
+                        .map(|(key, value)| (key.as_slice(), *value))
+                        .collect::<Vec<_>>(),
+                    &[],
+                )
+            })?;
+
+            Ok(chain_constants)
+        }
+    }
+}
+
 /// Produce a Subspace block-import object to be used later on in the construction of an
 /// import-queue.
 ///
@@ -1891,17 +1903,9 @@ where
     let (imported_block_notification_sender, imported_block_notification_stream) =
         notification::channel("subspace_imported_block_notification_stream");
 
-    let best_block_id = BlockId::Hash(client.info().best_hash);
-
-    let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
-        client
-            .runtime_api()
-            .confirmation_depth_k(&best_block_id)
-            .expect("Failed to get `confirmation_depth_k` from runtime API"),
-    )
-    .unwrap_or_else(|_| {
-        panic!("Confirmation depth K can't be converted into BlockNumber");
-    });
+    let confirmation_depth_k = get_chain_constants(client.as_ref())
+        .expect("Must always be able to get chain constants")
+        .confirmation_depth_k();
 
     let link = SubspaceLink {
         config,
