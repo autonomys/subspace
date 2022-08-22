@@ -416,7 +416,6 @@ pub struct InvalidTransactionProof;
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
-    #[api_version(3)]
     pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
