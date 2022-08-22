@@ -28,8 +28,8 @@ jobs:
 
       - name: Generate testnet chain specifications
         run: |
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled > chain-spec-gemini-1.json
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled --raw > chain-spec-raw-gemini-1.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled --disable-default-bootnode > chain-spec-gemini-1.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled --disable-default-bootnode --raw > chain-spec-raw-gemini-1.json
 
       - name: Upload chain specifications to artifacts
         uses: actions/upload-artifact@v2
