@@ -35,7 +35,8 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, Node, PeerInfo, PeerInfoRequestHandler,
+    BootstrappedNetworkingParameters, Config, Node, ObjectMappingsRequest,
+    ObjectMappingsRequestHandler, ObjectMappingsResponse, PeerInfo, PeerInfoRequestHandler,
     PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeRequestHandler,
     PiecesByRangeResponse, PiecesToPlot,
 };
@@ -515,6 +516,23 @@ impl SinglePlotFarm {
                                 status: peer_sync_status_provider(),
                             },
                         })
+                    }
+                }),
+                ObjectMappingsRequestHandler::create({
+                    let object_mappings = object_mappings.clone();
+
+                    move |&ObjectMappingsRequest { object_hash }| {
+                        let result = object_mappings.retrieve(&object_hash);
+                        let object_mapping = match result {
+                            Ok(res) => res,
+                            Err(err) => {
+                                error!(%err, ?object_hash, "Cannot retrieve an object mapping.");
+
+                                None
+                            }
+                        };
+
+                        Some(ObjectMappingsResponse { object_mapping })
                     }
                 }),
             ],
