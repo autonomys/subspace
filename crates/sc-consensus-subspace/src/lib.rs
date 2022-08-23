@@ -222,8 +222,8 @@ pub enum Error<Header: HeaderT> {
     #[error("Stored root block extrinsic was not found: {0:?}")]
     RootBlocksExtrinsicNotFound(Vec<RootBlock>),
     /// Duplicated records root
-    #[error("Duplicated records root for segment index {0}, it already exists in aux DB")]
-    DuplicatedRecordsRoot(u64),
+    #[error("Different records root for segment index {0} was found in storage, likely fork below archiving point")]
+    DifferentRecordsRoot(u64),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
@@ -1601,13 +1601,15 @@ where
         });
 
         for (&segment_index, records_root) in &subspace_digest_items.records_roots {
-            if aux_schema::load_records_root(self.client.as_ref(), segment_index)
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                .is_some()
+            if let Some(found_records_root) =
+                aux_schema::load_records_root(self.client.as_ref(), segment_index)
+                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
             {
-                return Err(ConsensusError::ClientImport(
-                    Error::<Block::Header>::DuplicatedRecordsRoot(segment_index).to_string(),
-                ));
+                if &found_records_root != records_root {
+                    return Err(ConsensusError::ClientImport(
+                        Error::<Block::Header>::DifferentRecordsRoot(segment_index).to_string(),
+                    ));
+                }
             }
 
             aux_schema::write_records_root(segment_index, records_root, |values| {
