@@ -1630,106 +1630,109 @@ where
                     .auxiliary
                     .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
             });
+        }
 
-            // Store updated solution range parameters if we didn't store them before or if they
-            // changed.
-            if old_solution_range_parameters.is_none()
-                || old_solution_range_parameters != Some(solution_range_parameters)
-            {
-                aux_schema::write_solution_range_parameters(&solution_range_parameters, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
-            }
+        // Store updated solution range parameters if we didn't store them before or if they
+        // changed.
+        if old_solution_range_parameters.is_none()
+            || old_solution_range_parameters != Some(solution_range_parameters)
+        {
+            aux_schema::write_solution_range_parameters(&solution_range_parameters, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
 
-            // Store updated root plot public key on the first block or when changed.
-            if block_number.is_one() || old_root_plot_public_key != root_plot_public_key {
-                aux_schema::write_root_plot_public_key(&root_plot_public_key, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
-            }
+        // Store updated root plot public key on the first block or when changed.
+        if block_number.is_one() || old_root_plot_public_key != root_plot_public_key {
+            aux_schema::write_root_plot_public_key(&root_plot_public_key, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
 
-            // Check if era has changed and store corresponding era start slot.
-            //
-            // Special case when the current header is one, then first era begins or era duration
-            // interval has reached, so era has changed.
-            if block_number.is_one()
-                || block_number % chain_constants.era_duration().into() == Zero::zero()
-            {
-                let next_era_index = block_number / chain_constants.era_duration().into();
-                let mut next_era_start_slot =
-                    aux_schema::load_era_start_slot(self.client.as_ref(), next_era_index)
-                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                        .unwrap_or_default();
-                next_era_start_slot.push((block_hash, pre_digest.slot));
+        // Check if era has changed and store corresponding era start slot.
+        //
+        // Special case when the current block number is one, then first era begins or era
+        // duration interval has reached, so era has changed.
+        if block_number.is_one()
+            || block_number % chain_constants.era_duration().into() == Zero::zero()
+        {
+            let next_era_index = if block_number.is_one() {
+                Zero::zero()
+            } else {
+                era_index + One::one()
+            };
+            let mut next_era_start_slot =
+                aux_schema::load_era_start_slot(self.client.as_ref(), next_era_index)
+                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
+                    .unwrap_or_default();
+            next_era_start_slot.push((block_hash, pre_digest.slot));
 
-                aux_schema::write_era_start_slot(next_era_index, &next_era_start_slot, |values| {
-                    block.auxiliary.extend(
-                        values
-                            .iter()
-                            .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
-                    )
-                });
-            }
+            aux_schema::write_era_start_slot(next_era_index, &next_era_start_slot, |values| {
+                block.auxiliary.extend(
+                    values
+                        .iter()
+                        .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                )
+            });
+        }
 
-            // Check if the eon is about to be changed
-            let maybe_next_eon_index = subspace_verification::derive_next_eon_index(
-                eon_index_entry.eon_index,
-                chain_constants.eon_duration(),
-                u64::from(genesis_slot),
-                u64::from(pre_digest.slot),
-            );
+        // Check if the eon is about to be changed
+        let maybe_next_eon_index = subspace_verification::derive_next_eon_index(
+            eon_index_entry.eon_index,
+            chain_constants.eon_duration(),
+            u64::from(genesis_slot),
+            u64::from(pre_digest.slot),
+        );
 
-            if let Some(next_eon_index) = maybe_next_eon_index {
-                let (
+        if let Some(next_eon_index) = maybe_next_eon_index {
+            let (
+                next_eon_randomness_block_number,
+                next_eon_randomness_block_hash,
+                next_eon_randomness,
+            ) = next_eon_randomness.ok_or_else(|| {
+                ConsensusError::ClientImport(
+                    "Next eon randomness was expected, but not present".to_string(),
+                )
+            })?;
+            eon_indexes.push(EonIndexEntry {
+                eon_index: next_eon_index,
+                randomness: next_eon_randomness,
+                randomness_block: (
                     next_eon_randomness_block_number,
                     next_eon_randomness_block_hash,
-                    next_eon_randomness,
-                ) = next_eon_randomness.ok_or_else(|| {
-                    ConsensusError::ClientImport(
-                        "Next eon randomness was expected, but not present".to_string(),
-                    )
-                })?;
-                eon_indexes.push(EonIndexEntry {
-                    eon_index: next_eon_index,
-                    randomness: next_eon_randomness,
-                    randomness_block: (
-                        next_eon_randomness_block_number,
-                        next_eon_randomness_block_hash,
-                    ),
-                    starts_at: (pre_digest.slot, block_number),
-                });
+                ),
+                starts_at: (pre_digest.slot, block_number),
+            });
 
-                aux_schema::write_eon_indexes(&eon_indexes, |values| {
-                    block
-                        .auxiliary
-                        .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-                });
-            }
+            aux_schema::write_eon_indexes(&eon_indexes, |values| {
+                block
+                    .auxiliary
+                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
+            });
+        }
 
-            // Prune era start slots that are too old to be useful
-            if let Some(previous_block_number) = block_number.checked_sub(&2u32.into()) {
-                let previous_block_era_index =
-                    previous_block_number / chain_constants.era_duration().into();
+        // Prune era start slots that are too old to be useful
+        if let Some(previous_block_number) = block_number.checked_sub(&2u32.into()) {
+            let previous_block_era_index =
+                previous_block_number / chain_constants.era_duration().into();
 
-                if previous_block_era_index != era_index {
-                    if let Some(prune_era_index) = previous_block_era_index.checked_sub(&One::one())
-                    {
-                        aux_schema::write_era_start_slot::<_, Block::Hash, _, ()>(
-                            prune_era_index,
-                            &[],
-                            |values| {
-                                block.auxiliary.extend(
-                                    values
-                                        .iter()
-                                        .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
-                                )
-                            },
-                        );
-                    }
+            if previous_block_era_index != era_index {
+                if let Some(prune_era_index) = previous_block_era_index.checked_sub(&One::one()) {
+                    aux_schema::write_era_start_slot::<_, Block::Hash, _, ()>(
+                        prune_era_index,
+                        &[],
+                        |values| {
+                            block.auxiliary.extend(
+                                values
+                                    .iter()
+                                    .map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))),
+                            )
+                        },
+                    );
                 }
             }
 
