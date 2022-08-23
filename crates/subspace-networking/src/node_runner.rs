@@ -212,7 +212,12 @@ impl NodeRunner {
         }
 
         // Maintain minimum connected peers number.
-        if connected_peers.len() < self.max_established_outgoing_connections as usize {
+        let current_connections_number = {
+            let ni = self.swarm.network_info();
+
+            ni.connection_counters().num_pending_incoming() + ni.num_peers() as u32
+        };
+        if current_connections_number < self.max_established_outgoing_connections {
             debug!(
                 %local_peer_id,
                 connected_peers=connected_peers.len(),

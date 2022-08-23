@@ -39,9 +39,9 @@ const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 // The default maximum incoming connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 500;
+const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
 // The default maximum incoming connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 500;
+const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]

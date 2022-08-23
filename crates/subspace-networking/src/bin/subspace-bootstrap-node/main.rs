@@ -9,9 +9,9 @@ use subspace_networking::{BootstrappedNetworkingParameters, Config};
 use tracing::info;
 
 // The default maximum incoming connections number for the peer.
-const MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 5000;
+const MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 300;
 // The default maximum outgoing connections number for the peer.
-const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 5000;
+const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 300;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
