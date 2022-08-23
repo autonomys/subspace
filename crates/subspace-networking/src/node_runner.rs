@@ -27,8 +27,6 @@ use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
-// Defines a threshold for starting new connection attempts to known peers.
-const CONNECTED_PEERS_THRESHOLD: usize = 10;
 // Defines a protocol name specific for the relay server
 const RELAY_HOP_PROTOCOL_NAME: &[u8] = b"/libp2p/circuit/relay/0.2.0/hop";
 
@@ -66,8 +64,10 @@ pub struct NodeRunner {
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
-    /// Overall swarm connection limit.
-    max_established_total: u32,
+    /// Incoming swarm connection limit.
+    max_established_incoming_connections: u32,
+    /// Outgoing swarm connection limit.
+    max_established_outgoing_connections: u32,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -80,7 +80,8 @@ pub(crate) struct NodeRunnerConfig {
     pub next_random_query_interval: Duration,
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     pub reserved_peers: HashMap<PeerId, Multiaddr>,
-    pub max_established_total: u32,
+    pub max_established_incoming_connections: u32,
+    pub max_established_outgoing_connections: u32,
 }
 
 impl NodeRunner {
@@ -94,7 +95,8 @@ impl NodeRunner {
             next_random_query_interval,
             networking_parameters_registry,
             reserved_peers,
-            max_established_total,
+            max_established_incoming_connections,
+            max_established_outgoing_connections,
         }: NodeRunnerConfig,
     ) -> Self {
         Self {
@@ -113,7 +115,8 @@ impl NodeRunner {
             peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
             reserved_peers,
-            max_established_total,
+            max_established_incoming_connections,
+            max_established_outgoing_connections,
         }
     }
 
@@ -174,9 +177,12 @@ impl NodeRunner {
 
             if !missing_reserved_peer_ids.is_empty() {
                 // Free connection slots for reserved peers if required.
+                let in_out_limits_sum = (self.max_established_incoming_connections
+                    + self.max_established_outgoing_connections)
+                    as usize;
                 let peers_to_disconnect_number = (connected_peers_id_set.len()
                     + missing_reserved_peer_ids.len())
-                .saturating_sub(self.max_established_total as usize);
+                .saturating_sub(in_out_limits_sum);
 
                 if peers_to_disconnect_number > 0 {
                     let peers_to_disconnect = connected_peers
@@ -206,9 +212,7 @@ impl NodeRunner {
         }
 
         // Maintain minimum connected peers number.
-        if connected_peers.len() < CONNECTED_PEERS_THRESHOLD
-            && connected_peers.len() < self.max_established_total as usize
-        {
+        if connected_peers.len() < self.max_established_outgoing_connections as usize {
             debug!(
                 %local_peer_id,
                 connected_peers=connected_peers.len(),

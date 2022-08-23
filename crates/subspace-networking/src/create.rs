@@ -38,8 +38,10 @@ const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
-// The default maximum connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_TOTAL_CONNECTIONS: u32 = 1000;
+// The default maximum incoming connection number for the swarm.
+const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 500;
+// The default maximum incoming connection number for the swarm.
+const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 500;
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
@@ -78,7 +80,7 @@ pub struct Config {
     pub identify: IdentifyConfig,
     /// The configuration for the Kademlia behaviour.
     pub kademlia: KademliaConfig,
-    /// The configuration for the Kademlia behaviour.
+    /// The configuration for the Gossip behaviour.
     pub gossipsub: GossipsubConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub value_getter: ValueGetter,
@@ -103,8 +105,10 @@ pub struct Config {
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     pub reserved_peers: Vec<Multiaddr>,
-    /// Overall swarm connection limit.
-    pub max_established_total: u32,
+    /// Incoming swarm connection limit.
+    pub max_established_incoming_connections: u32,
+    /// Outgoing swarm connection limit.
+    pub max_established_outgoing_connections: u32,
 }
 
 impl fmt::Debug for Config {
@@ -167,7 +171,8 @@ impl Config {
             yamux_config,
             mplex_config,
             reserved_peers: Vec::new(),
-            max_established_total: SWARM_MAX_ESTABLISHED_TOTAL_CONNECTIONS,
+            max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
+            max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
         }
     }
 }
@@ -209,7 +214,8 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         networking_parameters_registry,
         request_response_protocols,
         reserved_peers,
-        max_established_total,
+        max_established_incoming_connections,
+        max_established_outgoing_connections,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
     // Create relay client transport and client.
@@ -238,11 +244,9 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             relay_client,
         });
 
-        // must be set along with `max_established_total` to prevent eclipse attack
-        let max_established_incoming = (max_established_total * 3 / 4).max(1);
         let limits = ConnectionLimits::default()
-            .with_max_established(Some(max_established_total))
-            .with_max_established_incoming(Some(max_established_incoming));
+            .with_max_established_incoming(Some(max_established_incoming_connections))
+            .with_max_established_outgoing(Some(max_established_outgoing_connections));
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             .executor(Box::new(|fut| {
@@ -298,7 +302,8 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             next_random_query_interval: initial_random_query_interval,
             networking_parameters_registry,
             reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-            max_established_total,
+            max_established_incoming_connections,
+            max_established_outgoing_connections,
         });
 
         Ok((node, node_runner))
