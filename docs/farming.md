@@ -270,6 +270,9 @@ services:
     # For running on Aarch64 add `-aarch64` after `DATE`
     image: ghcr.io/subspace/farmer:snapshot-DATE
     volumes:
+# Instead of specifying volume (which will store data in `/var/lib/docker`), you can
+# alternatively specify path to the directory where files will be stored, just make
+# sure everyone is allowed to write there
       - farmer-data:/var/subspace:rw
 #      - /path/to/subspace-farmer:/var/subspace:rw
     ports:
@@ -278,9 +281,6 @@ services:
 # If port 40333 is already occupied by something else, replace all
 # occurrences of `40333` in this file with another value
       - "0.0.0.0:40333:40333"
-# Instead of specifying volume (which will store data in `/var/lib/docker`), you can
-# alternatively specify path to the directory where files will be stored, just make
-# sure everyone is allowed to write there
     restart: unless-stopped
     command: [
       "--base-path", "/var/subspace",
