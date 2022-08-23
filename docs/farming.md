@@ -269,18 +269,18 @@ services:
     # Replace `snapshot-DATE` with latest release (like `snapshot-2022-apr-29`)
     # For running on Aarch64 add `-aarch64` after `DATE`
     image: ghcr.io/subspace/farmer:snapshot-DATE
-# Un-comment following 2 lines to unlock farmer's RPC
-#    ports:
+    ports:
+# Un-comment following line to unlock farmer's RPC
 #      - "127.0.0.1:9955:9955"
+# If port 40333 is already occupied by something else, replace all
+# occurrences of `40333` in this file with another value
+      - "0.0.0.0:40333:40333"
 # Instead of specifying volume (which will store data in `/var/lib/docker`), you can
 # alternatively specify path to the directory where files will be stored, just make
 # sure everyone is allowed to write there
     volumes:
       - farmer-data:/var/subspace:rw
 #      - /path/to/subspace-farmer:/var/subspace:rw
-# If port 40333 is already occupied by something else, replace all
-# occurrences of `40333` in this file with another value
-      - "0.0.0.0:40333:40333"
     restart: unless-stopped
     command: [
       "--base-path", "/var/subspace",
