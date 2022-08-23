@@ -13,7 +13,7 @@ use sc_transaction_pool_api::{
     ReadyTransactions, TransactionFor, TransactionPool, TransactionSource,
     TransactionStatusStreamFor, TxHash,
 };
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
 use sp_executor::ExecutorApi;
 use sp_runtime::generic::BlockId;
@@ -124,36 +124,19 @@ where
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        let executor_api_version = match self
+        match self
             .client
             .runtime_api()
-            .api_version::<dyn ExecutorApi<Block, cirrus_primitives::Hash>>(at)
-            .ok()
-            .flatten()
+            .extract_fraud_proofs(at, vec![uxt.clone()])
         {
-            Some(api_version) => api_version,
-            None => {
-                return async move {
-                    Err(sc_transaction_pool::error::Error::RuntimeApi(
-                        "Unable to retrieve ExecutorApi's api version".to_string(),
-                    ))
-                }
-                .boxed();
-            }
-        };
+            Ok(fraud_proofs) => {
+                if let Some(fraud_proof) = fraud_proofs.into_iter().next() {
+                    let inner = self.inner.clone();
+                    let spawner = self.spawner.clone();
+                    let fraud_proof_verifier = self.verifier.clone();
+                    let at = *at;
 
-        // `extract_fraud_proof` is added since ExecutorApi version 2
-        // TODO: reset the ExecutorApi api version and remove this check when the network is reset.
-        if executor_api_version >= 2 {
-            match self.client.runtime_api().extract_fraud_proof(at, &uxt) {
-                Ok(maybe_fraud_proof) => {
-                    if let Some(fraud_proof) = maybe_fraud_proof {
-                        let inner = self.inner.clone();
-                        let spawner = self.spawner.clone();
-                        let fraud_proof_verifier = self.verifier.clone();
-                        let at = *at;
-
-                        return async move {
+                    return async move {
                             let (verified_result_sender, verified_result_receiver) = oneshot::channel();
 
                             // Verify the fraud proof in another blocking task as it might be pretty heavy.
@@ -190,14 +173,13 @@ where
                             }
                         }
                         .boxed();
-                    }
                 }
-                Err(err) => {
-                    return async move {
+            }
+            Err(err) => {
+                return async move {
                         Err(sc_transaction_pool::error::Error::Blockchain(err.into()))
                     }
                     .boxed();
-                }
             }
         }
 
