@@ -148,7 +148,6 @@ parameter_types! {
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
-    pub const MaxPlotSize: u64 = 10 * 2u64.pow(18);
     pub const ShouldAdjustSolutionRange: bool = false;
 }
 
@@ -161,10 +160,7 @@ impl Config for Test {
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ConstU64<1>;
-    type MaxPlotSize = MaxPlotSize;
     type ConfirmationDepthK = ConfirmationDepthK;
-    type RecordSize = RecordSize;
-    type RecordedHistorySegmentSize = RecordedHistorySegmentSize;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;

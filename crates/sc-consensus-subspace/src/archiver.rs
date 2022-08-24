@@ -15,13 +15,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    ArchivedSegmentNotification, ImportedBlockNotification, SubspaceLink,
+    get_chain_constants, ArchivedSegmentNotification, ImportedBlockNotification, SubspaceLink,
     SubspaceNotificationSender,
 };
 use codec::Encode;
 use futures::{future, SinkExt, StreamExt};
 use log::{debug, error, info, warn};
-use sc_client_api::{Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
+use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -187,19 +187,13 @@ fn initialize_archiver<Block, Client>(
 ) -> InitializedArchiver<Block>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
     let best_block_id = BlockId::Hash(best_block_hash);
-    let confirmation_depth_k = TryInto::<BlockNumber>::try_into(
-        client
-            .runtime_api()
-            .confirmation_depth_k(&best_block_id)
-            .expect("Failed to get `confirmation_depth_k` from runtime API"),
-    )
-    .unwrap_or_else(|_| {
-        panic!("Confirmation depth K can't be converted into BlockNumber");
-    });
+    let confirmation_depth_k = get_chain_constants(client)
+        .expect("Must always be able to get chain constants")
+        .confirmation_depth_k();
 
     let maybe_last_archived_block = find_last_archived_block(client, best_block_id);
     let have_last_root_block = maybe_last_archived_block.is_some();
@@ -395,6 +389,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
         + HeaderBackend<Block>
         + LockImportRun<Block, Backend>
         + Finalizer<Block, Backend>
+        + AuxStore
         + Send
         + Sync
         + 'static,

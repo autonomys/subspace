@@ -19,7 +19,7 @@ use std::cmp::Ordering;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::{
     EonIndex, Piece, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange, Tag,
-    PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
@@ -45,7 +45,7 @@ fn default_test_constants() -> ChainConstants<Header> {
             next_solution_range: Default::default(),
             next_salt: salt,
         },
-        max_plot_size: 100 * 1024 * 1024 * 1024 / PIECE_SIZE as u64,
+        max_plot_size: 100 * 1024 * 1024 * 1024,
         genesis_records_roots: Default::default(),
         global_randomness_interval: 20,
         era_duration: 20,

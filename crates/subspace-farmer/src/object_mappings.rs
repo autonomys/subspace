@@ -137,7 +137,7 @@ impl ObjectMappings {
                 .get_mut(Columns::Mappings as usize)
                 .expect("Number of columns defined above; qed");
             mappings_column_options.uniform = true;
-            // TODO: Only using BTree because of https://github.com/paritytech/parity-db/issues/81
+            // Using b-tree so we can iterate over keys
             mappings_column_options.btree_index = true;
         }
         // We don't use stats
@@ -256,19 +256,6 @@ impl ObjectMappings {
 
     fn prune(&self, remove_size: u64, size: &mut u64) -> Result<(), parity_db::Error> {
         let mut pruning_state = PruningState::new(self.inner.public_key_as_number, remove_size);
-        // TODO: Commented code is for non-BTree column, use in the future if switch back from BTree
-        // self.inner
-        //     .db
-        //     .iter_column_while(Columns::Mappings as u8, |iter_state| {
-        //         pruning_state.process(FurthestKey {
-        //             key: iter_state.key,
-        //             size: u16::try_from(iter_state.key.len()).expect("Key always fits in u16; qed")
-        //                 + u16::try_from(iter_state.value.len())
-        //                     .expect("Value always fits in u16; qed"),
-        //         });
-        //
-        //         true
-        //     })?;
         let mut iter = self.inner.db.iter(Columns::Mappings as u8)?;
         while let Some((key, value)) = iter.next()? {
             pruning_state.process(FurthestKey {
@@ -314,66 +301,6 @@ impl ObjectMappings {
         self.inner.db.commit(tx)?;
 
         *size = new_size;
-
-        Ok(())
-    }
-}
-
-// TODO: Remove once global object mappings are gone
-#[derive(Debug, Error)]
-pub enum LegacyObjectMappingError {
-    #[error("DB error: {0}")]
-    Db(rocksdb::Error),
-}
-
-/// `ObjectMappings` is a mapping from arbitrary object hash to its location in archived history.
-// TODO: Remove once global object mappings are gone
-#[derive(Debug, Clone)]
-pub struct LegacyObjectMappings {
-    db: Arc<rocksdb::DB>,
-}
-
-impl LegacyObjectMappings {
-    /// Opens or creates a new object mappings database
-    pub fn open_or_create<P>(path: P) -> Result<Self, LegacyObjectMappingError>
-    where
-        P: AsRef<Path>,
-    {
-        let mut options = rocksdb::Options::default();
-        options.create_if_missing(true);
-        options.set_unordered_write(true);
-        let db = rocksdb::DB::open(&options, path).map_err(LegacyObjectMappingError::Db)?;
-
-        Ok(Self { db: Arc::new(db) })
-    }
-
-    /// Retrieve mapping for object
-    pub fn retrieve(
-        &self,
-        object_id: &Sha256Hash,
-    ) -> Result<Option<GlobalObject>, LegacyObjectMappingError> {
-        Ok(self
-            .db
-            .get(object_id)
-            .map_err(LegacyObjectMappingError::Db)?
-            .and_then(|global_object| GlobalObject::decode(&mut global_object.as_ref()).ok()))
-    }
-
-    /// Store object mappings in database
-    pub fn store(
-        &self,
-        object_mapping: &[(Sha256Hash, GlobalObject)],
-    ) -> Result<(), LegacyObjectMappingError> {
-        let mut tmp = Vec::new();
-
-        let mut batch = rocksdb::WriteBatch::default();
-        for (object_id, global_object) in object_mapping {
-            global_object.encode_to(&mut tmp);
-            batch.put(object_id, &tmp);
-
-            tmp.clear();
-        }
-        self.db.write(batch).map_err(LegacyObjectMappingError::Db)?;
 
         Ok(())
     }

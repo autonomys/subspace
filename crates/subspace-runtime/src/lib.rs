@@ -72,7 +72,7 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
-    MAX_PLOT_SIZE, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 use subspace_verification::derive_randomness;
@@ -264,9 +264,6 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
-    type RecordSize = ConstU32<RECORD_SIZE>;
-    type MaxPlotSize = ConstU64<MAX_PLOT_SIZE>;
-    type RecordedHistorySegmentSize = ConstU32<RECORDED_HISTORY_SEGMENT_SIZE>;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
@@ -584,15 +581,6 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
         .collect()
 }
 
-fn extract_fraud_proof(ext: &UncheckedExtrinsic) -> Option<sp_executor::FraudProof> {
-    match &ext.function {
-        Call::Executor(pallet_executor::Call::submit_fraud_proof { fraud_proof }) => {
-            Some(fraud_proof.clone())
-        }
-        _ => None,
-    }
-}
-
 fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
     if header.number().is_zero() {
         Randomness::default()
@@ -714,24 +702,12 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn confirmation_depth_k() -> <<Block as BlockT>::Header as HeaderT>::Number {
-            <Self as pallet_subspace::Config>::ConfirmationDepthK::get()
-        }
-
         fn total_pieces() -> u64 {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
         fn max_plot_size() -> u64 {
-            <Self as pallet_subspace::Config>::MaxPlotSize::get()
-        }
-
-        fn record_size() -> u32 {
-            RECORD_SIZE
-        }
-
-        fn recorded_history_segment_size() -> u32 {
-            RECORDED_HISTORY_SEGMENT_SIZE
+            Subspace::max_plot_size()
         }
 
         fn slot_duration() -> Duration {
@@ -848,10 +824,6 @@ impl_runtime_apis! {
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             extrinsics_shuffling_seed::<Block>(header)
-        }
-
-        fn extract_fraud_proof(ext: &<Block as BlockT>::Extrinsic) -> Option<FraudProof> {
-            extract_fraud_proof(ext)
         }
 
         fn execution_wasm_bundle() -> Cow<'static, [u8]> {

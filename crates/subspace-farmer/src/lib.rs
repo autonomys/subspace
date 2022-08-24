@@ -50,9 +50,7 @@ pub use commitments::{CommitmentError, Commitments};
 pub use farming::{Farming, FarmingError};
 pub use identity::Identity;
 pub use jsonrpsee;
-pub use object_mappings::{
-    LegacyObjectMappingError, LegacyObjectMappings, ObjectMappingError, ObjectMappings,
-};
+pub use object_mappings::{ObjectMappingError, ObjectMappings};
 pub use plot::{PieceOffset, Plot, PlotError, PlotFile};
 pub use rpc_client::node_rpc_client::NodeRpcClient;
 pub use rpc_client::{Error as RpcClientError, RpcClient};

@@ -84,34 +84,6 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_config() -> ExecutionChainSpec<GenesisConfig> {
-    ExecutionChainSpec::from_genesis(
-        // Name
-        "Subspace Gemini 1 Execution",
-        // ID
-        "subspace_gemini_1b_execution",
-        ChainType::Local,
-        move || {
-            testnet_genesis(vec![
-                // Same with the Sudo account on primary chain.
-                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
-                    .expect("Wrong root account address"),
-            ])
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        None,
-        // Protocol ID
-        Some("subspace-gemini-1b-execution"),
-        None,
-        // Properties
-        Some(chain_spec_properties()),
-        // Extensions
-        None,
-    )
-}
-
 pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name

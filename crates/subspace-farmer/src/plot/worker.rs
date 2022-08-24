@@ -44,6 +44,11 @@ pub(super) enum Request {
         piece_offset: PieceOffset,
         result_sender: mpsc::Sender<io::Result<(Piece, PieceIndex)>>,
     },
+    ReadManyEncodingsByOffset {
+        /// If piece offsets are sorted, retrieval will be more efficient
+        piece_offsets: Vec<PieceOffset>,
+        result_sender: mpsc::Sender<io::Result<Vec<Piece>>>,
+    },
     ReadEncodings {
         /// Can be from 0 to the `piece_count`
         piece_offset: PieceOffset,
@@ -51,10 +56,10 @@ pub(super) enum Request {
         /// Vector containing all of the pieces as contiguous block of memory
         result_sender: mpsc::Sender<io::Result<Vec<u8>>>,
     },
-    ReadSequentialPieces {
+    FindPieceOffsetsAndIndexes {
         from_index_hash: PieceIndexHash,
         count: u64,
-        result_sender: mpsc::Sender<io::Result<Vec<(PieceIndex, Piece)>>>,
+        result_sender: mpsc::Sender<io::Result<Vec<(PieceOffset, PieceIndex)>>>,
     },
     GetPieceRange {
         result_sender: mpsc::Sender<io::Result<Option<RangeInclusive<PieceIndexHash>>>>,
@@ -155,6 +160,20 @@ impl<T: PlotFile> PlotWorker<T> {
                             };
                             let _ = result_sender.send(result);
                         }
+                        Request::ReadManyEncodingsByOffset {
+                            piece_offsets,
+                            result_sender,
+                        } => {
+                            let result = piece_offsets
+                                .into_iter()
+                                .map(|piece_offset| {
+                                    let mut buffer = Piece::default();
+                                    self.plot.read(piece_offset, &mut buffer)?;
+                                    Ok(buffer)
+                                })
+                                .collect();
+                            let _ = result_sender.send(result);
+                        }
                         Request::ReadEncodings {
                             piece_offset,
                             count,
@@ -167,28 +186,13 @@ impl<T: PlotFile> PlotWorker<T> {
                             };
                             let _ = result_sender.send(result);
                         }
-                        Request::ReadSequentialPieces {
+                        Request::FindPieceOffsetsAndIndexes {
                             from_index_hash,
                             count,
                             result_sender,
                         } => {
-                            let result = self
-                                .read_piece_offsets_and_indexes(from_index_hash, count)
-                                .and_then(|offsets_and_indexes| {
-                                    offsets_and_indexes
-                                        .into_iter()
-                                        .map(|(off, idx)| {
-                                            let mut buf = Piece::default();
-                                            self.plot.read(off, &mut buf).map(|()| (idx, buf))
-                                        })
-                                        .collect::<Result<Vec<_>, _>>()
-                                        .map(|mut vec| {
-                                            vec.sort_by_key(|(idx, _)| {
-                                                PieceIndexHash::from_index(*idx)
-                                            });
-                                            vec
-                                        })
-                                });
+                            let result =
+                                self.read_piece_offsets_and_indexes(from_index_hash, count);
                             let _ = result_sender.send(result);
                         }
                         Request::GetPieceRange { result_sender } => {

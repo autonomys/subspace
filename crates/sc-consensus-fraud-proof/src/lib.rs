@@ -19,7 +19,7 @@
 use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sc_consensus::StateAction;
-use sp_api::{ApiExt, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::{CacheKeyId, Error as ConsensusError};
 use sp_executor::ExecutorApi;
 use sp_runtime::generic::BlockId;
@@ -90,36 +90,17 @@ where
         let parent_block_id = BlockId::Hash(parent_hash);
 
         if !matches!(block.state_action, StateAction::Skip) {
-            let api_version = self
-                .client
-                .runtime_api()
-                .api_version::<dyn ExecutorApi<Block, SecondaryHash>>(&parent_block_id)
-                .ok()
-                .flatten()
-                .ok_or_else(|| {
-                    ConsensusError::ClientImport(format!(
-                        "Unable to retrieve api version of ExecutorApi at block {parent_hash}"
-                    ))
-                })?;
+            if let Some(extrinsics) = &block.body {
+                let fraud_proofs = self
+                    .client
+                    .runtime_api()
+                    .extract_fraud_proofs(&parent_block_id, extrinsics.clone())
+                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
-            // `extract_fraud_proof` is added since ExecutorApi version 2
-            // TODO: reset the ExecutorApi api version and remove this check when the network is reset.
-            if api_version >= 2 {
-                if let Some(extrinsics) = &block.body {
-                    for extrinsic in extrinsics.iter() {
-                        let api_result = self
-                            .client
-                            .runtime_api()
-                            .extract_fraud_proof(&parent_block_id, extrinsic);
-
-                        if let Some(fraud_proof) =
-                            api_result.map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                        {
-                            self.fraud_proof_verifier
-                                .verify_fraud_proof(&fraud_proof)
-                                .map_err(|e| ConsensusError::Other(Box::new(e)))?;
-                        }
-                    }
+                for fraud_proof in fraud_proofs {
+                    self.fraud_proof_verifier
+                        .verify_fraud_proof(&fraud_proof)
+                        .map_err(|e| ConsensusError::Other(Box::new(e)))?;
                 }
             }
         }

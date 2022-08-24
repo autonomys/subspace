@@ -416,7 +416,6 @@ pub struct InvalidTransactionProof;
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
-    #[api_version(3)]
     pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
         /// Submits the execution receipt via an unsigned extrinsic.
         fn submit_execution_receipt_unsigned(
@@ -449,10 +448,6 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the fraud proofs from the given extrinsics.
         fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
-
-        // TODO: remove and replace the usages with `extract_fraud_proofs` once api version is reset.
-        /// Extract a fraud proof from given extrinsic if any.
-        fn extract_fraud_proof(ext: &Block::Extrinsic) -> Option<FraudProof>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
