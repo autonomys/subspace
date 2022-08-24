@@ -25,9 +25,6 @@ pub use subspace_core_primitives::BlockNumber;
 
 // TODO: Proper value here
 pub const CONFIRMATION_DEPTH_K: BlockNumber = 100;
-/// Maximum plot size in bytes
-// TODO: Proper value here
-pub const MAX_PLOT_SIZE: u64 = 100 * 1024 * 1024 * 1024;
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
 // TODO: Proper value here
