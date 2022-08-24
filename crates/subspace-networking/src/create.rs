@@ -21,7 +21,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::relay::v2::client::transport::ClientTransport;
 use libp2p::relay::v2::client::Client as RelayClient;
-use libp2p::swarm::{ConnectionLimits, SwarmBuilder};
+use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
@@ -244,15 +244,10 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             relay_client,
         });
 
-        let limits = ConnectionLimits::default()
-            .with_max_established_incoming(Some(max_established_incoming_connections))
-            .with_max_established_outgoing(Some(max_established_outgoing_connections));
-
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
             .executor(Box::new(|fut| {
                 tokio::spawn(fut);
             }))
-            .connection_limits(limits)
             .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
             .build();
 

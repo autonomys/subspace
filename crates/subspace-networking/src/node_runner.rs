@@ -171,53 +171,25 @@ impl NodeRunner {
             let connected_peers_id_set = connected_peers.iter().cloned().collect();
             let reserved_peers_id_set = self.reserved_peers.keys().cloned().collect::<HashSet<_>>();
 
-            let missing_reserved_peer_ids = reserved_peers_id_set
-                .difference(&connected_peers_id_set)
-                .collect::<Vec<_>>();
+            let missing_reserved_peer_ids =
+                reserved_peers_id_set.difference(&connected_peers_id_set);
 
-            if !missing_reserved_peer_ids.is_empty() {
-                // Free connection slots for reserved peers if required.
-                let in_out_limits_sum = (self.max_established_incoming_connections
-                    + self.max_established_outgoing_connections)
-                    as usize;
-                let peers_to_disconnect_number = (connected_peers_id_set.len()
-                    + missing_reserved_peer_ids.len())
-                .saturating_sub(in_out_limits_sum);
-
-                if peers_to_disconnect_number > 0 {
-                    let peers_to_disconnect = connected_peers
-                        .clone()
-                        .into_iter()
-                        .take(peers_to_disconnect_number as usize);
-
-                    for peer_id in peers_to_disconnect {
-                        let result = self.swarm.disconnect_peer_id(peer_id);
-
-                        trace!(
-                            %local_peer_id,
-                            %peer_id,
-                            ?result,
-                            "Disconnect peer to free slots for reserved peers."
-                        );
-                    }
-                }
-
-                // Establish missing connections to reserved peers.
-                for peer_id in missing_reserved_peer_ids {
-                    if let Some(addr) = self.reserved_peers.get(peer_id) {
-                        self.dial_peer(*peer_id, addr.clone());
-                    }
+            // Establish missing connections to reserved peers.
+            for peer_id in missing_reserved_peer_ids {
+                if let Some(addr) = self.reserved_peers.get(peer_id) {
+                    self.dial_peer(*peer_id, addr.clone());
                 }
             }
         }
 
-        // Maintain minimum connected peers number.
-        let current_connections_number = {
-            let ni = self.swarm.network_info();
+        // Maintain minimum connected out-peers number.
+        let outgoing_connections_number = {
+            let network_info = self.swarm.network_info();
+            let connections = network_info.connection_counters();
 
-            ni.connection_counters().num_pending_incoming() + ni.num_peers() as u32
+            connections.num_pending_outgoing() + connections.num_established_outgoing()
         };
-        if current_connections_number < self.max_established_outgoing_connections {
+        if outgoing_connections_number < self.max_established_outgoing_connections {
             debug!(
                 %local_peer_id,
                 connected_peers=connected_peers.len(),
@@ -316,12 +288,52 @@ impl NodeRunner {
                 endpoint,
                 ..
             } => {
-                debug!("Connection established with peer {peer_id} [{num_established} from peer]");
+                let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
+                debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
-                if let ConnectedPoint::Dialer { address, .. } = endpoint {
-                    self.networking_parameters_registry
-                        .add_known_peer(peer_id, vec![address])
-                        .await;
+                let (in_connections_number, out_connections_number) = {
+                    let network_info = self.swarm.network_info();
+                    let connections = network_info.connection_counters();
+
+                    (
+                        connections.num_established_incoming(),
+                        connections.num_established_outgoing(),
+                    )
+                };
+
+                match endpoint {
+                    // In connections
+                    ConnectedPoint::Listener { .. } => {
+                        // check connections limit for non-reserved peers
+                        if !is_reserved_peer
+                            && in_connections_number > self.max_established_incoming_connections
+                        {
+                            debug!(
+                                %peer_id,
+                                "Incoming connections limit exceeded. Disconnecting in-peer ..."
+                            );
+                            // Error here means: "peer was already disconnected"
+                            let _ = self.swarm.disconnect_peer_id(peer_id);
+                        }
+                    }
+                    // Out connections
+                    ConnectedPoint::Dialer { address, .. } => {
+                        self.networking_parameters_registry
+                            .add_known_peer(peer_id, vec![address])
+                            .await;
+
+                        // check connections limit for non-reserved peers
+                        if !is_reserved_peer
+                            && out_connections_number > self.max_established_outgoing_connections
+                        {
+                            debug!(
+                                %peer_id,
+                                "Outgoing connections limit exceeded. Disconnecting out-peer ..."
+                            );
+                            // Error here means: "peer was already disconnected"
+                            let _ = self.swarm.disconnect_peer_id(peer_id);
+                        }
+                    }
                 }
             }
             SwarmEvent::ConnectionClosed {
