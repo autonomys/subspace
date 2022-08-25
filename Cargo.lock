@@ -4003,15 +4003,6 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "723e3ebdcdc5c023db1df315364573789f8857c11b631a2fdfad7c00f5c046b4"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "memmap2"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a79b39c93a7a5a27eeaf9a23b5ff43f1b9e0ad6b1cdd441140ae53c35613fc7"
@@ -4768,8 +4759,7 @@ dependencies = [
 [[package]]
 name = "parity-db"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bb474d0ed0836e185cb998a6b140ed1073d1fbf27d690ecf9ede8030289382c"
+source = "git+https://github.com/paritytech/parity-db/?rev=5c6abf17e0027935de9c78959c73b8c35835cc10#5c6abf17e0027935de9c78959c73b8c35835cc10"
 dependencies = [
  "blake2-rfc",
  "crc32fast",
@@ -4778,8 +4768,8 @@ dependencies = [
  "libc",
  "log",
  "lz4",
- "memmap2 0.2.3",
- "parking_lot 0.11.2",
+ "memmap2",
+ "parking_lot 0.12.1",
  "rand 0.8.5",
  "snap",
 ]
@@ -5869,7 +5859,7 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=6b8553511112afd5ae7e8e6877dc2f467850f155#6b8553511112afd5ae7e8e6877dc2f467850f155"
 dependencies = [
  "impl-trait-for-tuples",
- "memmap2 0.5.5",
+ "memmap2",
  "parity-scale-codec",
  "sc-chain-spec-derive",
  "sc-network",

@@ -20,8 +20,6 @@ pub enum ArchivingError {
     GetBlockError(u32),
     #[error("jsonrpsee error: {0}")]
     RpcError(Box<dyn std::error::Error + Send + Sync>),
-    #[error("Last block retrieval from plot, rocksdb error: {0}")]
-    LastBlock(rocksdb::Error),
     #[error("Error joining task: {0}")]
     JoinTask(tokio::task::JoinError),
     #[error("Archiver instantiation error: {0}")]
