@@ -111,6 +111,8 @@ pub struct HeaderExt<Header> {
     pub maybe_next_solution_range_override: Option<SolutionRange>,
     /// Restrict block authoring to this public key.
     pub maybe_root_plot_public_key: Option<FarmerPublicKey>,
+    /// Genesis slot of the chain.
+    pub genesis_slot: Slot,
 
     #[cfg(test)]
     test_overrides: mock::TestOverrides,
@@ -318,16 +320,22 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // verify next digest items
         let constants = self.store.chain_constants();
-        let genesis_slot = self.find_genesis_slot(&header)?;
+        let genesis_slot = if header.number().is_one() {
+            header_digests.pre_digest.slot
+        } else {
+            parent_header.genesis_slot
+        };
         // re-check if the salt was revealed and eon also changes with this header, then derive randomness
         let parent_salt_derivation_info = SaltDerivationInfo {
             eon_index: parent_header.salt_derivation_info.eon_index,
-            maybe_randomness: parent_header.salt_derivation_info.maybe_randomness.or(self
-                .randomness_for_next_salt(
+            maybe_randomness: parent_header.salt_derivation_info.maybe_randomness.or(
+                Self::randomness_for_next_salt(
+                    &constants,
                     parent_header.salt_derivation_info.eon_index,
                     genesis_slot,
                     &header_digests.pre_digest,
-                )?),
+                )?,
+            ),
         };
 
         let mut maybe_root_plot_public_key = parent_header.maybe_root_plot_public_key;
@@ -416,7 +424,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         };
 
         let salt_derivation_info =
-            self.next_salt_derivation_info(&header, &parent_salt_derivation_info)?;
+            self.next_salt_derivation_info(&header, genesis_slot, &parent_salt_derivation_info)?;
 
         // check if era has changed
         let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
@@ -453,6 +461,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             maybe_current_solution_range_override,
             maybe_next_solution_range_override,
             maybe_root_plot_public_key,
+            genesis_slot,
 
             #[cfg(test)]
             test_overrides: Default::default(),
@@ -472,11 +481,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     fn next_salt_derivation_info(
         &self,
         header: &Header,
+        genesis_slot: Slot,
         parent_salt_derivation_info: &SaltDerivationInfo,
     ) -> Result<SaltDerivationInfo, ImportError<Header>> {
         let constants = self.store.chain_constants();
         let eon_duration = constants.eon_duration;
-        let genesis_slot = self.find_genesis_slot(header)?;
         let pre_digest = extract_pre_digest(header)?;
 
         // check if the eon is about to be changed
@@ -492,7 +501,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             Ok(SaltDerivationInfo {
                 eon_index: next_eon_index,
                 // check if the salt will be revealed with new eon index
-                maybe_randomness: self.randomness_for_next_salt(
+                maybe_randomness: Self::randomness_for_next_salt(
+                    &constants,
                     next_eon_index,
                     genesis_slot,
                     &pre_digest,
@@ -503,24 +513,25 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             Ok(SaltDerivationInfo {
                 eon_index: parent_salt_derivation_info.eon_index,
                 // if the salt is not revealed yet, check if salt will be revealed at this header for the current eon index
-                maybe_randomness: parent_salt_derivation_info.maybe_randomness.or(self
-                    .randomness_for_next_salt(
+                maybe_randomness: parent_salt_derivation_info.maybe_randomness.or(
+                    Self::randomness_for_next_salt(
+                        &constants,
                         parent_salt_derivation_info.eon_index,
                         genesis_slot,
                         &pre_digest,
-                    )?),
+                    )?,
+                ),
             })
         }
     }
 
     /// Returns randomness used to derive the next salt if the next salt is revealed after importing header.
     fn randomness_for_next_salt(
-        &self,
+        constants: &ChainConstants<Header>,
         eon_index: EonIndex,
         genesis_slot: Slot,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
     ) -> Result<Option<Randomness>, ImportError<Header>> {
-        let constants = self.store.chain_constants();
         let next_salt_reveal_slot = constants
             .next_salt_reveal_interval
             .checked_add(
@@ -550,23 +561,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         };
 
         Ok(maybe_randomness)
-    }
-
-    /// Returns the genesis slot of the chain with header being the best tip.
-    /// Since the Genesis block doesn't have any digests, we return the Slot of #1.
-    fn find_genesis_slot(&self, header: &Header) -> Result<Slot, ImportError<Header>> {
-        // short circuit if the header is #1
-        if header.number().is_one() {
-            let digests = extract_pre_digest(header)?;
-            return Ok(digests.slot);
-        }
-
-        let header_at_one = self
-            .find_ancestor_of_header_at_number(*header.parent_hash(), One::one())
-            .ok_or_else(|| ImportError::MissingAncestorHeader(*header.parent_hash(), One::one()))?;
-
-        let digests = extract_pre_digest(&header_at_one.header)?;
-        Ok(digests.slot)
     }
 
     fn has_era_changed(header: &Header, era_duration: NumberOf<Header>) -> bool {
