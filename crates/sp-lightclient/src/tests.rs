@@ -265,7 +265,7 @@ fn add_next_digests(store: &MockStorage, number: NumberOf<Header>, header: &mut 
             .maybe_randomness
             .or_else(|| {
                 HeaderImporter::<Header, MockStorage>::randomness_for_next_salt(
-                    store.chain_constants(),
+                    &store.chain_constants(),
                     parent_header.salt_derivation_info.eon_index,
                     parent_header.genesis_slot,
                     &digests.pre_digest,
