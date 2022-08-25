@@ -29,7 +29,7 @@ mod tests;
 
 use crate::aux_schema::{EonIndexEntry, SolutionRangeParameters};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
-use crate::slot_worker::SubspaceSlotWorker;
+use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
 pub use archiver::start_subspace_archiver;
 use codec::Encode;
 use futures::channel::mpsc;
@@ -447,7 +447,10 @@ where
         subspace_link.config.0,
         select_chain,
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
-        sync_oracle,
+        SlotWorkerSyncOracle {
+            force_authoring,
+            inner: sync_oracle,
+        },
         create_inherent_data_providers,
         can_author_with,
     );

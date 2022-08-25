@@ -14,17 +14,17 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 log = { version = "0.4.17", default-features = false }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
-sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
-sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
+sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 [dev-dependencies]
-sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
-sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6b8553511112afd5ae7e8e6877dc2f467850f155" }
+sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 schnorrkel = "0.9.1"
 
 [features]
