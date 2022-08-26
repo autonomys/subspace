@@ -1,7 +1,7 @@
 use crate::mock::{Header, MockStorage};
 use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
-    NumberOf, SaltDerivationInfo, Storage,
+    NumberOf, SaltDerivationInfo, Storage, StorageBound,
 };
 use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
@@ -1384,6 +1384,47 @@ fn test_current_salt_reveal_and_eon_change_in_same_block() {
     assert_eq!(header_at_4.header.hash(), header.hash());
     assert_eq!(header_at_4.salt_derivation_info.eon_index, 1);
     assert_eq!(header_at_4.salt_derivation_info.maybe_randomness, None);
+}
+
+fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>) {
+    let mut constants = default_test_constants();
+    constants.k_depth = 7;
+    constants.storage_bound =
+        StorageBound::NumberOfHeaderToKeepBeyondKDepth(headers_to_keep_beyond_k_depth);
+    let (store, _genesis_hash) = initialize_store(constants, true);
+    let keypair = Keypair::generate();
+    let mut importer = HeaderImporter::new(store);
+    // import some more canonical blocks
+    let hash_of_20 = add_headers_to_chain(&mut importer, &keypair, 20, None);
+    let best_header = importer.store.best_header();
+    assert_eq!(best_header.header.hash(), hash_of_20);
+
+    // check storage bound
+    let finalized_head = importer.store.finalized_header();
+    assert_eq!(finalized_head.header.number, 13);
+    // there should be headers at and below (finalized_head - bound - 1)
+    let mut pruned_number = 13 - headers_to_keep_beyond_k_depth - 1;
+    while pruned_number != 0 {
+        assert!(importer.store.headers_at_number(pruned_number).is_empty());
+        pruned_number -= 1;
+    }
+
+    assert!(importer.store.headers_at_number(0).is_empty());
+}
+
+#[test]
+fn test_storage_bound_with_headers_beyond_k_depth_is_zero() {
+    ensure_store_is_storage_bounded(0)
+}
+
+#[test]
+fn test_storage_bound_with_headers_beyond_k_depth_is_one() {
+    ensure_store_is_storage_bounded(1)
+}
+
+#[test]
+fn test_storage_bound_with_headers_beyond_k_depth_is_more_than_one() {
+    ensure_store_is_storage_bounded(5)
 }
 
 // TODO: Tests for root plot public key enforcement

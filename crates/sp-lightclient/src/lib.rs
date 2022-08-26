@@ -482,9 +482,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         self.store.store_header(header_ext, is_best_header);
 
-        // finalize and prune forks if the chain has progressed
+        // finalize, prune forks, and ensure storage is bounded if the chain has progressed
         if is_best_header {
             self.finalize_header_at_k_depth()?;
+            self.ensure_storage_bound();
         }
 
         Ok(())
@@ -970,6 +971,48 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
                 Ok(())
             }
+        }
+    }
+
+    /// Ensure light client storage is bounded by the defined storage bound constant.
+    /// If unbounded, we keep all the finalized headers in the store.
+    /// If bounded, we fetch the finalized head and then prune all the headers
+    /// beyond K depth as per bounded value.
+    /// If finalized head is at x and storage is bounded to keep y headers beyond, then
+    /// prune all headers at and below (x - y - 1)
+    fn ensure_storage_bound(&mut self) {
+        let storage_bound = self.store.chain_constants().storage_bound;
+        let number_of_headers_to_keep_beyond_k_depth = match storage_bound {
+            // unbounded storage, so return
+            StorageBound::Unbounded => return,
+            // bounded storage, keep only # number of headers beyond K depth
+            StorageBound::NumberOfHeaderToKeepBeyondKDepth(number_of_headers_to_keep) => {
+                number_of_headers_to_keep
+            }
+        };
+
+        let finalized_head_number = *self.store.finalized_header().header.number();
+        // (finalized_number - bound_value - 1)
+        let mut maybe_prune_headers_from_number = finalized_head_number
+            .checked_sub(&number_of_headers_to_keep_beyond_k_depth)
+            .and_then(|number| number.checked_sub(&One::one()));
+
+        let mut headers_to_prune = maybe_prune_headers_from_number
+            .map(|number| self.store.headers_at_number(number))
+            .unwrap_or_default();
+
+        while !headers_to_prune.is_empty() {
+            // loop and prune even though there should be only 1 head beyond finalized head
+            for header in headers_to_prune {
+                self.store.prune_header(header.header.hash())
+            }
+
+            maybe_prune_headers_from_number =
+                maybe_prune_headers_from_number.and_then(|number| number.checked_sub(&One::one()));
+
+            headers_to_prune = maybe_prune_headers_from_number
+                .map(|number| self.store.headers_at_number(number))
+                .unwrap_or_default();
         }
     }
 }
