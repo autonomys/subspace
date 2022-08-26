@@ -872,7 +872,11 @@ pub fn verify_next_digests<Header: HeaderT>(
     if let Some(updated_root_plot_public_key) = &header_digests.root_plot_public_key_update {
         match updated_root_plot_public_key {
             Some(updated_root_plot_public_key) => {
-                if number.is_one() && root_plot_public_key.is_none() {
+                if number.is_one()
+                    && root_plot_public_key.is_none()
+                    && &header_digests.pre_digest.solution.public_key
+                        == updated_root_plot_public_key
+                {
                     root_plot_public_key.replace(updated_root_plot_public_key.clone());
                 } else {
                     return Err(Error::NextDigestVerificationError(
