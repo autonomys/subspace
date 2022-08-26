@@ -51,6 +51,7 @@ fn default_test_constants() -> ChainConstants<Header> {
         slot_probability: (1, 6),
         eon_duration: 20,
         next_salt_reveal_interval: 6,
+        storage_bound: Default::default(),
     }
 }
 

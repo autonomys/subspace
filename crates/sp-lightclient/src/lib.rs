@@ -51,7 +51,7 @@ mod tests;
 mod mock;
 
 /// Chain constants.
-#[derive(Debug, Clone)]
+#[derive(Debug, Encode, Decode, Clone, TypeInfo)]
 pub struct ChainConstants<Header: HeaderT> {
     /// K Depth at which we finalize the heads.
     pub k_depth: NumberOf<Header>,
@@ -81,6 +81,19 @@ pub struct ChainConstants<Header: HeaderT> {
 
     /// Interval after the eon change when next eon salt is revealed
     pub next_salt_reveal_interval: u64,
+
+    /// Storage bound for the light client store.
+    pub storage_bound: StorageBound<NumberOf<Header>>,
+}
+
+/// Defines the storage bound for the light client store.
+#[derive(Default, Debug, Encode, Decode, TypeInfo, Clone)]
+pub enum StorageBound<Number> {
+    /// Keeps all the headers in the storage.
+    #[default]
+    Unbounded,
+    /// Keeps only # number of headers beyond K depth.
+    NumberOfHeaderToKeepBeyondKDepth(Number),
 }
 
 /// Data that is useful to derive the next salt.
@@ -119,7 +132,7 @@ pub struct HeaderExt<Header> {
 }
 
 /// Type to hold next digest items present in parent header that are used to verify the immediate descendant.
-#[derive(Debug, Clone, Default)]
+#[derive(Default, Debug, Encode, Decode, Clone, TypeInfo)]
 pub struct NextDigestItems {
     next_global_randomness: Randomness,
     next_solution_range: SolutionRange,
