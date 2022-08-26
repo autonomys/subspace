@@ -654,7 +654,8 @@ where
 
 type NumberOf<T> = <T as HeaderT>::Number;
 
-fn derive_next_global_randomness<Header: HeaderT>(
+/// Returns the next global randomness if interval is met.
+pub fn derive_next_global_randomness<Header: HeaderT>(
     number: NumberOf<Header>,
     global_randomness_interval: NumberOf<Header>,
     pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
@@ -672,7 +673,8 @@ fn derive_next_global_randomness<Header: HeaderT>(
     .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
 }
 
-fn derive_next_salt<Header: HeaderT>(
+/// Returns the next salt if eon changes.
+pub fn derive_next_salt<Header: HeaderT>(
     eon_duration: u64,
     current_eon_index: EonIndex,
     genesis_slot: Slot,
@@ -700,18 +702,28 @@ fn derive_next_salt<Header: HeaderT>(
     Ok(None)
 }
 
-struct DeriveNextSolutionRangeParams<Header: HeaderT> {
-    number: NumberOf<Header>,
-    era_duration: NumberOf<Header>,
-    slot_probability: (u64, u64),
-    current_slot: Slot,
-    current_solution_range: SolutionRange,
-    era_start_slot: Slot,
-    should_adjust_solution_range: bool,
-    maybe_next_solution_range_override: Option<SolutionRange>,
+/// Params used to derive the next solution range.
+pub struct DeriveNextSolutionRangeParams<Header: HeaderT> {
+    /// Current number of the block.
+    pub number: NumberOf<Header>,
+    /// Era duration of the chain.
+    pub era_duration: NumberOf<Header>,
+    /// Slot probability at which a block is produced.
+    pub slot_probability: (u64, u64),
+    /// Current slot of the block.
+    pub current_slot: Slot,
+    /// Current solution range of the block.
+    pub current_solution_range: SolutionRange,
+    /// Slot at which era has begun.
+    pub era_start_slot: Slot,
+    /// Flag to check if the next solution range should be adjusted.
+    pub should_adjust_solution_range: bool,
+    /// Solution range override that should be used instead of deriving from current.
+    pub maybe_next_solution_range_override: Option<SolutionRange>,
 }
 
-fn derive_next_solution_range<Header: HeaderT>(
+/// Derives next solution range if era duration interval has met.
+pub fn derive_next_solution_range<Header: HeaderT>(
     params: DeriveNextSolutionRangeParams<Header>,
 ) -> Result<Option<SolutionRange>, Error> {
     let DeriveNextSolutionRangeParams {
