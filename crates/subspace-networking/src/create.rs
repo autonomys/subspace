@@ -5,6 +5,7 @@ use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
+use crate::utils::convert_multiaddresses;
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -37,6 +38,10 @@ const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
+// The default maximum incoming connection number for the swarm.
+const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
+// The default maximum incoming connection number for the swarm.
+const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
@@ -75,7 +80,7 @@ pub struct Config {
     pub identify: IdentifyConfig,
     /// The configuration for the Kademlia behaviour.
     pub kademlia: KademliaConfig,
-    /// The configuration for the Kademlia behaviour.
+    /// The configuration for the Gossip behaviour.
     pub gossipsub: GossipsubConfig,
     /// Externally provided implementation of value getter for Kademlia DHT,
     pub value_getter: ValueGetter,
@@ -100,6 +105,10 @@ pub struct Config {
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     pub reserved_peers: Vec<Multiaddr>,
+    /// Incoming swarm connection limit.
+    pub max_established_incoming_connections: u32,
+    /// Outgoing swarm connection limit.
+    pub max_established_outgoing_connections: u32,
 }
 
 impl fmt::Debug for Config {
@@ -162,6 +171,8 @@ impl Config {
             yamux_config,
             mplex_config,
             reserved_peers: Vec::new(),
+            max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
+            max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
         }
     }
 }
@@ -203,6 +214,8 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         networking_parameters_registry,
         request_response_protocols,
         reserved_peers,
+        max_established_incoming_connections,
+        max_established_outgoing_connections,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
     // Create relay client transport and client.
@@ -283,7 +296,9 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             shared_weak,
             next_random_query_interval: initial_random_query_interval,
             networking_parameters_registry,
-            reserved_peers,
+            reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
+            max_established_incoming_connections,
+            max_established_outgoing_connections,
         });
 
         Ok((node, node_runner))

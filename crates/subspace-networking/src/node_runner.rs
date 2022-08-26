@@ -3,7 +3,6 @@ use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
-use crate::utils::convert_multiaddresses;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use futures::future::Fuse;
@@ -28,8 +27,6 @@ use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
-// Defines a threshold for starting new connection attempts to known peers.
-const CONNECTED_PEERS_THRESHOLD: usize = 10;
 // Defines a protocol name specific for the relay server
 const RELAY_HOP_PROTOCOL_NAME: &[u8] = b"/libp2p/circuit/relay/0.2.0/hop";
 
@@ -66,7 +63,11 @@ pub struct NodeRunner {
     /// Manages the networking parameters like known peers and addresses
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
-    reserved_peers: Vec<Multiaddr>,
+    reserved_peers: HashMap<PeerId, Multiaddr>,
+    /// Incoming swarm connection limit.
+    max_established_incoming_connections: u32,
+    /// Outgoing swarm connection limit.
+    max_established_outgoing_connections: u32,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -78,7 +79,9 @@ pub(crate) struct NodeRunnerConfig {
     pub shared_weak: Weak<Shared>,
     pub next_random_query_interval: Duration,
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
-    pub reserved_peers: Vec<Multiaddr>,
+    pub reserved_peers: HashMap<PeerId, Multiaddr>,
+    pub max_established_incoming_connections: u32,
+    pub max_established_outgoing_connections: u32,
 }
 
 impl NodeRunner {
@@ -92,6 +95,8 @@ impl NodeRunner {
             next_random_query_interval,
             networking_parameters_registry,
             reserved_peers,
+            max_established_incoming_connections,
+            max_established_outgoing_connections,
         }: NodeRunnerConfig,
     ) -> Self {
         Self {
@@ -110,6 +115,8 @@ impl NodeRunner {
             peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
             reserved_peers,
+            max_established_incoming_connections,
+            max_established_outgoing_connections,
         }
     }
 
@@ -161,24 +168,28 @@ impl NodeRunner {
         if !self.reserved_peers.is_empty() {
             trace!(%local_peer_id, "Checking reserved peers connection: {:?}", self.reserved_peers);
 
-            let reserved_peers = convert_multiaddresses(self.reserved_peers.clone())
-                .into_iter()
-                .collect::<HashMap<_, _>>();
             let connected_peers_id_set = connected_peers.iter().cloned().collect();
-            let reserved_peers_id_set = reserved_peers.keys().cloned().collect::<HashSet<_>>();
+            let reserved_peers_id_set = self.reserved_peers.keys().cloned().collect::<HashSet<_>>();
 
             let missing_reserved_peer_ids =
                 reserved_peers_id_set.difference(&connected_peers_id_set);
 
+            // Establish missing connections to reserved peers.
             for peer_id in missing_reserved_peer_ids {
-                if let Some(addr) = reserved_peers.get(peer_id) {
+                if let Some(addr) = self.reserved_peers.get(peer_id) {
                     self.dial_peer(*peer_id, addr.clone());
                 }
             }
         }
 
-        // Maintain minimum connected peers number.
-        if connected_peers.len() < CONNECTED_PEERS_THRESHOLD {
+        // Maintain minimum connected out-peers number.
+        let outgoing_connections_number = {
+            let network_info = self.swarm.network_info();
+            let connections = network_info.connection_counters();
+
+            connections.num_pending_outgoing() + connections.num_established_outgoing()
+        };
+        if outgoing_connections_number < self.max_established_outgoing_connections {
             debug!(
                 %local_peer_id,
                 connected_peers=connected_peers.len(),
@@ -277,12 +288,52 @@ impl NodeRunner {
                 endpoint,
                 ..
             } => {
-                debug!("Connection established with peer {peer_id} [{num_established} from peer]");
+                let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
+                debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
-                if let ConnectedPoint::Dialer { address, .. } = endpoint {
-                    self.networking_parameters_registry
-                        .add_known_peer(peer_id, vec![address])
-                        .await;
+                let (in_connections_number, out_connections_number) = {
+                    let network_info = self.swarm.network_info();
+                    let connections = network_info.connection_counters();
+
+                    (
+                        connections.num_established_incoming(),
+                        connections.num_established_outgoing(),
+                    )
+                };
+
+                match endpoint {
+                    // In connections
+                    ConnectedPoint::Listener { .. } => {
+                        // check connections limit for non-reserved peers
+                        if !is_reserved_peer
+                            && in_connections_number > self.max_established_incoming_connections
+                        {
+                            debug!(
+                                %peer_id,
+                                "Incoming connections limit exceeded. Disconnecting in-peer ..."
+                            );
+                            // Error here means: "peer was already disconnected"
+                            let _ = self.swarm.disconnect_peer_id(peer_id);
+                        }
+                    }
+                    // Out connections
+                    ConnectedPoint::Dialer { address, .. } => {
+                        self.networking_parameters_registry
+                            .add_known_peer(peer_id, vec![address])
+                            .await;
+
+                        // check connections limit for non-reserved peers
+                        if !is_reserved_peer
+                            && out_connections_number > self.max_established_outgoing_connections
+                        {
+                            debug!(
+                                %peer_id,
+                                "Outgoing connections limit exceeded. Disconnecting out-peer ..."
+                            );
+                            // Error here means: "peer was already disconnected"
+                            let _ = self.swarm.disconnect_peer_id(peer_id);
+                        }
+                    }
                 }
             }
             SwarmEvent::ConnectionClosed {
