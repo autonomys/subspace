@@ -249,6 +249,7 @@ pub struct SinglePlotPlotter {
     codec: SubspaceCodec,
     plot: Plot,
     commitments: Commitments,
+    #[allow(dead_code)]
     single_disk_semaphore: SingleDiskSemaphore,
 }
 
@@ -277,8 +278,10 @@ impl SinglePlotPlotter {
 
         let pieces = Arc::new(pieces);
 
-        // Limit concurrent updates on the same disk
-        let _guard = self.single_disk_semaphore.acquire();
+        // TODO: Restore limiting when better approach is figured out, right now commitments
+        //  creation blocks plotting of new pieces, which is not desirable
+        // // Limit concurrent updates on the same disk
+        // let _guard = self.single_disk_semaphore.acquire();
 
         let write_result = self.plot.write_many(pieces, piece_indexes)?;
 
