@@ -26,8 +26,8 @@ jobs:
         os:
           - ${{
                 github.repository_owner == 'subspace'
-                  && 'self-hosted-ubuntu-2204-amd64-base'
-                  || 'ubuntu-22.04'
+                  && 'self-hosted-ubuntu-20.04'
+                  || 'ubuntu-20.04'
             }}
         image:
           - farmer
@@ -90,8 +90,8 @@ jobs:
         build:
           - os: ${{ 
                     github.repository_owner == 'subspace' 
-                      && 'self-hosted-ubuntu-2204-amd64-base' 
-                      || 'ubuntu-22.04' 
+                      && 'self-hosted-ubuntu-20.04' 
+                      || 'ubuntu-20.04' 
                 }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-${{ github.ref_name }}
@@ -104,13 +104,13 @@ jobs:
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
             rustflags: ''
-          - os: macos-12
+          - os: self-hosted-macos-12
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             rustflags: ''
           - os: ${{ 
                     github.repository_owner == 'subspace' 
-                      && 'self-hosted-wnd-ms-servier-2019-10-x64-based' 
+                      && 'self-hosted-windows-2019' 
                       || 'windows-2022' 
                 }}
             target: x86_64-pc-windows-msvc

@@ -25,8 +25,8 @@ jobs:
         os:
           - ${{
                 github.repository_owner == 'subspace'
-                  && 'self-hosted-ubuntu-2204-amd64-base'
-                  || 'ubuntu-22.04'
+                  && 'self-hosted-ubuntu-20.04'
+                  || 'ubuntu-20.04'
             }}
 
     runs-on: ${{ matrix.os }}
@@ -70,13 +70,17 @@ jobs:
         os:
           - ${{ 
                 github.repository_owner == 'subspace' 
-                  && 'self-hosted-ubuntu-2204-amd64-base' 
-                  || 'ubuntu-22.04' 
+                  && 'self-hosted-ubuntu-20.04' 
+                  || 'ubuntu-20.04' 
             }}
-          - macos-12
+          - ${{
+                github.repository_owner == 'subspace'
+                  && 'self-hosted-macos-12'
+                  || 'macos-12'
+            }}
           - ${{ 
                 github.repository_owner == 'subspace' 
-                  && 'self-hosted-wnd-ms-servier-2019-10-x64-based' 
+                  && 'self-hosted-windows-2019' 
                   || 'windows-2022' 
             }}
 
@@ -138,8 +142,8 @@ jobs:
         os:
           - ${{
                 github.repository_owner == 'subspace'
-                  && 'self-hosted-ubuntu-2204-amd64-base'
-                  || 'ubuntu-22.04'
+                  && 'self-hosted-ubuntu-20.04'
+                  || 'ubuntu-20.04'
             }}
 
     runs-on: ${{ matrix.os }}
@@ -181,13 +185,13 @@ jobs:
         os:
           - ${{ 
                 github.repository_owner == 'subspace' 
-                  && 'self-hosted-ubuntu-2204-amd64-base' 
-                  || 'ubuntu-22.04' 
+                  && 'self-hosted-ubuntu-20.04' 
+                  || 'ubuntu-20.04' 
             }}
           - macos-12
           - ${{
                 github.repository_owner == 'subspace' 
-                  && 'self-hosted-wnd-ms-servier-2019-10-x64-based' 
+                  && 'self-hosted-windows-2019' 
                   || 'windows-2022' 
             }}
 
