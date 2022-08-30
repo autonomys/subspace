@@ -50,6 +50,31 @@ use subspace_verification::{
     VerifySolutionParams,
 };
 
+#[derive(Clone)]
+pub(super) struct SlotWorkerSyncOracle<SO>
+where
+    SO: SyncOracle + Send + Sync + Clone,
+{
+    pub(super) force_authoring: bool,
+    pub(super) inner: SO,
+}
+
+impl<SO> SyncOracle for SlotWorkerSyncOracle<SO>
+where
+    SO: SyncOracle + Send + Sync + Clone,
+{
+    fn is_major_syncing(&self) -> bool {
+        // This allows slot worker to produce blocks even when it is offline, which according to
+        // modified Substrate fork will happen when node is offline or connected to non-synced peers
+        // (default state)
+        !self.force_authoring && self.inner.is_major_syncing()
+    }
+
+    fn is_offline(&self) -> bool {
+        self.inner.is_offline()
+    }
+}
+
 pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) client: Arc<Client>,
     pub(super) block_import: I,

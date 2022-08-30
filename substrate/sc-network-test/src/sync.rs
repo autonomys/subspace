@@ -1217,6 +1217,7 @@ fn warp_sync() {
 }
 
 #[test]
+#[ignore]
 fn syncs_huge_blocks() {
 	use sp_core::storage::well_known_keys::HEAP_PAGES;
 	use sp_runtime::codec::Encode;
