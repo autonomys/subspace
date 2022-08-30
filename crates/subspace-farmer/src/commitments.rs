@@ -132,10 +132,23 @@ impl Commitments {
             self.inner.current.swap(current);
             self.inner.next.swap(next);
 
-            let db_path = self.inner.base_directory.join(hex::encode(salt));
+            let options = parity_db::Options {
+                path: self.inner.base_directory.join(hex::encode(salt)),
+                columns: vec![parity_db::ColumnOptions {
+                    preimage: false,
+                    btree_index: true,
+                    uniform: false,
+                    ref_counted: false,
+                    compression: parity_db::CompressionType::NoCompression,
+                    compression_threshold: 4096,
+                }],
+                sync_wal: true,
+                sync_data: true,
+                stats: false,
+                salt: None,
+            };
             db_entry.lock().replace(Arc::new(
-                Db::open_or_create(&CommitmentDatabases::options(db_path))
-                    .map_err(CommitmentError::CommitmentDb)?,
+                Db::open_or_create(&options).map_err(CommitmentError::CommitmentDb)?,
             ));
         }
 

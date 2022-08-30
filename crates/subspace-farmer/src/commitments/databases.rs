@@ -51,24 +51,6 @@ pub(super) struct CommitmentDatabases {
 }
 
 impl CommitmentDatabases {
-    pub(crate) fn options(path: PathBuf) -> Options {
-        Options {
-            path,
-            columns: vec![ColumnOptions {
-                preimage: false,
-                btree_index: true,
-                uniform: false,
-                ref_counted: false,
-                compression: CompressionType::NoCompression,
-                compression_threshold: 4096,
-            }],
-            sync_wal: true,
-            sync_data: true,
-            stats: false,
-            salt: None,
-        }
-    }
-
     pub(super) fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
         if rocksdb::DB::open_default(base_directory.join("metadata")).is_ok() {
             std::fs::remove_dir_all(&base_directory).map_err(CommitmentError::Migrate)?;
@@ -97,8 +79,22 @@ impl CommitmentDatabases {
 
             // Open databases that were fully created during previous run
             for salt in metadata.keys() {
-                let db = Db::open_or_create(&Self::options(base_directory.join(hex::encode(salt))))
-                    .map_err(CommitmentError::CommitmentDb)?;
+                let options = Options {
+                    path: base_directory.join(hex::encode(salt)),
+                    columns: vec![ColumnOptions {
+                        preimage: false,
+                        btree_index: true,
+                        uniform: false,
+                        ref_counted: false,
+                        compression: CompressionType::NoCompression,
+                        compression_threshold: 4096,
+                    }],
+                    sync_wal: true,
+                    sync_data: true,
+                    stats: false,
+                    salt: None,
+                };
+                let db = Db::open_or_create(&options).map_err(CommitmentError::CommitmentDb)?;
                 databases.put(
                     *salt,
                     Arc::new(DbEntry {

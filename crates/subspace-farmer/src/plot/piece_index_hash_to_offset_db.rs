@@ -48,14 +48,19 @@ pub(super) struct IndexHashToOffsetDB {
     piece_count: Arc<AtomicU64>,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+enum Columns {
+    Mappings = 0,
+    Metadata = 1,
+}
+
 impl IndexHashToOffsetDB {
     /// Max distance cache size.
     ///
     /// You can find discussion of derivation of this number here:
     /// https://github.com/subspace/subspace/pull/449
     const MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP: usize = 8000;
-    const METADATA_COLUMN: u8 = 0;
-    const DATA_COLUMN: u8 = 1;
     const PIECE_COUNT_KEY: &'static [u8] = b"piece_count";
 
     fn options(path: PathBuf) -> Options {
@@ -64,16 +69,16 @@ impl IndexHashToOffsetDB {
             columns: vec![
                 ColumnOptions {
                     preimage: false,
-                    btree_index: false,
-                    uniform: false,
+                    btree_index: true,
+                    uniform: true,
                     ref_counted: false,
                     compression: CompressionType::NoCompression,
                     compression_threshold: 4096,
                 },
                 ColumnOptions {
                     preimage: false,
-                    btree_index: true,
-                    uniform: true,
+                    btree_index: false,
+                    uniform: false,
                     ref_counted: false,
                     compression: CompressionType::NoCompression,
                     compression_threshold: 4096,
@@ -110,21 +115,21 @@ impl IndexHashToOffsetDB {
                 if out.is_some() {
                     iter.next();
                 }
-                out.map(|(key, value)| (Self::DATA_COLUMN, key, Some(value)))
+                out.map(|(key, value)| (Columns::Mappings as u8, key, Some(value)))
             }
         }))
         .context("Failed to commit data from rocksdb to paritydb")?;
 
         let piece_count = iter::from_fn({
             let mut iter = db
-                .iter(Self::DATA_COLUMN)
+                .iter(Columns::Mappings as u8)
                 .expect("Always valid for btree indexed iterations");
             move || iter.next().transpose()
         })
         .try_fold(0u64, |prev, next| next.map(|_| prev + 1))?;
 
         db.commit(iter::once((
-            Self::METADATA_COLUMN,
+            Columns::Metadata as u8,
             Self::PIECE_COUNT_KEY,
             Some(piece_count.to_le_bytes().to_vec()),
         )))
@@ -156,7 +161,7 @@ impl IndexHashToOffsetDB {
 
         let piece_count = match me
             .inner
-            .get(Self::METADATA_COLUMN, Self::PIECE_COUNT_KEY)
+            .get(Columns::Metadata as u8, Self::PIECE_COUNT_KEY)
             .map_err(PlotError::IndexDbOpen)?
         {
             Some(bytes) => u64::from_le_bytes(
@@ -169,7 +174,7 @@ impl IndexHashToOffsetDB {
             None => {
                 me.inner
                     .commit(iter::once((
-                        Self::METADATA_COLUMN,
+                        Columns::Metadata as u8,
                         Self::PIECE_COUNT_KEY,
                         Some(0u64.to_le_bytes().to_vec()),
                     )))
@@ -191,7 +196,7 @@ impl IndexHashToOffsetDB {
     pub(super) fn get_piece_range(
         &self,
     ) -> parity_db::Result<Option<RangeInclusive<PieceIndexHash>>> {
-        let mut iter = self.inner.iter(Self::DATA_COLUMN)?;
+        let mut iter = self.inner.iter(Columns::Mappings as u8)?;
         iter.seek_to_first()?;
         let start = match iter.next()? {
             Some((key, _)) => key
@@ -219,7 +224,7 @@ impl IndexHashToOffsetDB {
     pub(super) fn get(&self, index_hash: PieceIndexHash) -> parity_db::Result<Option<PieceOffset>> {
         self.inner
             .get(
-                Self::DATA_COLUMN,
+                Columns::Mappings as u8,
                 &self.piece_hash_to_distance(index_hash).to_be_bytes(),
             )
             .map(|opt_val| {
@@ -274,14 +279,14 @@ impl IndexHashToOffsetDB {
                 .zip(offset..)
                 .map(|(index_hash, offset)| {
                     (
-                        Self::DATA_COLUMN,
+                        Columns::Mappings as u8,
                         index_hash.to_be_bytes(),
                         Some(offset.to_le_bytes().to_vec()),
                     )
                 }),
         )?;
         self.inner.commit(iter::once((
-            Self::METADATA_COLUMN,
+            Columns::Metadata as u8,
             Self::PIECE_COUNT_KEY,
             Some(piece_count.to_le_bytes().to_vec()),
         )))
@@ -308,7 +313,7 @@ impl IndexHashToOffsetDB {
 
             let piece_offset = self
                 .inner
-                .get(Self::DATA_COLUMN, &max_distance.to_be_bytes())
+                .get(Columns::Mappings as u8, &max_distance.to_be_bytes())
                 .map_err(|err| {
                     io::Error::other(format!(
                         "Failed to get max distance offset from index hash db: {err}"
@@ -331,7 +336,7 @@ impl IndexHashToOffsetDB {
 
         self.inner
             .commit(iter::once((
-                Self::DATA_COLUMN,
+                Columns::Mappings as u8,
                 old_max_distance.to_be_bytes(),
                 None,
             )))
@@ -360,7 +365,7 @@ impl IndexHashToOffsetDB {
             return Ok(vec![]);
         }
 
-        let mut iter = self.inner.iter(Self::DATA_COLUMN)?;
+        let mut iter = self.inner.iter(Columns::Mappings as u8)?;
 
         let mut piece_index_hashes_and_offsets = Vec::with_capacity(count);
 
@@ -395,7 +400,7 @@ impl IndexHashToOffsetDB {
     }
 
     fn update_max_distance_cache(&mut self) -> parity_db::Result<()> {
-        let mut iter = self.inner.iter(Self::DATA_COLUMN)?;
+        let mut iter = self.inner.iter(Columns::Mappings as u8)?;
 
         iter.seek_to_first()?;
         for _ in 0..Self::MAX_DISTANCE_CACHE_ONE_SIDE_LOOKUP {
