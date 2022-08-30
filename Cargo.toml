@@ -87,4 +87,4 @@ codegen-units = 1
 chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }
 libp2p = { git = "https://github.com/subspace/rust-libp2p", branch = "subspace-v3" }
 # TODO: Remove once parity-db 0.3.17 will be released
-parity-db = { git = "https://github.com/i1i1/parity-db/", rev = "b2f2a057fbf6f0c7e3b24e3fda35879dc76c7d84" }
+parity-db = { git = "https://github.com/subspace/parity-db/", rev = "67e55e45ab2fb892926a8a297d377292796ed4cb" }
