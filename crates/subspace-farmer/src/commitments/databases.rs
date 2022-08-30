@@ -51,13 +51,13 @@ pub(super) struct CommitmentDatabases {
 }
 
 impl CommitmentDatabases {
-    pub(super) fn options(path: PathBuf) -> Options {
+    pub(crate) fn options(path: PathBuf) -> Options {
         Options {
             path,
             columns: vec![ColumnOptions {
                 preimage: false,
                 btree_index: true,
-                uniform: true,
+                uniform: false,
                 ref_counted: false,
                 compression: CompressionType::NoCompression,
                 compression_threshold: 4096,

@@ -17,6 +17,7 @@ pub(super) struct CommitmentMetadata {
     db: Db,
 }
 
+// TODO: use derive once https://github.com/paritytech/parity-db/pull/91 will be merged
 impl std::fmt::Debug for CommitmentMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CommitmentMetadata").finish_non_exhaustive()
