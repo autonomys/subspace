@@ -196,8 +196,13 @@ impl<T: PlotFile> PlotWorker<T> {
                             let _ = result_sender.send(result);
                         }
                         Request::GetPieceRange { result_sender } => {
-                            let _ = result_sender
-                                .send(self.piece_index_hash_to_offset_db.get_piece_range());
+                            let _ = result_sender.send(
+                                self.piece_index_hash_to_offset_db
+                                    .get_piece_range()
+                                    .map_err(|err| {
+                                        io::Error::other(format!("Can't get piece range: {err}"))
+                                    }),
+                            );
                         }
                         Request::WriteEncodings {
                             encodings,
@@ -241,7 +246,8 @@ impl<T: PlotFile> PlotWorker<T> {
         let mut buffer = Piece::default();
         let offset = self
             .piece_index_hash_to_offset_db
-            .get(piece_index_hash)?
+            .get(piece_index_hash)
+            .map_err(|err| io::Error::other(format!("Failed to read from index hash db: {err}")))?
             .ok_or_else(|| {
                 io::Error::other(format!("Piece with hash {piece_index_hash:?} not found"))
             })?;
@@ -274,14 +280,20 @@ impl<T: PlotFile> PlotWorker<T> {
         {
             self.plot.write(sequential_pieces, current_piece_count)?;
 
-            self.piece_index_hash_to_offset_db.batch_insert(
-                sequential_piece_indexes
-                    .iter()
-                    .copied()
-                    .map(PieceIndexHash::from_index)
-                    .collect(),
-                current_piece_count,
-            )?;
+            self.piece_index_hash_to_offset_db
+                .batch_insert(
+                    sequential_piece_indexes
+                        .iter()
+                        .copied()
+                        .map(PieceIndexHash::from_index)
+                        .collect(),
+                    current_piece_count,
+                )
+                .map_err(|err| {
+                    io::Error::other(format!(
+                        "Failed to write data to piece index hash db: {err}"
+                    ))
+                })?;
 
             self.piece_offset_to_index
                 .put_piece_indexes(current_piece_count, sequential_piece_indexes)?;
@@ -309,13 +321,19 @@ impl<T: PlotFile> PlotWorker<T> {
             if !self
                 .piece_index_hash_to_offset_db
                 .should_store(PieceIndexHash::from_index(piece_index))
+                .map_err(|err| {
+                    io::Error::other(format!("Failed to read from index hash db: {err}"))
+                })?
             {
                 continue;
             }
 
             let piece_offset = self
                 .piece_index_hash_to_offset_db
-                .replace_furthest(PieceIndexHash::from_index(piece_index))?;
+                .replace_furthest(PieceIndexHash::from_index(piece_index))
+                .map_err(|err| {
+                    io::Error::other(format!("Failed to replace value in index hash db: {err}"))
+                })?;
 
             let mut old_piece = Piece::default();
             self.plot.read(piece_offset, &mut old_piece)?;
@@ -345,7 +363,10 @@ impl<T: PlotFile> PlotWorker<T> {
     ) -> io::Result<Vec<(PieceOffset, PieceIndex)>> {
         let mut piece_index_hashes_and_offsets = self
             .piece_index_hash_to_offset_db
-            .get_sequential(from, count as usize);
+            .get_sequential(from, count as usize)
+            .map_err(|err| {
+                io::Error::other(format!("Failed to replace value in index hash db: {err}"))
+            })?;
         piece_index_hashes_and_offsets.sort_unstable_by_key(|(_, off)| *off);
         piece_index_hashes_and_offsets
             .into_iter()

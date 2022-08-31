@@ -50,10 +50,10 @@ impl PlotFile for File {
 pub enum PlotError {
     #[error("Plot open error: {0}")]
     PlotOpen(io::Error),
-    #[error("Metadata DB open error: {0}")]
-    MetadataDbOpen(rocksdb::Error),
     #[error("Index DB open error: {0}")]
-    IndexDbOpen(rocksdb::Error),
+    IndexDbOpen(parity_db::Error),
+    #[error("Index db migration error: {0}")]
+    IndexDbMigration(anyhow::Error),
     #[error("Failed to read piece count: {0}")]
     PieceCountReadError(Box<dyn std::error::Error + Send + Sync + 'static>),
     #[error("Offset DB open error: {0}")]

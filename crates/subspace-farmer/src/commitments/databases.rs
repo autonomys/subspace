@@ -1,8 +1,8 @@
 use crate::commitments::metadata::{CommitmentMetadata, CommitmentStatus};
 use crate::commitments::CommitmentError;
 use lru::LruCache;
+use parity_db::{ColumnOptions, CompressionType, Db, Options};
 use parking_lot::Mutex;
-use rocksdb::{Options, DB};
 use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -20,7 +20,7 @@ pub(super) struct CreateDbEntryResult {
 
 pub(super) struct DbEntry {
     salt: Salt,
-    db: Mutex<Option<Arc<DB>>>,
+    db: Mutex<Option<Arc<Db>>>,
 }
 
 impl fmt::Debug for DbEntry {
@@ -30,7 +30,7 @@ impl fmt::Debug for DbEntry {
 }
 
 impl Deref for DbEntry {
-    type Target = Mutex<Option<Arc<DB>>>;
+    type Target = Mutex<Option<Arc<Db>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.db
@@ -52,6 +52,11 @@ pub(super) struct CommitmentDatabases {
 
 impl CommitmentDatabases {
     pub(super) fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
+        if rocksdb::DB::open_default(base_directory.join("metadata")).is_ok() {
+            std::fs::remove_dir_all(&base_directory).map_err(CommitmentError::Migrate)?;
+            std::fs::create_dir(&base_directory).map_err(CommitmentError::Migrate)?;
+        }
+
         let mut metadata = CommitmentMetadata::new(base_directory.join("metadata"))?;
         let mut databases = LruCache::new(COMMITMENTS_CACHE_SIZE);
 
@@ -74,8 +79,22 @@ impl CommitmentDatabases {
 
             // Open databases that were fully created during previous run
             for salt in metadata.keys() {
-                let db = DB::open(&Options::default(), base_directory.join(hex::encode(salt)))
-                    .map_err(CommitmentError::CommitmentDb)?;
+                let options = Options {
+                    path: base_directory.join(hex::encode(salt)),
+                    columns: vec![ColumnOptions {
+                        preimage: false,
+                        btree_index: true,
+                        uniform: false,
+                        ref_counted: false,
+                        compression: CompressionType::NoCompression,
+                        compression_threshold: 4096,
+                    }],
+                    sync_wal: true,
+                    sync_data: true,
+                    stats: false,
+                    salt: None,
+                };
+                let db = Db::open_or_create(&options).map_err(CommitmentError::CommitmentDb)?;
                 databases.put(
                     *salt,
                     Arc::new(DbEntry {
