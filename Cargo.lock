@@ -4759,7 +4759,7 @@ dependencies = [
 [[package]]
 name = "parity-db"
 version = "0.3.16"
-source = "git+https://github.com/subspace/parity-db/?rev=67e55e45ab2fb892926a8a297d377292796ed4cb#67e55e45ab2fb892926a8a297d377292796ed4cb"
+source = "git+https://github.com/paritytech/parity-db/?rev=d324a26daabda11a2307de607d0a614a567b44ba#d324a26daabda11a2307de607d0a614a567b44ba"
 dependencies = [
  "blake2-rfc",
  "crc32fast",
