@@ -59,6 +59,8 @@ pub fn node_config(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
     run_farmer: bool,
+    force_authoring: bool,
+    force_synced: bool,
 ) -> Configuration {
     let base_path = BasePath::new_temp_dir().expect("Could not create temporary directory");
     let root = base_path.path();
@@ -87,6 +89,8 @@ pub fn node_config(
     network_config.public_addresses.push(addr);
 
     network_config.transport = TransportConfig::MemoryOnly;
+
+    network_config.force_synced = force_synced;
 
     Configuration {
         impl_name: "subspace-test-node".to_string(),
@@ -130,7 +134,7 @@ pub fn node_config(
         telemetry_endpoints: None,
         default_heap_pages: None,
         offchain_worker: Default::default(),
-        force_authoring: false,
+        force_authoring,
         disable_grandpa: false,
         dev_key_seed: Some(key_seed),
         tracing_targets: None,
@@ -153,8 +157,17 @@ pub async fn run_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
     run_farmer: bool,
+    force_authoring: bool,
+    force_synced: bool,
 ) -> (PrimaryTestNode, NetworkStarter) {
-    let primary_chain_config = node_config(tokio_handle, key, boot_nodes, run_farmer);
+    let primary_chain_config = node_config(
+        tokio_handle,
+        key,
+        boot_nodes,
+        run_farmer,
+        force_authoring,
+        force_synced,
+    );
     let multiaddr = primary_chain_config.network.listen_addresses[0].clone();
     let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
         primary_chain_config.wasm_method,
@@ -335,12 +348,19 @@ mod tests {
 
         // start alice
         let (alice, alice_network_starter) =
-            run_validator_node(tokio_handle.clone(), Alice, vec![], true).await;
+            run_validator_node(tokio_handle.clone(), Alice, vec![], true, true, true).await;
 
         alice_network_starter.start_network();
 
-        let (bob, bob_network_starter) =
-            run_validator_node(tokio_handle.clone(), Bob, vec![alice.addr], false).await;
+        let (bob, bob_network_starter) = run_validator_node(
+            tokio_handle.clone(),
+            Bob,
+            vec![alice.addr],
+            false,
+            false,
+            false,
+        )
+        .await;
 
         bob_network_starter.start_network();
 

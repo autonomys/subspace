@@ -29,13 +29,13 @@ async fn execution_proof_creation_and_verification_should_work() {
     // Run Alice (a secondary chain authority node)
     let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority)
+        .build(Role::Authority, false, false)
         .await;
 
     // Run Bob (a secondary chain full node)
     let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
         .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Full)
+        .build(Role::Full, false, false)
         .await;
 
     // Bob is able to sync blocks.
@@ -354,13 +354,13 @@ async fn invalid_execution_proof_should_not_work() {
     // Run Alice (a secondary chain authority node)
     let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority)
+        .build(Role::Authority, false, false)
         .await;
 
     // Run Bob (a secondary chain full node)
     let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
         .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Full)
+        .build(Role::Full, false, false)
         .await;
 
     // Bob is able to sync blocks.

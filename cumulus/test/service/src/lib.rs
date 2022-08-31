@@ -301,7 +301,12 @@ impl TestNodeBuilder {
     }
 
     /// Build the [`TestNode`].
-    pub async fn build(self, role: Role) -> TestNode {
+    pub async fn build(
+        self,
+        role: Role,
+        primary_force_authoring: bool,
+        primary_force_synced: bool,
+    ) -> TestNode {
         let secondary_chain_config = node_config(
             self.tokio_handle.clone(),
             self.key,
@@ -316,6 +321,8 @@ impl TestNodeBuilder {
             self.key,
             self.primary_nodes,
             false,
+            primary_force_authoring,
+            primary_force_synced,
         );
 
         primary_chain_config.network.node_name =
@@ -536,5 +543,5 @@ pub async fn run_primary_chain_validator_node(
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
 ) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
-    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true).await
+    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true, true, true).await
 }
