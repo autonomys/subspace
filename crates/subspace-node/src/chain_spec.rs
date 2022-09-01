@@ -24,7 +24,8 @@ use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::{ChainSpecExtensions, ConsensusChainSpec};
 use sc_telemetry::TelemetryEndpoints;
-use sp_core::crypto::Ss58Codec;
+use sp_consensus_subspace::FarmerPublicKey;
+use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_executor::ExecutorId;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig,
@@ -70,6 +71,109 @@ struct GenesisParams {
     allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
     max_plot_size: u64,
+}
+
+pub fn gemini_2a() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+    unimplemented!()
+}
+
+pub fn gemini_2a_compiled(
+) -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+    Ok(ConsensusChainSpec::from_genesis(
+        // Name
+        "Subspace Gemini 2a",
+        // ID
+        "subspace_gemini_2a",
+        ChainType::Custom("Subspace Gemini 2a".to_string()),
+        || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Wrong root account address");
+
+            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
+            let vesting_schedules = TOKEN_GRANTS
+                .iter()
+                .flat_map(|&(account_address, amount)| {
+                    let account_id = AccountId::from_ss58check(account_address)
+                        .expect("Wrong vesting account address");
+                    let amount: Balance = amount * SSC;
+
+                    // TODO: Adjust start block to real value before mainnet launch
+                    let start_block = 100_000_000;
+                    let one_month_in_blocks =
+                        u32::try_from(3600 * 24 * 30 * MILLISECS_PER_BLOCK / 1000)
+                            .expect("One month of blocks always fits in u32; qed");
+
+                    // Add balance so it can be locked
+                    balances.push((account_id.clone(), amount));
+
+                    [
+                        // 1/4 of tokens are released after 1 year.
+                        (
+                            account_id.clone(),
+                            start_block,
+                            one_month_in_blocks * 12,
+                            1,
+                            amount / 4,
+                        ),
+                        // 1/48 of tokens are released every month after that for 3 more years.
+                        (
+                            account_id,
+                            start_block + one_month_in_blocks * 12,
+                            one_month_in_blocks,
+                            36,
+                            amount / 48,
+                        ),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            subspace_genesis_config(
+                WASM_BINARY.expect("Wasm binary must be built for Gemini"),
+                sudo_account,
+                balances,
+                vesting_schedules,
+                (
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong Executor account address"),
+                    ExecutorId::from_ss58check("5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx")
+                        .expect("Wrong Executor authority address"),
+                ),
+                GenesisParams {
+                    enable_rewards: false,
+                    enable_storage_access: false,
+                    allow_authoring_by: AllowAuthoringBy::RootFarmer(
+                        FarmerPublicKey::unchecked_from([
+                            0x50, 0x69, 0x60, 0xf3, 0x50, 0x33, 0xee, 0xc1, 0x12, 0xb5, 0xbc, 0xb4,
+                            0xe5, 0x91, 0xfb, 0xbb, 0xf5, 0x88, 0xac, 0x45, 0x26, 0x90, 0xd4, 0x70,
+                            0x32, 0x6c, 0x3f, 0x7b, 0x4e, 0xd9, 0x41, 0x17,
+                        ]),
+                    ),
+                    enable_executor: false,
+                    // 10GiB
+                    max_plot_size: 10 * 1024 * 1024 * 1024,
+                },
+            )
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        Some(
+            TelemetryEndpoints::new(vec![
+                (POLKADOT_TELEMETRY_URL.into(), 1),
+                (SUBSPACE_TELEMETRY_URL.into(), 1),
+            ])
+            .map_err(|error| error.to_string())?,
+        ),
+        // Protocol ID
+        Some("subspace-gemini-2a"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        ChainSpecExtensions {
+            execution_chain_spec: secondary_chain::chain_spec::development_config(),
+        },
+    ))
 }
 
 pub fn x_net_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {

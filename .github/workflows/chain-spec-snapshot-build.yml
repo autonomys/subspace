@@ -28,16 +28,16 @@ jobs:
 
       - name: Generate testnet chain specifications
         run: |
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled --disable-default-bootnode > chain-spec-gemini-1.json
-          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-1-compiled --disable-default-bootnode --raw > chain-spec-raw-gemini-1.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-2a-compiled --disable-default-bootnode > chain-spec-gemini-2a.json
+          docker run --rm -u root ${{ steps.build.outputs.digest }} build-spec --chain gemini-2a-compiled --disable-default-bootnode --raw > chain-spec-raw-gemini-2a.json
 
       - name: Upload chain specifications to artifacts
         uses: actions/upload-artifact@v2
         with:
           name: chain-specifications
           path: |
-            chain-spec-gemini-1.json
-            chain-spec-raw-gemini-1.json
+            chain-spec-gemini-2a.json
+            chain-spec-raw-gemini-2a.json
           if-no-files-found: error
 
       - name: Upload chain specifications to assets
@@ -45,4 +45,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          asset_paths: '["chain-spec-gemini-1.json", "chain-spec-raw-gemini-1.json"]'
+          asset_paths: '["chain-spec-gemini-2a.json", "chain-spec-raw-gemini-2a.json"]'
