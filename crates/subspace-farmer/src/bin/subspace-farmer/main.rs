@@ -107,6 +107,9 @@ enum Subcommand {
         /// Only a developer testing flag, as it might be needed for testing.
         #[clap(long)]
         max_plot_size: Option<ByteSize>,
+        /// Number of major concurrent operations to allow for disk
+        #[clap(long, default_value = "2")]
+        disk_concurrency: NonZeroU16,
         /// How much things to write on disk (the more we write during benchmark, the more accurate
         /// it is)
         #[clap(arg_enum, long, default_value_t)]
@@ -365,11 +368,12 @@ async fn main() -> Result<()> {
         Subcommand::Bench {
             plot_size,
             max_plot_size,
+            disk_concurrency,
             write_to_disk,
             write_pieces_size,
             no_recommitments,
         } => {
-            if command.farm.is_empty() {
+            let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {
                     fs::create_dir_all(&base_path).unwrap_or_else(|error| {
                         panic!(
@@ -379,18 +383,48 @@ async fn main() -> Result<()> {
                     });
                 }
 
-                commands::bench(
-                    base_path,
-                    plot_size.as_u64(),
-                    max_plot_size.map(|max_plot_size| max_plot_size.as_u64()),
-                    write_to_disk,
-                    write_pieces_size.as_u64(),
-                    !no_recommitments,
-                )
-                .await?
+                let plot_size = plot_size.as_u64();
+
+                if plot_size < 1024 * 1024 {
+                    return Err(anyhow::anyhow!(
+                        "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
+                        plot_size
+                    ));
+                }
+
+                vec![DiskFarm {
+                    plot_directory: base_path.clone(),
+                    metadata_directory: base_path,
+                    allocated_plotting_space: get_usable_plot_space(plot_size),
+                }]
             } else {
-                unimplemented!()
-            }
+                for farm in &command.farm {
+                    if !farm.plot_directory.exists() {
+                        panic!(
+                            "Plot directory {} doesn't exist",
+                            farm.plot_directory.display()
+                        );
+                    }
+                    if !farm.metadata_directory.exists() {
+                        panic!(
+                            "Metadata directory {} doesn't exist",
+                            farm.metadata_directory.display()
+                        );
+                    }
+                }
+
+                command.farm
+            };
+
+            commands::bench(
+                disk_farms,
+                max_plot_size.map(|max_plot_size| max_plot_size.as_u64()),
+                disk_concurrency,
+                write_to_disk,
+                write_pieces_size.as_u64(),
+                !no_recommitments,
+            )
+            .await?
         }
     }
     Ok(())

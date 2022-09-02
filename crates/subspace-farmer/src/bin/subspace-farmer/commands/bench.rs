@@ -1,10 +1,11 @@
-use crate::WriteToDisk;
+use crate::{DiskFarm, WriteToDisk};
 use anyhow::anyhow;
 use futures::channel::mpsc;
 use futures::stream::FuturesUnordered;
 use futures::{SinkExt, StreamExt};
 use rand::prelude::*;
-use std::path::{Path, PathBuf};
+use std::num::NonZeroU16;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use std::{fmt, io};
@@ -14,10 +15,8 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
     PIECE_SIZE,
 };
-use subspace_farmer::legacy_multi_plots_farm::{
-    LegacyMultiPlotsFarm, Options as MultiFarmingOptions,
-};
 use subspace_farmer::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
+use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::{PieceOffset, Plot, PlotFile, RpcClient};
 use subspace_networking::{Config, RelayMode};
@@ -91,13 +90,23 @@ impl fmt::Display for HumanReadableDuration {
 }
 
 pub(crate) async fn bench(
-    base_directory: PathBuf,
-    plot_size: u64,
+    disk_farms: Vec<DiskFarm>,
     max_plot_size: Option<u64>,
+    disk_concurrency: NonZeroU16,
     write_to_disk: WriteToDisk,
     write_pieces_size: u64,
     do_recommitments: bool,
 ) -> anyhow::Result<()> {
+    if disk_farms.is_empty() {
+        return Err(anyhow!("There must be at least one disk farm provided"));
+    }
+
+    let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
+    let mut plot_directories = Vec::with_capacity(disk_farms.len());
+    let mut metadata_directories = Vec::with_capacity(disk_farms.len());
+    let mut record_size = None;
+    let mut recorded_history_segment_size = None;
+
     let (mut slot_info_sender, slot_info_receiver) = mpsc::channel(1);
     let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(1);
     let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
@@ -108,8 +117,6 @@ pub(crate) async fn bench(
         archived_segments_receiver,
         acknowledge_archived_segment_sender,
     );
-
-    let base_directory = TempDir::new_in(base_directory)?;
 
     let mut farmer_protocol_info = client
         .farmer_protocol_info()
@@ -154,10 +161,27 @@ pub(crate) async fn bench(
 
     trace!(node_id = %relay_server_node.id(), "Relay Node started");
 
-    let multi_farming = LegacyMultiPlotsFarm::new(
-        MultiFarmingOptions {
-            base_directory: base_directory.as_ref().to_owned(),
+    // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
+    //  fail later (note that multiple farms can use the same location for metadata)
+    for disk_farm in disk_farms {
+        if disk_farm.allocated_plotting_space < 1024 * 1024 {
+            return Err(anyhow::anyhow!(
+                "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
+                disk_farm.allocated_plotting_space
+            ));
+        }
+
+        record_size.replace(farmer_protocol_info.record_size);
+        recorded_history_segment_size.replace(farmer_protocol_info.recorded_history_segment_size);
+        let plot_directory = TempDir::new_in(&disk_farm.plot_directory)?;
+        let metadata_directory = TempDir::new_in(&disk_farm.plot_directory)?;
+
+        let single_disk_farm = SingleDiskFarm::new(SingleDiskFarmOptions {
+            plot_directory: plot_directory.as_ref().to_owned(),
+            metadata_directory: metadata_directory.as_ref().to_owned(),
+            allocated_plotting_space: disk_farm.allocated_plotting_space,
             farmer_protocol_info,
+            disk_concurrency,
             archiving_client: client.clone(),
             farming_client: client.clone(),
             reward_address: PublicKey::default(),
@@ -165,13 +189,16 @@ pub(crate) async fn bench(
             listen_on: vec![],
             enable_dsn_archiving: false,
             enable_dsn_sync: false,
-            enable_farming: true,
-            relay_server_node: Some(relay_server_node),
-        },
-        plot_size,
-        plot_factory,
-    )
-    .await?;
+            enable_farming: false,
+            plot_factory,
+            relay_server_node: Some(relay_server_node.clone()),
+        })
+        .await?;
+
+        single_disk_farms.push(single_disk_farm);
+        plot_directories.push(plot_directory);
+        metadata_directories.push(metadata_directory);
+    }
 
     if do_recommitments {
         slot_info_sender
@@ -238,10 +265,14 @@ pub(crate) async fn bench(
 
     let took = start.elapsed();
 
-    let space_allocated = get_size(base_directory)?;
-    let actual_space_pledged = multi_farming
-        .single_plot_farms()
+    let space_allocated = single_disk_farms
         .iter()
+        .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
+        .flat_map(|single_plot_farm| single_plot_farm.directories())
+        .try_fold(0, |prev, next| get_size(next).map(|next| prev + next))?;
+    let actual_space_pledged = single_disk_farms
+        .iter()
+        .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
         .map(|single_plot_farm| single_plot_farm.plot().piece_count())
         .sum::<u64>()
         * PIECE_SIZE as u64;
@@ -271,9 +302,9 @@ pub(crate) async fn bench(
     if do_recommitments {
         let start = Instant::now();
 
-        let mut tasks = multi_farming
-            .single_plot_farms()
+        let mut tasks = single_disk_farms
             .iter()
+            .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
             .map(|single_plot_farm| {
                 (
                     single_plot_farm.commitments().clone(),
@@ -298,7 +329,17 @@ pub(crate) async fn bench(
     }
 
     drop(client);
-    multi_farming.wait().await?;
+
+    let mut single_disk_farms_stream = single_disk_farms
+        .into_iter()
+        .map(|single_disk_farm| single_disk_farm.wait())
+        .collect::<FuturesUnordered<_>>();
+
+    while let Some(result) = single_disk_farms_stream.next().await {
+        result?;
+
+        tracing::info!("Farm exited successfully");
+    }
 
     Ok(())
 }
