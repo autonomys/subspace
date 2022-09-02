@@ -1,7 +1,9 @@
 use crate::dsn::{sync, DSNSync, NoSync, OnSync, PieceIndexHashNumber, SyncOptions};
-use crate::legacy_multi_plots_farm::{LegacyMultiPlotsFarm, Options as MultiFarmingOptions};
 use crate::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
-use crate::single_plot_farm::PlotFactoryOptions;
+use crate::single_disk_farm::SingleDiskSemaphore;
+use crate::single_plot_farm::{
+    PlotFactoryOptions, SinglePlotFarm, SinglePlotFarmId, SinglePlotFarmOptions,
+};
 use crate::Plot;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
@@ -9,6 +11,7 @@ use num_traits::{WrappingAdd, WrappingSub};
 use parking_lot::Mutex;
 use rand::Rng;
 use std::collections::BTreeMap;
+use std::num::NonZeroU16;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -26,6 +29,7 @@ use subspace_networking::{
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tempfile::TempDir;
+use ulid::Ulid;
 
 struct TestPlotter {
     pub(crate) result: Arc<Mutex<BTreeMap<PieceIndexHash, (Piece, PieceIndex)>>>,
@@ -186,32 +190,32 @@ async fn test_dsn_sync() {
         )
     };
 
-    let seeder_multi_farming = LegacyMultiPlotsFarm::new(
-        MultiFarmingOptions {
-            base_directory: seeder_base_directory.as_ref().to_owned(),
-            farmer_protocol_info,
-            archiving_client: rpc_client.clone(),
-            farming_client: rpc_client.clone(),
-            reward_address: subspace_core_primitives::PublicKey::default(),
-            listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
-            bootstrap_nodes: vec![],
-            enable_dsn_sync: false,
-            enable_dsn_archiving: false,
-            enable_farming: false,
-            relay_server_node: None,
-        },
-        seeder_max_plot_size,
-        plot_factory,
-    )
-    .await
+    let mut seeder_farming = SinglePlotFarm::new(SinglePlotFarmOptions {
+        id: SinglePlotFarmId::Ulid(Ulid::new()),
+        plot_directory: seeder_base_directory.as_ref().join("plot"),
+        metadata_directory: seeder_base_directory.as_ref().join("metadata"),
+        allocated_plotting_space: seeder_max_plot_size,
+        farmer_protocol_info,
+        farming_client: rpc_client.clone(),
+        verification_client: rpc_client.clone(),
+        plot_factory: &plot_factory,
+        listen_on: vec!["/ip4/127.0.0.1/tcp/0".parse().unwrap()],
+        bootstrap_nodes: vec![],
+        single_disk_semaphore: SingleDiskSemaphore::new(NonZeroU16::new(u16::MAX).unwrap()),
+        enable_farming: false,
+        reward_address: subspace_core_primitives::PublicKey::default(),
+        enable_dsn_archiving: false,
+        enable_dsn_sync: false,
+        relay_server_node: None,
+    })
     .unwrap();
 
-    let seeder_plot = seeder_multi_farming.single_plot_farms()[0].plot().clone();
-    let seeder_node = seeder_multi_farming.single_plot_farms()[0].node().clone();
-    let seeder_public_key = *seeder_multi_farming.single_plot_farms()[0].public_key();
+    let seeder_plot = seeder_farming.plot().clone();
+    let seeder_node = seeder_farming.node().clone();
+    let seeder_public_key = *seeder_farming.public_key();
 
     tokio::spawn(async move {
-        if let Err(error) = seeder_multi_farming.wait().await {
+        if let Err(error) = seeder_farming.run().await {
             eprintln!("Seeder exited with error: {error}");
         }
     });
@@ -309,29 +313,29 @@ async fn test_dsn_sync() {
         )
     };
 
-    let syncer_multi_farming = loop {
+    let mut syncer_farming = loop {
         {
-            let syncer_multi_farming = LegacyMultiPlotsFarm::new(
-                MultiFarmingOptions {
-                    base_directory: syncer_base_directory.as_ref().to_owned(),
-                    farmer_protocol_info,
-                    archiving_client: rpc_client.clone(),
-                    farming_client: rpc_client.clone(),
-                    reward_address: subspace_core_primitives::PublicKey::default(),
-                    bootstrap_nodes: vec![seeder_multiaddr.clone()],
-                    listen_on: vec![],
-                    enable_dsn_sync: false,
-                    enable_dsn_archiving: false,
-                    enable_farming: false,
-                    relay_server_node: None,
-                },
-                syncer_max_plot_size,
-                plot_factory,
-            )
-            .await
+            let syncer_farming = SinglePlotFarm::new(SinglePlotFarmOptions {
+                id: SinglePlotFarmId::Ulid(Ulid::new()),
+                plot_directory: syncer_base_directory.as_ref().join("plot"),
+                metadata_directory: syncer_base_directory.as_ref().join("metadata"),
+                allocated_plotting_space: seeder_max_plot_size,
+                farmer_protocol_info,
+                farming_client: rpc_client.clone(),
+                verification_client: rpc_client.clone(),
+                plot_factory: &plot_factory,
+                listen_on: vec![],
+                bootstrap_nodes: vec![seeder_multiaddr.clone()],
+                single_disk_semaphore: SingleDiskSemaphore::new(NonZeroU16::new(u16::MAX).unwrap()),
+                enable_farming: false,
+                reward_address: subspace_core_primitives::PublicKey::default(),
+                enable_dsn_archiving: false,
+                enable_dsn_sync: false,
+                relay_server_node: None,
+            })
             .unwrap();
 
-            let syncer_public_key = *syncer_multi_farming.single_plot_farms()[0].public_key();
+            let syncer_public_key = *syncer_farming.public_key();
 
             // Make sure seeder and syncer are close enough to each other
             if bidirectional_distance(
@@ -339,7 +343,7 @@ async fn test_dsn_sync() {
                 &U256::from_be_bytes(syncer_public_key.into()),
             ) < U256::MAX / U256::from(seeder_max_plot_size / syncer_max_plot_size)
             {
-                break syncer_multi_farming;
+                break syncer_farming;
             }
         }
 
@@ -350,8 +354,8 @@ async fn test_dsn_sync() {
     let syncer_max_piece_count = syncer_max_plot_size / PIECE_SIZE as u64;
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_piece_count * pieces_per_request;
-    let plot = syncer_multi_farming.single_plot_farms()[0].plot().clone();
-    let dsn_sync = syncer_multi_farming.single_plot_farms()[0].dsn_sync::<BenchRpcClient>(
+    let plot = syncer_farming.plot().clone();
+    let dsn_sync = syncer_farming.dsn_sync::<BenchRpcClient>(
         rpc_client.clone(),
         FarmerProtocolInfo {
             max_plot_size: syncer_max_plot_size,
@@ -361,13 +365,12 @@ async fn test_dsn_sync() {
         range_size,
         false, // don't verify pieces
     );
-    let public_key =
-        U256::from_be_bytes((*syncer_multi_farming.single_plot_farms()[0].public_key()).into());
+    let public_key = U256::from_be_bytes((*syncer_farming.public_key()).into());
 
-    let syncer_node = syncer_multi_farming.single_plot_farms()[0].node().clone();
+    let syncer_node = syncer_farming.node().clone();
 
     tokio::spawn(async move {
-        if let Err(error) = syncer_multi_farming.wait().await {
+        if let Err(error) = syncer_farming.run().await {
             eprintln!("Syncer exited with error: {error}");
         }
     });
