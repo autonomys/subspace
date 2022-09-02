@@ -1,3 +1,4 @@
+use crate::utils::shutdown_signal;
 use crate::{ArchivingFrom, DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::future::select;
@@ -11,7 +12,6 @@ use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, Plot, RpcClient};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{Config, RelayMode};
-use tokio::signal;
 use tracing::{info, trace, warn};
 
 struct CallOnDrop<F>(Option<F>)
@@ -35,40 +35,6 @@ where
     fn new(callback: F) -> Self {
         Self(Some(callback))
     }
-}
-
-#[cfg(unix)]
-async fn shutdown_signal() {
-    use futures::FutureExt;
-
-    select(
-        Box::pin(
-            signal::unix::signal(signal::unix::SignalKind::interrupt())
-                .expect("Setting signal handlers must never fail")
-                .recv()
-                .map(|_| {
-                    info!("Received SIGINT, shutting down farmer...");
-                }),
-        ),
-        Box::pin(
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .expect("Setting signal handlers must never fail")
-                .recv()
-                .map(|_| {
-                    info!("Received SIGTERM, shutting down farmer...");
-                }),
-        ),
-    )
-    .await;
-}
-
-#[cfg(not(unix))]
-async fn shutdown_signal() {
-    signal::ctrl_c()
-        .await
-        .expect("Setting signal handlers must never fail");
-
-    info!("Received Ctrl+C, shutting down farmer...");
 }
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
