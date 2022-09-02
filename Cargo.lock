@@ -8120,6 +8120,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-consensus",
+ "sp-consensus-subspace",
  "sp-core",
  "sp-executor",
  "sp-runtime",
