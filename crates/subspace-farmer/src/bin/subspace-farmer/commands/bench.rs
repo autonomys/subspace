@@ -101,6 +101,8 @@ pub(crate) async fn bench(
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
 
+    let signal = crate::utils::shutdown_signal();
+
     let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
     let mut plot_directories = Vec::with_capacity(disk_farms.len());
     let mut metadata_directories = Vec::with_capacity(disk_farms.len());
@@ -214,134 +216,146 @@ pub(crate) async fn bench(
             .unwrap();
     }
 
-    let start = Instant::now();
+    futures::future::select(
+        Box::pin(async move {
+            signal.await;
 
-    let mut last_archived_block = LastArchivedBlock {
-        number: 0,
-        archived_progress: ArchivedBlockProgress::Partial(0),
-    };
+            Ok(())
+        }),
+        Box::pin(async move {
+            let start = Instant::now();
 
-    for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
-        last_archived_block
-            .archived_progress
-            .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
-
-        let archived_segment = {
-            let root_block = RootBlock::V0 {
-                segment_index,
-                records_root: Sha256Hash::default(),
-                prev_root_block_hash: Sha256Hash::default(),
-                last_archived_block,
+            let mut last_archived_block = LastArchivedBlock {
+                number: 0,
+                archived_progress: ArchivedBlockProgress::Partial(0),
             };
 
-            let mut pieces = FlatPieces::new(256);
-            rand::thread_rng().fill(pieces.as_mut());
+            for segment_index in 0..write_pieces_size / PIECE_SIZE as u64 / 256 {
+                last_archived_block
+                    .archived_progress
+                    .set_partial(segment_index as u32 * 256 * PIECE_SIZE as u32);
 
-            let objects = std::iter::repeat_with(|| PieceObject::V0 {
-                hash: rand::random(),
-                offset: rand::random(),
-            })
-            .take(100)
-            .collect();
+                let archived_segment = {
+                    let root_block = RootBlock::V0 {
+                        segment_index,
+                        records_root: Sha256Hash::default(),
+                        prev_root_block_hash: Sha256Hash::default(),
+                        last_archived_block,
+                    };
 
-            ArchivedSegment {
-                root_block,
-                pieces,
-                object_mapping: vec![PieceObjectMapping { objects }],
+                    let mut pieces = FlatPieces::new(256);
+                    rand::thread_rng().fill(pieces.as_mut());
+
+                    let objects = std::iter::repeat_with(|| PieceObject::V0 {
+                        hash: rand::random(),
+                        offset: rand::random(),
+                    })
+                    .take(100)
+                    .collect();
+
+                    ArchivedSegment {
+                        root_block,
+                        pieces,
+                        object_mapping: vec![PieceObjectMapping { objects }],
+                    }
+                };
+
+                if let Err(error) = archived_segments_sender.send(archived_segment).await {
+                    eprintln!("Failed to send archived segment: {}", error);
+                    break;
+                }
+
+                if acknowledge_archived_segment_receiver.next().await.is_none() {
+                    eprintln!("Failed to receive archiving acknowledgement");
+                    break;
+                }
             }
-        };
+            drop(archived_segments_sender);
 
-        if let Err(error) = archived_segments_sender.send(archived_segment).await {
-            eprintln!("Failed to send archived segment: {}", error);
-            break;
-        }
+            let took = start.elapsed();
 
-        if acknowledge_archived_segment_receiver.next().await.is_none() {
-            eprintln!("Failed to receive archiving acknowledgement");
-            break;
-        }
-    }
-    drop(archived_segments_sender);
+            let space_allocated = single_disk_farms
+                .iter()
+                .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
+                .flat_map(|single_plot_farm| single_plot_farm.directories())
+                .try_fold(0, |prev, next| get_size(next).map(|next| prev + next))?;
+            let actual_space_pledged = single_disk_farms
+                .iter()
+                .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
+                .map(|single_plot_farm| single_plot_farm.plot().piece_count())
+                .sum::<u64>()
+                * PIECE_SIZE as u64;
+            let overhead = space_allocated - actual_space_pledged;
 
-    let took = start.elapsed();
+            println!("Finished benchmarking.\n");
+            println!(
+                "{} allocated for farming",
+                HumanReadableSize(space_allocated)
+            );
+            println!(
+                "{} actual space pledged (which is {:.2}%)",
+                HumanReadableSize(actual_space_pledged),
+                (actual_space_pledged * 100) as f64 / space_allocated as f64
+            );
+            println!(
+                "{} of overhead (which is {:.2}%)",
+                HumanReadableSize(overhead),
+                (overhead * 100) as f64 / space_allocated as f64
+            );
+            println!("{} plotting time", HumanReadableDuration(took));
+            println!(
+                "{:.2}M/s average plotting throughput",
+                actual_space_pledged as f64 / 1000. / 1000. / took.as_secs_f64()
+            );
 
-    let space_allocated = single_disk_farms
-        .iter()
-        .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
-        .flat_map(|single_plot_farm| single_plot_farm.directories())
-        .try_fold(0, |prev, next| get_size(next).map(|next| prev + next))?;
-    let actual_space_pledged = single_disk_farms
-        .iter()
-        .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
-        .map(|single_plot_farm| single_plot_farm.plot().piece_count())
-        .sum::<u64>()
-        * PIECE_SIZE as u64;
-    let overhead = space_allocated - actual_space_pledged;
+            if do_recommitments {
+                let start = Instant::now();
 
-    println!("Finished benchmarking.\n");
-    println!(
-        "{} allocated for farming",
-        HumanReadableSize(space_allocated)
-    );
-    println!(
-        "{} actual space pledged (which is {:.2}%)",
-        HumanReadableSize(actual_space_pledged),
-        (actual_space_pledged * 100) as f64 / space_allocated as f64
-    );
-    println!(
-        "{} of overhead (which is {:.2}%)",
-        HumanReadableSize(overhead),
-        (overhead * 100) as f64 / space_allocated as f64
-    );
-    println!("{} plotting time", HumanReadableDuration(took));
-    println!(
-        "{:.2}M/s average plotting throughput",
-        actual_space_pledged as f64 / 1000. / 1000. / took.as_secs_f64()
-    );
+                let mut tasks = single_disk_farms
+                    .iter()
+                    .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
+                    .map(|single_plot_farm| {
+                        (
+                            single_plot_farm.commitments().clone(),
+                            single_plot_farm.plot().clone(),
+                        )
+                    })
+                    .map(|(commitments, plot)| {
+                        move || commitments.create(rand::random(), plot, &AtomicBool::new(false))
+                    })
+                    .map(tokio::task::spawn_blocking)
+                    .collect::<FuturesUnordered<_>>();
+                while let Some(result) = tasks.next().await {
+                    if let Err(error) = result {
+                        tracing::error!(%error, "Discovered error while recommitments bench")
+                    }
+                }
 
-    if do_recommitments {
-        let start = Instant::now();
-
-        let mut tasks = single_disk_farms
-            .iter()
-            .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
-            .map(|single_plot_farm| {
-                (
-                    single_plot_farm.commitments().clone(),
-                    single_plot_farm.plot().clone(),
-                )
-            })
-            .map(|(commitments, plot)| {
-                move || commitments.create(rand::random(), plot, &AtomicBool::new(false))
-            })
-            .map(tokio::task::spawn_blocking)
-            .collect::<FuturesUnordered<_>>();
-        while let Some(result) = tasks.next().await {
-            if let Err(error) = result {
-                tracing::error!(%error, "Discovered error while recommitments bench")
+                println!(
+                    "Recommitment took {}",
+                    HumanReadableDuration(start.elapsed())
+                );
             }
-        }
 
-        println!(
-            "Recommitment took {}",
-            HumanReadableDuration(start.elapsed())
-        );
-    }
+            drop(client);
 
-    drop(client);
+            let mut single_disk_farms_stream = single_disk_farms
+                .into_iter()
+                .map(|single_disk_farm| single_disk_farm.wait())
+                .collect::<FuturesUnordered<_>>();
 
-    let mut single_disk_farms_stream = single_disk_farms
-        .into_iter()
-        .map(|single_disk_farm| single_disk_farm.wait())
-        .collect::<FuturesUnordered<_>>();
+            while let Some(result) = single_disk_farms_stream.next().await {
+                result?;
 
-    while let Some(result) = single_disk_farms_stream.next().await {
-        result?;
+                tracing::info!("Farm exited successfully");
+            }
 
-        tracing::info!("Farm exited successfully");
-    }
-
-    Ok(())
+            anyhow::Ok(())
+        }),
+    )
+    .await
+    .factor_first()
+    .0
 }
 
 fn get_size(path: impl AsRef<Path>) -> std::io::Result<u64> {
