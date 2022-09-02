@@ -1,4 +1,5 @@
 use crate::plot::{PieceDistance, Plot};
+use crate::single_plot_farm::SinglePlotFarmId;
 use rand::prelude::*;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE, U256};
@@ -29,7 +30,7 @@ fn read_write() {
     let piece_index_start = 0;
 
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -50,7 +51,7 @@ fn read_write() {
 
     // Make sure it is still not empty on reopen
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -66,7 +67,7 @@ fn piece_retrievable() {
     let base_directory = TempDir::new().unwrap();
 
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),
@@ -109,7 +110,7 @@ fn partial_plot() {
     let public_key = random::<[u8; 32]>().into();
 
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -161,7 +162,7 @@ fn sequential_pieces_iterator() {
     let public_key = random::<[u8; 32]>().into();
 
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -255,7 +256,7 @@ fn test_read_sequential_pieces() {
         (PieceDistance::from(piece_index_hashes[1].0) + PieceDistance::one()).to_be_bytes()
     };
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key_bytes.into(),

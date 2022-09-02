@@ -1,6 +1,7 @@
 use rand::prelude::*;
 use std::sync::Arc;
 use subspace_core_primitives::PIECE_SIZE;
+use subspace_farmer::single_plot_farm::SinglePlotFarmId;
 use subspace_farmer::Plot;
 use tempfile::TempDir;
 
@@ -15,7 +16,7 @@ async fn main() {
     let pieces = Arc::new(pieces.try_into().unwrap());
 
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         [0; 32].into(),

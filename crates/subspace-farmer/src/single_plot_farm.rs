@@ -58,9 +58,6 @@ const MAX_OBJECT_MAPPINGS_SIZE: u64 = 100 * 1024 * 1024;
 )]
 #[serde(untagged)]
 pub enum SinglePlotFarmId {
-    /// Legacy ID for farm identified by index
-    // TODO: Remove index once legacy multi plots farm is gone
-    Index(usize),
     /// New farm ID
     Ulid(Ulid),
 }

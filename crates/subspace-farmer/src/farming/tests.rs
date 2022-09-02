@@ -4,6 +4,7 @@ use crate::identity::Identity;
 use crate::plot::Plot;
 use crate::rpc_client::mock_rpc_client::MockRpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
+use crate::single_plot_farm::SinglePlotFarmId;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use std::num::NonZeroU16;
@@ -30,8 +31,9 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
 
     let public_key = identity.public_key().to_bytes().into();
+    let id = SinglePlotFarmId::new();
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &id,
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -51,7 +53,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     // start the farming task
     let mut farming_instance = Farming::create(
-        0usize.into(),
+        id,
         plot.clone(),
         commitments.clone(),
         client.clone(),
