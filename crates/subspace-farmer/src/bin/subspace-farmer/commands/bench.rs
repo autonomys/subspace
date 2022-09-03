@@ -274,10 +274,9 @@ pub(crate) async fn bench(
 
             let took = start.elapsed();
 
-            let space_allocated = single_disk_farms
+            let space_allocated = plot_directories
                 .iter()
-                .flat_map(|single_disk_farm| single_disk_farm.single_plot_farms())
-                .flat_map(|single_plot_farm| single_plot_farm.directories())
+                .chain(&metadata_directories)
                 .try_fold(0, |prev, next| get_size(next).map(|next| prev + next))?;
             let actual_space_pledged = single_disk_farms
                 .iter()

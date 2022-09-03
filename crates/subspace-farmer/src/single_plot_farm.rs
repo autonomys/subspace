@@ -328,7 +328,6 @@ pub(crate) struct SinglePlotFarmOptions<RC, PF> {
 /// disk plot.
 #[must_use = "Farm does not function properly unless run() method is called"]
 pub struct SinglePlotFarm {
-    directories: Vec<PathBuf>,
     id: SinglePlotFarmId,
     public_key: PublicKey,
     codec: SubspaceCodec,
@@ -598,7 +597,6 @@ impl SinglePlotFarm {
         }));
 
         let farm = Self {
-            directories: vec![metadata_directory, plot_directory],
             id,
             public_key,
             codec,
@@ -675,10 +673,6 @@ impl SinglePlotFarm {
         }
 
         Ok(farm)
-    }
-
-    pub fn directories(&self) -> &[PathBuf] {
-        &self.directories
     }
 
     /// Collect summary of single plot farm for presentational purposes

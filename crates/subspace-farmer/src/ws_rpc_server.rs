@@ -151,7 +151,7 @@ pub trait Rpc {
 ///  async fn f() -> anyhow::Result<()> {
 /// use jsonrpsee::ws_server::WsServerBuilder;
 /// use subspace_farmer::{Identity, ObjectMappings, Plot};
-/// use subspace_farmer::single_plot_farm::SinglePlotPieceGetter;
+/// use subspace_farmer::single_plot_farm::{SinglePlotPieceGetter, SinglePlotFarmId};
 /// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 /// use subspace_solving::SubspaceCodec;
 /// use std::path::PathBuf;
@@ -163,7 +163,7 @@ pub trait Rpc {
 /// let identity = Identity::open_or_create(&base_directory)?;
 /// let public_key = identity.public_key().to_bytes().into();
 /// let plot = Plot::open_or_create(
-///     &0usize.into(),
+///     &SinglePlotFarmId::new(),
 ///     &base_directory,
 ///     &base_directory,
 ///     public_key,
