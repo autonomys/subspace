@@ -242,7 +242,7 @@ impl SingleDiskFarm {
     pub async fn new<RC, PF>(options: SingleDiskFarmOptions<RC, PF>) -> anyhow::Result<Self>
     where
         RC: RpcClient,
-        PF: PlotFactory,
+        PF: PlotFactory + 'static,
     {
         let SingleDiskFarmOptions {
             plot_directory,
