@@ -6,7 +6,7 @@ use crate::plot::Plot;
 use crate::rpc_client::mock_rpc_client::MockRpcClient;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
-use crate::single_plot_farm::SinglePlotPlotter;
+use crate::single_plot_farm::{SinglePlotFarmId, SinglePlotPlotter};
 use rand::prelude::*;
 use rand::Rng;
 use std::num::{NonZeroU16, NonZeroU32};
@@ -39,7 +39,7 @@ async fn plotting_happy_path() {
 
     let public_key = identity.public_key().to_bytes().into();
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,
@@ -138,7 +138,7 @@ async fn plotting_piece_eviction() {
     let public_key = identity.public_key().to_bytes().into();
     let salt = Salt::default();
     let plot = Plot::open_or_create(
-        &0usize.into(),
+        &SinglePlotFarmId::new(),
         base_directory.as_ref(),
         base_directory.as_ref(),
         public_key,

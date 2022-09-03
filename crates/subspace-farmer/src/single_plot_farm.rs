@@ -58,9 +58,6 @@ const MAX_OBJECT_MAPPINGS_SIZE: u64 = 100 * 1024 * 1024;
 )]
 #[serde(untagged)]
 pub enum SinglePlotFarmId {
-    /// Legacy ID for farm identified by index
-    // TODO: Remove index once legacy multi plots farm is gone
-    Index(usize),
     /// New farm ID
     Ulid(Ulid),
 }
@@ -303,17 +300,16 @@ pub struct PlotFactoryOptions<'a> {
     pub max_plot_size: u64,
 }
 
-pub trait PlotFactory =
-    Fn(PlotFactoryOptions<'_>) -> Result<Plot, PlotError> + Send + Sync + 'static;
+pub trait PlotFactory = Fn(PlotFactoryOptions<'_>) -> Result<Plot, PlotError> + Send + Sync;
 
-pub(crate) struct SinglePlotFarmOptions<'a, RC, PF> {
+pub(crate) struct SinglePlotFarmOptions<RC, PF> {
     pub(crate) id: SinglePlotFarmId,
     pub(crate) plot_directory: PathBuf,
     pub(crate) metadata_directory: PathBuf,
     pub(crate) allocated_plotting_space: u64,
     pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) farming_client: RC,
-    pub(crate) plot_factory: &'a PF,
+    pub(crate) plot_factory: PF,
     /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
     pub(crate) bootstrap_nodes: Vec<Multiaddr>,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -345,7 +341,7 @@ pub struct SinglePlotFarm {
 }
 
 impl SinglePlotFarm {
-    pub(crate) fn new<RC, PF>(options: SinglePlotFarmOptions<'_, RC, PF>) -> anyhow::Result<Self>
+    pub(crate) fn new<RC, PF>(options: SinglePlotFarmOptions<RC, PF>) -> anyhow::Result<Self>
     where
         RC: RpcClient,
         PF: PlotFactory,

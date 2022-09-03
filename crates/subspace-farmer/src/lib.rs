@@ -36,7 +36,6 @@ pub(crate) mod dsn;
 pub(crate) mod farming;
 mod file_ext;
 pub(crate) mod identity;
-pub mod legacy_multi_plots_farm;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
 pub mod rpc_client;

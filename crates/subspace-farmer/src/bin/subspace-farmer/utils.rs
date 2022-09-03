@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use tokio::signal;
 
 pub(crate) fn default_base_path() -> PathBuf {
     dirs::data_local_dir()
@@ -29,4 +30,38 @@ pub(crate) fn get_usable_plot_space(allocated_space: u64) -> u64 {
     // TODO: Should account for database overhead of various additional databases.
     //  For now assume 92% will go for plot itself
     allocated_space * 92 / 100
+}
+
+#[cfg(unix)]
+pub(crate) async fn shutdown_signal() {
+    use futures::FutureExt;
+
+    futures::future::select(
+        Box::pin(
+            signal::unix::signal(signal::unix::SignalKind::interrupt())
+                .expect("Setting signal handlers must never fail")
+                .recv()
+                .map(|_| {
+                    tracing::info!("Received SIGINT, shutting down farmer...");
+                }),
+        ),
+        Box::pin(
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("Setting signal handlers must never fail")
+                .recv()
+                .map(|_| {
+                    tracing::info!("Received SIGTERM, shutting down farmer...");
+                }),
+        ),
+    )
+    .await;
+}
+
+#[cfg(not(unix))]
+pub(crate) async fn shutdown_signal() {
+    signal::ctrl_c()
+        .await
+        .expect("Setting signal handlers must never fail");
+
+    tracing::info!("Received Ctrl+C, shutting down farmer...");
 }
