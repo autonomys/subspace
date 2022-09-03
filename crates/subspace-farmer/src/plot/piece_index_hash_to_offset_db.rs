@@ -98,8 +98,12 @@ impl IndexHashToOffsetDB {
             .join("rocksdb");
         std::fs::rename(path, &rocksdb_db_path).context("Failed to move rocksdb directory")?;
 
-        let rocksdb =
-            rocksdb::DB::open_default(&rocksdb_db_path).context("Failed to open rocksdb")?;
+        let rocksdb = rocksdb::DB::open_cf(
+            &rocksdb::Options::default(),
+            &rocksdb_db_path,
+            &["default", "metadata"],
+        )
+        .context("Failed to open rocksdb")?;
 
         let db = Db::open_or_create(&Self::options(path.to_owned()))
             .context("Failed to create paritydb")?;
@@ -144,7 +148,14 @@ impl IndexHashToOffsetDB {
     }
 
     pub(super) fn open_default(path: &Path, public_key: PublicKey) -> Result<Self, PlotError> {
-        if rocksdb::DB::open_for_read_only(&rocksdb::Options::default(), path, false).is_ok() {
+        if rocksdb::DB::open_cf_for_read_only(
+            &rocksdb::Options::default(),
+            path,
+            &["default", "metadata"],
+            false,
+        )
+        .is_ok()
+        {
             Self::migrate_rocksdb(path).map_err(PlotError::IndexDbMigration)?;
         }
 
@@ -475,7 +486,10 @@ mod test {
         let dir = base_directory.as_ref().join("db");
 
         {
-            let db = rocksdb::DB::open_default(&dir).unwrap();
+            let mut options = rocksdb::Options::default();
+            options.create_if_missing(true);
+            options.create_missing_column_families(true);
+            let db = rocksdb::DB::open_cf(&options, &dir, &["default", "metadata"]).unwrap();
             db.put(PieceDistance::MIDDLE.to_be_bytes(), 10u64.to_le_bytes())
                 .unwrap();
         }
