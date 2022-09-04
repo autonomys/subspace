@@ -187,12 +187,16 @@ fn main() -> Result<(), Error> {
         Some(Subcommand::PurgeChain(cmd)) => {
             // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
-                let _ = std::fs::remove_dir_all(
-                    base_dir
-                        .join("subspace-node")
-                        .join("chains")
-                        .join("subspace_gemini_1b"),
-                );
+                for chain in &[
+                    "subspace_gemini_1b",
+                    "Lamda_2513",
+                    "Lamda_2513_2",
+                    "Lamda_2513_3",
+                ] {
+                    let _ = std::fs::remove_dir_all(
+                        base_dir.join("subspace-node").join("chains").join(chain),
+                    );
+                }
             }
 
             let runner = cli.create_runner(&cmd.base)?;

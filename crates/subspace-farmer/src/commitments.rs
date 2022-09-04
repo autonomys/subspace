@@ -33,8 +33,6 @@ pub enum CommitmentError {
     CommitmentDb(parity_db::Error),
     #[error("Plot error: {0}")]
     Plot(io::Error),
-    #[error("Migration error: {0}")]
-    Migrate(io::Error),
 }
 
 #[derive(Debug, Copy, Clone)]

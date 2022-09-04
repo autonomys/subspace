@@ -52,11 +52,6 @@ pub(super) struct CommitmentDatabases {
 
 impl CommitmentDatabases {
     pub(super) fn new(base_directory: PathBuf) -> Result<Self, CommitmentError> {
-        if rocksdb::DB::open_default(base_directory.join("metadata")).is_ok() {
-            std::fs::remove_dir_all(&base_directory).map_err(CommitmentError::Migrate)?;
-            std::fs::create_dir(&base_directory).map_err(CommitmentError::Migrate)?;
-        }
-
         let mut metadata = CommitmentMetadata::new(base_directory.join("metadata"))?;
         let mut databases = LruCache::new(COMMITMENTS_CACHE_SIZE);
 

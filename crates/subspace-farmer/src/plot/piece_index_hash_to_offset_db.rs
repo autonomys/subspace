@@ -1,5 +1,4 @@
 use crate::plot::{PieceDistance, PieceOffset, PlotError};
-use anyhow::Context;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_db::{ColumnOptions, CompressionType, Db, Options};
 use std::collections::BTreeSet;
@@ -91,74 +90,7 @@ impl IndexHashToOffsetDB {
         }
     }
 
-    fn migrate_rocksdb(path: &Path) -> anyhow::Result<()> {
-        let rocksdb_db_path = path
-            .parent()
-            .expect("Path is always in some directory by construction of the plot")
-            .join("rocksdb");
-        std::fs::rename(path, &rocksdb_db_path).context("Failed to move rocksdb directory")?;
-
-        let rocksdb = rocksdb::DB::open_cf(
-            &rocksdb::Options::default(),
-            &rocksdb_db_path,
-            &["default", "metadata"],
-        )
-        .context("Failed to open rocksdb")?;
-
-        let db = Db::open_or_create(&Self::options(path.to_owned()))
-            .context("Failed to create paritydb")?;
-
-        db.commit(iter::from_fn({
-            let mut iter = rocksdb.raw_iterator();
-            iter.seek_to_first();
-            move || {
-                let out = iter
-                    .key()
-                    .map(<[u8]>::to_vec)
-                    .zip(iter.value().map(<[u8]>::to_vec));
-                if out.is_some() {
-                    iter.next();
-                }
-                out.map(|(key, value)| (Columns::Mappings as u8, key, Some(value)))
-            }
-        }))
-        .context("Failed to commit data from rocksdb to paritydb")?;
-
-        let piece_count = iter::from_fn({
-            let mut iter = db
-                .iter(Columns::Mappings as u8)
-                .expect("Always valid for btree indexed iterations");
-            move || iter.next().transpose()
-        })
-        .try_fold(0u64, |prev, next| next.map(|_| prev + 1))?;
-
-        db.commit(iter::once((
-            Columns::Metadata as u8,
-            Self::PIECE_COUNT_KEY,
-            Some(piece_count.to_le_bytes().to_vec()),
-        )))
-        .context("Failed to commit data to paritydb")?;
-
-        drop(rocksdb);
-        drop(db);
-
-        std::fs::remove_dir_all(rocksdb_db_path).context("Failed to remove paritydb")?;
-
-        Ok(())
-    }
-
     pub(super) fn open_default(path: &Path, public_key: PublicKey) -> Result<Self, PlotError> {
-        if rocksdb::DB::open_cf_for_read_only(
-            &rocksdb::Options::default(),
-            path,
-            &["default", "metadata"],
-            false,
-        )
-        .is_ok()
-        {
-            Self::migrate_rocksdb(path).map_err(PlotError::IndexDbMigration)?;
-        }
-
         let mut me = Self {
             inner: Db::open_or_create(&Self::options(path.to_owned()))
                 .map_err(PlotError::IndexDbOpen)?,
@@ -473,29 +405,5 @@ impl IndexHashToOffsetDB {
             .wrapping_sub(&PieceDistance::MIDDLE)
             .wrapping_add(&self.public_key_as_number)
             .into()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_rocksdb_migration() {
-        let base_directory = tempfile::TempDir::new().unwrap();
-        let dir = base_directory.as_ref().join("db");
-
-        {
-            let mut options = rocksdb::Options::default();
-            options.create_if_missing(true);
-            options.create_missing_column_families(true);
-            let db = rocksdb::DB::open_cf(&options, &dir, &["default", "metadata"]).unwrap();
-            db.put(PieceDistance::MIDDLE.to_be_bytes(), 10u64.to_le_bytes())
-                .unwrap();
-        }
-
-        let db = IndexHashToOffsetDB::open_default(&dir, PublicKey::from([0; 32])).unwrap();
-        assert_eq!(db.get(PieceIndexHash::from([0; 32])).unwrap(), Some(10));
-        assert_eq!(db.piece_count().load(Ordering::SeqCst), 1);
     }
 }
