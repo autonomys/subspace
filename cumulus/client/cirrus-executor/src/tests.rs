@@ -62,9 +62,7 @@ async fn test_executor_full_node_catching_up() {
     );
 }
 
-// TODO: This test fails in CI, un-ignore once fixed
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -80,7 +78,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     // Run Alice (a secondary chain authority node)
     let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority, false, false)
+        .build(Role::Authority, false, true)
         .await;
 
     alice.wait_for_blocks(3).await;
