@@ -52,8 +52,6 @@ pub enum PlotError {
     PlotOpen(io::Error),
     #[error("Index DB open error: {0}")]
     IndexDbOpen(parity_db::Error),
-    #[error("Index db migration error: {0}")]
-    IndexDbMigration(anyhow::Error),
     #[error("Failed to read piece count: {0}")]
     PieceCountReadError(Box<dyn std::error::Error + Send + Sync + 'static>),
     #[error("Offset DB open error: {0}")]
