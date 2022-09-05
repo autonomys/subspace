@@ -22,6 +22,15 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 
+#[cfg(all(
+    target_arch = "x86_64",
+    target_vendor = "unknown",
+    target_os = "linux",
+    target_env = "gnu"
+))]
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 #[derive(Debug, Clone, Copy, ArgEnum)]
 enum ArchivingFrom {
     /// Sync from node using RPC endpoint (recommended)
