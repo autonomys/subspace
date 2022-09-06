@@ -2,16 +2,6 @@
 
 **‼️ NOTE: This is a living document reflecting current state of the codebase, make sure to open this page from the [release you want to install](https://github.com/subspace/subspace/releases) and not directly ‼️**
 
-# Update from earlier versions of Gemini 1b
-
-There were some issues in initial Gemini 1b release `gemini-1b-2022-june-02` fixed by later releases.
-
-If you see any of these errors:
-> Node is running on non-canonical fork, full node and farmer reset is required
-> Attempt to switch to a different fork beyond archiving depth, can't do it...
-
-That means your node is affected, and you need to follow "Switching to a new snapshot" section below to reset your node and farmer.
-
 # 👨‍🌾 Getting Started Farming
 
 This is the documentation/guideline on how to run the farmer. You may also refer to the [help](#help) section for various commands.
@@ -61,10 +51,9 @@ Installing OpenCL GPU drivers or using farmer executable without `opencl` in fil
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
---chain gemini-1 `
+--chain gemini-2a `
 --execution wasm `
---blocks-pruning 1024 `
---state-pruning 1024 `
+--state-pruning archive `
 --validator `
 --name INSERT_YOUR_ID
 ```
@@ -73,7 +62,7 @@ Installing OpenCL GPU drivers or using farmer executable without `opencl` in fil
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-windows
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 1
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 2a
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at C:\Users\X\AppData\Local\subspace-node-windows-x86_64-snapshot-2022-jan-05.exe\data\chains\subspace_test\db\full
@@ -130,10 +119,9 @@ GPU is not required generally for farmer to work and is not used at all after in
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-1 \
+  --chain gemini-2a \
   --execution wasm \
-  --blocks-pruning 1024 \
-  --state-pruning 1024 \
+  --state-pruning archive \
   --validator \
   --name INSERT_YOUR_ID
 ```
@@ -142,7 +130,7 @@ GPU is not required generally for farmer to work and is not used at all after in
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-ubuntu
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 1
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 2a
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /home/X/.local/share/subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -183,10 +171,9 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-1 \
+  --chain gemini-2a \
   --execution wasm \
-  --blocks-pruning 1024 \
-  --state-pruning 1024 \
+  --state-pruning archive \
   --validator \
   --name INSERT_YOUR_ID
 ```
@@ -195,7 +182,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 1
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 2a
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -243,11 +230,10 @@ services:
       - "0.0.0.0:30333:30333"
     restart: unless-stopped
     command: [
-      "--chain", "gemini-1",
+      "--chain", "gemini-2a",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
-      "--blocks-pruning", "1024",
-      "--state-pruning", "1024",
+      "--state-pruning", "archive",
       "--port", "30333",
       "--rpc-cors", "all",
       "--rpc-methods", "safe",
@@ -312,14 +298,11 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 # 🤔Notes
 
-## Checking results and interacting with farmnet
+## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Fna.gemini-1b.subspace.network%2Fws#/explorer), from there you can interact with the Subspace Farmnet as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-2a.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
 
-## Invalid Solution
-If you are getting `invalid solution` errors (visible on the terminal that Node runs), please follow "Switching to a new snapshot" steps below and start afresh.
-
-## Switching to a new snapshot
+## Switching from older/different versions of Subspace
 
 ### CLI
 
@@ -328,7 +311,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain gemini-1
+./NODE_FILE_NAME purge-chain --chain gemini-2a
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -350,8 +333,8 @@ Below are some helpful samples:
 
 - `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
 - `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
-- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-1 ...` : start node and store data in `/path/to/data` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-1` : erases data related to the node if data were stored in `/path/to/data`
+- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-2a ...` : start node and store data in `/path/to/data` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-2a` : erases data related to the node if data were stored in `/path/to/data`
 
 Examples:
 ```bash
@@ -359,22 +342,6 @@ Examples:
 ./FARMER_FILE_NAME farm --help
 ./FARMER_FILE_NAME wipe
 ```
-
-## [Advanced] Running an archival node
-
-Instructions above will get you full node (doesn't store the history and state of the whole blockchain, only last 1024
-blocks). If you want to opt in to storing the whole history (archival node), remove following parameters (lines) from
-above instructions before starting your node:
-* `--blocks-pruning 1024`
-* `--state-pruning 1024`
-
-And instead add this:
-* `--state-pruning archive-canonical`
-
-Archival node is useful if you run an RPC node and want to support querying older blockchain history.
-
-NOTE: You can't switch between full and archival node without wiping it, so if you need that, follow steps in
-[Switching to a new snapshot](#switching-to-a-new-snapshot) section above.
 
 ## [Advanced] Support for multiple disks (including HDD/SSD separation)
 

@@ -14,6 +14,13 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{Config, RelayMode};
 use tracing::{info, trace, warn};
 
+const GEMINI_2A_GENESIS_HASH: [u8; 32] = [
+    0x43, 0xd1, 0x0f, 0xfd, 0x50, 0x99, 0x03, 0x80, 0xff, 0xe6, 0xc9, 0x39, 0x21, 0x45, 0x43, 0x1d,
+    0x63, 0x0a, 0xe6, 0x7e, 0x89, 0xdb, 0xc9, 0xc0, 0x14, 0xca, 0xc2, 0xa4, 0x17, 0x75, 0x91, 0x01,
+];
+// 100GiB
+const GEMINI_2A_MAX_ALLOCATED_SIZE: u64 = 100 * 1024 * 1024 * 1024;
+
 struct CallOnDrop<F>(Option<F>)
 where
     F: FnOnce() + Send + 'static;
@@ -97,7 +104,7 @@ pub(crate) async fn farm_multi_disk(
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later (note that multiple farms can use the same location for metadata)
-    for disk_farm in disk_farms {
+    for (farm_index, mut disk_farm) in disk_farms.into_iter().enumerate() {
         if disk_farm.allocated_plotting_space < 1024 * 1024 {
             return Err(anyhow::anyhow!(
                 "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
@@ -113,6 +120,22 @@ pub(crate) async fn farm_multi_disk(
             .farmer_protocol_info()
             .await
             .map_err(|error| anyhow!(error))?;
+
+        if farmer_protocol_info.genesis_hash == GEMINI_2A_GENESIS_HASH {
+            if farm_index > 0 {
+                warn!("This chain only supports one disk farm");
+                break;
+            }
+
+            if disk_farm.allocated_plotting_space > GEMINI_2A_MAX_ALLOCATED_SIZE {
+                warn!(
+                    "This chain only supports up to 100GiB of allocated space, force-limiting \
+                    allocated space to 100GiB"
+                );
+
+                disk_farm.allocated_plotting_space = GEMINI_2A_MAX_ALLOCATED_SIZE;
+            }
+        }
 
         if let Some(max_plot_size) = max_plot_size {
             let max_plot_size = max_plot_size.as_u64();
