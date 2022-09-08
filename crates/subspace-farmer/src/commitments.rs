@@ -22,8 +22,8 @@ use tracing::trace;
 /// Number of pieces to read at once during commitments creation (16MiB)
 const PLOT_READ_BATCH_SIZE: u64 = (16 * 1024 * 1024 / PIECE_SIZE) as u64;
 const PIECE_OFFSET_SIZE: usize = mem::size_of::<PieceOffset>();
-/// Number of commitments to store in memory before writing as a batch to disk (16MiB)
-const TAGS_WRITE_BATCH_SIZE: usize = 16 * 1024 * 1024 / (TAG_SIZE + PIECE_OFFSET_SIZE);
+/// Number of commitments to store in memory before writing as a batch to disk (4MiB)
+const TAGS_WRITE_BATCH_SIZE: usize = 4 * 1024 * 1024 / (TAG_SIZE + PIECE_OFFSET_SIZE);
 
 #[derive(Debug, Error)]
 pub enum CommitmentError {
