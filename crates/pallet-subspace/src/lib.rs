@@ -1065,6 +1065,9 @@ impl<T: Config> Pallet<T> {
                         solution_range,
                         voting_solution_range,
                     });
+                    frame_system::Pallet::<T>::deposit_log(DigestItem::next_solution_range(
+                        solution_range,
+                    ));
                 }
             });
         }
