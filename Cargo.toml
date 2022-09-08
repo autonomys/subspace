@@ -85,5 +85,3 @@ codegen-units = 1
 # TODO: Remove once chacha20poly1305 0.10 appears in libp2p's dependencies
 chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }
 libp2p = { git = "https://github.com/subspace/rust-libp2p", branch = "subspace-v3" }
-# TODO: Remove once parity-db 0.3.17 will be released (see https://github.com/paritytech/parity-db/issues/89)
-parity-db = { git = "https://github.com/paritytech/parity-db/", rev = "d324a26daabda11a2307de607d0a614a567b44ba" }
