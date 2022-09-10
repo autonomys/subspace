@@ -20,7 +20,7 @@ pub(super) struct CreateDbEntryResult {
 
 pub(super) struct DbEntry {
     salt: Salt,
-    db: Mutex<Option<Arc<Db>>>,
+    db: Mutex<Option<Arc<(Db, Options)>>>,
 }
 
 impl fmt::Debug for DbEntry {
@@ -30,7 +30,7 @@ impl fmt::Debug for DbEntry {
 }
 
 impl Deref for DbEntry {
-    type Target = Mutex<Option<Arc<Db>>>;
+    type Target = Mutex<Option<Arc<(Db, Options)>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.db
@@ -40,6 +40,18 @@ impl Deref for DbEntry {
 impl DbEntry {
     pub(super) fn salt(&self) -> Salt {
         self.salt
+    }
+
+    pub(super) fn reopen(&self) -> Result<(), CommitmentError> {
+        let mut inner = self.db.lock();
+        if let Some(db_with_options) = inner.take() {
+            let options = db_with_options.1.clone();
+            drop(db_with_options);
+            let db = Db::open_or_create(&options).map_err(CommitmentError::CommitmentDb)?;
+            inner.replace(Arc::new((db, options)));
+        }
+
+        Ok(())
     }
 }
 
@@ -94,7 +106,7 @@ impl CommitmentDatabases {
                     *salt,
                     Arc::new(DbEntry {
                         salt: *salt,
-                        db: Mutex::new(Some(Arc::new(db))),
+                        db: Mutex::new(Some(Arc::new((db, options)))),
                     }),
                 );
             }
