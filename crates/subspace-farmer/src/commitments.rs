@@ -146,7 +146,9 @@ impl Commitments {
                 salt: None,
             };
             db_entry.lock().replace(Arc::new(
-                Db::open_or_create(&options).map_err(CommitmentError::CommitmentDb)?,
+                Db::open_or_create(&options)
+                    .map(|db| (db, options))
+                    .map_err(CommitmentError::CommitmentDb)?,
             ));
         }
 
@@ -179,7 +181,8 @@ impl Commitments {
 
             let db_guard = db_entry.lock();
 
-            if let Some(db) = db_guard.as_ref() {
+            if let Some(db_with_options) = db_guard.as_ref() {
+                let (db, _options) = db_with_options.as_ref();
                 for (tag, offset) in tags.into_iter().zip(batch_start..) {
                     tags_with_offset.push((tag, offset.to_le_bytes()));
                 }
@@ -195,6 +198,11 @@ impl Commitments {
                     .map_err(CommitmentError::CommitmentDb)?;
 
                     tags_with_offset.clear();
+
+                    // Hack: Reopen database to free memory, see
+                    // https://github.com/paritytech/parity-db/issues/93#issuecomment-1241812705
+                    drop(db_guard);
+                    db_entry.reopen()?;
                 }
             } else {
                 // Database was already removed, no need to continue
@@ -207,7 +215,9 @@ impl Commitments {
             if let Some(db_entry) = self.get_db_entry(salt) {
                 let db_guard = db_entry.lock();
 
-                if let Some(db) = db_guard.as_ref() {
+                if let Some(db_with_options) = db_guard.as_ref() {
+                    let (db, _options) = db_with_options.as_ref();
+
                     tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
 
                     db.commit(
@@ -216,6 +226,11 @@ impl Commitments {
                             .map(|(tag, offset)| (0, tag, Some(offset.to_vec()))),
                     )
                     .map_err(CommitmentError::CommitmentDb)?;
+
+                    // Hack: Reopen database to free memory, see
+                    // https://github.com/paritytech/parity-db/issues/93#issuecomment-1241812705
+                    drop(db_guard);
+                    db_entry.reopen()?;
                 }
             }
 
@@ -255,13 +270,15 @@ impl Commitments {
             let salt = db_entry.salt();
             let db_guard = db_entry.lock();
 
-            if let Some(db) = db_guard.as_ref() {
-                db.commit(
-                    pieces
-                        .iter()
-                        .map(|piece| (0, create_tag(piece, salt), None)),
-                )
-                .map_err(CommitmentError::CommitmentDb)?;
+            if let Some(db_with_options) = db_guard.as_ref() {
+                db_with_options
+                    .0
+                    .commit(
+                        pieces
+                            .iter()
+                            .map(|piece| (0, create_tag(piece, salt), None)),
+                    )
+                    .map_err(CommitmentError::CommitmentDb)?;
             }
         }
 
@@ -285,19 +302,21 @@ impl Commitments {
             let salt = db_entry.salt();
             let db_guard = db_entry.lock();
 
-            if let Some(db) = db_guard.as_ref() {
+            if let Some(db_with_options) = db_guard.as_ref() {
                 let mut tags_with_offset: Vec<(Tag, PieceOffset)> = pieces_with_offsets()
                     .map(|(piece_offset, piece)| (create_tag(piece, salt), piece_offset))
                     .collect();
 
                 tags_with_offset.sort_by(|(tag_a, _), (tag_b, _)| tag_a.cmp(tag_b));
 
-                db.commit(
-                    tags_with_offset
-                        .into_iter()
-                        .map(|(tag, offset)| (0, tag, Some(offset.to_le_bytes().to_vec()))),
-                )
-                .map_err(CommitmentError::CommitmentDb)?;
+                db_with_options
+                    .0
+                    .commit(
+                        tags_with_offset
+                            .into_iter()
+                            .map(|(tag, offset)| (0, tag, Some(offset.to_le_bytes().to_vec()))),
+                    )
+                    .map_err(CommitmentError::CommitmentDb)?;
             };
         }
 
@@ -326,13 +345,13 @@ impl Commitments {
                 return Vec::new();
             }
         };
-        let db = match db_guard.as_ref() {
-            Some(db) => db,
+        let db_with_options = match db_guard.as_ref() {
+            Some(db_with_options) => db_with_options,
             None => {
                 return Vec::new();
             }
         };
-        let iter = match db.iter(0) {
+        let iter = match db_with_options.0.iter(0) {
             Ok(iter) => iter,
             Err(_) => {
                 return Vec::new();
