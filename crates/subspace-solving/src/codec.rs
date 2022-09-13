@@ -23,7 +23,7 @@ use sloth256_189::cpu;
 use sloth256_189::opencl::{self, OpenClBatch, OpenClEncoder};
 #[cfg(feature = "opencl")]
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::{crypto, PieceIndex, Sha256Hash, PIECE_SIZE};
+use subspace_core_primitives::{crypto, Blake2b256Hash, PieceIndex, PIECE_SIZE};
 
 /// Number of pieces for GPU to encode in a batch
 #[cfg(feature = "opencl")]
@@ -77,7 +77,7 @@ fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index:
 /// to decode them after reading from disk.
 #[derive(Debug, Clone)]
 pub struct SubspaceCodec {
-    farmer_public_key_hash: Sha256Hash,
+    farmer_public_key_hash: Blake2b256Hash,
     #[cfg(feature = "opencl")]
     // Type is so complicated in order to make everything thread safe and cloneable
     opencl_encoder: Arc<Mutex<Option<OpenClEncoder>>>,
@@ -88,7 +88,7 @@ impl SubspaceCodec {
     /// New instance with 256-bit prime and 4096-byte genesis piece size
     pub fn new(farmer_public_key: &[u8]) -> Self {
         Self {
-            farmer_public_key_hash: crypto::sha256_hash(farmer_public_key),
+            farmer_public_key_hash: crypto::blake2b_256_hash(farmer_public_key),
             #[cfg(feature = "opencl")]
             opencl_encoder: Arc::default(),
             #[cfg(feature = "std")]
@@ -110,7 +110,7 @@ impl SubspaceCodec {
             .ok(),
         ));
         Self {
-            farmer_public_key_hash: crypto::sha256_hash(farmer_public_key),
+            farmer_public_key_hash: crypto::blake2b_256_hash(farmer_public_key),
             #[cfg(feature = "opencl")]
             opencl_encoder,
             #[cfg(feature = "std")]
@@ -224,7 +224,7 @@ impl SubspaceCodec {
         cpu::decode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
     }
 
-    fn create_expanded_iv(&self, piece_index: PieceIndex) -> Sha256Hash {
+    fn create_expanded_iv(&self, piece_index: PieceIndex) -> Blake2b256Hash {
         let mut expanded_iv = self.farmer_public_key_hash;
 
         mix_public_key_hash_with_piece_index(&mut expanded_iv, piece_index);
@@ -263,10 +263,10 @@ impl SubspaceCodec {
         pieces: &mut [u8],
         piece_indexes: &[u64],
     ) -> Result<(), opencl::OpenCLEncodeError> {
-        use subspace_core_primitives::SHA256_HASH_SIZE;
-        let mut expanded_ivs = vec![0u8; pieces.len() / PIECE_SIZE * SHA256_HASH_SIZE];
+        use subspace_core_primitives::BLAKE2B_256_HASH_SIZE;
+        let mut expanded_ivs = vec![0u8; pieces.len() / PIECE_SIZE * BLAKE2B_256_HASH_SIZE];
         expanded_ivs
-            .par_chunks_exact_mut(SHA256_HASH_SIZE)
+            .par_chunks_exact_mut(BLAKE2B_256_HASH_SIZE)
             .zip_eq(piece_indexes)
             .for_each(|(expanded_iv, &piece_index)| {
                 expanded_iv.copy_from_slice(&self.farmer_public_key_hash);

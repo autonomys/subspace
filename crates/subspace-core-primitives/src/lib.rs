@@ -40,6 +40,9 @@ use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
+/// Size of BLAKE2b-256 hash output (in bytes).
+pub const BLAKE2B_256_HASH_SIZE: usize = 32;
+
 /// Size of Sha2-256 hash output (in bytes)
 pub const SHA256_HASH_SIZE: usize = 32;
 
@@ -50,6 +53,9 @@ pub const PIECE_SIZE: usize = 4096;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
+
+/// BLAKE2b-256 hash output
+pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
 
 /// Sha2-256 hash output
 pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
@@ -90,7 +96,7 @@ pub type BlockWeight = u128;
 pub type SegmentIndex = u64;
 
 /// Records root type.
-pub type RecordsRoot = Sha256Hash;
+pub type RecordsRoot = Blake2b256Hash;
 
 /// Eon Index type.
 pub type EonIndex = u64;
@@ -112,7 +118,7 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 ///   data stored on the network
 pub const MERKLE_NUM_LEAVES: u32 = 256;
 /// Size of witness for a segment record (in bytes).
-pub const WITNESS_SIZE: u32 = SHA256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
+pub const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
@@ -448,7 +454,7 @@ pub enum RootBlock {
         /// Merkle root of the records in a segment.
         records_root: RecordsRoot,
         /// Hash of the root block of the previous segment
-        prev_root_block_hash: Sha256Hash,
+        prev_root_block_hash: Blake2b256Hash,
         /// Last archived block
         last_archived_block: LastArchivedBlock,
     },
@@ -456,8 +462,8 @@ pub enum RootBlock {
 
 impl RootBlock {
     /// Hash of the whole root block
-    pub fn hash(&self) -> Sha256Hash {
-        crypto::sha256_hash(&self.encode())
+    pub fn hash(&self) -> Blake2b256Hash {
+        crypto::blake2b_256_hash(&self.encode())
     }
 
     /// Segment index
@@ -475,7 +481,7 @@ impl RootBlock {
     }
 
     /// Hash of the root block of the previous segment
-    pub fn prev_root_block_hash(&self) -> Sha256Hash {
+    pub fn prev_root_block_hash(&self) -> Blake2b256Hash {
         match self {
             Self::V0 {
                 prev_root_block_hash,
@@ -501,16 +507,16 @@ pub type PieceIndex = u64;
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PieceIndexHash(Sha256Hash);
+pub struct PieceIndexHash(Blake2b256Hash);
 
-impl From<PieceIndexHash> for Sha256Hash {
+impl From<PieceIndexHash> for Blake2b256Hash {
     fn from(piece_index_hash: PieceIndexHash) -> Self {
         piece_index_hash.0
     }
 }
 
-impl From<Sha256Hash> for PieceIndexHash {
-    fn from(hash: Sha256Hash) -> Self {
+impl From<Blake2b256Hash> for PieceIndexHash {
+    fn from(hash: Blake2b256Hash) -> Self {
         Self(hash)
     }
 }
@@ -524,7 +530,7 @@ impl AsRef<[u8]> for PieceIndexHash {
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(crypto::sha256_hash(&index.to_le_bytes()))
+        Self(crypto::blake2b_256_hash(&index.to_le_bytes()))
     }
 }
 

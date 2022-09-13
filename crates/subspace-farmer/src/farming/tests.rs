@@ -10,7 +10,7 @@ use futures::{SinkExt, StreamExt};
 use std::num::NonZeroU16;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, SolutionRange, Tag, SHA256_HASH_SIZE};
+use subspace_core_primitives::{FlatPieces, Salt, SolutionRange, Tag, BLAKE2B_256_HASH_SIZE};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
@@ -118,7 +118,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 async fn farming_happy_path() {
     let slot_info = SlotInfo {
         slot_number: 3,
-        global_challenge: [1; SHA256_HASH_SIZE],
+        global_challenge: [1; BLAKE2B_256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: SolutionRange::MAX,
@@ -136,7 +136,7 @@ async fn farming_happy_path() {
 async fn farming_salt_change() {
     let first_slot = SlotInfo {
         slot_number: 1,
-        global_challenge: [1; SHA256_HASH_SIZE],
+        global_challenge: [1; BLAKE2B_256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: SolutionRange::MAX,
@@ -144,7 +144,7 @@ async fn farming_salt_change() {
     };
     let second_slot = SlotInfo {
         slot_number: 2,
-        global_challenge: [1; SHA256_HASH_SIZE],
+        global_challenge: [1; BLAKE2B_256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 1],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: SolutionRange::MAX,
@@ -152,7 +152,7 @@ async fn farming_salt_change() {
     };
     let third_slot = SlotInfo {
         slot_number: 3,
-        global_challenge: [1; SHA256_HASH_SIZE],
+        global_challenge: [1; BLAKE2B_256_HASH_SIZE],
         salt: [1, 1, 1, 1, 1, 1, 1, 2],
         next_salt: Some([1, 1, 1, 1, 1, 1, 1, 2]),
         solution_range: SolutionRange::MAX,

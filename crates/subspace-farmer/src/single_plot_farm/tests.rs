@@ -13,14 +13,14 @@ use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::AtomicBool;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, SHA256_HASH_SIZE};
+use subspace_core_primitives::{PieceIndexHash, Salt, BLAKE2B_256_HASH_SIZE, PIECE_SIZE};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 use tracing::error;
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize; // 96
+const WITNESS_SIZE: usize = BLAKE2B_256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize; // 96
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE; // 4000
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
 

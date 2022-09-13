@@ -36,7 +36,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
@@ -48,7 +48,7 @@ pub(super) struct ExecutorSlotInfo {
     /// Slot
     pub(super) slot: Slot,
     /// Global slot challenge
-    pub(super) global_challenge: Sha256Hash,
+    pub(super) global_challenge: Blake2b256Hash,
 }
 
 /// An event telling the `Overseer` on the particular block
@@ -111,7 +111,7 @@ pub(super) async fn start_worker<
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Sha256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {

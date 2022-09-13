@@ -6,11 +6,11 @@ use subspace_archiving::reconstructor::{
 };
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PIECE_SIZE, SHA256_HASH_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize;
+const WITNESS_SIZE: usize = BLAKE2B_256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 

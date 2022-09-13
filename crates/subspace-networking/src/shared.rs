@@ -16,7 +16,7 @@ use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::{identity, Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::sha256_hash;
+use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::PUBLIC_KEY_LENGTH;
 use typenum::U32;
 
@@ -116,7 +116,7 @@ impl PreimageIntoKeyBytes<Multihash> for IdendityHash {
         }
 
         // MultihashCode::Piece, MultihashCode::PieceIndex are hashed with the
-        // SHA256 similar to unknown multihash types.
+        // Blake2b-256 similar to unknown multihash types.
         default_key_bytes_conversion(&multihash.to_bytes())
     }
 }
@@ -165,9 +165,9 @@ impl PreimageIntoKeyBytes<Vec<u8>> for IdendityHash {
     }
 }
 
-// Default KeyBytes converter. It hashes bytes with Sha256 similar to the
+// Default KeyBytes converter. It hashes bytes with Blake2b-256 similar to the
 // default Kademlia's `PreimageIntoKeyBytes` implementation.
 #[inline]
 fn default_key_bytes_conversion<T>(bytes: &[u8]) -> KeyBytes<T> {
-    KeyBytes::from_unchecked(*GenericArray::from_slice(&sha256_hash(bytes)))
+    KeyBytes::from_unchecked(*GenericArray::from_slice(&blake2b_256_hash(bytes)))
 }

@@ -5,7 +5,7 @@ use futures::StreamExt;
 use std::{io, thread};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::Blake2b256Hash;
 use subspace_networking::PiecesToPlot;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use thiserror::Error;
@@ -162,7 +162,7 @@ impl Archiving {
 fn create_global_object_mapping(
     piece_index_offset: u64,
     object_mapping: Vec<PieceObjectMapping>,
-) -> Vec<(Sha256Hash, GlobalObject)> {
+) -> Vec<(Blake2b256Hash, GlobalObject)> {
     object_mapping
         .iter()
         .enumerate()

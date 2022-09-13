@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{fmt, iter};
 use subspace_core_primitives::objects::GlobalObject;
-use subspace_core_primitives::{bidirectional_distance, PublicKey, Sha256Hash, U256};
+use subspace_core_primitives::{bidirectional_distance, Blake2b256Hash, PublicKey, U256};
 use thiserror::Error;
 
 /// How full should object mappings database be before we try to prune some values
@@ -26,7 +26,7 @@ enum Columns {
 }
 
 struct FurthestKey {
-    key: Sha256Hash,
+    key: Blake2b256Hash,
     /// Size of key + value together
     size: u16,
 }
@@ -179,7 +179,7 @@ impl ObjectMappings {
     /// Retrieve mapping for object
     pub fn retrieve(
         &self,
-        object_id: &Sha256Hash,
+        object_id: &Blake2b256Hash,
     ) -> Result<Option<GlobalObject>, ObjectMappingError> {
         Ok(self
             .inner
@@ -192,7 +192,7 @@ impl ObjectMappings {
     /// configured size
     pub fn store(
         &self,
-        object_mapping: &[(Sha256Hash, GlobalObject)],
+        object_mapping: &[(Blake2b256Hash, GlobalObject)],
     ) -> Result<(), ObjectMappingError> {
         let bytes_to_write = RefCell::new(0u64);
         let store = self.inner.max_distance.lock().as_ref().map(|max_distance| {

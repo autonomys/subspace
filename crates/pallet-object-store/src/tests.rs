@@ -8,7 +8,7 @@ const ACCOUNT_ID: u64 = 100;
 fn can_do_put() {
     new_test_ext().execute_with(|| {
         let object = vec![1, 2, 3, 4, 5];
-        let object_id = crypto::sha256_hash(&object);
+        let object_id = crypto::blake2b_256_hash(&object);
         let object_size = object.len() as u32;
 
         assert_ok!(ObjectStore::put(Origin::signed(ACCOUNT_ID), object));

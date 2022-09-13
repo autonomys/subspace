@@ -31,8 +31,8 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    crypto, ArchivedBlockProgress, BlockNumber, FlatPieces, LastArchivedBlock, RootBlock,
-    Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    crypto, ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock,
+    RootBlock, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -202,7 +202,7 @@ pub struct Archiver {
     /// An index of the current segment
     segment_index: u64,
     /// Hash of the root block of the previous segment
-    prev_root_block_hash: Sha256Hash,
+    prev_root_block_hash: Blake2b256Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
 }
@@ -243,7 +243,7 @@ impl Archiver {
 
         // We take N data records and will creates the same number of parity records, hence `*2`
         let merkle_num_leaves = segment_size / record_size * 2;
-        let witness_size = SHA256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
+        let witness_size = BLAKE2B_256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
         if record_size + witness_size != PIECE_SIZE {
             return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
         }
@@ -261,7 +261,7 @@ impl Archiver {
             segment_size,
             reed_solomon,
             segment_index: 0,
-            prev_root_block_hash: Sha256Hash::default(),
+            prev_root_block_hash: Blake2b256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
     }
@@ -707,7 +707,12 @@ impl Archiver {
 }
 
 /// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(piece: &[u8], root: Sha256Hash, position: usize, record_size: usize) -> bool {
+pub fn is_piece_valid(
+    piece: &[u8],
+    root: Blake2b256Hash,
+    position: usize,
+    record_size: usize,
+) -> bool {
     if piece.len() != PIECE_SIZE {
         return false;
     }
@@ -719,7 +724,7 @@ pub fn is_piece_valid(piece: &[u8], root: Sha256Hash, position: usize, record_si
             return false;
         }
     };
-    let leaf_hash = crypto::sha256_hash(record);
+    let leaf_hash = crypto::blake2b_256_hash(record);
 
     witness.is_valid(root, position, leaf_hash)
 }

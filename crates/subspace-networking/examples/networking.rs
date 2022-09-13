@@ -5,7 +5,7 @@ use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::Blake2b256Hash;
 use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 const TOPIC: &str = "Foo";
@@ -70,7 +70,7 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let key = subspace_networking::multimess::create_piece_multihash(&Sha256Hash::default(), 1);
+    let key = subspace_networking::multimess::create_piece_multihash(&Blake2b256Hash::default(), 1);
     println!("Get value result for:");
     println!("Key: {key:?}");
     let result = node_2.get_value(key).await;

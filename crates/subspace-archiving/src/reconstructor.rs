@@ -8,7 +8,7 @@ use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::{
     ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, SegmentIndex,
-    PIECE_SIZE, SHA256_HASH_SIZE,
+    BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
 };
 
 /// Reconstructor-related instantiation error.
@@ -99,7 +99,7 @@ impl Reconstructor {
 
         // We take N data records and will creates the same number of parity records, hence `*2`
         let merkle_num_leaves = segment_size / record_size * 2;
-        let witness_size = SHA256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
+        let witness_size = BLAKE2B_256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
         if record_size + witness_size != PIECE_SIZE {
             return Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination);
         }

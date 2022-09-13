@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::objects::GlobalObject;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, SegmentIndex, Sha256Hash};
+use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndex, PieceIndexHash, SegmentIndex};
 use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
@@ -79,42 +79,42 @@ impl AsMut<[u8]> for HexPiece {
     }
 }
 
-/// Similar to [`Sha256Hash`], but serializes/deserialized to/from hex string
+/// Similar to [`Blake2b256Hash`], but serializes/deserialized to/from hex string
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct HexSha256Hash(#[serde(with = "hex::serde")] Sha256Hash);
+pub struct HexBlake2b256Hash(#[serde(with = "hex::serde")] Blake2b256Hash);
 
-impl From<Sha256Hash> for HexSha256Hash {
-    fn from(hash: Sha256Hash) -> Self {
-        HexSha256Hash(hash)
+impl From<Blake2b256Hash> for HexBlake2b256Hash {
+    fn from(hash: Blake2b256Hash) -> Self {
+        HexBlake2b256Hash(hash)
     }
 }
 
-impl From<HexSha256Hash> for Sha256Hash {
-    fn from(piece: HexSha256Hash) -> Self {
+impl From<HexBlake2b256Hash> for Blake2b256Hash {
+    fn from(piece: HexBlake2b256Hash) -> Self {
         piece.0
     }
 }
 
-impl Deref for HexSha256Hash {
+impl Deref for HexBlake2b256Hash {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for HexSha256Hash {
+impl DerefMut for HexBlake2b256Hash {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl AsRef<[u8]> for HexSha256Hash {
+impl AsRef<[u8]> for HexBlake2b256Hash {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl AsMut<[u8]> for HexSha256Hash {
+impl AsMut<[u8]> for HexBlake2b256Hash {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
@@ -141,7 +141,7 @@ pub trait Rpc {
 
     /// Find object by its ID
     #[method(name = "findObject", blocking)]
-    fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error>;
+    fn find_object(&self, object_id: HexBlake2b256Hash) -> Result<Option<Object>, Error>;
 }
 
 /// Farmer RPC server implementation.
@@ -478,7 +478,7 @@ impl RpcServer for RpcServerImpl {
     }
 
     /// Find object by its ID
-    fn find_object(&self, object_id: HexSha256Hash) -> Result<Option<Object>, Error> {
+    fn find_object(&self, object_id: HexBlake2b256Hash) -> Result<Option<Object>, Error> {
         let global_object_handle = || -> Result<Option<GlobalObject>, ObjectMappingError> {
             for object_mappings in self.object_mappings.iter() {
                 let maybe_global_object = object_mappings.retrieve(&object_id.into())?;

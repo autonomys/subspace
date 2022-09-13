@@ -6,11 +6,12 @@ use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, RootBlock, Sha256Hash, PIECE_SIZE, SHA256_HASH_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, RootBlock, BLAKE2B_256_HASH_SIZE,
+    PIECE_SIZE,
 };
 
 const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = SHA256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize;
+const WITNESS_SIZE: usize = BLAKE2B_256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize;
 const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
 const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
@@ -52,11 +53,11 @@ fn archiver() {
         let object_mapping = BlockObjectMapping {
             objects: vec![
                 BlockObject::V0 {
-                    hash: Sha256Hash::default(),
+                    hash: Blake2b256Hash::default(),
                     offset: 0u32,
                 },
                 BlockObject::V0 {
-                    hash: Sha256Hash::default(),
+                    hash: Blake2b256Hash::default(),
                     offset: 7000u32,
                 },
             ],
@@ -86,15 +87,15 @@ fn archiver() {
         let object_mapping = BlockObjectMapping {
             objects: vec![
                 BlockObject::V0 {
-                    hash: Sha256Hash::default(),
+                    hash: Blake2b256Hash::default(),
                     offset: 100u32,
                 },
                 BlockObject::V0 {
-                    hash: Sha256Hash::default(),
+                    hash: Blake2b256Hash::default(),
                     offset: 1000u32,
                 },
                 BlockObject::V0 {
-                    hash: Sha256Hash::default(),
+                    hash: Blake2b256Hash::default(),
                     offset: 10000u32,
                 },
             ],
@@ -110,7 +111,7 @@ fn archiver() {
     assert_eq!(first_archived_segment.root_block.segment_index(), 0);
     assert_eq!(
         first_archived_segment.root_block.prev_root_block_hash(),
-        [0u8; SHA256_HASH_SIZE]
+        [0u8; BLAKE2B_256_HASH_SIZE]
     );
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
@@ -309,8 +310,8 @@ fn invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                records_root: Sha256Hash::default(),
-                prev_root_block_hash: Sha256Hash::default(),
+                records_root: Blake2b256Hash::default(),
+                prev_root_block_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
                     archived_progress: ArchivedBlockProgress::Partial(10),
@@ -336,8 +337,8 @@ fn invalid_usage() {
             SEGMENT_SIZE,
             RootBlock::V0 {
                 segment_index: 0,
-                records_root: Sha256Hash::default(),
-                prev_root_block_hash: Sha256Hash::default(),
+                records_root: Blake2b256Hash::default(),
+                prev_root_block_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
                     archived_progress: ArchivedBlockProgress::Partial(10),
@@ -413,7 +414,7 @@ fn object_on_the_edge_of_segment() {
         vec![0u8; SEGMENT_SIZE * 2],
         BlockObjectMapping {
             objects: vec![BlockObject::V0 {
-                hash: Sha256Hash::default(),
+                hash: Blake2b256Hash::default(),
                 // Offset is designed to fall exactly on the edge of the segment and is equal to
                 // segment size minus:
                 // * one byte for segment enum variant

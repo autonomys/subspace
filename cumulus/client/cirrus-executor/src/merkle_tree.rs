@@ -1,12 +1,18 @@
+use blake2_rfc::blake2b::Blake2b;
 use merkletree::hash::Algorithm;
-use sha2::{Digest, Sha256};
 use std::hash::Hasher;
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::{Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 
-#[derive(Default, Clone)]
-pub(super) struct Sha256Algorithm(Sha256);
+#[derive(Clone)]
+pub(super) struct Blake2b256Algorithm(Blake2b);
 
-impl Hasher for Sha256Algorithm {
+impl Default for Blake2b256Algorithm {
+    fn default() -> Self {
+        Self(Blake2b::new(BLAKE2B_256_HASH_SIZE))
+    }
+}
+
+impl Hasher for Blake2b256Algorithm {
     #[inline]
     fn write(&mut self, msg: &[u8]) {
         self.0.update(msg);
@@ -18,28 +24,28 @@ impl Hasher for Sha256Algorithm {
     }
 }
 
-impl Algorithm<Sha256Hash> for Sha256Algorithm {
+impl Algorithm<Blake2b256Hash> for Blake2b256Algorithm {
     #[inline]
-    fn hash(&mut self) -> Sha256Hash {
+    fn hash(&mut self) -> Blake2b256Hash {
         self.0
             .clone()
             .finalize()
-            .as_slice()
+            .as_bytes()
             .try_into()
-            .expect("Sha256 output is always 32 bytes; qed")
+            .expect("Initialized with correct length; qed")
     }
 
     #[inline]
     fn reset(&mut self) {
-        self.0.reset();
+        *self = Self::default();
     }
 }
 
 /// Merkle tree type for execution trace.
 pub(super) type MerkleTree = merkletree::merkle::MerkleTree<
-    Sha256Hash,
-    Sha256Algorithm,
-    merkletree::store::VecStore<Sha256Hash>,
+    Blake2b256Hash,
+    Blake2b256Algorithm,
+    merkletree::store::VecStore<Blake2b256Hash>,
 >;
 
 pub(super) fn construct_trace_merkle_tree(

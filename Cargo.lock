@@ -768,6 +768,7 @@ dependencies = [
 name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
+ "blake2-rfc",
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
  "cirrus-primitives",
@@ -790,7 +791,6 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
- "sha2 0.10.2",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -7858,13 +7858,13 @@ dependencies = [
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
+ "blake2-rfc",
  "criterion",
  "merkle_light",
  "parity-scale-codec",
  "rand 0.8.5",
  "reed-solomon-erasure",
  "serde",
- "sha2 0.10.2",
  "subspace-core-primitives",
  "thiserror",
 ]
@@ -7873,6 +7873,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "blake2-rfc",
  "derive_more",
  "hex",
  "hmac 0.12.1",

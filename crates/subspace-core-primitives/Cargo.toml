@@ -12,6 +12,8 @@ include = [
 ]
 
 [dependencies]
+# Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
+blake2-rfc = { version = "0.2.18", default-features = false }
 derive_more = "0.99.17"
 hex = { version  = "0.4.3", default-features = false }
 hmac = { version  = "0.12.1", default-features = false }
@@ -36,6 +38,7 @@ version = "0.10.2"
 [features]
 default = ["std"]
 std = [
+    "blake2-rfc/std",
     "hex/serde",
     "hex/std",
     "hmac/std",
