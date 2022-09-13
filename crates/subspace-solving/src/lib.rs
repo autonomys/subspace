@@ -45,7 +45,7 @@ pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
 
 /// Create a commitment tag of a piece for a particular salt.
 pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
-    crypto::hmac_sha256(&salt, piece)[..TAG_SIZE]
+    crypto::blake2b_256_hash_with_key(piece, &salt)[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }

@@ -94,9 +94,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
         tokio::select! {
             Some(solution) = client.receive_solution() => {
                 if let Some(solution) = solution.maybe_solution {
-                    if solution.tag != tag {
-                        panic!("Wrong Tag! The expected value was: {:?}", tag);
-                    }
+                    assert_eq!(solution.tag, tag, "Wrong Tag!");
                 } else {
                     panic!("Solution was None! For challenge #: {}", counter);
                 }
@@ -126,7 +124,7 @@ async fn farming_happy_path() {
     };
     let slots = vec![slot_info];
 
-    let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
+    let correct_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
     let tags = vec![correct_tag];
 
     farming_simulator(slots, tags).await;
@@ -160,9 +158,9 @@ async fn farming_salt_change() {
     };
     let slots = vec![first_slot, second_slot, third_slot];
 
-    let first_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
-    let second_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
-    let third_tag: Tag = [255, 69, 97, 5, 186, 24, 136, 245];
+    let first_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
+    let second_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
+    let third_tag: Tag = [45, 146, 164, 29, 29, 179, 126, 171];
     let tags = vec![first_tag, second_tag, third_tag];
 
     farming_simulator(slots, tags).await;

@@ -43,9 +43,6 @@ use serde::{Deserialize, Serialize};
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Size of Sha2-256 hash output (in bytes)
-pub const SHA256_HASH_SIZE: usize = 32;
-
 /// Byte size of a piece in Subspace Network, 4KiB.
 ///
 /// This can not changed after the network is launched.
@@ -56,9 +53,6 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 
 /// BLAKE2b-256 hash output
 pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
-
-/// Sha2-256 hash output
-pub type Sha256Hash = [u8; SHA256_HASH_SIZE];
 
 /// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];

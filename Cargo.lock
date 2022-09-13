@@ -2630,15 +2630,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hmac"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
-dependencies = [
- "digest 0.10.3",
-]
-
-[[package]]
 name = "hmac-drbg"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6925,16 +6916,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.3",
- "sha2-asm",
-]
-
-[[package]]
-name = "sha2-asm"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf27176fb5d15398e3a479c652c20459d9dac830dedd1fa55b42a77dbcdbfcea"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -7876,13 +7857,11 @@ dependencies = [
  "blake2-rfc",
  "derive_more",
  "hex",
- "hmac 0.12.1",
  "num-traits",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "serde_arrays",
- "sha2 0.10.2",
  "uint",
 ]
 

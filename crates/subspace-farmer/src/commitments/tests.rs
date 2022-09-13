@@ -21,7 +21,7 @@ fn create() {
 
     let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
     let salt: Salt = [1u8; 8];
-    let correct_tag: Tag = [23, 245, 162, 52, 107, 135, 192, 210];
+    let correct_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
     let solution_range = u64::from_be_bytes([0xff_u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
     let plot = Plot::open_or_create(

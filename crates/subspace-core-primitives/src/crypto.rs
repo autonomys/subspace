@@ -15,14 +15,19 @@
 
 //! Various cryptographic utilities used across Subspace Network.
 
-use crate::{Blake2b256Hash, Sha256Hash, BLAKE2B_256_HASH_SIZE};
+use crate::{Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 use blake2_rfc::blake2b::{blake2b, Blake2b};
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 
 /// BLAKE2b-256 hashing of a single value.
 pub fn blake2b_256_hash(data: &[u8]) -> Blake2b256Hash {
-    blake2b(BLAKE2B_256_HASH_SIZE, &[], data)
+    blake2b_256_hash_with_key(data, &[])
+}
+
+/// BLAKE2b-256 keyed hashing of a single value.
+///
+/// PANIC: Panics if key is longer than 64 bytes.
+pub fn blake2b_256_hash_with_key(data: &[u8], key: &[u8]) -> Blake2b256Hash {
+    blake2b(BLAKE2B_256_HASH_SIZE, key, data)
         .as_bytes()
         .try_into()
         .expect("Initialized with correct length; qed")
@@ -38,19 +43,4 @@ pub fn blake2b_256_hash_pair(a: &[u8], b: &[u8]) -> Blake2b256Hash {
         .as_bytes()
         .try_into()
         .expect("Initialized with correct length; qed")
-}
-
-/// Hmac with Sha2-256 hash function.
-pub fn hmac_sha256(key: &[u8], piece: &[u8]) -> Sha256Hash {
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(key).expect("Sha256 HMAC can take key of any size; qed");
-    mac.update(piece);
-
-    // `result` has type `Output` which is a thin wrapper around array of
-    // bytes for providing constant time equality check
-    mac.finalize()
-        .into_bytes()
-        .as_slice()
-        .try_into()
-        .expect("Sha256 output is always 32 bytes; qed")
 }
