@@ -146,7 +146,7 @@ const SLOT_DURATION: u64 = 300;
 const SLOT_PROBABILITY: (u64, u64) = (1, 1);
 
 /// The amount of time, in blocks, between updates of global randomness.
-const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 100;
+const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
 
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
