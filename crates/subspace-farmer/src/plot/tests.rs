@@ -1,5 +1,6 @@
 use crate::plot::{PieceDistance, Plot};
 use crate::single_plot_farm::SinglePlotFarmId;
+use num_traits::WrappingSub;
 use rand::prelude::*;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECE_SIZE, U256};
@@ -252,8 +253,8 @@ fn test_read_sequential_pieces() {
 
     // Public key in the middle of piece index hashes, so we can test all necessary edge-cases
     let public_key_bytes = {
-        // Just after second out of four hashes
-        (PieceDistance::from(piece_index_hashes[1].0) + PieceDistance::one()).to_be_bytes()
+        // Just after third out of six hashes
+        (PieceDistance::from(expected_piece_index_hashes[2].0) + PieceDistance::one()).to_be_bytes()
     };
     let plot = Plot::open_or_create(
         &SinglePlotFarmId::new(),
@@ -276,12 +277,12 @@ fn test_read_sequential_pieces() {
     // Non-wrapping simple case start at the left side of number line
     {
         let indexes = plot
-            .get_sequential_pieces(piece_index_hashes[1].0, 2)
+            .get_sequential_pieces(expected_piece_index_hashes[1].0, 2)
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
-        let expected_indexes = piece_index_hashes
+        let expected_indexes = expected_piece_index_hashes
             .iter()
             .skip(1)
             .take(2)
@@ -293,12 +294,12 @@ fn test_read_sequential_pieces() {
     // Non-wrapping simple case start at the right side of number line
     {
         let indexes = plot
-            .get_sequential_pieces(piece_index_hashes[3].0, 2)
+            .get_sequential_pieces(expected_piece_index_hashes[3].0, 2)
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
-        let expected_indexes = piece_index_hashes
+        let expected_indexes = expected_piece_index_hashes
             .iter()
             .skip(3)
             .take(2)
@@ -310,13 +311,13 @@ fn test_read_sequential_pieces() {
     // Wrapping before reaching `max`
     {
         let indexes = plot
-            .get_sequential_pieces(piece_index_hashes[3].0, 2)
+            .get_sequential_pieces(expected_piece_index_hashes[3].0, 2)
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         // This will wrap around number line, but will not reach the last pieces index hash
-        let expected_indexes = piece_index_hashes
+        let expected_indexes = expected_piece_index_hashes
             .iter()
             .skip(3)
             .take(2)
@@ -328,13 +329,13 @@ fn test_read_sequential_pieces() {
     // Wrapping that crosses `max`, but doesn't reach `min`
     {
         let indexes = plot
-            .get_sequential_pieces(piece_index_hashes[4].0, 2)
+            .get_sequential_pieces(expected_piece_index_hashes[4].0, 2)
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         // This will wrap around number line and capture `max`, but will not go any further
-        let expected_indexes = piece_index_hashes
+        let expected_indexes = expected_piece_index_hashes
             .iter()
             .skip(4)
             .take(2)
@@ -346,14 +347,14 @@ fn test_read_sequential_pieces() {
     // Wrapping that crosses `max`, and crosses `min`
     {
         let indexes = plot
-            .get_sequential_pieces(piece_index_hashes[4].0, 2)
+            .get_sequential_pieces(expected_piece_index_hashes[4].0, 2)
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         // This will wrap around number line, capture `max` and crosses `min`, but will not
         // capture it because it crosses public key itself
-        let expected_indexes = piece_index_hashes
+        let expected_indexes = expected_piece_index_hashes
             .iter()
             .skip(4)
             .take(2)
@@ -365,13 +366,18 @@ fn test_read_sequential_pieces() {
     // Wrapping case, read more than there is pieces from zero
     {
         let indexes = plot
-            .get_sequential_pieces(PieceIndexHash::from([0; 32]), 10)
+            .get_sequential_pieces(
+                PieceDistance::from_be_bytes(public_key_bytes)
+                    .wrapping_sub(&PieceDistance::MIDDLE)
+                    .into(),
+                10,
+            )
             .unwrap()
             .into_iter()
             .map(|(idx, _)| idx)
             .collect::<Vec<_>>();
         // This should read all piece indexes and nothing else
-        let expected_indexes = piece_index_hashes
+        let expected_indexes = expected_piece_index_hashes
             .iter()
             .map(|(_, index)| *index)
             .collect::<Vec<_>>();
