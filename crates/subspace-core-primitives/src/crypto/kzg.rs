@@ -1,5 +1,7 @@
 //! Tools for KZG commitment scheme
 
+#[cfg(feature = "serde")]
+mod serde;
 #[cfg(test)]
 mod tests;
 
@@ -14,8 +16,10 @@ pub use dusk_plonk::commitment_scheme::PublicParameters;
 pub use dusk_plonk::error::Error;
 use dusk_plonk::fft::domain::EvaluationDomain;
 use dusk_plonk::fft::evaluations::Evaluations;
-pub use dusk_plonk::fft::polynomial::Polynomial;
-pub use dusk_plonk::prelude::BlsScalar;
+use dusk_plonk::fft::polynomial::Polynomial as PlonkPolynomial;
+use dusk_plonk::prelude::BlsScalar;
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+use scale_info::{Type, TypeInfo};
 
 const TEST_PUBLIC_PARAMETERS: &[u8] = include_bytes!("kzg/test-public-parameters.bin");
 
@@ -43,12 +47,201 @@ fn test_public_parameters_correct() {
 }
 
 /// Commitment to polynomial
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
+pub struct Polynomial(PlonkPolynomial);
+
+impl From<Polynomial> for Vec<u8> {
+    fn from(polynomial: Polynomial) -> Vec<u8> {
+        polynomial.0.to_var_bytes()
+    }
+}
+
+impl TryFrom<&[u8]> for Polynomial {
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Polynomial(PlonkPolynomial::from_slice(bytes)?))
+    }
+}
+
+/// Commitment to polynomial
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Commitment(G1Affine);
 
+impl Commitment {
+    /// Convert commitment to raw bytes
+    pub fn to_bytes(&self) -> [u8; 48] {
+        self.0.to_bytes()
+    }
+
+    /// Try to deserialize commitment from raw bytes
+    pub fn try_from_bytes(bytes: &[u8; 48]) -> Result<Self, dusk_bytes::Error> {
+        Ok(Commitment(G1Affine::from_bytes(bytes)?))
+    }
+}
+
+impl From<Commitment> for [u8; 48] {
+    fn from(commitment: Commitment) -> Self {
+        commitment.to_bytes()
+    }
+}
+
+impl From<&Commitment> for [u8; 48] {
+    fn from(commitment: &Commitment) -> Self {
+        commitment.to_bytes()
+    }
+}
+
+impl TryFrom<&[u8; 48]> for Commitment {
+    type Error = dusk_bytes::Error;
+
+    fn try_from(bytes: &[u8; 48]) -> Result<Self, Self::Error> {
+        Self::try_from_bytes(bytes)
+    }
+}
+
+impl TryFrom<[u8; 48]> for Commitment {
+    type Error = dusk_bytes::Error;
+
+    fn try_from(bytes: [u8; 48]) -> Result<Self, Self::Error> {
+        Self::try_from(&bytes)
+    }
+}
+
+impl Encode for Commitment {
+    fn size_hint(&self) -> usize {
+        48
+    }
+
+    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+        f(&self.to_bytes())
+    }
+
+    fn encoded_size(&self) -> usize {
+        48
+    }
+}
+
+impl EncodeLike for Commitment {}
+
+impl Decode for Commitment {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
+            parity_scale_codec::Error::from("Failed to decode from bytes")
+                .chain(alloc::format!("{error:?}"))
+        })
+    }
+
+    fn encoded_fixed_size() -> Option<usize> {
+        Some(48)
+    }
+}
+
+impl TypeInfo for Commitment {
+    type Identity = Self;
+
+    fn type_info() -> Type {
+        Type::builder()
+            .path(scale_info::Path::new(
+                stringify!(Commitment),
+                module_path!(),
+            ))
+            .docs(&["Commitment to polynomial"])
+            .composite(scale_info::build::Fields::named().field(|f| {
+                f.ty::<[u8; 48]>()
+                    .name(stringify!(inner))
+                    .type_name("G1Affine")
+            }))
+    }
+}
+
 /// Witness for polynomial evaluation
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Witness(G1Affine);
+
+impl Witness {
+    /// Convert witness to raw bytes
+    pub fn to_bytes(&self) -> [u8; 48] {
+        self.0.to_bytes()
+    }
+
+    /// Try to deserialize witness from raw bytes
+    pub fn try_from_bytes(bytes: &[u8; 48]) -> Result<Self, dusk_bytes::Error> {
+        Ok(Witness(G1Affine::from_bytes(bytes)?))
+    }
+}
+
+impl From<Witness> for [u8; 48] {
+    fn from(witness: Witness) -> Self {
+        witness.to_bytes()
+    }
+}
+
+impl From<&Witness> for [u8; 48] {
+    fn from(witness: &Witness) -> Self {
+        witness.to_bytes()
+    }
+}
+
+impl TryFrom<&[u8; 48]> for Witness {
+    type Error = dusk_bytes::Error;
+
+    fn try_from(bytes: &[u8; 48]) -> Result<Self, Self::Error> {
+        Self::try_from_bytes(bytes)
+    }
+}
+
+impl TryFrom<[u8; 48]> for Witness {
+    type Error = dusk_bytes::Error;
+
+    fn try_from(bytes: [u8; 48]) -> Result<Self, Self::Error> {
+        Self::try_from(&bytes)
+    }
+}
+
+impl Encode for Witness {
+    fn size_hint(&self) -> usize {
+        48
+    }
+
+    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+        f(&self.to_bytes())
+    }
+
+    fn encoded_size(&self) -> usize {
+        48
+    }
+}
+
+impl EncodeLike for Witness {}
+
+impl Decode for Witness {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
+            parity_scale_codec::Error::from("Failed to decode from bytes")
+                .chain(alloc::format!("{error:?}"))
+        })
+    }
+
+    fn encoded_fixed_size() -> Option<usize> {
+        Some(48)
+    }
+}
+
+impl TypeInfo for Witness {
+    type Identity = Self;
+
+    fn type_info() -> Type {
+        Type::builder()
+            .path(scale_info::Path::new(stringify!(Witness), module_path!()))
+            .docs(&["Witness for polynomial evaluation"])
+            .composite(scale_info::build::Fields::named().field(|f| {
+                f.ty::<[u8; 48]>()
+                    .name(stringify!(inner))
+                    .type_name("G1Affine")
+            }))
+    }
+}
 
 /// Wrapper data structure for working with KZG commitment scheme
 #[derive(Debug, Clone)]
@@ -100,14 +293,14 @@ impl Kzg {
             .collect::<Result<Vec<BlsScalar>, dusk_bytes::Error>>()?;
         let domain = EvaluationDomain::new(evals.len())?;
         let evaluations = Evaluations::from_vec_and_domain(evals, domain);
-        Ok(evaluations.interpolate())
+        Ok(Polynomial(evaluations.interpolate()))
     }
 
     /// Computes a `Commitment` to `polynomial`
     pub fn commit(&self, polynomial: &Polynomial) -> Result<Commitment, Error> {
         self.public_parameters
             .commit_key
-            .commit(polynomial)
+            .commit(&polynomial.0)
             .map(|commitment| Commitment(commitment.0))
     }
 
@@ -135,7 +328,7 @@ impl Kzg {
             .ok_or(Error::MismatchedPolyLen)?;
 
         // Computes `f(x) / x-z`, returning it as the witness poly
-        let witness_poly = polynomial.ruffini(point);
+        let witness_poly = polynomial.0.ruffini(point);
 
         self.public_parameters
             .commit_key
