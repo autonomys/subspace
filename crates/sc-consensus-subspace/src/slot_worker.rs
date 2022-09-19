@@ -212,7 +212,8 @@ where
 
             let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
             let segment_index = solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
-            let position = solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+            let position = u32::try_from(solution.piece_index % u64::from(MERKLE_NUM_LEAVES))
+                .expect("Position within segment always fits into u32; qed");
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;

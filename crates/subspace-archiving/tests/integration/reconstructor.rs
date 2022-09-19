@@ -9,10 +9,10 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
 };
 
-const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = BLAKE2B_256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize;
-const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
-const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+const MERKLE_NUM_LEAVES: u32 = 8;
+const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
+const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
     pieces
@@ -29,15 +29,15 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 fn basic() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     // Block that fits into the segment fully
-    let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
+    let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
-    let block_1 = rand::random::<[u8; SEGMENT_SIZE]>().to_vec();
+    let block_1 = rand::random::<[u8; SEGMENT_SIZE as usize]>().to_vec();
     // Block that also fits into the segment fully
-    let block_2 = rand::random::<[u8; SEGMENT_SIZE / 4]>().to_vec();
+    let block_2 = rand::random::<[u8; SEGMENT_SIZE as usize / 4]>().to_vec();
     // Block that occupies multiple segments
-    let block_3 = rand::random::<[u8; SEGMENT_SIZE * 3]>().to_vec();
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize * 3]>().to_vec();
     // Extra block
-    let block_4 = rand::random::<[u8; SEGMENT_SIZE]>().to_vec();
+    let block_4 = rand::random::<[u8; SEGMENT_SIZE as usize]>().to_vec();
     let archived_segments = archiver
         .add_block(block_0.clone(), BlockObjectMapping::default())
         .into_iter()
@@ -228,9 +228,9 @@ fn basic() {
 fn partial_data() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     // Block that fits into the segment fully
-    let block_0 = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
+    let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
-    let block_1 = rand::random::<[u8; SEGMENT_SIZE]>().to_vec();
+    let block_1 = rand::random::<[u8; SEGMENT_SIZE as usize]>().to_vec();
 
     let archived_segments = archiver
         .add_block(block_0.clone(), BlockObjectMapping::default())
@@ -249,10 +249,10 @@ fn partial_data() {
             .add_segment(
                 &pieces
                     .iter()
-                    .take(MERKLE_NUM_LEAVES / 2)
+                    .take(MERKLE_NUM_LEAVES as usize / 2)
                     .cloned()
                     .map(Some)
-                    .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES / 2))
+                    .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES as usize / 2))
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -266,8 +266,14 @@ fn partial_data() {
             .unwrap()
             .add_segment(
                 &iter::repeat(None)
-                    .take(MERKLE_NUM_LEAVES / 2)
-                    .chain(pieces.iter().skip(MERKLE_NUM_LEAVES / 2).cloned().map(Some))
+                    .take(MERKLE_NUM_LEAVES as usize / 2)
+                    .chain(
+                        pieces
+                            .iter()
+                            .skip(MERKLE_NUM_LEAVES as usize / 2)
+                            .cloned()
+                            .map(Some),
+                    )
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -278,9 +284,9 @@ fn partial_data() {
     {
         // Mix of data and parity shards
         let mut pieces = pieces.into_iter().map(Some).collect::<Vec<_>>();
-        pieces[MERKLE_NUM_LEAVES / 4..]
+        pieces[MERKLE_NUM_LEAVES as usize / 4..]
             .iter_mut()
-            .take(MERKLE_NUM_LEAVES / 2)
+            .take(MERKLE_NUM_LEAVES as usize / 2)
             .for_each(|piece| {
                 piece.take();
             });
@@ -316,7 +322,7 @@ fn invalid_usage() {
 
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     // Block that overflows into the next segments
-    let block_0 = rand::random::<[u8; SEGMENT_SIZE * 4]>().to_vec();
+    let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize * 4]>().to_vec();
 
     let archived_segments = archiver.add_block(block_0, BlockObjectMapping::default());
 
@@ -329,10 +335,10 @@ fn invalid_usage() {
             .add_segment(
                 &flat_pieces_to_regular(&archived_segments[0].pieces)
                     .iter()
-                    .take(MERKLE_NUM_LEAVES / 2 - 1)
+                    .take(MERKLE_NUM_LEAVES as usize / 2 - 1)
                     .cloned()
                     .map(Some)
-                    .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES / 2 + 1))
+                    .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES as usize / 2 + 1))
                     .collect::<Vec<_>>(),
             );
 
@@ -345,7 +351,7 @@ fn invalid_usage() {
             .unwrap()
             .add_segment(
                 &iter::repeat_with(|| Some(rand::random::<[u8; PIECE_SIZE]>().into()))
-                    .take(MERKLE_NUM_LEAVES)
+                    .take(MERKLE_NUM_LEAVES as usize)
                     .collect::<Vec<_>>(),
             );
 

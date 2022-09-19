@@ -10,7 +10,7 @@ use parity_scale_codec::{Encode, Output};
 /// Container that allows SCALE-encoding into directly while making sure nothing is written past
 /// data shard space and without extra memory copies.
 struct WritableShards {
-    data_shards_size: usize,
+    data_shards_size: u32,
     shards: Vec<Gf16Element>,
     cursor: usize,
 }
@@ -28,7 +28,7 @@ impl Output for WritableShards {
             ));
 
             // May panic only if inputs are incorrect.
-            target[..self.data_shards_size][self.cursor..][..buf.len()]
+            target[..self.data_shards_size as usize][self.cursor..][..buf.len()]
                 .as_mut()
                 .copy_from_slice(buf);
 
@@ -46,7 +46,7 @@ impl Output for WritableShards {
 pub(super) struct RecordShards {
     shards: Vec<Gf16Element>,
     /// Shard size in bytes
-    shard_size: usize,
+    shard_size: u32,
 }
 
 impl RecordShards {
@@ -54,18 +54,18 @@ impl RecordShards {
     ///
     /// Panics if shard size is not multiple of 2 or encoded segment doesn't fit into data shards.
     pub(super) fn new(
-        data_shards: usize,
-        parity_shards: usize,
-        shard_size: usize,
+        data_shards: u32,
+        parity_shards: u32,
+        shard_size: u32,
         segment: &Segment,
     ) -> Self {
-        assert_eq!(shard_size % GF_16_ELEMENT_BYTES, 0);
+        assert_eq!(shard_size as usize % GF_16_ELEMENT_BYTES, 0);
 
         let mut writable_shards = WritableShards {
             data_shards_size: data_shards * shard_size,
             shards: vec![
                 Gf16Element::default();
-                (data_shards + parity_shards) * shard_size / GF_16_ELEMENT_BYTES
+                ((data_shards + parity_shards) * shard_size) as usize / GF_16_ELEMENT_BYTES
             ],
             cursor: 0,
         };
@@ -104,7 +104,7 @@ impl RecordShards {
     /// Access internal record shards as vector of mutable shards.
     pub(super) fn as_mut_slices(&mut self) -> Vec<&mut [Gf16Element]> {
         self.shards
-            .chunks_exact_mut(self.shard_size / GF_16_ELEMENT_BYTES)
+            .chunks_exact_mut(self.shard_size as usize / GF_16_ELEMENT_BYTES)
             .collect()
     }
 }

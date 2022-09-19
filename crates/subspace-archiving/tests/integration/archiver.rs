@@ -10,10 +10,10 @@ use subspace_core_primitives::{
     PIECE_SIZE,
 };
 
-const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = BLAKE2B_256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize;
-const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE;
-const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+const MERKLE_NUM_LEAVES: u32 = 8;
+const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
+const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();
@@ -41,7 +41,7 @@ fn archiver() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
 
     let (block_0, block_0_object_mapping) = {
-        let mut block = rand::random::<[u8; SEGMENT_SIZE / 2]>().to_vec();
+        let mut block = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
         block[0..]
             .as_mut()
             .write_all(&Compact(100_u64).encode())
@@ -71,7 +71,7 @@ fn archiver() {
         .is_empty());
 
     let (block_1, block_1_object_mapping) = {
-        let mut block = rand::random::<[u8; SEGMENT_SIZE / 3 * 2]>().to_vec();
+        let mut block = rand::random::<[u8; SEGMENT_SIZE as usize / 3 * 2]>().to_vec();
         block[100..]
             .as_mut()
             .write_all(&Compact(100_u64).encode())
@@ -107,7 +107,10 @@ fn archiver() {
     assert_eq!(archived_segments.len(), 1);
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
-    assert_eq!(first_archived_segment.pieces.count(), MERKLE_NUM_LEAVES);
+    assert_eq!(
+        first_archived_segment.pieces.count(),
+        MERKLE_NUM_LEAVES as usize
+    );
     assert_eq!(first_archived_segment.root_block.segment_index(), 0);
     assert_eq!(
         first_archived_segment.root_block.prev_root_block_hash(),
@@ -143,12 +146,12 @@ fn archiver() {
         assert!(archiver::is_piece_valid(
             piece,
             first_archived_segment.root_block.records_root(),
-            position,
+            position as u32,
             RECORD_SIZE,
         ));
     }
 
-    let block_2 = rand::random::<[u8; SEGMENT_SIZE * 2]>().to_vec();
+    let block_2 = rand::random::<[u8; SEGMENT_SIZE as usize * 2]>().to_vec();
     // This should be big enough to produce two archived segments in one go
     let archived_segments = archiver.add_block(block_2.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 2);
@@ -214,7 +217,7 @@ fn archiver() {
     let mut previous_root_block_hash = first_archived_segment.root_block.hash();
     let last_root_block = archived_segments.iter().last().unwrap().root_block;
     for archived_segment in archived_segments {
-        assert_eq!(archived_segment.pieces.count(), MERKLE_NUM_LEAVES);
+        assert_eq!(archived_segment.pieces.count(), MERKLE_NUM_LEAVES as usize);
         assert_eq!(
             archived_segment.root_block.segment_index(),
             expected_segment_index
@@ -228,7 +231,7 @@ fn archiver() {
             assert!(archiver::is_piece_valid(
                 piece,
                 archived_segment.root_block.records_root(),
-                position,
+                position as u32,
                 RECORD_SIZE,
             ));
         }
@@ -238,7 +241,7 @@ fn archiver() {
     }
 
     // Add a block such that it fits in the next segment exactly
-    let block_3 = rand::random::<[u8; SEGMENT_SIZE - 2948]>().to_vec();
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 2948]>().to_vec();
     let archived_segments = archiver.add_block(block_3.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
@@ -271,7 +274,7 @@ fn archiver() {
             assert!(archiver::is_piece_valid(
                 piece,
                 archived_segment.root_block.records_root(),
-                position,
+                position as u32,
                 RECORD_SIZE,
             ));
         }
@@ -374,7 +377,10 @@ fn one_byte_smaller_segment() {
     // internal bytes of the segment item anyway
     assert_eq!(
         archiver
-            .add_block(vec![0u8; SEGMENT_SIZE - 7], BlockObjectMapping::default())
+            .add_block(
+                vec![0u8; SEGMENT_SIZE as usize - 7],
+                BlockObjectMapping::default()
+            )
             .len(),
         1
     );
@@ -386,7 +392,10 @@ fn spill_over_edge_case() {
 
     // Carefully compute the block size such that there is just 3 byte left to fill the segment
     assert!(archiver
-        .add_block(vec![0u8; SEGMENT_SIZE - 8], BlockObjectMapping::default())
+        .add_block(
+            vec![0u8; SEGMENT_SIZE as usize - 8],
+            BlockObjectMapping::default()
+        )
         .is_empty());
 
     // Here we add one more block with internal length that takes 4 bytes in compact length
@@ -406,12 +415,15 @@ fn object_on_the_edge_of_segment() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     assert_eq!(
         archiver
-            .add_block(vec![0u8; SEGMENT_SIZE], BlockObjectMapping::default())
+            .add_block(
+                vec![0u8; SEGMENT_SIZE as usize],
+                BlockObjectMapping::default()
+            )
             .len(),
         1
     );
     let archived_segment = archiver.add_block(
-        vec![0u8; SEGMENT_SIZE * 2],
+        vec![0u8; SEGMENT_SIZE as usize * 2],
         BlockObjectMapping {
             objects: vec![BlockObject::V0 {
                 hash: Blake2b256Hash::default(),

@@ -150,11 +150,8 @@ where
     let best_block_number = client.info().best_number;
     let mut link = WaitLink::new();
     let mut imported_blocks = 0;
-    let mut reconstructor = Reconstructor::new(
-        usize::try_from(RECORD_SIZE).expect("16-bit platform is not supported"),
-        usize::try_from(RECORDED_HISTORY_SEGMENT_SIZE).expect("16-bit platform is not supported"),
-    )
-    .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+    let mut reconstructor = Reconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+        .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
     let merkle_num_leaves = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
 

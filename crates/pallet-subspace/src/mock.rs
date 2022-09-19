@@ -345,8 +345,7 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
 }
 
 pub fn create_archived_segment() -> ArchivedSegment {
-    let mut archiver =
-        Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE).unwrap();
 
     let mut block = vec![0u8; 1024 * 1024];
     rand::thread_rng().fill(block.as_mut_slice());

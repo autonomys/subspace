@@ -68,8 +68,7 @@ fn valid_piece(pub_key: schnorrkel::PublicKey) -> (Piece, u64, SegmentIndex, Rec
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver =
-        Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE).unwrap();
 
     let archived_segment = archiver
         .add_block(block, Default::default())
@@ -89,8 +88,8 @@ fn valid_piece(pub_key: schnorrkel::PublicKey) -> (Piece, u64, SegmentIndex, Rec
     assert!(subspace_archiving::archiver::is_piece_valid(
         piece,
         archived_segment.root_block.records_root(),
-        position,
-        RECORD_SIZE as usize,
+        position as u32,
+        RECORD_SIZE,
     ));
 
     let codec = SubspaceCodec::new(pub_key.as_ref());

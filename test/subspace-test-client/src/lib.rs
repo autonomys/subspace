@@ -193,11 +193,9 @@ where
 {
     let genesis_block_id = BlockId::Number(sp_runtime::traits::Zero::zero());
 
-    let mut archiver = subspace_archiving::archiver::Archiver::new(
-        RECORD_SIZE as usize,
-        RECORDED_HISTORY_SEGMENT_SIZE as usize,
-    )
-    .expect("Incorrect parameters for archiver");
+    let mut archiver =
+        subspace_archiving::archiver::Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+            .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
     archiver

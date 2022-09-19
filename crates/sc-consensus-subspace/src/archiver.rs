@@ -218,8 +218,8 @@ where
         ));
 
         Archiver::with_initial_state(
-            RECORD_SIZE as usize,
-            RECORDED_HISTORY_SEGMENT_SIZE as usize,
+            RECORD_SIZE,
+            RECORDED_HISTORY_SEGMENT_SIZE,
             last_root_block,
             &last_archived_block.encode(),
             block_object_mappings,
@@ -228,7 +228,7 @@ where
     } else {
         info!(target: "subspace", "Starting archiving from genesis");
 
-        Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
+        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
             .expect("Incorrect parameters for archiver")
     };
 

@@ -74,9 +74,9 @@ pub struct ReconstructedContents {
 pub struct Reconstructor {
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
-    record_size: usize,
+    record_size: u32,
     /// Configuration parameter defining the size of one recorded history segment
-    segment_size: usize,
+    segment_size: u32,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
     /// Index of last segment added to reconstructor
@@ -87,8 +87,8 @@ pub struct Reconstructor {
 
 impl Reconstructor {
     pub fn new(
-        record_size: usize,
-        segment_size: usize,
+        record_size: u32,
+        segment_size: u32,
     ) -> Result<Self, ReconstructorInstantiationError> {
         if segment_size <= record_size {
             return Err(ReconstructorInstantiationError::SegmentSizeTooSmall);
@@ -100,12 +100,12 @@ impl Reconstructor {
         // We take N data records and will creates the same number of parity records, hence `*2`
         let merkle_num_leaves = segment_size / record_size * 2;
         let witness_size = BLAKE2B_256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
-        if record_size + witness_size != PIECE_SIZE {
+        if record_size as usize + witness_size != PIECE_SIZE {
             return Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination);
         }
 
         let shards = segment_size / record_size;
-        let reed_solomon = ReedSolomon::new(shards, shards)
+        let reed_solomon = ReedSolomon::new(shards as usize, shards as usize)
             .expect("ReedSolomon should always be correctly instantiated");
 
         Ok(Self {
@@ -128,13 +128,13 @@ impl Reconstructor {
         &mut self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<ReconstructedContents, ReconstructorError> {
-        let mut segment_data = Vec::with_capacity(self.segment_size);
+        let mut segment_data = Vec::with_capacity(self.segment_size as usize);
         if !segment_pieces
             .iter()
             .take(self.reed_solomon.data_shard_count())
             .all(|maybe_piece| {
                 if let Some(piece) = maybe_piece {
-                    segment_data.extend_from_slice(&piece[..self.record_size]);
+                    segment_data.extend_from_slice(&piece[..self.record_size as usize]);
                     true
                 } else {
                     false
@@ -161,7 +161,7 @@ impl Reconstructor {
                         "All data shards are available after successful reconstruction; qed",
                     );
 
-                    for chunk in piece.iter().take(self.record_size / 2) {
+                    for chunk in piece.iter().take(self.record_size as usize / 2) {
                         segment_data.extend_from_slice(chunk.as_ref());
                     }
                 });
