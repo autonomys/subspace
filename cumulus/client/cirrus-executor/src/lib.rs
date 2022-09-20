@@ -191,7 +191,11 @@ where
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         transaction_pool: Arc<TransactionPool>,
-        bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
+        bundle_sender: Arc<
+            TracingUnboundedSender<
+                SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+            >,
+        >,
         execution_receipt_sender: Arc<
             TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
         >,
@@ -384,7 +388,7 @@ where
     pub async fn process_bundles(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) {
@@ -484,17 +488,18 @@ where
             bundle,
             signature,
             signer,
-        }: &SignedBundle<Block::Extrinsic>,
+        }: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Result<Action, Self::Error> {
-        let check_equivocation = |_bundle: &Bundle<Block::Extrinsic>| {
-            // TODO: check bundle equivocation
-            let bundle_is_an_equivocation = false;
-            if bundle_is_an_equivocation {
-                Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
-            } else {
-                None
-            }
-        };
+        let check_equivocation =
+            |_bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>| {
+                // TODO: check bundle equivocation
+                let bundle_is_an_equivocation = false;
+                if bundle_is_an_equivocation {
+                    Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
+                } else {
+                    None
+                }
+            };
 
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {

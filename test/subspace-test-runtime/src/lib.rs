@@ -821,7 +821,9 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
     block_object_mapping
 }
 
-fn extract_bundles(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<OpaqueBundle> {
+fn extract_bundles(
+    extrinsics: Vec<UncheckedExtrinsic>,
+) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
@@ -1071,13 +1073,7 @@ impl_runtime_apis! {
     }
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
-        fn submit_execution_receipt_unsigned(
-            execution_receipt: SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
-        ) {
-            Executor::submit_execution_receipt_unsigned(execution_receipt)
-        }
-
-        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) {
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>) {
             Executor::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
@@ -1086,7 +1082,7 @@ impl_runtime_apis! {
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof,
+            bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
         ) {
             Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
@@ -1097,7 +1093,7 @@ impl_runtime_apis! {
             Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle> {
+        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
             extract_bundles(extrinsics)
         }
 

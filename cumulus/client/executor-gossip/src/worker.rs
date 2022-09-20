@@ -17,7 +17,9 @@ where
 {
     gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
+    bundle_receiver: TracingUnboundedReceiver<
+        SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    >,
     execution_receipt_receiver: TracingUnboundedReceiver<
         SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     >,
@@ -32,7 +34,9 @@ where
     pub(super) fn new(
         gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-        bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
+        bundle_receiver: TracingUnboundedReceiver<
+            SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        >,
         execution_receipt_receiver: TracingUnboundedReceiver<
             SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         >,
@@ -45,7 +49,10 @@ where
         }
     }
 
-    fn gossip_bundle(&self, bundle: SignedBundle<Block::Extrinsic>) {
+    fn gossip_bundle(
+        &self,
+        bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    ) {
         let outgoing_message: GossipMessage<PBlock, Block> = bundle.into();
         let encoded_message = outgoing_message.encode();
         self.gossip_validator.note_rebroadcasted(&encoded_message);

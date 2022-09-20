@@ -181,7 +181,7 @@ where
     pub(crate) async fn process_bundles(
         self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -354,6 +354,7 @@ where
             .runtime_api()
             .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
         // Ideally, the receipt of current block will be included in the next block, i.e., no
@@ -399,7 +400,7 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
         let mut extrinsics = bundles
@@ -673,15 +674,16 @@ where
                         tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
                     }
 
-                    let best_hash = self.primary_chain_client.info().best_hash;
+                    // let best_hash = self.primary_chain_client.info().best_hash;
 
+                    // TODO: Remove this
                     // Broadcast ER to all farmers via unsigned extrinsic.
-                    self.primary_chain_client
-                        .runtime_api()
-                        .submit_execution_receipt_unsigned(
-                            &BlockId::Hash(best_hash),
-                            signed_execution_receipt,
-                        )?;
+                    // self.primary_chain_client
+                    // .runtime_api()
+                    // .submit_execution_receipt_unsigned(
+                    // &BlockId::Hash(best_hash),
+                    // signed_execution_receipt,
+                    // )?;
 
                     Ok(())
                 }

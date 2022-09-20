@@ -217,7 +217,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(
             origin: OriginFor<T>,
-            signed_opaque_bundle: SignedOpaqueBundle,
+            signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -267,7 +267,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
-            bundle_equivocation_proof: BundleEquivocationProof,
+            bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -599,7 +599,7 @@ impl<T: Config> Pallet<T> {
             opaque_bundle,
             signature,
             signer,
-        }: &SignedOpaqueBundle,
+        }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), BundleError> {
         if !signer.verify(&opaque_bundle.hash(), signature) {
             return Err(BundleError::BadSignature);
@@ -634,7 +634,7 @@ impl<T: Config> Pallet<T> {
 
     // TODO: Checks if the bundle equivocation proof is valid.
     fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof,
+        _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
@@ -680,7 +680,9 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
-    pub fn submit_transaction_bundle_unsigned(signed_opaque_bundle: SignedOpaqueBundle) {
+    pub fn submit_transaction_bundle_unsigned(
+        signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) {
         let call = Call::submit_transaction_bundle {
             signed_opaque_bundle,
         };
@@ -714,7 +716,7 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
     pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof,
+        bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
     ) {
         let call = Call::submit_bundle_equivocation_proof {
             bundle_equivocation_proof,
