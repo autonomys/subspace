@@ -482,15 +482,15 @@ where
                 ))
             })?;
 
-        let signed_receipts = self
+        let receipts = self
             .primary_chain_client
             .runtime_api()
             .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
         let mut bad_receipts_to_write = vec![];
 
-        for signed_receipt in signed_receipts.iter() {
-            let secondary_hash = signed_receipt.execution_receipt.secondary_hash;
+        for execution_receipt in receipts.iter() {
+            let secondary_hash = execution_receipt.secondary_hash;
             match crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
@@ -500,18 +500,17 @@ where
             {
                 Some(local_receipt) => {
                     if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
+                        find_trace_mismatch(&local_receipt, &execution_receipt)
                     {
                         bad_receipts_to_write.push((
-                            signed_receipt.execution_receipt.primary_number,
-                            signed_receipt.hash(),
+                            execution_receipt.primary_number,
+                            execution_receipt.hash(),
                             (trace_mismatch_index, secondary_hash),
                         ));
                     }
                 }
                 None => {
-                    let block_number: BlockNumber = signed_receipt
-                        .execution_receipt
+                    let block_number: BlockNumber = execution_receipt
                         .primary_number
                         .try_into()
                         .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
@@ -529,8 +528,8 @@ where
                     // The receipt of a prior block must exist, otherwise it means the receipt included
                     // on the primary chain points to an invalid secondary block.
                     bad_receipts_to_write.push((
-                        signed_receipt.execution_receipt.primary_number,
-                        signed_receipt.hash(),
+                        execution_receipt.primary_number,
+                        execution_receipt.hash(),
                         (0u32, block_hash),
                     ));
                 }

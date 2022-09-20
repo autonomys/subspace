@@ -50,8 +50,8 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_executor::{
-    BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
-    SignedExecutionReceipt, SignedOpaqueBundle,
+    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    SignedOpaqueBundle,
 };
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
@@ -841,15 +841,15 @@ fn extract_bundles(
 
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<SignedExecutionReceipt<BlockNumber, Hash, cirrus_primitives::Hash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, cirrus_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_execution_receipt {
-                signed_execution_receipt,
+            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+                signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_execution_receipt)
+                Some(signed_opaque_bundle.opaque_bundle.receipt)
             } else {
                 None
             }
@@ -1099,7 +1099,7 @@ impl_runtime_apis! {
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
             extract_receipts(extrinsics)
         }
 
