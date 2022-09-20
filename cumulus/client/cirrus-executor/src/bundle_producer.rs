@@ -10,8 +10,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_core::ByteArray;
 use sp_executor::{
-    Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
-    SignedOpaqueBundle,
+    Bundle, BundleHeader, ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature,
+    SignedBundle, SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -151,33 +151,7 @@ where
             .expect_header(BlockId::Number(parent_number))?
             .state_root();
 
-        let best_execution_chain_number = self
-            .primary_chain_client
-            .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
-
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let block_hash = self
-            .client
-            .hash(best_execution_chain_number.into())?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Header hash not found for number {best_execution_chain_number}"
-                ))
-            })?;
-
-        let receipt = crate::aux_schema::load_execution_receipt::<
-            _,
-            Block::Hash,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-        >(&*self.client, block_hash)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Receipt not found for {block_hash}"))
-        })?;
+        let receipt = self.next_expected_receipt_on_primary_chain(primary_hash)?;
 
         let bundle = Bundle {
             header: BundleHeader {
@@ -239,5 +213,40 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    fn next_expected_receipt_on_primary_chain(
+        &self,
+        primary_hash: PBlock::Hash,
+    ) -> sp_blockchain::Result<ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>> {
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        let block_hash = self
+            .client
+            .hash((best_execution_chain_number + 1).into())?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Header hash not found for number {best_execution_chain_number}"
+                ))
+            })?;
+
+        let receipt = crate::aux_schema::load_execution_receipt::<
+            _,
+            Block::Hash,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+        >(&*self.client, block_hash)?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Receipt not found for {block_hash}"))
+        })?;
+
+        Ok(receipt)
     }
 }
