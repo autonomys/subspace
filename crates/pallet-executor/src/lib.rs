@@ -25,10 +25,11 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
-    BundleEquivocationProof, FraudProof, InvalidTransactionProof, SignedExecutionReceipt,
-    SignedOpaqueBundle,
+    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
+    InvalidTransactionProof, SignedExecutionReceipt, SignedOpaqueBundle,
 };
-use sp_runtime::traits::{BlockNumberProvider, One};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One};
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::RuntimeAppPublic;
 
 #[frame_support::pallet]
@@ -41,9 +42,7 @@ mod pallet {
         BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionCode,
         InvalidTransactionProof, SignedExecutionReceipt, SignedOpaqueBundle,
     };
-    use sp_runtime::traits::{
-        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps,
-    };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -187,28 +186,7 @@ mod pallet {
                 execution_receipt, ..
             } = signed_execution_receipt;
 
-            let primary_hash = execution_receipt.primary_hash;
-            let primary_number = execution_receipt.primary_number;
-
-            // Apply the execution receipt.
-            <Receipts<T>>::insert(primary_number, execution_receipt);
-            <ExecutionChainBestNumber<T>>::put(primary_number);
-            if primary_number == One::one() {
-                // Initialize the oldest receipt with block #1.
-                OldestReceiptNumber::<T>::put(primary_number);
-            }
-
-            // Remove the oldest once the receipts cache is full.
-            if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-                Receipts::<T>::remove(to_prune);
-                BlockHash::<T>::remove(to_prune);
-                OldestReceiptNumber::<T>::put(to_prune + One::one());
-            }
-
-            Self::deposit_event(Event::NewExecutionReceipt {
-                primary_number,
-                primary_hash,
-            });
+            Self::apply_execution_receipt(&execution_receipt);
 
             Ok(())
         }
@@ -401,30 +379,7 @@ mod pallet {
                         execution_receipt, ..
                     } = signed_execution_receipt;
 
-                    let primary_number = execution_receipt.primary_number;
-                    let best_number = ExecutionChainBestNumber::<T>::get();
-
-                    // Ensure the block number of next execution receipt is `best_number + 1`.
-                    if primary_number != best_number + One::one() {
-                        if primary_number <= best_number {
-                            return Err(InvalidTransaction::Stale.into());
-                        } else {
-                            return Err(InvalidTransaction::Future.into());
-                        }
-                    }
-
-                    // TODO: is this check unnecessary as it's actually guaranteed by the above one?
-                    // Ensure the parent receipt exists after block #1.
-                    if primary_number > One::one() {
-                        ensure!(
-                            Receipts::<T>::get(primary_number - One::one()).is_some(),
-                            TransactionValidityError::Invalid(
-                                InvalidTransactionCode::ExecutionReceipt.into()
-                            )
-                        );
-                    }
-
-                    Ok(())
+                    Self::pre_dispatch_execution_receipt(execution_receipt)
                 }
                 Call::submit_transaction_bundle { .. } => Ok(()),
                 Call::submit_fraud_proof { .. } => Ok(()),
@@ -542,6 +497,33 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    fn pre_dispatch_execution_receipt(
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) -> Result<(), TransactionValidityError> {
+        let primary_number = execution_receipt.primary_number;
+        let best_number = ExecutionChainBestNumber::<T>::get();
+
+        // Ensure the block number of next execution receipt is `best_number + 1`.
+        if primary_number != best_number + One::one() {
+            if primary_number <= best_number {
+                return Err(InvalidTransaction::Stale.into());
+            } else {
+                return Err(InvalidTransaction::Future.into());
+            }
+        }
+
+        // TODO: is this check unnecessary as it's actually guaranteed by the above one?
+        // Ensure the parent receipt exists after block #1.
+        if primary_number > One::one() {
+            ensure!(
+                Receipts::<T>::get(primary_number - One::one()).is_some(),
+                TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
+            );
+        }
+
+        Ok(())
+    }
+
     fn validate_execution_receipt(
         SignedExecutionReceipt {
             execution_receipt,
@@ -645,40 +627,39 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(), Error<T>> {
         Ok(())
     }
+
+    fn apply_execution_receipt(
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) {
+        let primary_hash = execution_receipt.primary_hash;
+        let primary_number = execution_receipt.primary_number;
+
+        // Apply the execution receipt.
+        <Receipts<T>>::insert(primary_number, execution_receipt);
+        <ExecutionChainBestNumber<T>>::put(primary_number);
+        if primary_number == One::one() {
+            // Initialize the oldest receipt with block #1.
+            OldestReceiptNumber::<T>::put(primary_number);
+        }
+
+        // Remove the oldest once the receipts cache is full.
+        if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
+            Receipts::<T>::remove(to_prune);
+            BlockHash::<T>::remove(to_prune);
+            OldestReceiptNumber::<T>::put(to_prune + One::one());
+        }
+
+        Self::deposit_event(Event::NewExecutionReceipt {
+            primary_number,
+            primary_hash,
+        });
+    }
 }
 
 impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
-    pub fn submit_execution_receipt_unsigned(
-        signed_execution_receipt: SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
-    ) {
-        let primary_number = signed_execution_receipt.execution_receipt.primary_number;
-
-        let call = Call::submit_execution_receipt {
-            signed_execution_receipt,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(
-                    target: "runtime::subspace::executor",
-                    "Execution receipt for block #{:?} submitted to the tx pool",
-                    primary_number,
-                );
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::subspace::executor",
-                    "Error submitting execution receipt for block #{:?} to the tx pool",
-                    primary_number,
-                );
-            }
-        }
-    }
-
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
     pub fn submit_transaction_bundle_unsigned(
         signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,

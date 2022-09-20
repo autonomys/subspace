@@ -357,6 +357,7 @@ where
 
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
+        // TODO: Remove all the code below?
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
         if header_number == best_execution_chain_number + One::one() {
