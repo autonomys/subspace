@@ -5,12 +5,12 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::RECORD_SIZE;
 
-const MERKLE_NUM_LEAVES: u32 = 256;
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+const PIECES_IN_SEGMENT: u32 = 256;
+pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let input = vec![1u8; RECORDED_HISTORY_SEGMENT_SIZE.try_into().unwrap()];
-    let kzg = Kzg::random(MERKLE_NUM_LEAVES).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
 
     c.bench_function("archiving-2-blocks", |b| {
         b.iter(|| {

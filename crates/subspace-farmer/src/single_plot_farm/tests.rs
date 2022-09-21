@@ -21,8 +21,8 @@ use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 use tracing::error;
 
-const MERKLE_NUM_LEAVES: u32 = 8;
-const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
+const PIECES_IN_SEGMENT: u32 = 8;
+const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2; // 16000
 
 fn init() {
     let _ = tracing_subscriber::fmt::try_init();
@@ -238,7 +238,7 @@ async fn plotting_piece_eviction() {
             for (piece, piece_index) in archived_segment
                 .pieces
                 .as_pieces()
-                .zip(archived_segment.root_block.segment_index() * MERKLE_NUM_LEAVES as u64..)
+                .zip(archived_segment.root_block.segment_index() * PIECES_IN_SEGMENT as u64..)
             {
                 // TODO: `read_piece` should have returned `Result<Option<T>, E>` instead, only
                 //  allow `None` and not errors once that is the case

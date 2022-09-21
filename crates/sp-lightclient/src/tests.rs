@@ -23,7 +23,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Piece, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange, Tag,
-    MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
@@ -93,7 +93,7 @@ fn valid_piece(
 
     assert!(subspace_archiving::archiver::is_piece_valid(
         kzg,
-        MERKLE_NUM_LEAVES,
+        PIECES_IN_SEGMENT,
         piece,
         archived_segment.root_block.records_root(),
         position as u32,

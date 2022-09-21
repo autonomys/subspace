@@ -103,7 +103,7 @@ pub type EonIndex = u64;
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
 /// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
-/// Merkle Tree and will result in witness size of `log2(MERKLE_NUM_LEAVES) * SHA256_HASH_SIZE`.
+/// Merkle Tree and will result in witness size of `log2(PIECES_IN_SEGMENT) * SHA256_HASH_SIZE`.
 ///
 /// This number is a tradeoff:
 /// * as this number goes up, fewer [`RootBlock`]s are required to be stored for verifying archival
@@ -114,11 +114,11 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 ///   number of root blocks goes up making sync less efficient and less records are needed to be
 ///   lost before part of the archived history become unrecoverable, reducing reliability of the
 ///   data stored on the network
-pub const MERKLE_NUM_LEAVES: u32 = 256;
+pub const PIECES_IN_SEGMENT: u32 = 256;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
-/// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
+/// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
 /// pieces of archival history.
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 /// Randomness context
 pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";

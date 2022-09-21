@@ -84,7 +84,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, RootBlock, Salt, SegmentIndex, Solution, SolutionRange,
-    MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
@@ -953,9 +953,9 @@ where
         }
 
         let segment_index: SegmentIndex =
-            pre_digest.solution.piece_index / SegmentIndex::from(MERKLE_NUM_LEAVES);
+            pre_digest.solution.piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
         let position =
-            u32::try_from(pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES))
+            u32::try_from(pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT))
                 .expect("Position within segment always fits into u32; qed");
 
         // This is not a very nice hack due to the fact that at the time first block is produced
@@ -991,7 +991,7 @@ where
         // root block, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
-            MERKLE_NUM_LEAVES,
+            PIECES_IN_SEGMENT,
             records_root,
             position,
             RECORD_SIZE,

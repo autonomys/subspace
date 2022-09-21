@@ -34,7 +34,7 @@ pub(super) async fn start_archiving(
     plotter: SinglePlotPlotter,
     single_disk_semaphore: SingleDiskSemaphore,
 ) -> Result<(), StartDsnArchivingError> {
-    let merkle_num_leaves = u64::from(recorded_history_segment_size / record_size * 2);
+    let pieces_in_segment = u64::from(recorded_history_segment_size / record_size * 2);
 
     let (archived_segments_sync_sender, archived_segments_sync_receiver) =
         std::sync::mpsc::sync_channel::<(ArchivedSegment, oneshot::Sender<()>)>(5);
@@ -62,7 +62,7 @@ pub(super) async fn start_archiving(
                     }
                     last_archived_segment_index.replace(segment_index);
 
-                    let piece_index_offset = merkle_num_leaves * segment_index;
+                    let piece_index_offset = pieces_in_segment * segment_index;
 
                     let pieces_to_plot = PiecesToPlot {
                         piece_indexes: (piece_index_offset..).take(pieces.count()).collect(),

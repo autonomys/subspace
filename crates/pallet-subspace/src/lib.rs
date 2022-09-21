@@ -54,7 +54,7 @@ use sp_std::prelude::*;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, MERKLE_NUM_LEAVES,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, PIECES_IN_SEGMENT,
     PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -693,7 +693,7 @@ impl<T: Config> Pallet<T> {
 
     /// Total number of pieces in the blockchain
     pub fn total_pieces() -> u64 {
-        u64::from(RecordsRoot::<T>::count()) * u64::from(MERKLE_NUM_LEAVES)
+        u64::from(RecordsRoot::<T>::count()) * u64::from(PIECES_IN_SEGMENT)
     }
 
     /// Determine whether a randomness update should take place at this block.
@@ -1464,12 +1464,11 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let merkle_num_leaves = u64::from(
-        vote_verification_data.recorded_history_segment_size / vote_verification_data.record_size
-            * 2,
-    );
-    let segment_index = solution.piece_index / merkle_num_leaves;
-    let position = u32::try_from(solution.piece_index % merkle_num_leaves)
+    let pieces_in_segment = vote_verification_data.recorded_history_segment_size
+        / vote_verification_data.record_size
+        * 2;
+    let segment_index = solution.piece_index / u64::from(pieces_in_segment);
+    let position = u32::try_from(solution.piece_index % u64::from(pieces_in_segment))
         .expect("Position within segment always fits into u32; qed");
 
     let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
@@ -1495,7 +1494,7 @@ fn check_vote<T: Config>(
                 records_root,
                 position,
                 kzg: &kzg,
-                num_pieces_in_segment: MERKLE_NUM_LEAVES,
+                pieces_in_segment,
                 record_size: vote_verification_data.record_size,
                 max_plot_size: vote_verification_data.max_plot_size,
                 total_pieces: vote_verification_data.total_pieces,

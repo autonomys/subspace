@@ -100,7 +100,7 @@ fn check_piece_tag<FarmerPublicKey, RewardAddress>(
 /// If `records_root` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     kzg: &Kzg,
-    num_pieces_in_segment: u32,
+    pieces_in_segment: u32,
     records_root: RecordsRoot,
     position: u32,
     record_size: u32,
@@ -120,7 +120,7 @@ where
 
     if !archiver::is_piece_valid(
         kzg,
-        num_pieces_in_segment,
+        pieces_in_segment,
         &piece,
         records_root,
         position,
@@ -172,7 +172,7 @@ pub struct PieceCheckParams<'a> {
     /// KZG instance
     pub kzg: &'a Kzg,
     /// Number of pieces in a segment
-    pub num_pieces_in_segment: u32,
+    pub pieces_in_segment: u32,
     /// Record size, system parameter
     pub record_size: u32,
     /// Maximum plot size in bytes, system parameter
@@ -249,7 +249,7 @@ where
         records_root,
         position,
         kzg,
-        num_pieces_in_segment,
+        pieces_in_segment,
         record_size,
         max_plot_size,
         total_pieces,
@@ -266,7 +266,7 @@ where
 
         check_piece(
             kzg,
-            num_pieces_in_segment,
+            pieces_in_segment,
             records_root,
             position,
             record_size,

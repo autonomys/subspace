@@ -51,7 +51,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    RecordsRoot, SegmentIndex, Solution, MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE,
+    RecordsRoot, SegmentIndex, Solution, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
     RECORD_SIZE,
 };
 use subspace_rpc_primitives::{
@@ -223,7 +223,7 @@ where
                 // Total pieces should never be zero. blockchain is always initialized with one segment.
                 total_pieces: runtime_api
                     .total_pieces(&best_block_id)?
-                    .max(MERKLE_NUM_LEAVES as u64),
+                    .max(PIECES_IN_SEGMENT as u64),
             }
         };
 
