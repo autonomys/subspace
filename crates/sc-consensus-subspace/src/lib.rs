@@ -81,7 +81,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    BlockWeight, RootBlock, Salt, SegmentIndex, Sha256Hash, Solution, SolutionRange,
+    Blake2b256Hash, BlockWeight, RootBlock, Salt, SegmentIndex, Solution, SolutionRange,
     MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
@@ -93,7 +93,7 @@ pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,
     /// Global slot challenge
-    pub global_challenge: Sha256Hash,
+    pub global_challenge: Blake2b256Hash,
     /// Salt
     pub salt: Salt,
     /// Salt for the next eon

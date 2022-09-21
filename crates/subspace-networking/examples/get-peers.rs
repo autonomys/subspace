@@ -65,7 +65,7 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let hashed_peer_id = PieceIndexHash::from(crypto::sha256_hash(&node_1.id().to_bytes()));
+    let hashed_peer_id = PieceIndexHash::from(crypto::blake2b_256_hash(&node_1.id().to_bytes()));
     let key = libp2p::multihash::MultihashDigest::digest(
         &Code::Identity,
         &U256::from(hashed_peer_id).to_be_bytes(),

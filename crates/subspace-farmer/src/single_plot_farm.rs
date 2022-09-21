@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, Sha256Hash,
+    Blake2b256Hash, FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey,
 };
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
@@ -866,7 +866,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                     Err(PiecesVerificationError::NoRecordsRootFound)
                 }
             })
-            .collect::<Result<Vec<Sha256Hash>, PiecesVerificationError>>()?;
+            .collect::<Result<Vec<Blake2b256Hash>, PiecesVerificationError>>()?;
 
         // Perform an actual piece validity check
         for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {

@@ -18,16 +18,22 @@ extern crate alloc;
 
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
+use blake2_rfc::blake2b::Blake2b;
 use core::hash::Hasher;
 use core::iter;
 use core::ops::Deref;
-use sha2::{Digest, Sha256};
-use subspace_core_primitives::{crypto, Sha256Hash, SHA256_HASH_SIZE};
+use subspace_core_primitives::{crypto, Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 
-#[derive(Debug, Default, Clone)]
-struct Sha256Algorithm(Sha256);
+#[derive(Debug, Clone)]
+struct Blake2b256Algorithm(Blake2b);
 
-impl Hasher for Sha256Algorithm {
+impl Default for Blake2b256Algorithm {
+    fn default() -> Self {
+        Self(Blake2b::new(BLAKE2B_256_HASH_SIZE))
+    }
+}
+
+impl Hasher for Blake2b256Algorithm {
     #[inline]
     fn write(&mut self, msg: &[u8]) {
         self.0.update(msg);
@@ -39,24 +45,24 @@ impl Hasher for Sha256Algorithm {
     }
 }
 
-impl merkle_light::hash::Algorithm<Sha256Hash> for Sha256Algorithm {
+impl merkle_light::hash::Algorithm<Blake2b256Hash> for Blake2b256Algorithm {
     #[inline]
-    fn hash(&mut self) -> Sha256Hash {
+    fn hash(&mut self) -> Blake2b256Hash {
         self.0
             .clone()
             .finalize()
-            .as_slice()
+            .as_bytes()
             .try_into()
-            .expect("Sha256 output is always 32 bytes; qed")
+            .expect("Initialized with correct length; qed")
     }
 
     #[inline]
     fn reset(&mut self) {
-        self.0.reset();
+        *self = Self::default();
     }
 }
 
-type InternalMerkleTree = merkle_light::merkle::MerkleTree<Sha256Hash, Sha256Algorithm>;
+type InternalMerkleTree = merkle_light::merkle::MerkleTree<Blake2b256Hash, Blake2b256Algorithm>;
 
 /// Merkle Proof-based witness
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -71,39 +77,43 @@ impl<'a> Witness<'a> {
     /// Create witness from vector of bytes, will return bytes back as error in case length is
     /// incorrect
     pub fn new(witness: Cow<'a, [u8]>) -> Result<Self, Cow<'a, [u8]>> {
-        if witness.len() % SHA256_HASH_SIZE != 0 {
+        if witness.len() % BLAKE2B_256_HASH_SIZE != 0 {
             return Err(witness);
         }
 
         Ok(Self {
-            merkle_num_leaves: 2_usize.pow((witness.len() / SHA256_HASH_SIZE) as u32),
+            merkle_num_leaves: 2_usize.pow((witness.len() / BLAKE2B_256_HASH_SIZE) as u32),
             witness,
         })
     }
 
     /// Check whether witness is valid for a specific leaf hash (none of these parameters are stored
     /// in the witness itself) given its position within a segment
-    pub fn is_valid(&self, root: Sha256Hash, position: usize, leaf_hash: Sha256Hash) -> bool {
+    pub fn is_valid(
+        &self,
+        root: Blake2b256Hash,
+        position: usize,
+        leaf_hash: Blake2b256Hash,
+    ) -> bool {
         if position >= self.merkle_num_leaves {
             return false;
         }
 
         // Hash one more time as Merkle Tree implementation does
         // Merkle Tree leaf hash prefix is `0x00`
-        let leaf_hash = crypto::sha256_hash_pair(&[0x00], &leaf_hash);
+        let leaf_hash = crypto::blake2b_256_hash_pair(&[0x00], &leaf_hash);
 
         // Reconstruct lemma for verification
-        let lemma = iter::once(leaf_hash)
-            .chain(
-                self.witness
-                    .chunks_exact(SHA256_HASH_SIZE)
-                    .map(|hash| -> Sha256Hash {
+        let lemma =
+            iter::once(leaf_hash)
+                .chain(self.witness.chunks_exact(BLAKE2B_256_HASH_SIZE).map(
+                    |hash| -> Blake2b256Hash {
                         hash.try_into()
                             .expect("Hash is always of correct length with above constant; qed")
-                    }),
-            )
-            .chain(iter::once(root))
-            .collect();
+                    },
+                ))
+                .chain(iter::once(root))
+                .collect();
 
         // There is no path inside of witness, but by knowing position and number of leaves we can
         // recover it
@@ -119,9 +129,9 @@ impl<'a> Witness<'a> {
             path
         };
 
-        let proof = merkle_light::proof::Proof::<Sha256Hash>::new(lemma, path);
+        let proof = merkle_light::proof::Proof::<Blake2b256Hash>::new(lemma, path);
 
-        proof.validate::<Sha256Algorithm>()
+        proof.validate::<Blake2b256Algorithm>()
     }
 }
 
@@ -161,7 +171,7 @@ impl MerkleTree {
     /// Creates new merkle tree from a list of hashes
     pub fn new<I>(hashes: I) -> Self
     where
-        I: IntoIterator<Item = Sha256Hash>,
+        I: IntoIterator<Item = Blake2b256Hash>,
     {
         Self {
             merkle_tree: InternalMerkleTree::new(hashes.into_iter()),
@@ -176,12 +186,12 @@ impl MerkleTree {
     {
         Self::new(
             data.into_iter()
-                .map(|item| crypto::sha256_hash(item.as_ref())),
+                .map(|item| crypto::blake2b_256_hash(item.as_ref())),
         )
     }
 
     /// Get Merkle Root
-    pub fn root(&self) -> Sha256Hash {
+    pub fn root(&self) -> Blake2b256Hash {
         self.merkle_tree.root()
     }
 
@@ -198,7 +208,7 @@ impl MerkleTree {
 
         // The first lemma element is root and the last is the item itself, we skip both here
         let lemma = proof.lemma().iter().skip(1).rev().skip(1).rev();
-        let mut witness = Vec::with_capacity(lemma.len() * SHA256_HASH_SIZE);
+        let mut witness = Vec::with_capacity(lemma.len() * BLAKE2B_256_HASH_SIZE);
 
         for l in lemma {
             witness.extend_from_slice(l);

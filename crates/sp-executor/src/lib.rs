@@ -28,7 +28,7 @@ use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_core_primitives::{BlockNumber, Randomness, Sha256Hash};
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::{AccountId, Hash as PHash};
 
 /// Key type for Executor.
@@ -205,7 +205,7 @@ pub struct ExecutionReceipt<Number, Hash, SecondaryHash> {
     /// List of storage roots collected during the block execution.
     pub trace: Vec<SecondaryHash>,
     /// The merkle root of `trace`.
-    pub trace_root: Sha256Hash,
+    pub trace_root: Blake2b256Hash,
 }
 
 impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>

@@ -4,7 +4,7 @@ use hex_literal::hex;
 use sp_objects::runtime_decl_for_ObjectsApi::ObjectsApi;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{crypto, Sha256Hash};
+use subspace_core_primitives::{crypto, Blake2b256Hash};
 use subspace_runtime::{
     Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
 };
@@ -113,13 +113,13 @@ fn object_mapping() {
     assert_eq!(objects.len(), 7);
 
     // Hashes should be computed correctly.
-    assert_eq!(objects[0].hash(), crypto::sha256_hash(&data0),);
-    assert_eq!(objects[1].hash(), crypto::sha256_hash(&data1));
-    assert_eq!(objects[2].hash(), crypto::sha256_hash(&data2));
-    assert_eq!(objects[3].hash(), crypto::sha256_hash(&data3));
-    assert_eq!(objects[4].hash(), crypto::sha256_hash(&data0));
-    assert_eq!(objects[5].hash(), crypto::sha256_hash(&data2));
-    assert_eq!(objects[6].hash(), crypto::sha256_hash(&data3));
+    assert_eq!(objects[0].hash(), crypto::blake2b_256_hash(&data0),);
+    assert_eq!(objects[1].hash(), crypto::blake2b_256_hash(&data1));
+    assert_eq!(objects[2].hash(), crypto::blake2b_256_hash(&data2));
+    assert_eq!(objects[3].hash(), crypto::blake2b_256_hash(&data3));
+    assert_eq!(objects[4].hash(), crypto::blake2b_256_hash(&data0));
+    assert_eq!(objects[5].hash(), crypto::blake2b_256_hash(&data2));
+    assert_eq!(objects[6].hash(), crypto::blake2b_256_hash(&data3));
 
     // Offsets for mapped objects should be correct
     assert_eq!(
@@ -182,8 +182,8 @@ fn get_successful_calls(block: Block) -> Vec<Hash> {
         .collect()
 }
 
-fn key(feed_id: u64, data: &[u8]) -> Sha256Hash {
-    crypto::sha256_hash_pair(&feed_id.encode(), data)
+fn key(feed_id: u64, data: &[u8]) -> Blake2b256Hash {
+    crypto::blake2b_256_hash_pair(&feed_id.encode(), data)
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 // returns init data, encoded signed block with finality verification, and the block hash
-fn get_encoded_blocks() -> (Vec<u8>, Vec<Sha256Hash>, Vec<u8>) {
+fn get_encoded_blocks() -> (Vec<u8>, Vec<Blake2b256Hash>, Vec<u8>) {
     let init_data = vec![
         157, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

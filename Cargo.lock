@@ -768,6 +768,7 @@ dependencies = [
 name = "cirrus-client-executor"
 version = "0.1.0"
 dependencies = [
+ "blake2-rfc",
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
  "cirrus-primitives",
@@ -790,7 +791,6 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
- "sha2 0.10.2",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -2627,15 +2627,6 @@ checksum = "2a2a2320eb7ec0ebe8da8f744d7812d9fc4cb4d09344ac01898dbcb6a20ae69b"
 dependencies = [
  "crypto-mac 0.11.1",
  "digest 0.9.0",
-]
-
-[[package]]
-name = "hmac"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
-dependencies = [
- "digest 0.10.3",
 ]
 
 [[package]]
@@ -6925,16 +6916,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.3",
- "sha2-asm",
-]
-
-[[package]]
-name = "sha2-asm"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf27176fb5d15398e3a479c652c20459d9dac830dedd1fa55b42a77dbcdbfcea"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -7858,13 +7839,13 @@ dependencies = [
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
+ "blake2-rfc",
  "criterion",
  "merkle_light",
  "parity-scale-codec",
  "rand 0.8.5",
  "reed-solomon-erasure",
  "serde",
- "sha2 0.10.2",
  "subspace-core-primitives",
  "thiserror",
 ]
@@ -7873,15 +7854,14 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "blake2-rfc",
  "derive_more",
  "hex",
- "hmac 0.12.1",
  "num-traits",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "serde_arrays",
- "sha2 0.10.2",
  "uint",
 ]
 

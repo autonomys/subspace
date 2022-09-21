@@ -16,8 +16,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    bidirectional_distance, crypto, ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece,
-    PieceIndex, PieceIndexHash, RootBlock, Sha256Hash, PIECE_SIZE, U256,
+    bidirectional_distance, crypto, ArchivedBlockProgress, Blake2b256Hash, FlatPieces,
+    LastArchivedBlock, Piece, PieceIndex, PieceIndexHash, RootBlock, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
@@ -264,8 +264,8 @@ async fn test_dsn_sync() {
             let archived_segment = {
                 let root_block = RootBlock::V0 {
                     segment_index,
-                    records_root: Sha256Hash::default(),
-                    prev_root_block_hash: Sha256Hash::default(),
+                    records_root: Blake2b256Hash::default(),
+                    prev_root_block_hash: Blake2b256Hash::default(),
                     last_archived_block,
                 };
 
@@ -533,9 +533,9 @@ async fn pieces_by_range_protocol_smoke() {
 
 #[tokio::test]
 async fn get_pieces_by_range_smoke() {
-    let piece_index_from = PieceIndexHash::from(crypto::sha256_hash(b"from"));
-    let piece_index_continue = PieceIndexHash::from(crypto::sha256_hash(b"continue"));
-    let piece_index_end = PieceIndexHash::from(crypto::sha256_hash(b"end"));
+    let piece_index_from = PieceIndexHash::from(crypto::blake2b_256_hash(b"from"));
+    let piece_index_continue = PieceIndexHash::from(crypto::blake2b_256_hash(b"continue"));
+    let piece_index_end = PieceIndexHash::from(crypto::blake2b_256_hash(b"end"));
 
     fn get_pieces_to_plot_mock(seed: u8) -> PiecesToPlot {
         let piece_bytes: Vec<u8> = [seed; 4096].to_vec();

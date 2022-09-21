@@ -12,7 +12,7 @@ use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, PublicKey, RootBlock, Sha256Hash,
+    ArchivedBlockProgress, Blake2b256Hash, FlatPieces, LastArchivedBlock, PublicKey, RootBlock,
     PIECE_SIZE,
 };
 use subspace_farmer::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
@@ -238,8 +238,8 @@ pub(crate) async fn bench(
                 let archived_segment = {
                     let root_block = RootBlock::V0 {
                         segment_index,
-                        records_root: Sha256Hash::default(),
-                        prev_root_block_hash: Sha256Hash::default(),
+                        records_root: Blake2b256Hash::default(),
+                        prev_root_block_hash: Blake2b256Hash::default(),
                         last_archived_block,
                     };
 

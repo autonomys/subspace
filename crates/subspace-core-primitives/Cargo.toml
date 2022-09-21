@@ -12,9 +12,10 @@ include = [
 ]
 
 [dependencies]
+# Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
+blake2-rfc = { version = "0.2.18", default-features = false }
 derive_more = "0.99.17"
 hex = { version  = "0.4.3", default-features = false }
-hmac = { version  = "0.12.1", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 parity-scale-codec = { version = "3.1.5", default-features = false, features = ["derive"] }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
@@ -22,27 +23,15 @@ serde = { version = "1.0.143", optional = true, features = ["derive"] }
 serde_arrays = "0.1.0"
 uint = { version = "0.9", default-features = false }
 
-# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
-[target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
-features = ["asm"]
-version = "0.10.2"
-
-# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
-# `asm` feature is not supported on Windows except with GNU toolchain
-[target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
-default-features = false
-version = "0.10.2"
-
 [features]
 default = ["std"]
 std = [
+    "blake2-rfc/std",
     "hex/serde",
     "hex/std",
-    "hmac/std",
     "num-traits/std",
     "parity-scale-codec/std",
     "scale-info/std",
     "serde",
-    "sha2/std",
     "uint/std",
 ]

@@ -20,7 +20,7 @@ use codec::{Compact, CompactLen, Decode, Encode};
 use sp_runtime::{DispatchError, DispatchResult};
 use sp_std::vec;
 use sp_std::vec::Vec;
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::Blake2b256Hash;
 
 /// Holds the offset to some portion of data within/or the object
 #[derive(Debug)]
@@ -35,7 +35,7 @@ pub enum FeedObjectMapping {
 }
 
 impl FeedObjectMapping {
-    pub(crate) fn try_into_call_object<FeedID: Encode, Hasher: Fn(&[u8]) -> Sha256Hash>(
+    pub(crate) fn try_into_call_object<FeedID: Encode, Hasher: Fn(&[u8]) -> Blake2b256Hash>(
         self,
         feed_id: FeedID,
         object: &[u8],
@@ -88,7 +88,7 @@ pub type FeedMetadata = Vec<u8>;
 /// Feed indexes the objects in the DSN using offsets within the Block the object is present in. `object_mappings` is the
 /// only that must be implemented by the Feed processor. Since DSN is a key value store, there are two different ways keys
 /// are derived for given data at the offset within the block
-/// - Key derived from content. Feeds use Sha256 to derive the key for the data at the offset.
+/// - Key derived from content. Feeds use BLAKE2b-256 to derive the key for the data at the offset.
 /// - Key provided by the feed processor. Feed processor implementations can instead provide a key for object at the offset.
 ///
 /// ## Examples

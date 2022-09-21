@@ -26,9 +26,10 @@ use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::{
-    crypto, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
-    RewardSignature, Salt, Sha256Hash, SlotNumber, Solution, SolutionRange, Tag, TagSignature,
-    PIECE_SIZE, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
+    crypto, Blake2b256Hash, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey,
+    Randomness, RecordsRoot, RewardSignature, Salt, SlotNumber, Solution, SolutionRange, Tag,
+    TagSignature, PIECE_SIZE, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX,
+    SALT_SIZE, U256,
 };
 use subspace_solving::{
     create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
@@ -98,7 +99,7 @@ fn check_piece_tag<FarmerPublicKey, RewardAddress>(
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
-    records_root: Sha256Hash,
+    records_root: Blake2b256Hash,
     position: u64,
     record_size: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
@@ -323,7 +324,7 @@ pub fn derive_next_salt_from_randomness(eon_index: u64, randomness: &Randomness)
         .copy_from_slice(randomness);
     input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..].copy_from_slice(&eon_index.to_le_bytes());
 
-    crypto::sha256_hash(&input)[..SALT_SIZE]
+    crypto::blake2b_256_hash(&input)[..SALT_SIZE]
         .try_into()
         .expect("Slice has exactly the size needed; qed")
 }

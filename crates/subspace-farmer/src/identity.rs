@@ -4,7 +4,7 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::path::Path;
-use subspace_core_primitives::{LocalChallenge, Sha256Hash, Tag, TagSignature};
+use subspace_core_primitives::{Blake2b256Hash, LocalChallenge, Tag, TagSignature};
 use subspace_solving::{
     create_tag_signature, derive_local_challenge_and_target, REWARD_SIGNING_CONTEXT,
 };
@@ -129,7 +129,7 @@ impl Identity {
 
     pub fn derive_local_challenge_and_target(
         &self,
-        global_challenge: Sha256Hash,
+        global_challenge: Blake2b256Hash,
     ) -> (LocalChallenge, Tag) {
         derive_local_challenge_and_target(&self.keypair, global_challenge)
     }

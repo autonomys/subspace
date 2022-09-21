@@ -36,8 +36,8 @@ use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, LastArchivedBlock, LocalChallenge, Piece, Randomness, RecordsRoot,
-    RootBlock, Salt, SegmentIndex, Sha256Hash, Solution, SolutionRange, Tag, PIECE_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, LocalChallenge, Piece, Randomness,
+    RecordsRoot, RootBlock, Salt, SegmentIndex, Solution, SolutionRange, Tag, PIECE_SIZE,
     RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
@@ -336,7 +336,7 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
     RootBlock::V0 {
         segment_index,
         records_root: RecordsRoot::default(),
-        prev_root_block_hash: Sha256Hash::default(),
+        prev_root_block_hash: Blake2b256Hash::default(),
         last_archived_block: LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Complete,

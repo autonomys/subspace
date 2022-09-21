@@ -27,7 +27,7 @@ use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
 use subspace_core_primitives::{
-    crypto, LocalChallenge, Piece, Randomness, Salt, Sha256Hash, Tag, TagSignature, TAG_SIZE,
+    crypto, Blake2b256Hash, LocalChallenge, Piece, Randomness, Salt, Tag, TagSignature, TAG_SIZE,
 };
 
 const LOCAL_CHALLENGE_LABEL: &[u8] = b"subspace_local_challenge";
@@ -45,25 +45,28 @@ pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
 
 /// Create a commitment tag of a piece for a particular salt.
 pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
-    crypto::hmac_sha256(&salt, piece)[..TAG_SIZE]
+    crypto::blake2b_256_hash_with_key(piece, &salt)[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
 
 // TODO: Separate type for global challenge
 /// Derive global slot challenge from global randomness.
-pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Sha256Hash {
-    crypto::sha256_hash_pair(global_randomness, &slot.to_le_bytes())
+pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Blake2b256Hash {
+    crypto::blake2b_256_hash_pair(global_randomness, &slot.to_le_bytes())
 }
 
-fn create_local_challenge_transcript(global_challenge: &Sha256Hash) -> Transcript {
+fn create_local_challenge_transcript(global_challenge: &Blake2b256Hash) -> Transcript {
     let mut transcript = Transcript::new(LOCAL_CHALLENGE_LABEL);
     transcript.append_message(b"global challenge", global_challenge);
     transcript
 }
 
 /// Derive local challenge for farmer from keypair and global challenge.
-pub fn derive_local_challenge(keypair: &Keypair, global_challenge: Sha256Hash) -> LocalChallenge {
+pub fn derive_local_challenge(
+    keypair: &Keypair,
+    global_challenge: Blake2b256Hash,
+) -> LocalChallenge {
     let (in_out, proof, _) = keypair.vrf_sign(create_local_challenge_transcript(&global_challenge));
 
     LocalChallenge {
@@ -75,7 +78,7 @@ pub fn derive_local_challenge(keypair: &Keypair, global_challenge: Sha256Hash) -
 /// Derive local challenge and target for farmer from keypair and global challenge.
 pub fn derive_local_challenge_and_target(
     keypair: &Keypair,
-    global_challenge: Sha256Hash,
+    global_challenge: Blake2b256Hash,
 ) -> (LocalChallenge, Tag) {
     let (in_out, proof, _) = keypair.vrf_sign(create_local_challenge_transcript(&global_challenge));
 
@@ -91,7 +94,7 @@ pub fn derive_local_challenge_and_target(
 /// Verify local challenge for farmer's public key that was derived from the global challenge.
 pub fn verify_local_challenge(
     public_key: &PublicKey,
-    global_challenge: Sha256Hash,
+    global_challenge: Blake2b256Hash,
     local_challenge: &LocalChallenge,
 ) -> SignatureResult<VRFInOut> {
     public_key
@@ -109,7 +112,7 @@ pub fn verify_local_challenge(
 /// function.
 pub fn derive_target(
     public_key: &PublicKey,
-    global_challenge: Sha256Hash,
+    global_challenge: Blake2b256Hash,
     local_challenge: &LocalChallenge,
 ) -> SignatureResult<Tag> {
     let in_out = VRFOutput(local_challenge.output).attach_input_hash(

@@ -25,7 +25,7 @@ mod mock;
 mod tests;
 
 pub use pallet::*;
-use subspace_core_primitives::{crypto, Sha256Hash};
+use subspace_core_primitives::{crypto, Blake2b256Hash};
 
 #[frame_support::pallet]
 mod pallet {
@@ -33,7 +33,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use log::debug;
     use sp_std::prelude::*;
-    use subspace_core_primitives::{crypto, Sha256Hash};
+    use subspace_core_primitives::{crypto, Blake2b256Hash};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -53,7 +53,7 @@ mod pallet {
         /// New object was added.
         ObjectSubmitted {
             who: T::AccountId,
-            object_id: Sha256Hash,
+            object_id: Blake2b256Hash,
             object_size: u32,
         },
     }
@@ -69,7 +69,7 @@ mod pallet {
 
             let object_size = object.len() as u32;
 
-            let object_id = crypto::sha256_hash(&object);
+            let object_id = crypto::blake2b_256_hash(&object);
 
             debug!(
                 target: "runtime:object-store",
@@ -93,7 +93,7 @@ mod pallet {
 #[derive(Debug)]
 pub struct CallObject {
     /// Object hash
-    pub hash: Sha256Hash,
+    pub hash: Blake2b256Hash,
     /// Offset of object in the encoded call.
     pub offset: u32,
 }
@@ -105,7 +105,7 @@ impl<T: Config> Call<T> {
             Self::put { object } => {
                 // `1` corresponds to `Call::put {}` enum variant encoding.
                 Some(CallObject {
-                    hash: crypto::sha256_hash(object),
+                    hash: crypto::blake2b_256_hash(object),
                     offset: 1,
                 })
             }

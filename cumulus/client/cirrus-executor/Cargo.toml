@@ -22,6 +22,8 @@ sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa
 sp-trie = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 # Other dependencies
+# Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
+blake2-rfc = "0.2.18"
 codec = { package = "parity-scale-codec", version = "3.1.5", features = [ "derive" ] }
 crossbeam = "0.8.2"
 futures = { version = "0.3.21", features = ["compat"] }
@@ -41,16 +43,6 @@ sp-executor = { path = "../../../crates/sp-executor" }
 subspace-fraud-proof = { path = "../../../crates/subspace-fraud-proof" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
-
-# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
-[target.'cfg(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu")))'.dependencies.sha2]
-features = ["asm"]
-version = "0.10.2"
-
-# Ugly workaround for https://github.com/rust-lang/cargo/issues/1197
-# `asm` feature is not supported on Windows except with GNU toolchain
-[target.'cfg(not(any(target_os = "linux", target_os = "macos", all(target_os = "windows", target_env = "gnu"))))'.dependencies.sha2]
-version = "0.10.2"
 
 [dev-dependencies]
 cirrus-test-service = { path = "../../test/service" }

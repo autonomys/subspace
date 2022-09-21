@@ -7,7 +7,7 @@ use parity_scale_codec::Decode;
 use std::{io, thread};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{GlobalObject, PieceObject, PieceObjectMapping};
-use subspace_core_primitives::Sha256Hash;
+use subspace_core_primitives::Blake2b256Hash;
 use subspace_networking::{Node, PiecesToPlot, SubscribeError};
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -127,7 +127,7 @@ pub(super) async fn start_archiving(
 fn create_global_object_mapping(
     piece_index_offset: u64,
     object_mapping: Vec<PieceObjectMapping>,
-) -> Vec<(Sha256Hash, GlobalObject)> {
+) -> Vec<(Blake2b256Hash, GlobalObject)> {
     object_mapping
         .iter()
         .enumerate()
