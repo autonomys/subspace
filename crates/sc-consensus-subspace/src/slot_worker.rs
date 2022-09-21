@@ -258,6 +258,8 @@ where
                     piece_check_params: Some(PieceCheckParams {
                         records_root,
                         position,
+                        kzg: &self.subspace_link.kzg,
+                        num_pieces_in_segment: MERKLE_NUM_LEAVES,
                         record_size: RECORD_SIZE,
                         max_plot_size,
                         total_pieces,

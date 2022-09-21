@@ -33,6 +33,7 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Ze
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     BlockNumber, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -184,6 +185,7 @@ fn initialize_archiver<Block, Client>(
     best_block_number: NumberFor<Block>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
+    kzg: Kzg,
 ) -> InitializedArchiver<Block>
 where
     Block: BlockT,
@@ -220,6 +222,7 @@ where
         Archiver::with_initial_state(
             RECORD_SIZE,
             RECORDED_HISTORY_SEGMENT_SIZE,
+            kzg,
             last_root_block,
             &last_archived_block.encode(),
             block_object_mappings,
@@ -228,7 +231,7 @@ where
     } else {
         info!(target: "subspace", "Starting archiving from genesis");
 
-        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
             .expect("Incorrect parameters for archiver")
     };
 
@@ -409,6 +412,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
         best_block_number,
         subspace_link,
         client.as_ref(),
+        subspace_link.kzg.clone(),
     );
 
     spawner.spawn_essential_blocking(

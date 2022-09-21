@@ -28,8 +28,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_archiving::archiver::is_piece_valid;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RecordsRoot, MERKLE_NUM_LEAVES,
 };
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
@@ -772,12 +774,15 @@ impl SinglePlotFarm {
             total_pieces: farmer_protocol_info.total_pieces,
         };
 
+        let kzg = Kzg::new(kzg::test_public_parameters());
+
         let plotter = VerifyingPlotter {
             single_plot_plotter: self.plotter(),
             span: self.span.clone(),
             verification_client,
             farmer_protocol_info,
             pieces_verification_enabled,
+            kzg,
         };
 
         dsn::sync(self.node.clone(), options, plotter)
@@ -813,6 +818,7 @@ struct VerifyingPlotter<RC> {
     single_plot_plotter: SinglePlotPlotter,
     farmer_protocol_info: FarmerProtocolInfo,
     pieces_verification_enabled: bool,
+    kzg: Kzg,
 }
 
 impl<RC: RpcClient> VerifyingPlotter<RC> {
@@ -866,7 +872,7 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                     Err(PiecesVerificationError::NoRecordsRootFound)
                 }
             })
-            .collect::<Result<Vec<Blake2b256Hash>, PiecesVerificationError>>()?;
+            .collect::<Result<Vec<RecordsRoot>, PiecesVerificationError>>()?;
 
         // Perform an actual piece validity check
         for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {
@@ -874,6 +880,8 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                 .expect("Position within segment always fits into u32; qed");
 
             if !is_piece_valid(
+                &self.kzg,
+                MERKLE_NUM_LEAVES,
                 piece,
                 root,
                 position,

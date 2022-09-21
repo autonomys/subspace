@@ -25,11 +25,11 @@ use schnorrkel::vrf::VRFOutput;
 use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    crypto, Blake2b256Hash, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey,
-    Randomness, RecordsRoot, RewardSignature, Salt, SlotNumber, Solution, SolutionRange, Tag,
-    TagSignature, PIECE_SIZE, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX,
-    SALT_SIZE, U256,
+    crypto, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
+    RewardSignature, Salt, SlotNumber, Solution, SolutionRange, Tag, TagSignature, PIECE_SIZE,
+    RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
 };
 use subspace_solving::{
     create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
@@ -99,7 +99,9 @@ fn check_piece_tag<FarmerPublicKey, RewardAddress>(
 ///
 /// If `records_root` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
-    records_root: Blake2b256Hash,
+    kzg: &Kzg,
+    num_pieces_in_segment: u32,
+    records_root: RecordsRoot,
     position: u32,
     record_size: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
@@ -116,7 +118,14 @@ where
         .decode(&mut piece, solution.piece_index)
         .map_err(|_| Error::InvalidPieceEncoding)?;
 
-    if !archiver::is_piece_valid(&piece, records_root, position, record_size) {
+    if !archiver::is_piece_valid(
+        kzg,
+        num_pieces_in_segment,
+        &piece,
+        records_root,
+        position,
+        record_size,
+    ) {
         return Err(Error::InvalidPiece);
     }
 
@@ -155,11 +164,15 @@ fn is_within_max_plot(
 
 /// Parameters for checking piece validity
 #[derive(Debug)]
-pub struct PieceCheckParams {
+pub struct PieceCheckParams<'a> {
     /// Records root of segment to which piece belongs
     pub records_root: RecordsRoot,
     /// Position of the piece in the segment
     pub position: u32,
+    /// KZG instance
+    pub kzg: &'a Kzg,
+    /// Number of pieces in a segment
+    pub num_pieces_in_segment: u32,
     /// Record size, system parameter
     pub record_size: u32,
     /// Maximum plot size in bytes, system parameter
@@ -180,7 +193,7 @@ pub struct VerifySolutionParams<'a> {
     /// Parameters for checking piece validity.
     ///
     /// If `None`, piece validity check will be skipped.
-    pub piece_check_params: Option<PieceCheckParams>,
+    pub piece_check_params: Option<PieceCheckParams<'a>>,
 }
 
 /// Solution verification
@@ -235,6 +248,8 @@ where
     if let Some(PieceCheckParams {
         records_root,
         position,
+        kzg,
+        num_pieces_in_segment,
         record_size,
         max_plot_size,
         total_pieces,
@@ -249,7 +264,14 @@ where
             return Err(Error::OutsideMaxPlot);
         }
 
-        check_piece(records_root, position, record_size, solution)?;
+        check_piece(
+            kzg,
+            num_pieces_in_segment,
+            records_root,
+            position,
+            record_size,
+            solution,
+        )?;
     }
 
     Ok(())

@@ -16,9 +16,7 @@
 //! Collection of modules used for dealing with archived state of Subspace Network.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(drain_filter)]
-#![feature(int_log)]
 
 pub mod archiver;
-pub mod merkle_tree;
 pub mod reconstructor;
 mod utils;

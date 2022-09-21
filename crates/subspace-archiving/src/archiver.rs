@@ -18,21 +18,21 @@ mod record_shards;
 extern crate alloc;
 
 use crate::archiver::record_shards::RecordShards;
-use crate::merkle_tree::{MerkleTree, Witness};
 use crate::utils::GF_16_ELEMENT_BYTES;
-use alloc::borrow::Cow;
 use alloc::collections::VecDeque;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
+use subspace_core_primitives::crypto::blake2b_256_254_hash;
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
     crypto, ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock,
-    RootBlock, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
+    RootBlock, BLAKE2B_256_HASH_SIZE, PIECE_SIZE, WITNESS_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -47,7 +47,7 @@ const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
 };
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub enum Segment {
     // V0 of the segment data structure
     #[codec(index = 0)]
@@ -70,7 +70,7 @@ impl Segment {
 }
 
 /// Kinds of items that are contained within a segment
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode)]
+#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub enum SegmentItem {
     /// Contains full block inside
     #[codec(index = 3)]
@@ -199,6 +199,8 @@ pub struct Archiver {
     segment_size: u32,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
+    /// KZG instance
+    kzg: Kzg,
     /// An index of the current segment
     segment_index: u64,
     /// Hash of the root block of the previous segment
@@ -218,7 +220,11 @@ impl Archiver {
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
     /// * segment size and record size do not make sense together
-    pub fn new(record_size: u32, segment_size: u32) -> Result<Self, ArchiverInstantiationError> {
+    pub fn new(
+        record_size: u32,
+        segment_size: u32,
+        kzg: Kzg,
+    ) -> Result<Self, ArchiverInstantiationError> {
         let tiny_segment = Segment::V0 {
             items: vec![SegmentItem::Block {
                 bytes: vec![0u8],
@@ -238,17 +244,14 @@ impl Archiver {
             return Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        // We take N data records and will creates the same number of parity records, hence `*2`
-        let merkle_num_leaves = segment_size / record_size * 2;
-        let witness_size = BLAKE2B_256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
-        if record_size as usize + witness_size != PIECE_SIZE {
+        if record_size + WITNESS_SIZE != PIECE_SIZE as u32 {
             return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
         }
 
         let data_shards = segment_size / record_size;
         let parity_shards = data_shards;
         let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
-            .expect("ReedSolomon should always be correctly instantiated");
+            .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
             buffer: VecDeque::default(),
@@ -257,6 +260,9 @@ impl Archiver {
             parity_shards,
             segment_size,
             reed_solomon,
+            // TODO: Probably should check degree from public parameters against erasure coding
+            //  setup
+            kzg,
             segment_index: 0,
             prev_root_block_hash: Blake2b256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
@@ -269,11 +275,12 @@ impl Archiver {
     pub fn with_initial_state(
         record_size: u32,
         segment_size: u32,
+        kzg: Kzg,
         root_block: RootBlock,
         encoded_block: &[u8],
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
-        let mut archiver = Self::new(record_size, segment_size)?;
+        let mut archiver = Self::new(record_size, segment_size, kzg)?;
 
         archiver.segment_index = root_block.segment_index() + 1;
         archiver.prev_root_block_hash = root_block.hash();
@@ -653,13 +660,32 @@ impl Archiver {
         let mut pieces = FlatPieces::new(record_shards_slices.len());
         drop(record_shards_slices);
 
-        // Build a Merkle tree over all records
-        let merkle_tree = MerkleTree::from_data(
-            record_shards
-                .as_bytes()
-                .as_ref()
-                .chunks_exact(self.record_size as usize),
-        );
+        let record_shards_hashes = record_shards
+            .as_bytes()
+            .as_ref()
+            .chunks_exact(self.record_size as usize)
+            .map(blake2b_256_254_hash)
+            .collect::<Vec<_>>();
+        let data = {
+            let mut data = Vec::with_capacity(
+                (self.data_shards + self.parity_shards) as usize * BLAKE2B_256_HASH_SIZE,
+            );
+
+            for shard in &record_shards_hashes {
+                // TODO: Eventually we need to commit to data itself, not hashes
+                data.extend_from_slice(shard);
+            }
+
+            data
+        };
+        let polynomial = self
+            .kzg
+            .poly(&data)
+            .expect("Internally produced values must never fail; qed");
+        let commitment = self
+            .kzg
+            .commit(&polynomial)
+            .expect("Internally produced values must never fail; qed");
 
         // Combine data and parity records back into flat vector of pieces along with corresponding
         // witnesses (Merkle proofs) created above.
@@ -676,17 +702,20 @@ impl Archiver {
                 let (record_part, witness_part) = piece.split_at_mut(self.record_size as usize);
 
                 record_part.copy_from_slice(shard_chunk);
+                // TODO: Consider batch witness creation for improved performance
                 witness_part.copy_from_slice(
-                    &merkle_tree
-                        .get_witness(position)
-                        .expect("We use the same indexes as during Merkle tree creation; qed"),
+                    &self
+                        .kzg
+                        .create_witness(&polynomial, position as u32)
+                        .expect("We use the same indexes as during Merkle tree creation; qed")
+                        .to_bytes(),
                 );
             });
 
         // Now produce root block
         let root_block = RootBlock::V0 {
             segment_index: self.segment_index,
-            records_root: merkle_tree.root(),
+            records_root: commitment,
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };
@@ -708,19 +737,32 @@ impl Archiver {
 }
 
 /// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(piece: &[u8], root: Blake2b256Hash, position: u32, record_size: u32) -> bool {
+pub fn is_piece_valid(
+    kzg: &Kzg,
+    num_pieces_in_segment: u32,
+    piece: &[u8],
+    commitment: Commitment,
+    position: u32,
+    record_size: u32,
+) -> bool {
     if piece.len() != PIECE_SIZE {
         return false;
     }
 
     let (record, witness) = piece.split_at(record_size as usize);
-    let witness = match Witness::new(Cow::Borrowed(witness)) {
-        Ok(witness) => witness,
-        Err(_) => {
+    let witness = match witness.try_into().map(Witness::try_from_bytes) {
+        Ok(Ok(witness)) => witness,
+        _ => {
             return false;
         }
     };
-    let leaf_hash = crypto::blake2b_256_hash(record);
+    let leaf_hash = crypto::blake2b_256_254_hash(record);
 
-    witness.is_valid(root, position, leaf_hash)
+    kzg.verify(
+        &commitment,
+        num_pieces_in_segment,
+        position,
+        &leaf_hash,
+        &witness,
+    )
 }

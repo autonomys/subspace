@@ -12,16 +12,16 @@ use rand::Rng;
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::AtomicBool;
 use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{PieceIndexHash, Salt, BLAKE2B_256_HASH_SIZE, PIECE_SIZE};
+use subspace_core_primitives::{PieceIndexHash, Salt, PIECE_SIZE, RECORD_SIZE};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 use tracing::error;
 
 const MERKLE_NUM_LEAVES: u32 = 8;
-const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2(); // 96
-const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE; // 4000
 const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
 
 fn init() {
@@ -56,7 +56,8 @@ async fn plotting_happy_path() {
 
     let client = MockRpcClient::new();
 
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::new(kzg::test_public_parameters());
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
@@ -161,7 +162,8 @@ async fn plotting_piece_eviction() {
 
     let client = MockRpcClient::new();
 
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::new(kzg::test_public_parameters());
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg.clone()).unwrap();
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
         record_size: NonZeroU32::new(RECORD_SIZE as u32).unwrap(),
@@ -229,7 +231,7 @@ async fn plotting_piece_eviction() {
         panic!("Panicked with error...{:?}", e);
     }
 
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
 
     for encoded_block in encoded_blocks {
         for archived_segment in archiver.add_block(encoded_block, BlockObjectMapping::default()) {

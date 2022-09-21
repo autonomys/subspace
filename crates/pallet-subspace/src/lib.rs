@@ -51,6 +51,8 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, MERKLE_NUM_LEAVES,
     PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -1480,6 +1482,8 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
         solution,
         slot.into(),
@@ -1490,6 +1494,8 @@ fn check_vote<T: Config>(
             piece_check_params: Some(PieceCheckParams {
                 records_root,
                 position,
+                kzg: &kzg,
+                num_pieces_in_segment: MERKLE_NUM_LEAVES,
                 record_size: vote_verification_data.record_size,
                 max_plot_size: vote_verification_data.max_plot_size,
                 total_pieces: vote_verification_data.total_pieces,

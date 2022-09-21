@@ -28,6 +28,7 @@ pub mod objects;
 
 extern crate alloc;
 
+use crate::crypto::kzg::Commitment;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
@@ -46,6 +47,10 @@ pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 ///
 /// This can not changed after the network is launched.
 pub const PIECE_SIZE: usize = 4096;
+/// Size of witness for a segment record (in bytes).
+pub const WITNESS_SIZE: u32 = 48;
+/// Size of a segment record given the global piece size (in bytes).
+pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -89,7 +94,7 @@ pub type BlockWeight = u128;
 pub type SegmentIndex = u64;
 
 /// Records root type.
-pub type RecordsRoot = Blake2b256Hash;
+pub type RecordsRoot = Commitment;
 
 /// Eon Index type.
 pub type EonIndex = u64;
@@ -110,10 +115,6 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 ///   lost before part of the archived history become unrecoverable, reducing reliability of the
 ///   data stored on the network
 pub const MERKLE_NUM_LEAVES: u32 = 256;
-/// Size of witness for a segment record (in bytes).
-pub const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
-/// Size of a segment record given the global piece size (in bytes).
-pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
 /// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
 /// pieces of archival history.
@@ -434,7 +435,7 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum RootBlock {

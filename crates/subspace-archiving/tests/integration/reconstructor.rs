@@ -4,14 +4,15 @@ use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{
     Reconstructor, ReconstructorError, ReconstructorInstantiationError,
 };
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PIECE_SIZE, RECORD_SIZE,
 };
 
+// This is data + parity shards
 const MERKLE_NUM_LEAVES: u32 = 8;
-const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
-const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+// In terms of source data that can be stored in the segment, not the size after archiving
 const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
@@ -27,7 +28,8 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 
 #[test]
 fn basic() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(MERKLE_NUM_LEAVES).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -78,7 +80,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(7992)
+                archived_progress: ArchivedBlockProgress::Partial(8088)
             }
         );
 
@@ -97,7 +99,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(7992)
+                archived_progress: ArchivedBlockProgress::Partial(8088)
             }
         );
     }
@@ -117,7 +119,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(3896)
+                archived_progress: ArchivedBlockProgress::Partial(3928)
             }
         );
 
@@ -136,7 +138,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(3896)
+                archived_progress: ArchivedBlockProgress::Partial(3928)
             }
         );
     }
@@ -156,7 +158,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(19806)
+                archived_progress: ArchivedBlockProgress::Partial(20014)
             }
         );
     }
@@ -177,7 +179,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(19806)
+                archived_progress: ArchivedBlockProgress::Partial(20014)
             }
         );
     }
@@ -197,7 +199,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(35716)
+                archived_progress: ArchivedBlockProgress::Partial(36100)
             }
         );
     }
@@ -218,7 +220,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(35716)
+                archived_progress: ArchivedBlockProgress::Partial(36100)
             }
         );
     }
@@ -226,7 +228,8 @@ fn basic() {
 
 #[test]
 fn partial_data() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(MERKLE_NUM_LEAVES).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -301,6 +304,7 @@ fn partial_data() {
 
 #[test]
 fn invalid_usage() {
+    let kzg = Kzg::random(MERKLE_NUM_LEAVES).unwrap();
     assert_matches!(
         Reconstructor::new(10, 9),
         Err(ReconstructorInstantiationError::SegmentSizeTooSmall),
@@ -320,7 +324,7 @@ fn invalid_usage() {
         Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination),
     );
 
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that overflows into the next segments
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize * 4]>().to_vec();
 

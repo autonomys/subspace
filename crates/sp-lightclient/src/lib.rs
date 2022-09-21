@@ -34,6 +34,8 @@ use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockWeight, EonIndex, PublicKey, Randomness, RecordsRoot, RewardSignature, Salt, SegmentIndex,
     SolutionRange, MERKLE_NUM_LEAVES, RECORD_SIZE,
@@ -397,6 +399,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
         let total_pieces = self.total_pieces(parent_header.header.hash())?;
 
+        // TODO: Probably should have public parameters in chain constants instead
+        let kzg = Kzg::new(kzg::test_public_parameters());
+
         verify_solution(
             &header_digests.pre_digest.solution,
             header_digests.pre_digest.slot.into(),
@@ -407,6 +412,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 piece_check_params: Some(PieceCheckParams {
                     records_root,
                     position,
+                    kzg: &kzg,
+                    num_pieces_in_segment: MERKLE_NUM_LEAVES,
                     record_size: RECORD_SIZE,
                     max_plot_size,
                     total_pieces,
