@@ -7,7 +7,6 @@ use crate::create::ValueGetter;
 use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
 };
-use crate::shared::IdendityHash;
 use custom_record_store::CustomRecordStore;
 use derive_more::From;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
@@ -36,7 +35,7 @@ pub(crate) struct BehaviorConfig {
 #[behaviour(event_process = false)]
 pub(crate) struct Behavior {
     pub(crate) identify: Identify,
-    pub(crate) kademlia: Kademlia<CustomRecordStore, IdendityHash>,
+    pub(crate) kademlia: Kademlia<CustomRecordStore>,
     pub(crate) gossipsub: Gossipsub,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponsesBehaviour,
@@ -44,7 +43,7 @@ pub(crate) struct Behavior {
 
 impl Behavior {
     pub(crate) fn new(config: BehaviorConfig) -> Self {
-        let kademlia = Kademlia::<_, IdendityHash>::with_config(
+        let kademlia = Kademlia::with_config(
             config.peer_id,
             CustomRecordStore::new(config.value_getter),
             config.kademlia,
