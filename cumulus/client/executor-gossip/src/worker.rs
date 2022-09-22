@@ -1,4 +1,6 @@
-use crate::{topic, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET};
+use crate::{
+    topic, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
+};
 use futures::{future, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -17,9 +19,7 @@ where
 {
     gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    bundle_receiver: TracingUnboundedReceiver<
-        SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    >,
+    bundle_receiver: BundleReceiver<Block, PBlock>,
     execution_receipt_receiver: TracingUnboundedReceiver<
         SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     >,
@@ -34,9 +34,7 @@ where
     pub(super) fn new(
         gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-        bundle_receiver: TracingUnboundedReceiver<
-            SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        >,
+        bundle_receiver: BundleReceiver<Block, PBlock>,
         execution_receipt_receiver: TracingUnboundedReceiver<
             SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         >,

@@ -149,6 +149,15 @@ type TransactionFor<Backend, Block> =
         HashFor<Block>,
     >>::Transaction;
 
+type BundleSender<Block, PBlock> = TracingUnboundedSender<
+    SignedBundle<
+        <Block as BlockT>::Extrinsic,
+        NumberFor<PBlock>,
+        <PBlock as BlockT>::Hash,
+        <Block as BlockT>::Hash,
+    >,
+>;
+
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
     Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
@@ -191,11 +200,7 @@ where
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         transaction_pool: Arc<TransactionPool>,
-        bundle_sender: Arc<
-            TracingUnboundedSender<
-                SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-            >,
-        >,
+        bundle_sender: Arc<BundleSender<Block, PBlock>>,
         execution_receipt_sender: Arc<
             TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
         >,

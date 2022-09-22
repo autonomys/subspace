@@ -357,7 +357,9 @@ where
 
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
-        // TODO: Remove all the code below?
+        // TODO: Change `bundle.receipt` to `bundle.receipts` and send all the missing receipts if
+        // there are any.
+        //
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
         if header_number == best_execution_chain_number + One::one() {
@@ -500,7 +502,7 @@ where
             {
                 Some(local_receipt) => {
                     if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, &execution_receipt)
+                        find_trace_mismatch(&local_receipt, execution_receipt)
                     {
                         bad_receipts_to_write.push((
                             execution_receipt.primary_number,
@@ -669,7 +671,7 @@ where
 
                     if let Err(e) = self
                         .execution_receipt_sender
-                        .unbounded_send(signed_execution_receipt.clone())
+                        .unbounded_send(signed_execution_receipt)
                     {
                         tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
                     }

@@ -1,10 +1,10 @@
 use crate::worker::ExecutorSlotInfo;
+use crate::BundleSender;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
@@ -32,11 +32,7 @@ where
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    bundle_sender: Arc<
-        TracingUnboundedSender<
-            SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        >,
-    >,
+    bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
     _phantom_data: PhantomData<PBlock>,
@@ -76,11 +72,7 @@ where
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         transaction_pool: Arc<TransactionPool>,
-        bundle_sender: Arc<
-            TracingUnboundedSender<
-                SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-            >,
-        >,
+        bundle_sender: Arc<BundleSender<Block, PBlock>>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
     ) -> Self {

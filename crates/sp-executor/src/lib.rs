@@ -114,7 +114,7 @@ impl<Hash: Encode> BundleHeader<Hash> {
 pub struct Bundle<Extrinsic, Number, Hash, SecondaryHash> {
     /// The bundle header.
     pub header: BundleHeader<Hash>,
-    /// Best receipt from the executor's point of view when the bundle was created.
+    /// Next expected receipt by the primay chain when the bundle was created.
     pub receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
@@ -145,7 +145,7 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
 pub struct OpaqueBundle<Number, Hash, SecondaryHash> {
     /// The bundle header.
     pub header: BundleHeader<Hash>,
-    /// Best receipt from the executor's point of view when the bundle was created.
+    /// Next expected receipt by the primay chain when the bundle was created.
     pub receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
     /// THe accompanying opaque extrinsics.
     pub opaque_extrinsics: Vec<OpaqueExtrinsic>,
@@ -244,6 +244,7 @@ impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
     }
 }
 
+// TODO: Remove this when the bundle gossip is disabled.
 /// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {

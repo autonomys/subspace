@@ -281,6 +281,15 @@ where
     }
 }
 
+type BundleReceiver<Block, PBlock> = TracingUnboundedReceiver<
+    SignedBundle<
+        <Block as BlockT>::Extrinsic,
+        NumberFor<PBlock>,
+        <PBlock as BlockT>::Hash,
+        <Block as BlockT>::Hash,
+    >,
+>;
+
 /// Parameters to run the executor gossip service.
 pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor> {
     /// Substrate network service.
@@ -288,9 +297,7 @@ pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor
     /// Executor instance.
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
-    pub bundle_receiver: TracingUnboundedReceiver<
-        SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    >,
+    pub bundle_receiver: BundleReceiver<Block, PBlock>,
     /// Stream of execution receipt produced locally.
     pub execution_receipt_receiver: TracingUnboundedReceiver<
         SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
