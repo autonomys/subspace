@@ -166,20 +166,13 @@ async fn execution_proof_creation_and_verification_should_work() {
         .runtime_api()
         .intermediate_roots(&BlockId::Hash(best_hash))
         .expect("Get intermediate roots");
-    println!(
-        "intermediate_roots: {:?}",
-        intermediate_roots
-            .clone()
-            .into_iter()
-            .map(Hash::from)
-            .collect::<Vec<_>>()
-    );
 
-    assert_eq!(
-        intermediate_roots.len(),
-        test_txs.len() + 1,
-        "🐛 ERROR: runtime API `intermediate_roots()` obviously returned a wrong result"
-    );
+    if intermediate_roots.len() != test_txs.len() + 1 {
+        panic!(
+            "🐛 ERROR: runtime API `intermediate_roots()` obviously returned a wrong result, intermediate_roots: {:?}",
+            intermediate_roots.into_iter().map(Hash::from).collect::<Vec<_>>(),
+        );
+    }
 
     let new_header = Header::new(
         *header.number(),
