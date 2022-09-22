@@ -351,7 +351,6 @@ impl SingleDiskFarm {
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,
-                        enable_dsn_archiving,
                         enable_dsn_sync,
                         verification_client: verification_client.clone(),
                     })

@@ -2,7 +2,7 @@ use crate::dsn::{sync, DSNSync, NoSync, OnSync, PieceIndexHashNumber, SyncOption
 use crate::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use crate::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use crate::single_plot_farm::PlotFactoryOptions;
-use crate::Plot;
+use crate::{dsn, Plot};
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -27,6 +27,7 @@ use subspace_networking::{
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tempfile::TempDir;
+use tracing::Span;
 
 struct TestPlotter {
     pub(crate) result: Arc<Mutex<BTreeMap<PieceIndexHash, (Piece, PieceIndex)>>>,
@@ -353,7 +354,7 @@ async fn test_dsn_sync() {
 
     let range_size = PieceIndexHashNumber::MAX / seeder_max_piece_count * pieces_per_request;
     let plot = syncer_farming.single_plot_farms()[0].plot().clone();
-    let dsn_sync = syncer_farming.single_plot_farms()[0].dsn_sync(
+    let dsn_sync = dsn::dsn_sync(
         rpc_client.clone(),
         FarmerProtocolInfo {
             max_plot_size: syncer_max_plot_size,
@@ -362,6 +363,10 @@ async fn test_dsn_sync() {
         },
         range_size,
         false, // don't verify pieces
+        syncer_farming.single_plot_farms()[0].node().clone(),
+        Span::current(),
+        syncer_farming.single_plot_farms()[0].plotter(),
+        *syncer_farming.single_plot_farms()[0].public_key(),
     );
     let public_key =
         U256::from_be_bytes((*syncer_farming.single_plot_farms()[0].public_key()).into());

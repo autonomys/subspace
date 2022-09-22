@@ -1,18 +1,29 @@
+//TODO: Restore dsn-sync or remove unused code.
+#![allow(dead_code)] // Gather related code here until we enable DSN sync for v2.
+
+use crate::single_plot_farm::SinglePlotPlotter;
+use crate::utils::CallOnDrop;
+use crate::RpcClient;
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
+use futures::future::try_join_all;
 use futures::{SinkExt, Stream, StreamExt};
-use num_traits::{WrappingAdd, WrappingSub};
+use num_traits::{WrappingAdd, WrappingSub, Zero};
 use scopeguard::guard;
+use std::future::Future;
 use std::ops::Range;
+use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::{
-    FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
+    Blake2b256Hash, FlatPieces, PieceIndex, PieceIndexHash, PublicKey, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::core::multihash::{Code, MultihashDigest};
 use subspace_networking::{
-    PeerInfo, PeerInfoRequest, PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest,
+    Node, PeerInfo, PeerInfoRequest, PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest,
     PiecesByRangeResponse, PiecesToPlot,
 };
-use tracing::{debug, error, trace, warn};
+use subspace_rpc_primitives::{FarmerProtocolInfo, MAX_SEGMENT_INDEXES_PER_REQUEST};
+use thiserror::Error;
+use tracing::{debug, error, trace, warn, Span};
 
 #[cfg(test)]
 mod tests;
@@ -370,4 +381,174 @@ where
     }
 
     Ok(())
+}
+
+/// Pieces verification errors.
+#[derive(Error, Debug)]
+pub enum PiecesVerificationError {
+    /// Invalid pieces data provided
+    #[error("Invalid pieces data provided")]
+    InvalidRawData,
+    /// Invalid farmer protocol info provided
+    #[error("Invalid farmer protocol info provided")]
+    InvalidFarmerProtocolInfo,
+    /// Pieces verification failed.
+    #[error("Pieces verification failed.")]
+    InvalidPieces,
+    /// RPC client failed.
+    #[error("RPC client failed. jsonrpsee error: {0}")]
+    RpcError(Box<dyn std::error::Error + Send + Sync>),
+    /// RPC client returned empty records_root.
+    #[error("RPC client returned empty records root.")]
+    NoRecordsRootFound,
+}
+
+// Defines actions on receiving pieces batch. It verifies the pieces against the blockchain and
+// plots them.
+struct VerifyingPlotter<RC> {
+    // RPC client for verification
+    verification_client: RC,
+    span: Span,
+    single_plot_plotter: SinglePlotPlotter,
+    farmer_protocol_info: FarmerProtocolInfo,
+    pieces_verification_enabled: bool,
+}
+
+impl<RC: RpcClient> VerifyingPlotter<RC> {
+    // Verifies pieces against the blockchain.
+    async fn verify_pieces_at_blockchain(
+        &self,
+        piece_indexes: &[PieceIndex],
+        pieces: &FlatPieces,
+    ) -> Result<(), PiecesVerificationError> {
+        if piece_indexes.len() != pieces.count() {
+            return Err(PiecesVerificationError::InvalidRawData);
+        }
+
+        let merkle_num_leaves = (self.farmer_protocol_info.recorded_history_segment_size
+            / self.farmer_protocol_info.record_size.get()
+            * 2) as u64;
+        if merkle_num_leaves.is_zero() {
+            return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
+        }
+
+        // Calculate segment indexes collection
+        let segment_indexes = piece_indexes
+            .iter()
+            .map(|piece_index| piece_index / merkle_num_leaves)
+            .collect::<Vec<_>>();
+
+        // Split segment indexes collection into allowed max sized chunks
+        // and run a future records_roots RPC call for each chunk.
+        let roots_futures = segment_indexes
+            .chunks(MAX_SEGMENT_INDEXES_PER_REQUEST)
+            .map(|segment_indexes_chunk| {
+                self.verification_client
+                    .records_roots(segment_indexes_chunk.to_vec())
+            })
+            .collect::<Vec<_>>();
+
+        // Wait for all the RPC calls, flatten the results collection,
+        // and check for empty result for any of the records root call.
+        let roots = try_join_all(roots_futures)
+            .await
+            .map_err(|err| PiecesVerificationError::RpcError(err))?
+            .into_iter()
+            .flatten()
+            .zip(piece_indexes.iter())
+            .map(|(root, piece_index)| {
+                if let Some(root) = root {
+                    Ok(root)
+                } else {
+                    error!(piece_index, "No records root found for piece_index.");
+
+                    Err(PiecesVerificationError::NoRecordsRootFound)
+                }
+            })
+            .collect::<Result<Vec<Blake2b256Hash>, PiecesVerificationError>>()?;
+
+        // Perform an actual piece validity check
+        for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {
+            let position = u32::try_from(piece_index % merkle_num_leaves)
+                .expect("Position within segment always fits into u32; qed");
+
+            if !is_piece_valid(
+                piece,
+                root,
+                position,
+                self.farmer_protocol_info.record_size.get(),
+            ) {
+                error!(?piece_index, "Piece validation failed.");
+
+                return Err(PiecesVerificationError::InvalidPieces);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
+    #[tracing::instrument(parent = &self.span, skip_all)]
+    async fn on_pieces(
+        &self,
+        pieces: FlatPieces,
+        piece_indexes: Vec<PieceIndex>,
+    ) -> anyhow::Result<()> {
+        if self.pieces_verification_enabled {
+            self.verify_pieces_at_blockchain(&piece_indexes, &pieces)
+                .await?;
+        }
+
+        let plotter = self.single_plot_plotter.clone();
+        let (farm_creation_start_sender, farm_creation_start_receiver) =
+            std::sync::mpsc::sync_channel(1);
+        // Makes sure background blocking task below is finished before this function's future is
+        // dropped
+        let _plot_pieces_guard = CallOnDrop::new(move || {
+            let _ = farm_creation_start_receiver.recv();
+        });
+        tokio::task::spawn_blocking(move || {
+            plotter.plot_pieces(PiecesToPlot {
+                pieces,
+                piece_indexes,
+            })?;
+
+            let _ = farm_creation_start_sender.send(());
+
+            Ok(())
+        })
+        .await?
+    }
+}
+
+//TODO: Refactor dsn-sync on code restoring.
+#[allow(clippy::too_many_arguments)]
+pub fn dsn_sync<RC: RpcClient>(
+    verification_client: RC,
+    farmer_protocol_info: FarmerProtocolInfo,
+    range_size: PieceIndexHashNumber,
+    pieces_verification_enabled: bool,
+    node: Node,
+    span: Span,
+    plotter: SinglePlotPlotter,
+    public_key: PublicKey,
+) -> impl Future<Output = anyhow::Result<()>> {
+    let options = SyncOptions {
+        range_size,
+        public_key,
+        max_plot_size: farmer_protocol_info.max_plot_size,
+        total_pieces: farmer_protocol_info.total_pieces,
+    };
+
+    let plotter = VerifyingPlotter {
+        single_plot_plotter: plotter,
+        span,
+        verification_client,
+        farmer_protocol_info,
+        pieces_verification_enabled,
+    };
+
+    sync(node, options, plotter)
 }
