@@ -951,21 +951,22 @@ where
 
         let segment_index: SegmentIndex =
             pre_digest.solution.piece_index / SegmentIndex::from(MERKLE_NUM_LEAVES);
-        let position = pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+        let position =
+            u32::try_from(pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES))
+                .expect("Position within segment always fits into u32; qed");
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
         let maybe_records_root = if block_number.is_one() {
-            let archived_segments =
-                Archiver::new(RECORD_SIZE as usize, RECORDED_HISTORY_SEGMENT_SIZE as usize)
-                    .expect("Incorrect parameters for archiver")
-                    .add_block(
-                        self.client
-                            .block(&BlockId::Number(Zero::zero()))?
-                            .ok_or(Error::GenesisUnavailable)?
-                            .encode(),
-                        BlockObjectMapping::default(),
-                    );
+            let archived_segments = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+                .expect("Incorrect parameters for archiver")
+                .add_block(
+                    self.client
+                        .block(&BlockId::Number(Zero::zero()))?
+                        .ok_or(Error::GenesisUnavailable)?
+                        .encode(),
+                    BlockObjectMapping::default(),
+                );
             archived_segments.into_iter().find_map(|archived_segment| {
                 if archived_segment.root_block.segment_index() == segment_index {
                     Some(archived_segment.root_block.records_root())

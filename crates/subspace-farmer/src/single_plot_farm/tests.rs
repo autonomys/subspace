@@ -19,10 +19,10 @@ use subspace_solving::{create_tag, SubspaceCodec};
 use tempfile::TempDir;
 use tracing::error;
 
-const MERKLE_NUM_LEAVES: usize = 8_usize;
-const WITNESS_SIZE: usize = BLAKE2B_256_HASH_SIZE * MERKLE_NUM_LEAVES.ilog2() as usize; // 96
-const RECORD_SIZE: usize = PIECE_SIZE - WITNESS_SIZE; // 4000
-const SEGMENT_SIZE: usize = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
+const MERKLE_NUM_LEAVES: u32 = 8;
+const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2(); // 96
+const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE; // 4000
+const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2; // 16000
 
 fn init() {
     let _ = tracing_subscriber::fmt::try_init();
@@ -59,8 +59,8 @@ async fn plotting_happy_path() {
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: [0; 32],
-        record_size: NonZeroU32::new(RECORD_SIZE as u32).unwrap(),
-        recorded_history_segment_size: SEGMENT_SIZE as u32,
+        record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
+        recorded_history_segment_size: SEGMENT_SIZE,
         max_plot_size: u64::MAX,
         total_pieces: 0,
     };
@@ -72,8 +72,8 @@ async fn plotting_happy_path() {
         .await
         .expect("Could not retrieve farmer_protocol_info");
 
-    let encoded_block0 = vec![0u8; SEGMENT_SIZE / 2];
-    let encoded_block1 = vec![1u8; SEGMENT_SIZE / 2];
+    let encoded_block0 = vec![0u8; SEGMENT_SIZE as usize / 2];
+    let encoded_block1 = vec![1u8; SEGMENT_SIZE as usize / 2];
     let encoded_blocks = vec![encoded_block0, encoded_block1];
 
     // This test does not concern with the object mappings at the moment.
@@ -178,12 +178,12 @@ async fn plotting_piece_eviction() {
         .expect("Could not retrieve farmer_protocol_info");
 
     let encoded_block0 = {
-        let mut block = vec![0u8; SEGMENT_SIZE];
+        let mut block = vec![0u8; SEGMENT_SIZE as usize];
         rng.fill(block.as_mut_slice());
         block
     };
     let encoded_block1 = {
-        let mut block = vec![0u8; SEGMENT_SIZE];
+        let mut block = vec![0u8; SEGMENT_SIZE as usize];
         rng.fill(block.as_mut_slice());
         block
     };

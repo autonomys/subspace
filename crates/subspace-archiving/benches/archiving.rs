@@ -14,11 +14,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("archiving-2-blocks", |b| {
         b.iter(|| {
-            let mut archiver = Archiver::new(
-                RECORD_SIZE.try_into().unwrap(),
-                RECORDED_HISTORY_SEGMENT_SIZE.try_into().unwrap(),
-            )
-            .unwrap();
+            let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE).unwrap();
             for _ in 0..2 {
                 archiver.add_block(input.clone(), Default::default());
             }

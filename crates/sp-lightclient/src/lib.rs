@@ -389,8 +389,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let max_plot_size = self.store.chain_constants().max_plot_size;
         let segment_index =
             header_digests.pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
-        let position =
-            header_digests.pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES);
+        let position = u32::try_from(
+            header_digests.pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES),
+        )
+        .expect("Position within segment always fits into u32; qed");
         let records_root =
             self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
         let total_pieces = self.total_pieces(parent_header.header.hash())?;

@@ -190,13 +190,13 @@ pub struct Archiver {
     buffer: VecDeque<SegmentItem>,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
-    record_size: usize,
+    record_size: u32,
     /// Number of data shards
-    data_shards: usize,
+    data_shards: u32,
     /// Number of parity shards
-    parity_shards: usize,
+    parity_shards: u32,
     /// Configuration parameter defining the size of one recorded history segment
-    segment_size: usize,
+    segment_size: u32,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
     /// An index of the current segment
@@ -218,23 +218,20 @@ impl Archiver {
     /// * segment size is not bigger than record size
     /// * segment size is not a multiple of record size
     /// * segment size and record size do not make sense together
-    pub fn new(
-        record_size: usize,
-        segment_size: usize,
-    ) -> Result<Self, ArchiverInstantiationError> {
+    pub fn new(record_size: u32, segment_size: u32) -> Result<Self, ArchiverInstantiationError> {
         let tiny_segment = Segment::V0 {
             items: vec![SegmentItem::Block {
                 bytes: vec![0u8],
                 object_mapping: BlockObjectMapping::default(),
             }],
         };
-        if record_size <= tiny_segment.encoded_size() {
+        if record_size <= tiny_segment.encoded_size() as u32 {
             return Err(ArchiverInstantiationError::RecordSizeTooSmall);
         }
         if segment_size <= record_size {
             return Err(ArchiverInstantiationError::SegmentSizeTooSmall);
         }
-        if segment_size % GF_16_ELEMENT_BYTES != 0 {
+        if segment_size as usize % GF_16_ELEMENT_BYTES != 0 {
             return Err(ArchiverInstantiationError::SegmentSizeNotMultipleOfTwo);
         }
         if segment_size % record_size != 0 {
@@ -244,13 +241,13 @@ impl Archiver {
         // We take N data records and will creates the same number of parity records, hence `*2`
         let merkle_num_leaves = segment_size / record_size * 2;
         let witness_size = BLAKE2B_256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
-        if record_size + witness_size != PIECE_SIZE {
+        if record_size as usize + witness_size != PIECE_SIZE {
             return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
         }
 
         let data_shards = segment_size / record_size;
         let parity_shards = data_shards;
-        let reed_solomon = ReedSolomon::new(data_shards, parity_shards)
+        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
             .expect("ReedSolomon should always be correctly instantiated");
 
         Ok(Self {
@@ -270,8 +267,8 @@ impl Archiver {
     ///
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
     pub fn with_initial_state(
-        record_size: usize,
-        segment_size: usize,
+        record_size: u32,
+        segment_size: u32,
         root_block: RootBlock,
         encoded_block: &[u8],
         mut object_mapping: BlockObjectMapping,
@@ -369,7 +366,7 @@ impl Archiver {
 
         // `-2` because even the smallest segment item will take 2 bytes to encode, so it makes
         // sense to stop earlier here
-        while segment.encoded_size() < (self.segment_size - 2) {
+        while segment.encoded_size() < (self.segment_size as usize - 2) {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
@@ -391,10 +388,10 @@ impl Archiver {
             let segment_item = segment.pop_item().unwrap();
 
             // Check if there would be enough data collected with above segment item inserted
-            if encoded_segment_length >= self.segment_size {
+            if encoded_segment_length >= self.segment_size as usize {
                 // Check if there is an excess of data that should be spilled over into the next
                 // segment
-                let spill_over = encoded_segment_length - self.segment_size;
+                let spill_over = encoded_segment_length - self.segment_size as usize;
 
                 // Due to compact vector length encoding in scale codec, spill over might happen to
                 // be the same or even bigger than the inserted segment item bytes, in which case
@@ -458,7 +455,7 @@ impl Archiver {
         // Check if there is an excess of data that should be spilled over into the next segment
         let segment_encoded_length = segment.encoded_size();
         let spill_over = segment_encoded_length
-            .checked_sub(self.segment_size)
+            .checked_sub(self.segment_size as usize)
             .unwrap_or_default();
 
         if spill_over > 0 {
@@ -584,8 +581,10 @@ impl Archiver {
     fn produce_archived_segment(&mut self, segment: Segment) -> ArchivedSegment {
         // Create mappings
         let object_mapping = {
-            let mut corrected_object_mapping =
-                vec![PieceObjectMapping::default(); self.segment_size / self.record_size];
+            let mut corrected_object_mapping = vec![
+                PieceObjectMapping::default();
+                (self.segment_size / self.record_size) as usize
+            ];
             let Segment::V0 { items } = &segment;
             // `+1` corresponds to enum variant encoding
             let mut base_offset_in_segment = 1 + Compact::compact_len(&(items.len() as u32));
@@ -609,12 +608,14 @@ impl Archiver {
                                 + 1
                                 + Compact::compact_len(&(bytes.len() as u32))
                                 + block_object.offset() as usize;
-                            let offset = (offset_in_segment % self.record_size).try_into().expect(
-                                "Offset within piece should always fit in 16-bit integer; qed",
-                            );
+                            let offset = (offset_in_segment % self.record_size as usize)
+                                .try_into()
+                                .expect(
+                                    "Offset within piece should always fit in 16-bit integer; qed",
+                                );
 
                             if let Some(piece_object_mapping) = corrected_object_mapping
-                                .get_mut(offset_in_segment / self.record_size)
+                                .get_mut(offset_in_segment / self.record_size as usize)
                             {
                                 piece_object_mapping.objects.push(PieceObject::V0 {
                                     hash: block_object.hash(),
@@ -657,7 +658,7 @@ impl Archiver {
             record_shards
                 .as_bytes()
                 .as_ref()
-                .chunks_exact(self.record_size),
+                .chunks_exact(self.record_size as usize),
         );
 
         // Combine data and parity records back into flat vector of pieces along with corresponding
@@ -669,10 +670,10 @@ impl Archiver {
                 record_shards
                     .as_bytes()
                     .as_ref()
-                    .chunks_exact(self.record_size),
+                    .chunks_exact(self.record_size as usize),
             )
             .for_each(|((position, piece), shard_chunk)| {
-                let (record_part, witness_part) = piece.split_at_mut(self.record_size);
+                let (record_part, witness_part) = piece.split_at_mut(self.record_size as usize);
 
                 record_part.copy_from_slice(shard_chunk);
                 witness_part.copy_from_slice(
@@ -707,17 +708,12 @@ impl Archiver {
 }
 
 /// Validate witness embedded within a piece produced by archiver
-pub fn is_piece_valid(
-    piece: &[u8],
-    root: Blake2b256Hash,
-    position: usize,
-    record_size: usize,
-) -> bool {
+pub fn is_piece_valid(piece: &[u8], root: Blake2b256Hash, position: u32, record_size: u32) -> bool {
     if piece.len() != PIECE_SIZE {
         return false;
     }
 
-    let (record, witness) = piece.split_at(record_size);
+    let (record, witness) = piece.split_at(record_size as usize);
     let witness = match Witness::new(Cow::Borrowed(witness)) {
         Ok(witness) => witness,
         Err(_) => {

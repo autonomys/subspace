@@ -870,13 +870,14 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
 
         // Perform an actual piece validity check
         for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {
-            let position: u64 = piece_index % merkle_num_leaves;
+            let position = u32::try_from(piece_index % merkle_num_leaves)
+                .expect("Position within segment always fits into u32; qed");
 
             if !is_piece_valid(
                 piece,
                 root,
-                position as usize,
-                self.farmer_protocol_info.record_size.get() as usize,
+                position,
+                self.farmer_protocol_info.record_size.get(),
             ) {
                 error!(?piece_index, "Piece validation failed.");
 

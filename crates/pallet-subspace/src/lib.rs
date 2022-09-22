@@ -1467,7 +1467,8 @@ fn check_vote<T: Config>(
             * 2,
     );
     let segment_index = solution.piece_index / merkle_num_leaves;
-    let position = solution.piece_index % merkle_num_leaves;
+    let position = u32::try_from(solution.piece_index % merkle_num_leaves)
+        .expect("Position within segment always fits into u32; qed");
 
     let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
         records_root

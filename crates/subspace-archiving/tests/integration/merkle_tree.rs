@@ -24,9 +24,13 @@ fn merkle_tree() {
 
         assert_eq!(witness, merkle_tree_hashes.get_witness(position).unwrap());
 
-        assert!(witness.is_valid(root, position, *hashes.get(position).unwrap()));
-        assert!(!witness.is_valid(rand::random(), position, *hashes.get(position).unwrap()));
-        assert!(!witness.is_valid(root, position, rand::random()));
+        assert!(witness.is_valid(root, position as u32, *hashes.get(position).unwrap()));
+        assert!(!witness.is_valid(
+            rand::random(),
+            position as u32,
+            *hashes.get(position).unwrap()
+        ));
+        assert!(!witness.is_valid(root, position as u32, rand::random()));
         assert!(!witness.is_valid(root, rand::random(), *hashes.get(position).unwrap()));
     }
 

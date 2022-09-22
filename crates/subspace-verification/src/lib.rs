@@ -100,7 +100,7 @@ fn check_piece_tag<FarmerPublicKey, RewardAddress>(
 /// If `records_root` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     records_root: Blake2b256Hash,
-    position: u64,
+    position: u32,
     record_size: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), Error>
@@ -116,12 +116,7 @@ where
         .decode(&mut piece, solution.piece_index)
         .map_err(|_| Error::InvalidPieceEncoding)?;
 
-    if !archiver::is_piece_valid(
-        &piece,
-        records_root,
-        position as usize,
-        record_size as usize,
-    ) {
+    if !archiver::is_piece_valid(&piece, records_root, position, record_size) {
         return Err(Error::InvalidPiece);
     }
 
@@ -164,7 +159,7 @@ pub struct PieceCheckParams {
     /// Records root of segment to which piece belongs
     pub records_root: RecordsRoot,
     /// Position of the piece in the segment
-    pub position: u64,
+    pub position: u32,
     /// Record size, system parameter
     pub record_size: u32,
     /// Maximum plot size in bytes, system parameter

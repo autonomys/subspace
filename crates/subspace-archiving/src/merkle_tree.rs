@@ -68,7 +68,7 @@ type InternalMerkleTree = merkle_light::merkle::MerkleTree<Blake2b256Hash, Blake
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Witness<'a> {
     /// Number of leaves in the Merkle Tree that corresponds to this witness
-    merkle_num_leaves: usize,
+    merkle_num_leaves: u32,
     /// The witness itself
     witness: Cow<'a, [u8]>,
 }
@@ -82,19 +82,14 @@ impl<'a> Witness<'a> {
         }
 
         Ok(Self {
-            merkle_num_leaves: 2_usize.pow((witness.len() / BLAKE2B_256_HASH_SIZE) as u32),
+            merkle_num_leaves: 2_u32.pow((witness.len() / BLAKE2B_256_HASH_SIZE) as u32),
             witness,
         })
     }
 
     /// Check whether witness is valid for a specific leaf hash (none of these parameters are stored
     /// in the witness itself) given its position within a segment
-    pub fn is_valid(
-        &self,
-        root: Blake2b256Hash,
-        position: usize,
-        leaf_hash: Blake2b256Hash,
-    ) -> bool {
+    pub fn is_valid(&self, root: Blake2b256Hash, position: u32, leaf_hash: Blake2b256Hash) -> bool {
         if position >= self.merkle_num_leaves {
             return false;
         }
@@ -118,7 +113,7 @@ impl<'a> Witness<'a> {
         // There is no path inside of witness, but by knowing position and number of leaves we can
         // recover it
         let path = {
-            let mut path = Vec::with_capacity(self.merkle_num_leaves);
+            let mut path = Vec::with_capacity(self.merkle_num_leaves as usize);
             let mut local_position = position;
 
             for _ in 0..self.merkle_num_leaves.ilog2() {
