@@ -86,6 +86,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
+use sp_core::H256;
 use sp_executor::{
     Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
     InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
@@ -386,6 +387,88 @@ where
         }
     }
 
+    fn validate_gossiped_execution_receipt(
+        &self,
+        signed_receipt_hash: H256,
+        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
+    ) -> Result<Action, GossipMessageError> {
+        let primary_number: BlockNumber = execution_receipt
+            .primary_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(
+                self.primary_chain_client.info().best_hash,
+            ))?;
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        // Just ignore it if the receipt is too old and has been pruned.
+        if aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number) {
+            return Ok(Action::Empty);
+        }
+
+        let block_hash = execution_receipt.secondary_hash;
+        let block_number = primary_number.into();
+
+        // TODO: more efficient execution receipt checking strategy?
+        let local_receipt = if let Some(local_receipt) =
+            aux_schema::load_execution_receipt(&*self.client, block_hash)?
+        {
+            local_receipt
+        } else {
+            // Wait for the local execution receipt until it's ready.
+            let (tx, rx) = crossbeam::channel::bounded::<
+                sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
+            >(1);
+            let executor = self.clone();
+            self.spawner.spawn(
+                "wait-for-local-execution-receipt",
+                None,
+                async move {
+                    if let Err(err) = executor
+                        .wait_for_local_future_receipt(block_hash, block_number, tx)
+                        .await
+                    {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            ?err,
+                            "Error occurred while waiting for the local receipt"
+                        );
+                    }
+                }
+                .boxed(),
+            );
+            rx.recv()??
+        };
+
+        // TODO: What happens for this obvious error?
+        if local_receipt.trace.len() != execution_receipt.trace.len() {}
+
+        if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
+            let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
+                trace_mismatch_index,
+                &local_receipt,
+                signed_receipt_hash,
+            )?;
+
+            self.primary_chain_client
+                .runtime_api()
+                .submit_fraud_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    fraud_proof,
+                )?;
+
+            Ok(Action::Empty)
+        } else {
+            Ok(Action::RebroadcastExecutionReceipt)
+        }
+    }
+
     /// Processes the bundles extracted from the primary block.
     // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
     // `set_new_code_should_work` test to do an actual runtime upgrade
@@ -599,81 +682,7 @@ where
             });
         }
 
-        let primary_number: BlockNumber = execution_receipt
-            .primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let best_execution_chain_number = self
-            .primary_chain_client
-            .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(
-                self.primary_chain_client.info().best_hash,
-            ))?;
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        // Just ignore it if the receipt is too old and has been pruned.
-        if aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number) {
-            return Ok(Action::Empty);
-        }
-
-        let block_hash = execution_receipt.secondary_hash;
-        let block_number = primary_number.into();
-
-        // TODO: more efficient execution receipt checking strategy?
-        let local_receipt = if let Some(local_receipt) =
-            aux_schema::load_execution_receipt(&*self.client, block_hash)?
-        {
-            local_receipt
-        } else {
-            // Wait for the local execution receipt until it's ready.
-            let (tx, rx) = crossbeam::channel::bounded::<
-                sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
-            >(1);
-            let executor = self.clone();
-            self.spawner.spawn(
-                "wait-for-local-execution-receipt",
-                None,
-                async move {
-                    if let Err(err) = executor
-                        .wait_for_local_future_receipt(block_hash, block_number, tx)
-                        .await
-                    {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Error occurred while waiting for the local receipt"
-                        );
-                    }
-                }
-                .boxed(),
-            );
-            rx.recv()??
-        };
-
-        // TODO: What happens for this obvious error?
-        if local_receipt.trace.len() != execution_receipt.trace.len() {}
-
-        if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
-                trace_mismatch_index,
-                &local_receipt,
-                signed_receipt_hash,
-            )?;
-
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    fraud_proof,
-                )?;
-
-            Ok(Action::Empty)
-        } else {
-            Ok(Action::RebroadcastExecutionReceipt)
-        }
+        self.validate_gossiped_execution_receipt(signed_receipt_hash, execution_receipt)
     }
 }
 
