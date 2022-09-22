@@ -319,7 +319,6 @@ pub(crate) struct SinglePlotFarmOptions<RC, PF> {
     pub(crate) reward_address: PublicKey,
     pub(crate) enable_dsn_archiving: bool,
     pub(crate) enable_dsn_sync: bool,
-    pub(crate) relay_server_node: Option<Node>,
     /// Client used for pieces verification
     pub(crate) verification_client: RC,
 }
@@ -361,7 +360,6 @@ impl SinglePlotFarm {
             reward_address,
             enable_dsn_archiving,
             enable_dsn_sync,
-            relay_server_node,
             verification_client,
         } = options;
 
@@ -542,13 +540,8 @@ impl SinglePlotFarm {
             ))
         };
 
-        let (node, mut node_runner) = Handle::current().block_on(async move {
-            if let Some(relay_server_node) = relay_server_node {
-                relay_server_node.spawn(network_node_config).await
-            } else {
-                subspace_networking::create(network_node_config).await
-            }
-        })?;
+        let (node, mut node_runner) = Handle::current()
+            .block_on(async move { subspace_networking::create(network_node_config).await })?;
 
         // Replace the default peer sync status provider based on actual Node status.
         {

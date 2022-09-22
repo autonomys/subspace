@@ -54,7 +54,6 @@ features = [
     "mplex",
     "noise",
     "ping",
-    "relay",
     "request-response",
     "serde",
     "sr25519",

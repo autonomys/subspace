@@ -1,5 +1,3 @@
-use crate::create::{create, Config, CreationError, RelayMode};
-use crate::node_runner::NodeRunner;
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_responses;
 use crate::shared::{Command, CreatedSubscription, Shared};
@@ -11,10 +9,8 @@ use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
-use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
-use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -191,8 +187,6 @@ impl From<oneshot::Canceled> for CircuitRelayClientError {
 #[must_use = "Node doesn't do anything if dropped"]
 pub struct Node {
     shared: Arc<Shared>,
-    is_relay_server: bool,
-    relay_server_memory_port: Arc<Mutex<Option<u64>>>,
     /// Indicates whether the peer data synchronization is in progress
     sync_status: NodeSynchronizationStatusHandler,
 }
@@ -229,11 +223,9 @@ impl NodeSynchronizationStatusHandler {
 }
 
 impl Node {
-    pub(crate) fn new(shared: Arc<Shared>, is_relay_server: bool) -> Self {
+    pub(crate) fn new(shared: Arc<Shared>) -> Self {
         Self {
             shared,
-            is_relay_server,
-            relay_server_memory_port: Arc::new(Mutex::new(None)),
             sync_status: NodeSynchronizationStatusHandler::new(),
         }
     }
@@ -246,64 +238,6 @@ impl Node {
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id
-    }
-
-    /// Configures circuit relay client using this node as circuit relay server. It expects Node
-    /// running in the relay server mode.
-    pub async fn spawn(&self, mut config: Config) -> Result<(Node, NodeRunner), CreationError> {
-        if self.is_relay_server {
-            let relay_server_memory_port = self.get_relay_server_memory_port().await?;
-
-            let relay_server_address = Multiaddr::from(Protocol::Memory(relay_server_memory_port))
-                .with(Protocol::P2p(self.id().into()))
-                .with(Protocol::P2pCircuit);
-
-            config.relay_mode = RelayMode::Client(relay_server_address);
-            config.parent_node.replace(self.clone());
-        } else {
-            return Err(CreationError::RelayServerExpected);
-        }
-
-        create(config).await
-    }
-
-    /// Get address of circuit relay server for use
-    pub async fn get_relay_server_memory_port(&self) -> Result<u64, CircuitRelayClientError> {
-        if !self.is_relay_server {
-            return Err(CircuitRelayClientError::ExpectedServer);
-        }
-
-        // Fast path in case address is already known
-        if let Some(port) = *self.relay_server_memory_port.lock() {
-            return Ok(port);
-        }
-
-        let (port_sender, port_receiver) = oneshot::channel();
-        let _handler = self.on_new_listener(Arc::new({
-            let port_sender = Mutex::new(Some(port_sender));
-
-            move |address| {
-                if let Some(Protocol::Memory(port)) = address.iter().next() {
-                    if let Some(port_sender) = port_sender.lock().take() {
-                        let _ = port_sender.send(port);
-                    }
-                }
-            }
-        }));
-
-        // Subscription to events is in place, check if listener is already known
-        for address in self.shared.listeners.lock().iter() {
-            if let Some(Protocol::Memory(port)) = address.iter().next() {
-                self.relay_server_memory_port.lock().replace(port);
-
-                return Ok(port);
-            }
-        }
-
-        // Otherwise for new memory listener
-        let port = port_receiver.await?;
-        self.relay_server_memory_port.lock().replace(port);
-        Ok(port)
     }
 
     pub async fn get_value(&self, key: Multihash) -> Result<Option<Vec<u8>>, GetValueError> {

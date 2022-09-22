@@ -19,11 +19,10 @@ use subspace_farmer::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::{PieceOffset, Plot, PlotFile, RpcClient};
-use subspace_networking::{Config, RelayMode};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::Instant;
-use tracing::{trace, warn};
+use tracing::warn;
 
 #[derive(Default)]
 pub struct BenchPlotMock;
@@ -150,19 +149,6 @@ pub(crate) async fn bench(
         ),
     };
 
-    // Starting the relay server node.
-    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
-        relay_mode: RelayMode::Server,
-        ..Config::with_generated_keypair()
-    })
-    .await?;
-
-    tokio::spawn(async move {
-        relay_node_runner.run().await;
-    });
-
-    trace!(node_id = %relay_server_node.id(), "Relay Node started");
-
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later (note that multiple farms can use the same location for metadata)
     for disk_farm in disk_farms {
@@ -193,7 +179,6 @@ pub(crate) async fn bench(
             enable_dsn_sync: false,
             enable_farming: false,
             plot_factory,
-            relay_server_node: Some(relay_server_node.clone()),
         })
         .await?;
 

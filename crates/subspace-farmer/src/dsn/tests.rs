@@ -203,7 +203,6 @@ async fn test_dsn_sync() {
         reward_address: subspace_core_primitives::PublicKey::default(),
         enable_dsn_archiving: false,
         enable_dsn_sync: false,
-        relay_server_node: None,
     })
     .await
     .unwrap();
@@ -329,7 +328,6 @@ async fn test_dsn_sync() {
                 reward_address: subspace_core_primitives::PublicKey::default(),
                 enable_dsn_archiving: false,
                 enable_dsn_sync: false,
-                relay_server_node: None,
             })
             .await
             .unwrap();
