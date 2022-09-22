@@ -1,5 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor, TransactionFor};
+use crate::{ExecutionReceiptFor, TransactionFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -11,16 +11,12 @@ use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
 use sc_network::NetworkService;
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::ByteArray;
-use sp_executor::{
-    ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
-    SignedExecutionReceipt,
-};
+use sp_executor::{ExecutionReceipt, ExecutorApi, ExecutorId, OpaqueBundle};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
@@ -93,8 +89,6 @@ where
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     client: Arc<Client>,
-    execution_receipt_sender:
-        Arc<TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>>,
     backend: Arc<Backend>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
@@ -114,7 +108,6 @@ where
             primary_chain_client: self.primary_chain_client.clone(),
             primary_network: self.primary_network.clone(),
             client: self.client.clone(),
-            execution_receipt_sender: self.execution_receipt_sender.clone(),
             backend: self.backend.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
@@ -154,9 +147,6 @@ where
         primary_chain_client: Arc<PClient>,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         client: Arc<Client>,
-        execution_receipt_sender: Arc<
-            TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
-        >,
         backend: Arc<Backend>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
@@ -167,7 +157,6 @@ where
             primary_chain_client,
             primary_network,
             client,
-            execution_receipt_sender,
             backend,
             is_authority,
             keystore,
@@ -547,7 +536,7 @@ where
             .into_iter()
             .filter_map(|fraud_proof| {
                 let bad_receipt_number = fraud_proof.parent_number + 1;
-                let bad_receipt_hash = fraud_proof.bad_signed_receipt_hash;
+                let bad_receipt_hash = fraud_proof.bad_signed_bundle_hash;
 
                 // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
                 // in case the bad receipt and corresponding farud proof are included in the same block.
@@ -564,26 +553,26 @@ where
             })
             .collect::<Vec<_>>();
 
-        for (bad_receipt_number, bad_signed_receipt_hash, mismatch_info) in bad_receipts_to_write {
+        for (bad_receipt_number, bad_signed_bundle_hash, mismatch_info) in bad_receipts_to_write {
             crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
                 &*self.client,
                 bad_receipt_number,
-                bad_signed_receipt_hash,
+                bad_signed_bundle_hash,
                 mismatch_info,
             )?;
         }
 
-        for (bad_receipt_number, bad_signed_receipt_hash) in bad_receipts_to_delete {
+        for (bad_receipt_number, bad_signed_bundle_hash) in bad_receipts_to_delete {
             if let Err(e) = crate::aux_schema::delete_bad_receipt(
                 &*self.client,
                 bad_receipt_number,
-                bad_signed_receipt_hash,
+                bad_signed_bundle_hash,
             ) {
                 tracing::error!(
                     target: LOG_TARGET,
                     error = ?e,
                     ?bad_receipt_number,
-                    ?bad_signed_receipt_hash,
+                    ?bad_signed_bundle_hash,
                     "Failed to delete bad receipt",
                 );
             }
@@ -595,7 +584,7 @@ where
     fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
     ) -> Result<(), sp_blockchain::Error> {
-        if let Some((bad_signed_receipt_hash, trace_mismatch_index, block_hash)) =
+        if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
                 &*self.client,
             )?
@@ -614,7 +603,7 @@ where
                 .generate_proof::<PBlock>(
                     trace_mismatch_index,
                     &local_receipt,
-                    bad_signed_receipt_hash,
+                    bad_signed_bundle_hash,
                 )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
@@ -656,26 +645,7 @@ where
                 &executor_id.clone().into(),
                 to_sign.as_ref(),
             ) {
-                Ok(Some(signature)) => {
-                    let signed_execution_receipt = SignedExecutionReceipt {
-                        execution_receipt,
-                        signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
-                            |err| {
-                                sp_blockchain::Error::Application(Box::from(format!(
-                                    "Failed to decode the signature of execution receipt: {err}"
-                                )))
-                            },
-                        )?,
-                        signer: executor_id,
-                    };
-
-                    if let Err(e) = self
-                        .execution_receipt_sender
-                        .unbounded_send(signed_execution_receipt)
-                    {
-                        tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
-                    }
-
+                Ok(Some(_signature)) => {
                     // let best_hash = self.primary_chain_client.info().best_hash;
 
                     // TODO: Remove this

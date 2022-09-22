@@ -89,7 +89,7 @@ use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_executor::{
     Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
-    InvalidTransactionProof, OpaqueBundle, SignedBundle, SignedExecutionReceipt,
+    InvalidTransactionProof, OpaqueBundle, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
@@ -141,9 +141,6 @@ where
 
 type ExecutionReceiptFor<PBlock, Hash> =
     ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
-
-type SignedExecutionReceiptFor<PBlock, Hash> =
-    SignedExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
 
 type TransactionFor<Backend, Block> =
     <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
@@ -202,9 +199,6 @@ where
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         transaction_pool: Arc<TransactionPool>,
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
-        execution_receipt_sender: Arc<
-            TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
-        >,
         backend: Arc<Backend>,
         code_executor: Arc<E>,
         is_authority: bool,
@@ -239,7 +233,6 @@ where
             primary_chain_client.clone(),
             primary_network,
             client.clone(),
-            execution_receipt_sender,
             backend.clone(),
             is_authority,
             keystore,
@@ -389,9 +382,9 @@ where
 
     fn validate_gossiped_execution_receipt(
         &self,
-        signed_receipt_hash: H256,
+        signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
-    ) -> Result<Action, GossipMessageError> {
+    ) -> Result<(), GossipMessageError> {
         let primary_number: BlockNumber = execution_receipt
             .primary_number
             .try_into()
@@ -409,7 +402,7 @@ where
 
         // Just ignore it if the receipt is too old and has been pruned.
         if aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number) {
-            return Ok(Action::Empty);
+            return Ok(());
         }
 
         let block_hash = execution_receipt.secondary_hash;
@@ -453,7 +446,7 @@ where
             let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
                 trace_mismatch_index,
                 &local_receipt,
-                signed_receipt_hash,
+                signed_bundle_hash,
             )?;
 
             self.primary_chain_client
@@ -462,11 +455,9 @@ where
                     &BlockId::Hash(self.primary_chain_client.info().best_hash),
                     fraud_proof,
                 )?;
-
-            Ok(Action::Empty)
-        } else {
-            Ok(Action::RebroadcastExecutionReceipt)
         }
+
+        Ok(())
     }
 
     /// Processes the bundles extracted from the primary block.
@@ -572,12 +563,21 @@ where
 
     fn on_bundle(
         &self,
-        SignedBundle {
+        signed_bundle: &SignedBundle<
+            Block::Extrinsic,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+            Block::Hash,
+        >,
+    ) -> Result<Action, Self::Error> {
+        let signed_bundle_hash = signed_bundle.hash();
+
+        let SignedBundle {
             bundle,
             signature,
             signer,
-        }: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) -> Result<Action, Self::Error> {
+        } = signed_bundle;
+
         let check_equivocation =
             |_bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>| {
                 // TODO: check bundle equivocation
@@ -626,6 +626,8 @@ where
                 });
             }
 
+            self.validate_gossiped_execution_receipt(signed_bundle_hash, &bundle.receipt)?;
+
             for extrinsic in bundle.extrinsics.iter() {
                 let tx_hash = self.transaction_pool.hash_of(extrinsic);
 
@@ -650,39 +652,6 @@ where
 
             Ok(Action::RebroadcastBundle)
         }
-    }
-
-    /// Checks the execution receipt from the executor peers.
-    fn on_execution_receipt(
-        &self,
-        signed_execution_receipt: &SignedExecutionReceiptFor<PBlock, Block::Hash>,
-    ) -> Result<Action, Self::Error> {
-        let signed_receipt_hash = signed_execution_receipt.hash();
-
-        let SignedExecutionReceipt {
-            execution_receipt,
-            signature,
-            signer,
-        } = signed_execution_receipt;
-
-        if !signer.verify(&execution_receipt.hash(), signature) {
-            return Err(Self::Error::BadExecutionReceiptSignature);
-        }
-
-        let expected_executor_id = self
-            .primary_chain_client
-            .runtime_api()
-            .executor_id(&BlockId::Hash(execution_receipt.primary_hash))?;
-        if *signer != expected_executor_id {
-            // TODO: handle the misbehavior.
-
-            return Err(Self::Error::InvalidExecutionReceiptAuthor {
-                got: signer.clone(),
-                expected: expected_executor_id,
-            });
-        }
-
-        self.validate_gossiped_execution_receipt(signed_receipt_hash, execution_receipt)
     }
 }
 

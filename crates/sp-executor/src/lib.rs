@@ -140,6 +140,15 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     pub signer: ExecutorId,
 }
 
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, SecondaryHash: Encode>
+    SignedBundle<Extrinsic, Number, Hash, SecondaryHash>
+{
+    /// Returns the hash of signed bundle.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+}
+
 /// Bundle with opaque extrinsics.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct OpaqueBundle<Number, Hash, SecondaryHash> {
@@ -380,8 +389,8 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof {
-    /// Hash of the signed execution receipt in which an invalid state transition occurred.
-    pub bad_signed_receipt_hash: H256,
+    /// Hash of the signed bundle in which an invalid state transition occurred.
+    pub bad_signed_bundle_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
     /// Parent hash of the block at which the invalid execution occurred.

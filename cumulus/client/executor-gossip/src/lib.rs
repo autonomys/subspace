@@ -10,7 +10,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_executor::{SignedBundle, SignedExecutionReceipt};
+use sp_executor::SignedBundle;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -48,7 +48,6 @@ fn topic<Block: BlockT>() -> Block::Hash {
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
     Bundle(SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
-    ExecutionReceipt(SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
 }
 
 impl<PBlock: BlockT, Block: BlockT>
@@ -59,17 +58,6 @@ impl<PBlock: BlockT, Block: BlockT>
         bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Self {
         Self::Bundle(bundle)
-    }
-}
-
-impl<PBlock: BlockT, Block: BlockT>
-    From<SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
-    for GossipMessage<PBlock, Block>
-{
-    fn from(
-        execution_receipt: SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) -> Self {
-        Self::ExecutionReceipt(execution_receipt)
     }
 }
 
@@ -88,10 +76,6 @@ impl Action {
     fn rebroadcast_bundle(&self) -> bool {
         matches!(self, Self::RebroadcastBundle)
     }
-
-    fn rebroadcast_execution_receipt(&self) -> bool {
-        matches!(self, Self::RebroadcastExecutionReceipt)
-    }
 }
 
 /// Handler for the messages received from the executor gossip network.
@@ -107,12 +91,6 @@ where
     fn on_bundle(
         &self,
         bundle: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) -> Result<Action, Self::Error>;
-
-    /// Validates and applies when an execution receipt was received.
-    fn on_execution_receipt(
-        &self,
-        execution_receipt: &SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Result<Action, Self::Error>;
 }
 
@@ -164,23 +142,6 @@ where
                             target: LOG_TARGET,
                             ?err,
                             "Invalid GossipMessage::Bundle discarded"
-                        );
-                        ValidationResult::Discard
-                    }
-                    _ => ValidationResult::ProcessAndDiscard(self.topic),
-                }
-            }
-            GossipMessage::ExecutionReceipt(execution_receipt) => {
-                let outcome = self.executor.on_execution_receipt(&execution_receipt);
-                match outcome {
-                    Ok(action) if action.rebroadcast_execution_receipt() => {
-                        ValidationResult::ProcessAndKeep(self.topic)
-                    }
-                    Err(err) => {
-                        tracing::debug!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Invalid GossipMessage::ExecutionReceipt discarded"
                         );
                         ValidationResult::Discard
                     }
@@ -298,10 +259,6 @@ pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
     pub bundle_receiver: BundleReceiver<Block, PBlock>,
-    /// Stream of execution receipt produced locally.
-    pub execution_receipt_receiver: TracingUnboundedReceiver<
-        SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    >,
 }
 
 /// Starts the executor gossip worker.
@@ -317,7 +274,6 @@ pub async fn start_gossip_worker<PBlock, Block, Network, Executor>(
         network,
         executor,
         bundle_receiver,
-        execution_receipt_receiver,
     } = gossip_params;
 
     let gossip_validator = Arc::new(GossipValidator::new(executor));
@@ -332,7 +288,6 @@ pub async fn start_gossip_worker<PBlock, Block, Network, Executor>(
         gossip_validator,
         Arc::new(Mutex::new(gossip_engine)),
         bundle_receiver,
-        execution_receipt_receiver,
     );
 
     gossip_worker.run().await
