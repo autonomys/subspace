@@ -82,7 +82,7 @@ impl From<InvalidTransactionCode> for TransactionValidity {
 }
 
 /// Header of transaction bundle.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Hash> {
     /// The hash of primary block at which the bundle was created.
     pub primary_hash: Hash,
@@ -90,16 +90,6 @@ pub struct BundleHeader<Hash> {
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
     pub extrinsics_root: H256,
-}
-
-impl<Hash: Clone> Clone for BundleHeader<Hash> {
-    fn clone(&self) -> Self {
-        Self {
-            primary_hash: self.primary_hash.clone(),
-            slot_number: self.slot_number,
-            extrinsics_root: self.extrinsics_root,
-        }
-    }
 }
 
 impl<Hash: Encode> BundleHeader<Hash> {
@@ -129,6 +119,35 @@ impl<Extrinsic, Number, Hash: Encode, SecondaryHash>
     }
 }
 
+/// Bundle with opaque extrinsics.
+pub type OpaqueBundle<Number, Hash, SecondaryHash> =
+    Bundle<OpaqueExtrinsic, Number, Hash, SecondaryHash>;
+
+impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
+    Bundle<Extrinsic, Number, Hash, SecondaryHash>
+{
+    /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
+    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, SecondaryHash> {
+        let Bundle {
+            header,
+            receipt,
+            extrinsics,
+        } = self;
+        let opaque_extrinsics = extrinsics
+            .into_iter()
+            .map(|xt| {
+                OpaqueExtrinsic::from_bytes(&xt.encode())
+                    .expect("We have just encoded a valid extrinsic; qed")
+            })
+            .collect();
+        OpaqueBundle {
+            header,
+            receipt,
+            extrinsics: opaque_extrinsics,
+        }
+    }
+}
+
 /// Signed version of [`Bundle`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
@@ -140,82 +159,28 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     pub signer: ExecutorId,
 }
 
-/// Bundle with opaque extrinsics.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct OpaqueBundle<Number, Hash, SecondaryHash> {
-    /// The bundle header.
-    pub header: BundleHeader<Hash>,
-    /// Next expected receipt by the primay chain when the bundle was created.
-    pub receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
-    /// THe accompanying opaque extrinsics.
-    pub opaque_extrinsics: Vec<OpaqueExtrinsic>,
-}
+/// [`SignedBundle`] with opaque extrinsic.
+pub type SignedOpaqueBundle<Number, Hash, SecondaryHash> =
+    SignedBundle<OpaqueExtrinsic, Number, Hash, SecondaryHash>;
 
-impl<Number, Hash: Encode, SecondaryHash> OpaqueBundle<Number, Hash, SecondaryHash> {
-    /// Returns the hash of this bundle.
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, SecondaryHash: Encode>
+    SignedBundle<Extrinsic, Number, Hash, SecondaryHash>
+{
+    /// Returns the hash of signed bundle.
     pub fn hash(&self) -> H256 {
-        self.header.hash()
+        BlakeTwo256::hash_of(self)
     }
 }
 
 impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
-    From<Bundle<Extrinsic, Number, Hash, SecondaryHash>>
-    for OpaqueBundle<Number, Hash, SecondaryHash>
+    SignedBundle<Extrinsic, Number, Hash, SecondaryHash>
 {
-    fn from(bundle: Bundle<Extrinsic, Number, Hash, SecondaryHash>) -> Self {
-        let Bundle {
-            header,
-            receipt,
-            extrinsics,
-        } = bundle;
-        let opaque_extrinsics = extrinsics
-            .into_iter()
-            .map(|xt| {
-                OpaqueExtrinsic::from_bytes(&xt.encode())
-                    .expect("We have just encoded a valid extrinsic; qed")
-            })
-            .collect();
-        Self {
-            header,
-            receipt,
-            opaque_extrinsics,
-        }
-    }
-}
-
-/// Signed version of [`OpaqueBundle`].
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SignedOpaqueBundle<Number, Hash, SecondaryHash> {
-    /// The bundle header.
-    pub opaque_bundle: OpaqueBundle<Number, Hash, SecondaryHash>,
-    /// Signature of the opaque bundle.
-    pub signature: ExecutorSignature,
-    /// Signer of the signature.
-    pub signer: ExecutorId,
-}
-
-impl<Number, Hash: Encode, SecondaryHash> SignedOpaqueBundle<Number, Hash, SecondaryHash> {
-    /// Returns the hash of inner opaque bundle.
-    pub fn hash(&self) -> H256 {
-        self.opaque_bundle.hash()
-    }
-}
-
-impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
-    From<SignedBundle<Extrinsic, Number, Hash, SecondaryHash>>
-    for SignedOpaqueBundle<Number, Hash, SecondaryHash>
-{
-    fn from(
-        SignedBundle {
-            bundle,
-            signature,
-            signer,
-        }: SignedBundle<Extrinsic, Number, Hash, SecondaryHash>,
-    ) -> Self {
-        Self {
-            opaque_bundle: bundle.into(),
-            signature,
-            signer,
+    /// Convert a signed bundle with generic extrinsic to a signed bundle with opaque extrinsic.
+    pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, SecondaryHash> {
+        SignedOpaqueBundle {
+            bundle: self.bundle.into_opaque_bundle(),
+            signature: self.signature,
+            signer: self.signer,
         }
     }
 }
@@ -380,8 +345,8 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof {
-    /// Hash of the signed execution receipt in which an invalid state transition occurred.
-    pub bad_signed_receipt_hash: H256,
+    /// Hash of the signed bundle in which an invalid state transition occurred.
+    pub bad_signed_bundle_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
     /// Parent hash of the block at which the invalid execution occurred.

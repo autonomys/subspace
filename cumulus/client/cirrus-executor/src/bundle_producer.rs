@@ -189,11 +189,12 @@ where
                         signer: executor_id,
                     };
 
-                    if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-                        tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
-                    }
+                    // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
+                    // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
+                    // tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
+                    // }
 
-                    Ok(Some(signed_bundle.into()))
+                    Ok(Some(signed_bundle.into_signed_opaque_bundle()))
                 }
                 Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
                     "This should not happen as the existence of key was just checked",
