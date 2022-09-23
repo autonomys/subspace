@@ -346,47 +346,7 @@ where
 
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
-        // TODO: Change `bundle.receipt` to `bundle.receipts` and send all the missing receipts if
-        // there are any.
-        //
-        // Ideally, the receipt of current block will be included in the next block, i.e., no
-        // missing receipts.
-        if header_number == best_execution_chain_number + One::one() {
-            self.try_sign_and_send_receipt(primary_hash, execution_receipt)
-        } else {
-            // Receipts for some previous blocks are missing.
-            let max_drift = self
-                .primary_chain_client
-                .runtime_api()
-                .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
-
-            let max_drift: BlockNumber = max_drift
-                .try_into()
-                .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-            let max_allowed = (best_execution_chain_number + max_drift.into()).min(header_number);
-
-            // TODO: parallelize and avoid spamming the missing receipts?
-            let mut to_send = best_execution_chain_number + One::one();
-            while to_send <= max_allowed {
-                let block_hash = self.client.hash(to_send)?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
-                })?;
-
-                let receipt = crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Execution receipt not found for block {block_hash}"
-                        ))
-                    })?;
-
-                self.try_sign_and_send_receipt(primary_hash, receipt)?;
-
-                to_send += One::one();
-            }
-
-            Ok(())
-        }
+        Ok(())
     }
 
     fn bundles_to_extrinsics(
