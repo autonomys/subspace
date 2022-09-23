@@ -85,7 +85,7 @@ pub struct SubspaceCodec {
 }
 
 impl SubspaceCodec {
-    /// New instance with 256-bit prime and 4096-byte genesis piece size
+    /// New instance with 256-bit prime
     pub fn new(farmer_public_key: &[u8]) -> Self {
         Self {
             farmer_public_key_hash: crypto::blake2b_256_hash(farmer_public_key),
@@ -98,8 +98,7 @@ impl SubspaceCodec {
         }
     }
 
-    /// New instance with 256-bit prime and 4096-byte genesis piece size, try to use GPU if
-    /// available
+    /// New instance with 256-bit prime, try to use GPU if available
     pub fn new_with_gpu(farmer_public_key: &[u8]) -> Self {
         #[cfg(feature = "opencl")]
         let opencl_encoder = Arc::new(Mutex::new(

@@ -10,7 +10,9 @@ use futures::{SinkExt, StreamExt};
 use std::num::NonZeroU16;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Salt, SolutionRange, Tag, BLAKE2B_256_HASH_SIZE};
+use subspace_core_primitives::{
+    FlatPieces, Salt, SolutionRange, Tag, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
+};
 use subspace_rpc_primitives::SlotInfo;
 use tempfile::TempDir;
 use tokio::time::{sleep, Duration};
@@ -27,7 +29,7 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
     let identity =
         Identity::open_or_create(&base_directory).expect("Could not open/create identity!");
 
-    let pieces: FlatPieces = vec![9u8; 4096].try_into().unwrap();
+    let pieces: FlatPieces = vec![9u8; PIECE_SIZE].try_into().unwrap();
     let salt: Salt = slots[0].salt; // the first slots salt should be used for the initial commitments
 
     let public_key = identity.public_key().to_bytes().into();
