@@ -313,11 +313,6 @@ fn invalid_usage() {
         Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
-    assert_matches!(
-        Archiver::new(17, 34, kzg.clone()),
-        Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination),
-    );
-
     {
         let result = Archiver::with_initial_state(
             RECORD_SIZE,

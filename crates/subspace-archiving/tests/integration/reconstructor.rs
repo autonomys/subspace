@@ -319,11 +319,6 @@ fn invalid_usage() {
         Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
-    assert_matches!(
-        Reconstructor::new(17, 34),
-        Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination),
-    );
-
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that overflows into the next segments
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize * 4]>().to_vec();

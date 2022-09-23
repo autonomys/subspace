@@ -8,7 +8,6 @@ use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::{
     ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, SegmentIndex,
-    PIECE_SIZE, WITNESS_SIZE,
 };
 
 /// Reconstructor-related instantiation error.
@@ -27,12 +26,6 @@ pub enum ReconstructorInstantiationError {
         error("Segment size is not a multiple of record size")
     )]
     SegmentSizesNotMultipleOfRecordSize,
-    /// Wrong record and segment size, it will not be possible to produce pieces
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Wrong record and segment size, it will not be possible to produce pieces")
-    )]
-    WrongRecordAndSegmentCombination,
 }
 
 /// Reconstructor-related instantiation error
@@ -95,10 +88,6 @@ impl Reconstructor {
         }
         if segment_size % record_size != 0 {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
-        }
-
-        if record_size + WITNESS_SIZE != PIECE_SIZE as u32 {
-            return Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination);
         }
 
         let data_shards = segment_size / record_size;

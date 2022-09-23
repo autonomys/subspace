@@ -127,7 +127,7 @@ pub struct Object {
     /// Piece index where object is contained (at least its beginning, might not fit fully)
     piece_index: u64,
     /// Offset of the object
-    offset: u16,
+    offset: u32,
     /// The data object contains for convenience
     #[serde(with = "hex::serde")]
     data: Vec<u8>,
@@ -213,7 +213,7 @@ impl RpcServerImpl {
     fn assemble_object(
         &self,
         piece_index: PieceIndex,
-        offset: u16,
+        offset: u32,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
         // Try fast object assembling
@@ -229,13 +229,13 @@ impl RpcServerImpl {
     fn assemble_object_fast(
         &self,
         piece_index: PieceIndex,
-        offset: u16,
+        offset: u32,
     ) -> Result<Option<Vec<u8>>, Error> {
         // We care if the offset is before the last 2 bytes of a piece because if not we might be
         // able to do very fast object retrieval without assembling and processing the whole
         // segment. `-2` is because last 2 bytes might contain padding if a piece is the last piece
         // in the segment.
-        let before_last_two_bytes = u32::from(offset) <= self.record_size - 1 - 2;
+        let before_last_two_bytes = offset <= self.record_size - 1 - 2;
 
         // We care about whether piece index points to the last data piece in the segment because
         // if not we might be able to do very fast object retrieval without assembling and
@@ -291,10 +291,9 @@ impl RpcServerImpl {
 
         // Same as `before_last_two_bytes`, but accounts for compact encoding of data length
         let length_before_last_two_bytes =
-            u32::from(offset) + data_length_bytes_length < self.record_size - 1 - 2;
+            offset + data_length_bytes_length < self.record_size - 1 - 2;
         // Similar to `length_before_last_two_bytes`, but uses the whole recordif needed
-        let length_before_record_end =
-            u32::from(offset) + data_length_bytes_length < self.record_size - 1;
+        let length_before_record_end = offset + data_length_bytes_length < self.record_size - 1;
 
         let data_length_result = if length_before_last_two_bytes {
             Compact::<u32>::decode(&mut &read_records_data[offset as usize..])
@@ -346,7 +345,7 @@ impl RpcServerImpl {
     fn assemble_object_regular(
         &self,
         piece_index: PieceIndex,
-        offset: u16,
+        offset: u32,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
         let segment_index = piece_index / u64::from(self.pieces_in_segment);
