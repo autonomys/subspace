@@ -15,6 +15,7 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn test_executor_full_node_catching_up() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -63,6 +64,7 @@ async fn test_executor_full_node_catching_up() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -192,6 +194,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 // when an invalid receipt is received.
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn set_new_code_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -270,6 +273,7 @@ async fn set_new_code_should_work() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn pallet_executor_unsigned_extrinsics_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
