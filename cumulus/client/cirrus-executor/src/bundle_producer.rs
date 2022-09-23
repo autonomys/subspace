@@ -1,17 +1,17 @@
 use crate::worker::ExecutorSlotInfo;
+use crate::BundleSender;
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
-use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_core::ByteArray;
 use sp_executor::{
-    Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
-    SignedOpaqueBundle,
+    Bundle, BundleHeader, ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature,
+    SignedBundle, SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -20,18 +20,19 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
-use subspace_runtime_primitives::Hash as PHash;
+use subspace_core_primitives::BlockNumber;
 
 const LOG_TARGET: &str = "bundle-producer";
 
 pub(super) struct BundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
+    bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
     _phantom_data: PhantomData<PBlock>,
@@ -41,6 +42,7 @@ impl<Block, PBlock, Client, PClient, TransactionPool> Clone
     for BundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -60,7 +62,7 @@ impl<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: SecondaryApi<Block, AccountId> + BlockBuilder<Block>,
     PClient: ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
@@ -70,7 +72,7 @@ where
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         transaction_pool: Arc<TransactionPool>,
-        bundle_sender: Arc<TracingUnboundedSender<SignedBundle<Block::Extrinsic>>>,
+        bundle_sender: Arc<BundleSender<Block, PBlock>>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
     ) -> Self {
@@ -87,9 +89,12 @@ where
 
     pub(super) async fn produce_bundle(
         self,
-        primary_hash: PHash,
+        primary_hash: PBlock::Hash,
         slot_info: ExecutorSlotInfo,
-    ) -> Result<Option<SignedOpaqueBundle>, sp_blockchain::Error> {
+    ) -> Result<
+        Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        sp_blockchain::Error,
+    > {
         let parent_number = self.client.info().best_number;
 
         let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -138,12 +143,15 @@ where
             .expect_header(BlockId::Number(parent_number))?
             .state_root();
 
+        let receipt = self.next_expected_receipt_on_primary_chain(primary_hash)?;
+
         let bundle = Bundle {
             header: BundleHeader {
                 primary_hash,
                 slot_number: slot_info.slot.into(),
                 extrinsics_root,
             },
+            receipt,
             extrinsics,
         };
 
@@ -181,11 +189,12 @@ where
                         signer: executor_id,
                     };
 
-                    if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-                        tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
-                    }
+                    // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
+                    // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
+                    // tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
+                    // }
 
-                    Ok(Some(signed_bundle.into()))
+                    Ok(Some(signed_bundle.into_signed_opaque_bundle()))
                 }
                 Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
                     "This should not happen as the existence of key was just checked",
@@ -197,5 +206,40 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    fn next_expected_receipt_on_primary_chain(
+        &self,
+        primary_hash: PBlock::Hash,
+    ) -> sp_blockchain::Result<ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>> {
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        let block_hash = self
+            .client
+            .hash((best_execution_chain_number + 1).into())?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Header hash not found for number {best_execution_chain_number}"
+                ))
+            })?;
+
+        let receipt = crate::aux_schema::load_execution_receipt::<
+            _,
+            Block::Hash,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+        >(&*self.client, block_hash)?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Receipt not found for {block_hash}"))
+        })?;
+
+        Ok(receipt)
     }
 }

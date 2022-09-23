@@ -37,7 +37,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
-use subspace_runtime_primitives::Hash as PHash;
 use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
@@ -118,7 +117,7 @@ pub(super) async fn start_worker<
     let span = tracing::Span::current();
 
     let handle_block_import_notifications_fut =
-        handle_block_import_notifications::<Block, _, _, _, _, _>(
+        handle_block_import_notifications::<Block, _, _, _, _>(
             primary_chain_client.as_ref(),
             client.info().best_number,
             {
@@ -145,7 +144,7 @@ pub(super) async fn start_worker<
             Box::pin(imported_block_notification_stream),
             block_import_throttling_buffer_size,
         );
-    let handle_slot_notifications_fut = handle_slot_notifications(
+    let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
         move |primary_hash, slot_info| {
             bundle_producer
@@ -178,24 +177,34 @@ pub(super) async fn start_worker<
     .await;
 }
 
-async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
+async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
     bundler: BundlerFn,
     mut slots: impl Stream<Item = ExecutorSlotInfo> + Unpin,
 ) where
+    Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PHash,
+            PBlock::Hash,
             ExecutorSlotInfo,
-        ) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
-        + Send
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = Option<
+                            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+                        >,
+                    > + Send,
+            >,
+        > + Send
         + Sync,
-    SecondaryHash: Encode + Decode,
 {
     while let Some(executor_slot_info) = slots.next().await {
-        if let Err(error) = on_new_slot(primary_chain_client, &bundler, executor_slot_info).await {
+        if let Err(error) =
+            on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
+                .await
+        {
             tracing::error!(
                 target: LOG_TARGET,
                 error = ?error,
@@ -206,14 +215,7 @@ async fn handle_slot_notifications<PBlock, PClient, BundlerFn, SecondaryHash>(
     }
 }
 
-async fn handle_block_import_notifications<
-    Block,
-    PBlock,
-    PClient,
-    ProcessorFn,
-    SecondaryHash,
-    BlockImports,
->(
+async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, BlockImports>(
     primary_chain_client: &PClient,
     best_secondary_number: NumberFor<Block>,
     processor: ProcessorFn,
@@ -224,16 +226,15 @@ async fn handle_block_import_notifications<
     Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),
-            Vec<OpaqueBundle>,
+            Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
-    SecondaryHash: Encode + Decode,
     BlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
@@ -247,8 +248,12 @@ async fn handle_block_import_notifications<
         let _ = active_leaves.insert(hash, number);
         // Skip the blocks that have been processed by the execution chain.
         if number > best_secondary_number.into() {
-            if let Err(error) =
-                process_primary_block(primary_chain_client, &processor, (hash, number)).await
+            if let Err(error) = process_primary_block::<Block, PBlock, _, _>(
+                primary_chain_client,
+                &processor,
+                (hash, number),
+            )
+            .await
             {
                 tracing::error!(
                     target: LOG_TARGET,
@@ -289,7 +294,7 @@ async fn handle_block_import_notifications<
                 let _ = block_import_acknowledgement_sender.send(()).await;
             }
             Some(block_info) = block_info_receiver.next() => {
-                if let Err(error) = block_imported(
+                if let Err(error) = block_imported::<Block, PBlock, _, _>(
                     primary_chain_client,
                     &processor,
                     &mut active_leaves,
@@ -309,29 +314,36 @@ async fn handle_block_import_notifications<
     }
 }
 
-async fn on_new_slot<PBlock, PClient, BundlerFn, SecondaryHash>(
+async fn on_new_slot<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
     bundler: &BundlerFn,
     executor_slot_info: ExecutorSlotInfo,
 ) -> Result<(), ApiError>
 where
+    Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PHash,
+            PBlock::Hash,
             ExecutorSlotInfo,
-        ) -> Pin<Box<dyn Future<Output = Option<SignedOpaqueBundle>> + Send>>
-        + Send
+        ) -> Pin<
+            Box<
+                dyn Future<
+                        Output = Option<
+                            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+                        >,
+                    > + Send,
+            >,
+        > + Send
         + Sync,
-    SecondaryHash: Encode + Decode,
 {
     let best_hash = primary_chain_client.info().best_hash;
 
-    let non_generic_best_hash =
-        PHash::decode(&mut best_hash.encode().as_slice()).expect("Hash type must be correct");
+    let best_hash = PBlock::Hash::decode(&mut best_hash.encode().as_slice())
+        .expect("Hash type must be correct");
 
-    let opaque_bundle = match bundler(non_generic_best_hash, executor_slot_info).await {
+    let opaque_bundle = match bundler(best_hash, executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
             tracing::debug!(
@@ -349,25 +361,25 @@ where
     Ok(())
 }
 
-async fn block_imported<PBlock, PClient, ProcessorFn, SecondaryHash>(
+async fn block_imported<Block, PBlock, PClient, ProcessorFn>(
     primary_chain_client: &PClient,
     processor: &ProcessorFn,
     active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
     block_info: BlockInfo<PBlock>,
 ) -> Result<(), ApiError>
 where
+    Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),
-            Vec<OpaqueBundle>,
+            Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
-    SecondaryHash: Encode + Decode,
 {
     match active_leaves.entry(block_info.hash) {
         Entry::Vacant(entry) => entry.insert(block_info.number),
@@ -381,7 +393,7 @@ where
         debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
     }
 
-    process_primary_block(
+    process_primary_block::<Block, PBlock, _, _>(
         primary_chain_client,
         processor,
         (block_info.hash, block_info.number),
@@ -395,24 +407,24 @@ where
 ///
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
-async fn process_primary_block<PBlock, PClient, ProcessorFn, SecondaryHash>(
+async fn process_primary_block<Block, PBlock, PClient, ProcessorFn>(
     primary_chain_client: &PClient,
     processor: &ProcessorFn,
     (block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
 ) -> Result<(), ApiError>
 where
+    Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, SecondaryHash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),
-            Vec<OpaqueBundle>,
+            Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
-    SecondaryHash: Encode + Decode,
 {
     let block_id = BlockId::Hash(block_hash);
     let extrinsics = match primary_chain_client.block_body(&block_id) {
