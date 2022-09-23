@@ -189,9 +189,10 @@ where
                         signer: executor_id,
                     };
 
-                    if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-                        tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
-                    }
+                    // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
+                    // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
+                    // tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
+                    // }
 
                     Ok(Some(signed_bundle.into()))
                 }
