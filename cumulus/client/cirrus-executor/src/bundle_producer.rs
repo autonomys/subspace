@@ -194,7 +194,7 @@ where
                     // tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
                     // }
 
-                    Ok(Some(signed_bundle.into()))
+                    Ok(Some(signed_bundle.into_signed_opaque_bundle()))
                 }
                 Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
                     "This should not happen as the existence of key was just checked",

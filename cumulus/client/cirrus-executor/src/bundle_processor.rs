@@ -398,7 +398,7 @@ where
         let mut extrinsics = bundles
             .into_iter()
             .flat_map(|bundle| {
-                bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
                     match <<Block as BlockT>::Extrinsic>::decode(
                         &mut opaque_extrinsic.encode().as_slice(),
                     ) {
@@ -536,19 +536,19 @@ where
             .into_iter()
             .filter_map(|fraud_proof| {
                 let bad_receipt_number = fraud_proof.parent_number + 1;
-                let bad_receipt_hash = fraud_proof.bad_signed_bundle_hash;
+                let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
 
                 // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
                 // in case the bad receipt and corresponding farud proof are included in the same block.
                 if let Some(index) = bad_receipts_to_write
                     .iter()
                     .map(|(_, hash, _)| hash)
-                    .position(|v| *v == bad_receipt_hash)
+                    .position(|v| *v == bad_bundle_hash)
                 {
                     bad_receipts_to_write.swap_remove(index);
                     None
                 } else {
-                    Some((bad_receipt_number, bad_receipt_hash))
+                    Some((bad_receipt_number, bad_bundle_hash))
                 }
             })
             .collect::<Vec<_>>();
@@ -642,7 +642,7 @@ where
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
                 ExecutorId::ID,
-                &executor_id.clone().into(),
+                &executor_id.into(),
                 to_sign.as_ref(),
             ) {
                 Ok(Some(_signature)) => {

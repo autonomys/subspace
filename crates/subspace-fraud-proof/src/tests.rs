@@ -106,7 +106,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             slot_number: Default::default(),
             extrinsics_root: Default::default(),
         },
-        opaque_extrinsics: test_txs
+        extrinsics: test_txs
             .iter()
             .map(|xt| OpaqueExtrinsic::from_bytes(&xt.encode()).unwrap())
             .collect(),

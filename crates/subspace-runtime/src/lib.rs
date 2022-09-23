@@ -542,7 +542,7 @@ fn extract_bundles(
                 signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_opaque_bundle.opaque_bundle)
+                Some(signed_opaque_bundle.bundle)
             } else {
                 None
             }
@@ -560,7 +560,7 @@ fn extract_receipts(
                 signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_opaque_bundle.opaque_bundle.receipt)
+                Some(signed_opaque_bundle.bundle.receipt)
             } else {
                 None
             }

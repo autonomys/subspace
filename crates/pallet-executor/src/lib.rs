@@ -179,7 +179,7 @@ mod pallet {
                 signed_opaque_bundle
             );
 
-            Self::apply_execution_receipt(&signed_opaque_bundle.opaque_bundle.receipt);
+            Self::apply_execution_receipt(&signed_opaque_bundle.bundle.receipt);
 
             Self::deposit_event(Event::TransactionBundleStored {
                 bundle_hash: signed_opaque_bundle.hash(),
@@ -350,9 +350,7 @@ mod pallet {
             match call {
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
-                } => Self::pre_dispatch_execution_receipt(
-                    &signed_opaque_bundle.opaque_bundle.receipt,
-                ),
+                } => Self::pre_dispatch_execution_receipt(&signed_opaque_bundle.bundle.receipt),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -373,7 +371,7 @@ mod pallet {
                         );
                         return InvalidTransactionCode::Bundle.into();
                     }
-                    let primary_number = signed_opaque_bundle.opaque_bundle.receipt.primary_number;
+                    let primary_number = signed_opaque_bundle.bundle.receipt.primary_number;
 
                     let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         .priority(TransactionPriority::MAX)
@@ -515,12 +513,12 @@ impl<T: Config> Pallet<T> {
 
     fn validate_bundle(
         SignedOpaqueBundle {
-            opaque_bundle,
+            bundle,
             signature,
             signer,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), BundleError> {
-        if !signer.verify(&opaque_bundle.hash(), signature) {
+        if !signer.verify(&bundle.hash(), signature) {
             return Err(BundleError::BadSignature);
         }
 
@@ -532,7 +530,7 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::UnexpectedSigner);
         }
 
-        Self::validate_execution_receipt(&opaque_bundle.receipt).map_err(BundleError::Receipt)?;
+        Self::validate_execution_receipt(&bundle.receipt).map_err(BundleError::Receipt)?;
 
         Ok(())
     }
