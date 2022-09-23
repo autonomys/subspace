@@ -15,7 +15,7 @@ include = [
 # Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
 blake2-rfc = { version = "0.2.18", default-features = false }
 derive_more = "0.99.17"
-dusk-bls12_381 = {version = "0.11", default-features = false, features = ["alloc", "groups", "pairings", "endo"]}
+dusk-bls12_381 = { version = "0.11", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
 dusk-bytes = "0.1"
 dusk-plonk = { version = "0.12.0", default-features = false, features = ["alloc"], git = "https://github.com/subspace/plonk", rev = "193e68ba3d20f737d730e4b6edc757e4f639e7c3" }
 hex = { version  = "0.4.3", default-features = false }

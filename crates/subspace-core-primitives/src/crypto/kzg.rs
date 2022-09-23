@@ -60,7 +60,7 @@ impl TryFrom<&[u8]> for Polynomial {
     type Error = Error;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Polynomial(PlonkPolynomial::from_slice(bytes)?))
+        Ok(Self(PlonkPolynomial::from_slice(bytes)?))
     }
 }
 
