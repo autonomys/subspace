@@ -15,6 +15,8 @@
 
 //! Various cryptographic utilities used across Subspace Network.
 
+pub mod kzg;
+
 use crate::{Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 use blake2_rfc::blake2b::{blake2b, Blake2b};
 
