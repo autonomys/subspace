@@ -47,14 +47,17 @@ fn topic<Block: BlockT>() -> Block::Hash {
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
-    Bundle(SignedBundle<Block::Extrinsic>),
+    Bundle(SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
     ExecutionReceipt(SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
 }
 
-impl<PBlock: BlockT, Block: BlockT> From<SignedBundle<Block::Extrinsic>>
+impl<PBlock: BlockT, Block: BlockT>
+    From<SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     for GossipMessage<PBlock, Block>
 {
-    fn from(bundle: SignedBundle<Block::Extrinsic>) -> Self {
+    fn from(
+        bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    ) -> Self {
         Self::Bundle(bundle)
     }
 }
@@ -101,7 +104,10 @@ where
     type Error: Debug;
 
     /// Validates and applies when a transaction bundle was received.
-    fn on_bundle(&self, bundle: &SignedBundle<Block::Extrinsic>) -> Result<Action, Self::Error>;
+    fn on_bundle(
+        &self,
+        bundle: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    ) -> Result<Action, Self::Error>;
 
     /// Validates and applies when an execution receipt was received.
     fn on_execution_receipt(
@@ -275,6 +281,15 @@ where
     }
 }
 
+type BundleReceiver<Block, PBlock> = TracingUnboundedReceiver<
+    SignedBundle<
+        <Block as BlockT>::Extrinsic,
+        NumberFor<PBlock>,
+        <PBlock as BlockT>::Hash,
+        <Block as BlockT>::Hash,
+    >,
+>;
+
 /// Parameters to run the executor gossip service.
 pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor> {
     /// Substrate network service.
@@ -282,7 +297,7 @@ pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor
     /// Executor instance.
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
-    pub bundle_receiver: TracingUnboundedReceiver<SignedBundle<Block::Extrinsic>>,
+    pub bundle_receiver: BundleReceiver<Block, PBlock>,
     /// Stream of execution receipt produced locally.
     pub execution_receipt_receiver: TracingUnboundedReceiver<
         SignedExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,

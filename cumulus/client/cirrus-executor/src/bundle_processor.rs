@@ -181,7 +181,7 @@ where
     pub(crate) async fn process_bundles(
         self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -354,8 +354,12 @@ where
             .runtime_api()
             .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
+        // TODO: Change `bundle.receipt` to `bundle.receipts` and send all the missing receipts if
+        // there are any.
+        //
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
         if header_number == best_execution_chain_number + One::one() {
@@ -399,7 +403,7 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
         let mut extrinsics = bundles
@@ -480,15 +484,15 @@ where
                 ))
             })?;
 
-        let signed_receipts = self
+        let receipts = self
             .primary_chain_client
             .runtime_api()
             .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
         let mut bad_receipts_to_write = vec![];
 
-        for signed_receipt in signed_receipts.iter() {
-            let secondary_hash = signed_receipt.execution_receipt.secondary_hash;
+        for execution_receipt in receipts.iter() {
+            let secondary_hash = execution_receipt.secondary_hash;
             match crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
@@ -498,18 +502,17 @@ where
             {
                 Some(local_receipt) => {
                     if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
+                        find_trace_mismatch(&local_receipt, execution_receipt)
                     {
                         bad_receipts_to_write.push((
-                            signed_receipt.execution_receipt.primary_number,
-                            signed_receipt.hash(),
+                            execution_receipt.primary_number,
+                            execution_receipt.hash(),
                             (trace_mismatch_index, secondary_hash),
                         ));
                     }
                 }
                 None => {
-                    let block_number: BlockNumber = signed_receipt
-                        .execution_receipt
+                    let block_number: BlockNumber = execution_receipt
                         .primary_number
                         .try_into()
                         .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
@@ -527,8 +530,8 @@ where
                     // The receipt of a prior block must exist, otherwise it means the receipt included
                     // on the primary chain points to an invalid secondary block.
                     bad_receipts_to_write.push((
-                        signed_receipt.execution_receipt.primary_number,
-                        signed_receipt.hash(),
+                        execution_receipt.primary_number,
+                        execution_receipt.hash(),
                         (0u32, block_hash),
                     ));
                 }
@@ -668,20 +671,21 @@ where
 
                     if let Err(e) = self
                         .execution_receipt_sender
-                        .unbounded_send(signed_execution_receipt.clone())
+                        .unbounded_send(signed_execution_receipt)
                     {
                         tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
                     }
 
-                    let best_hash = self.primary_chain_client.info().best_hash;
+                    // let best_hash = self.primary_chain_client.info().best_hash;
 
+                    // TODO: Remove this
                     // Broadcast ER to all farmers via unsigned extrinsic.
-                    self.primary_chain_client
-                        .runtime_api()
-                        .submit_execution_receipt_unsigned(
-                            &BlockId::Hash(best_hash),
-                            signed_execution_receipt,
-                        )?;
+                    // self.primary_chain_client
+                    // .runtime_api()
+                    // .submit_execution_receipt_unsigned(
+                    // &BlockId::Hash(best_hash),
+                    // signed_execution_receipt,
+                    // )?;
 
                     Ok(())
                 }

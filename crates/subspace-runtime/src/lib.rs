@@ -54,8 +54,8 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
 use sp_executor::{
-    BundleEquivocationProof, FraudProof, InvalidTransactionProof, OpaqueBundle,
-    SignedExecutionReceipt, SignedOpaqueBundle,
+    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    SignedOpaqueBundle,
 };
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
@@ -532,7 +532,9 @@ fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
     }
 }
 
-fn extract_bundles(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<OpaqueBundle> {
+fn extract_bundles(
+    extrinsics: Vec<UncheckedExtrinsic>,
+) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
@@ -550,15 +552,15 @@ fn extract_bundles(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<OpaqueBundle> {
 
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<SignedExecutionReceipt<BlockNumber, Hash, cirrus_primitives::Hash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, cirrus_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_execution_receipt {
-                signed_execution_receipt,
+            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+                signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_execution_receipt)
+                Some(signed_opaque_bundle.opaque_bundle.receipt)
             } else {
                 None
             }
@@ -782,13 +784,7 @@ impl_runtime_apis! {
     }
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
-        fn submit_execution_receipt_unsigned(
-            execution_receipt: SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>,
-        ) {
-            Executor::submit_execution_receipt_unsigned(execution_receipt)
-        }
-
-        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle) {
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>) {
             Executor::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
@@ -797,7 +793,7 @@ impl_runtime_apis! {
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof,
+            bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
         ) {
             Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
@@ -808,13 +804,13 @@ impl_runtime_apis! {
             Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle> {
+        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
             extract_bundles(extrinsics)
         }
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<SignedExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
             extract_receipts(extrinsics)
         }
 

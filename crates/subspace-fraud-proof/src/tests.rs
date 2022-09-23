@@ -8,7 +8,7 @@ use codec::Encode;
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
-use sp_executor::{BundleHeader, ExecutionPhase, FraudProof, OpaqueBundle};
+use sp_executor::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
@@ -92,6 +92,14 @@ async fn execution_proof_creation_and_verification_should_work() {
     //
     // alice.wait_for_blocks(1).await;
 
+    let dummy_receipt = ExecutionReceipt {
+        primary_number: ferdie.client.info().best_number,
+        primary_hash: ferdie.client.info().best_hash,
+        secondary_hash: alice.client.info().best_hash,
+        trace: Vec::new(),
+        trace_root: Default::default(),
+    };
+
     let bundles = vec![OpaqueBundle {
         header: BundleHeader {
             primary_hash: ferdie.client.info().best_hash,
@@ -102,6 +110,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             .iter()
             .map(|xt| OpaqueExtrinsic::from_bytes(&xt.encode()).unwrap())
             .collect(),
+        receipt: dummy_receipt,
     }];
 
     let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {
