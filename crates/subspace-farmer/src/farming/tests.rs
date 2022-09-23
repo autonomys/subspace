@@ -126,7 +126,7 @@ async fn farming_happy_path() {
     };
     let slots = vec![slot_info];
 
-    let correct_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
+    let correct_tag: Tag = [239, 33, 205, 166, 75, 168, 171, 137];
     let tags = vec![correct_tag];
 
     farming_simulator(slots, tags).await;
@@ -160,9 +160,9 @@ async fn farming_salt_change() {
     };
     let slots = vec![first_slot, second_slot, third_slot];
 
-    let first_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
-    let second_tag: Tag = [236, 70, 144, 186, 210, 167, 219, 49];
-    let third_tag: Tag = [45, 146, 164, 29, 29, 179, 126, 171];
+    let first_tag: Tag = [239, 33, 205, 166, 75, 168, 171, 137];
+    let second_tag: Tag = [239, 33, 205, 166, 75, 168, 171, 137];
+    let third_tag: Tag = [7, 86, 27, 30, 212, 133, 146, 144];
     let tags = vec![first_tag, second_tag, third_tag];
 
     farming_simulator(slots, tags).await;

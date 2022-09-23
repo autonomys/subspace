@@ -73,6 +73,7 @@ fn mix_public_key_hash_with_piece_index(public_key_hash: &mut [u8], piece_index:
         });
 }
 
+// TODO: This is a dummy encoder now, but will likely go away in the future or will be replaced
 /// Subspace codec is used to encode pieces of archived history before writing them to disk and also
 /// to decode them after reading from disk.
 #[derive(Debug, Clone)]
@@ -128,7 +129,9 @@ impl SubspaceCodec {
         piece: &mut [u8],
         piece_index: PieceIndex,
     ) -> Result<(), cpu::EncodeError> {
-        cpu::encode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
+        // TODO
+        let _ = cpu::encode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS);
+        Ok(())
     }
 
     /// Number of elements processed efficiently during one iteration of batched encoding.
@@ -220,7 +223,9 @@ impl SubspaceCodec {
         piece: &mut [u8],
         piece_index: PieceIndex,
     ) -> Result<(), cpu::DecodeError> {
-        cpu::decode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS)
+        // TODO
+        let _ = cpu::decode(piece, &self.create_expanded_iv(piece_index), ENCODE_ROUNDS);
+        Ok(())
     }
 
     fn create_expanded_iv(&self, piece_index: PieceIndex) -> Blake2b256Hash {
@@ -240,7 +245,11 @@ impl SubspaceCodec {
         pieces
             .par_chunks_exact_mut(PIECE_SIZE)
             .zip_eq(piece_indexes)
-            .try_for_each(|(piece, &piece_index)| self.encode(piece, piece_index))
+            .try_for_each(|(piece, &piece_index)| {
+                // TODO
+                let _ = self.encode(piece, piece_index);
+                Ok(())
+            })
     }
 
     #[cfg(not(feature = "std"))]
@@ -252,7 +261,11 @@ impl SubspaceCodec {
         pieces
             .chunks_exact_mut(PIECE_SIZE)
             .zip(piece_indexes)
-            .try_for_each(|(piece, &piece_index)| self.encode(piece, piece_index))
+            .try_for_each(|(piece, &piece_index)| {
+                // TODO
+                let _ = self.encode(piece, piece_index);
+                Ok(())
+            })
     }
 
     #[cfg(feature = "opencl")]
@@ -273,6 +286,8 @@ impl SubspaceCodec {
                 mix_public_key_hash_with_piece_index(expanded_iv, piece_index);
             });
 
-        opencl_encoder.encode(pieces, &expanded_ivs, ENCODE_ROUNDS)
+        // TODO
+        let _ = opencl_encoder.encode(pieces, &expanded_ivs, ENCODE_ROUNDS);
+        Ok(())
     }
 }

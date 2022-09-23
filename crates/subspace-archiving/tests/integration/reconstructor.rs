@@ -80,7 +80,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(8088)
+                archived_progress: ArchivedBlockProgress::Partial(65428)
             }
         );
 
@@ -99,7 +99,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(8088)
+                archived_progress: ArchivedBlockProgress::Partial(65428)
             }
         );
     }
@@ -119,7 +119,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(3928)
+                archived_progress: ArchivedBlockProgress::Partial(32592)
             }
         );
 
@@ -138,7 +138,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(3928)
+                archived_progress: ArchivedBlockProgress::Partial(32592)
             }
         );
     }
@@ -158,7 +158,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(20014)
+                archived_progress: ArchivedBlockProgress::Partial(163366)
             }
         );
     }
@@ -179,7 +179,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(20014)
+                archived_progress: ArchivedBlockProgress::Partial(163366)
             }
         );
     }
@@ -199,7 +199,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(36100)
+                archived_progress: ArchivedBlockProgress::Partial(294140)
             }
         );
     }
@@ -220,7 +220,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(36100)
+                archived_progress: ArchivedBlockProgress::Partial(294140)
             }
         );
     }

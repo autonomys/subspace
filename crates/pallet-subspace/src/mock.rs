@@ -350,7 +350,7 @@ pub fn create_archived_segment() -> ArchivedSegment {
     let kzg = Kzg::new(kzg::test_public_parameters());
     let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
-    let mut block = vec![0u8; 1024 * 1024];
+    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rand::thread_rng().fill(block.as_mut_slice());
     archiver
         .add_block(block, Default::default())
