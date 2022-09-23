@@ -168,22 +168,6 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ImportBlocksFromDsn(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    import_queue,
-                    task_manager,
-                    ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
-                Ok((
-                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
-                    task_manager,
-                ))
-            })?;
-        }
         Some(Subcommand::PurgeChain(cmd)) => {
             // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
