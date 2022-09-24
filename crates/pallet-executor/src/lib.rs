@@ -25,10 +25,11 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
-    BundleEquivocationProof, FraudProof, InvalidTransactionProof, SignedExecutionReceipt,
-    SignedOpaqueBundle,
+    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
+    InvalidTransactionProof, SignedOpaqueBundle,
 };
-use sp_runtime::traits::{BlockNumberProvider, One};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One};
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::RuntimeAppPublic;
 
 #[frame_support::pallet]
@@ -39,11 +40,9 @@ mod pallet {
     use sp_core::H256;
     use sp_executor::{
         BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionCode,
-        InvalidTransactionProof, SignedExecutionReceipt, SignedOpaqueBundle,
+        InvalidTransactionProof, SignedOpaqueBundle,
     };
-    use sp_runtime::traits::{
-        CheckEqual, CheckedSub, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps,
-    };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -90,6 +89,7 @@ mod pallet {
         UnexpectedSigner,
         /// Invalid transaction bundle signature.
         BadSignature,
+        Receipt(ExecutionReceiptError),
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -167,57 +167,9 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_execution_receipt(
-            origin: OriginFor<T>,
-            signed_execution_receipt: SignedExecutionReceipt<
-                T::BlockNumber,
-                T::Hash,
-                T::SecondaryHash,
-            >,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            log::debug!(
-                target: "runtime::subspace::executor",
-                "Submitting execution receipt: {:?}",
-                signed_execution_receipt
-            );
-
-            let SignedExecutionReceipt {
-                execution_receipt, ..
-            } = signed_execution_receipt;
-
-            let primary_hash = execution_receipt.primary_hash;
-            let primary_number = execution_receipt.primary_number;
-
-            // Apply the execution receipt.
-            <Receipts<T>>::insert(primary_number, execution_receipt);
-            <ExecutionChainBestNumber<T>>::put(primary_number);
-            if primary_number == One::one() {
-                // Initialize the oldest receipt with block #1.
-                OldestReceiptNumber::<T>::put(primary_number);
-            }
-
-            // Remove the oldest once the receipts cache is full.
-            if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-                Receipts::<T>::remove(to_prune);
-                BlockHash::<T>::remove(to_prune);
-                OldestReceiptNumber::<T>::put(to_prune + One::one());
-            }
-
-            Self::deposit_event(Event::NewExecutionReceipt {
-                primary_number,
-                primary_hash,
-            });
-
-            Ok(())
-        }
-
-        // TODO: proper weight
-        #[pallet::weight((10_000, Pays::No))]
         pub fn submit_transaction_bundle(
             origin: OriginFor<T>,
-            signed_opaque_bundle: SignedOpaqueBundle,
+            signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -226,6 +178,8 @@ mod pallet {
                 "Submitting transaction bundle: {:?}",
                 signed_opaque_bundle
             );
+
+            Self::apply_execution_receipt(&signed_opaque_bundle.bundle.receipt);
 
             Self::deposit_event(Event::TransactionBundleStored {
                 bundle_hash: signed_opaque_bundle.hash(),
@@ -267,7 +221,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
-            bundle_equivocation_proof: BundleEquivocationProof,
+            bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -394,39 +348,9 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_execution_receipt {
-                    signed_execution_receipt,
-                } => {
-                    let SignedExecutionReceipt {
-                        execution_receipt, ..
-                    } = signed_execution_receipt;
-
-                    let primary_number = execution_receipt.primary_number;
-                    let best_number = ExecutionChainBestNumber::<T>::get();
-
-                    // Ensure the block number of next execution receipt is `best_number + 1`.
-                    if primary_number != best_number + One::one() {
-                        if primary_number <= best_number {
-                            return Err(InvalidTransaction::Stale.into());
-                        } else {
-                            return Err(InvalidTransaction::Future.into());
-                        }
-                    }
-
-                    // TODO: is this check unnecessary as it's actually guaranteed by the above one?
-                    // Ensure the parent receipt exists after block #1.
-                    if primary_number > One::one() {
-                        ensure!(
-                            Receipts::<T>::get(primary_number - One::one()).is_some(),
-                            TransactionValidityError::Invalid(
-                                InvalidTransactionCode::ExecutionReceipt.into()
-                            )
-                        );
-                    }
-
-                    Ok(())
-                }
-                Call::submit_transaction_bundle { .. } => Ok(()),
+                Call::submit_transaction_bundle {
+                    signed_opaque_bundle,
+                } => Self::pre_dispatch_execution_receipt(&signed_opaque_bundle.bundle.receipt),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -436,37 +360,6 @@ mod pallet {
 
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::submit_execution_receipt {
-                    signed_execution_receipt,
-                } => {
-                    if let Err(e) = Self::validate_execution_receipt(signed_execution_receipt) {
-                        log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid execution receipt: {:?}, error: {:?}",
-                            signed_execution_receipt, e
-                        );
-                        return InvalidTransactionCode::ExecutionReceipt.into();
-                    }
-
-                    let primary_number = signed_execution_receipt.execution_receipt.primary_number;
-
-                    let builder =
-                        ValidTransaction::with_tag_prefix("SubspaceSubmitExecutionReceipt")
-                            .priority(TransactionPriority::MAX)
-                            .and_provides(primary_number)
-                            .longevity(TransactionLongevity::MAX)
-                            .propagate(true);
-
-                    // primary_number is ensured to be larger than the best execution chain chain
-                    // number above.
-                    //
-                    // No requires if it's the next expected execution chain number.
-                    if primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
-                        builder.build()
-                    } else {
-                        builder.and_requires(primary_number - One::one()).build()
-                    }
-                }
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
                 } => {
@@ -478,10 +371,23 @@ mod pallet {
                         );
                         return InvalidTransactionCode::Bundle.into();
                     }
-                    unsigned_validity(
-                        "SubspaceSubmitTransactionBundle",
-                        signed_opaque_bundle.hash(),
-                    )
+                    let primary_number = signed_opaque_bundle.bundle.receipt.primary_number;
+
+                    let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
+                        .priority(TransactionPriority::MAX)
+                        .and_provides(primary_number)
+                        .longevity(TransactionLongevity::MAX)
+                        .propagate(true);
+
+                    // primary_number is ensured to be larger than the best execution chain chain
+                    // number above.
+                    //
+                    // No requires if it's the next expected execution chain number.
+                    if primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
+                        builder.build()
+                    } else {
+                        builder.and_requires(primary_number - One::one()).build()
+                    }
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
@@ -542,17 +448,36 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn validate_execution_receipt(
-        SignedExecutionReceipt {
-            execution_receipt,
-            signature,
-            signer,
-        }: &SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
-    ) -> Result<(), ExecutionReceiptError> {
-        if !signer.verify(&execution_receipt.hash(), signature) {
-            return Err(ExecutionReceiptError::BadSignature);
+    fn pre_dispatch_execution_receipt(
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) -> Result<(), TransactionValidityError> {
+        let primary_number = execution_receipt.primary_number;
+        let best_number = ExecutionChainBestNumber::<T>::get();
+
+        // Ensure the block number of next execution receipt is `best_number + 1`.
+        if primary_number != best_number + One::one() {
+            if primary_number <= best_number {
+                return Err(InvalidTransaction::Stale.into());
+            } else {
+                return Err(InvalidTransaction::Future.into());
+            }
         }
 
+        // TODO: is this check unnecessary as it's actually guaranteed by the above one?
+        // Ensure the parent receipt exists after block #1.
+        if primary_number > One::one() {
+            ensure!(
+                Receipts::<T>::get(primary_number - One::one()).is_some(),
+                TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
+            );
+        }
+
+        Ok(())
+    }
+
+    fn validate_execution_receipt(
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) -> Result<(), ExecutionReceiptError> {
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
         // Due to `initialize_block` is skipped while calling the runtime api, the block
@@ -567,14 +492,6 @@ impl<T: Config> Pallet<T> {
                 != execution_receipt.primary_hash
         {
             return Err(ExecutionReceiptError::UnknownBlock);
-        }
-
-        // TODO: upgrade once the trusted executor system is upgraded.
-        let expected_executor = Self::executor()
-            .map(|(_, authority_id)| authority_id)
-            .expect("Executor must be initialized before launching the executor chain; qed");
-        if *signer != expected_executor {
-            return Err(ExecutionReceiptError::UnexpectedSigner);
         }
 
         // Ensure the receipt is neither old nor too new.
@@ -596,12 +513,12 @@ impl<T: Config> Pallet<T> {
 
     fn validate_bundle(
         SignedOpaqueBundle {
-            opaque_bundle,
+            bundle,
             signature,
             signer,
-        }: &SignedOpaqueBundle,
+        }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), BundleError> {
-        if !signer.verify(&opaque_bundle.hash(), signature) {
+        if !signer.verify(&bundle.hash(), signature) {
             return Err(BundleError::BadSignature);
         }
 
@@ -612,6 +529,8 @@ impl<T: Config> Pallet<T> {
         if *signer != expected_executor {
             return Err(BundleError::UnexpectedSigner);
         }
+
+        Self::validate_execution_receipt(&bundle.receipt).map_err(BundleError::Receipt)?;
 
         Ok(())
     }
@@ -634,7 +553,7 @@ impl<T: Config> Pallet<T> {
 
     // TODO: Checks if the bundle equivocation proof is valid.
     fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof,
+        _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
@@ -645,42 +564,43 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(), Error<T>> {
         Ok(())
     }
+
+    fn apply_execution_receipt(
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) {
+        let primary_hash = execution_receipt.primary_hash;
+        let primary_number = execution_receipt.primary_number;
+
+        // Apply the execution receipt.
+        <Receipts<T>>::insert(primary_number, execution_receipt);
+        <ExecutionChainBestNumber<T>>::put(primary_number);
+        if primary_number == One::one() {
+            // Initialize the oldest receipt with block #1.
+            OldestReceiptNumber::<T>::put(primary_number);
+        }
+
+        // Remove the oldest once the receipts cache is full.
+        if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
+            Receipts::<T>::remove(to_prune);
+            BlockHash::<T>::remove(to_prune);
+            OldestReceiptNumber::<T>::put(to_prune + One::one());
+        }
+
+        Self::deposit_event(Event::NewExecutionReceipt {
+            primary_number,
+            primary_hash,
+        });
+    }
 }
 
 impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    /// Submits an unsigned extrinsic [`Call::submit_execution_receipt`].
-    pub fn submit_execution_receipt_unsigned(
-        signed_execution_receipt: SignedExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
-    ) {
-        let primary_number = signed_execution_receipt.execution_receipt.primary_number;
-
-        let call = Call::submit_execution_receipt {
-            signed_execution_receipt,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(
-                    target: "runtime::subspace::executor",
-                    "Execution receipt for block #{:?} submitted to the tx pool",
-                    primary_number,
-                );
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::subspace::executor",
-                    "Error submitting execution receipt for block #{:?} to the tx pool",
-                    primary_number,
-                );
-            }
-        }
-    }
-
     /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
-    pub fn submit_transaction_bundle_unsigned(signed_opaque_bundle: SignedOpaqueBundle) {
+    pub fn submit_transaction_bundle_unsigned(
+        signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) {
         let call = Call::submit_transaction_bundle {
             signed_opaque_bundle,
         };
@@ -714,7 +634,7 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
     pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof,
+        bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
     ) {
         let call = Call::submit_bundle_equivocation_proof {
             bundle_equivocation_proof,

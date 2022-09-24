@@ -1,5 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::{ExecutionReceiptFor, SignedExecutionReceiptFor, TransactionFor};
+use crate::{ExecutionReceiptFor, TransactionFor};
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -11,16 +11,12 @@ use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
 use sc_network::NetworkService;
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::ByteArray;
-use sp_executor::{
-    ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature, OpaqueBundle,
-    SignedExecutionReceipt,
-};
+use sp_executor::{ExecutionReceipt, ExecutorApi, ExecutorId, OpaqueBundle};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
@@ -93,8 +89,6 @@ where
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     client: Arc<Client>,
-    execution_receipt_sender:
-        Arc<TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>>,
     backend: Arc<Backend>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
@@ -114,7 +108,6 @@ where
             primary_chain_client: self.primary_chain_client.clone(),
             primary_network: self.primary_network.clone(),
             client: self.client.clone(),
-            execution_receipt_sender: self.execution_receipt_sender.clone(),
             backend: self.backend.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
@@ -154,9 +147,6 @@ where
         primary_chain_client: Arc<PClient>,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         client: Arc<Client>,
-        execution_receipt_sender: Arc<
-            TracingUnboundedSender<SignedExecutionReceiptFor<PBlock, Block::Hash>>,
-        >,
         backend: Arc<Backend>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
@@ -167,7 +157,6 @@ where
             primary_chain_client,
             primary_network,
             client,
-            execution_receipt_sender,
             backend,
             is_authority,
             keystore,
@@ -181,7 +170,7 @@ where
     pub(crate) async fn process_bundles(
         self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -354,8 +343,12 @@ where
             .runtime_api()
             .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
+        // TODO: Change `bundle.receipt` to `bundle.receipts` and send all the missing receipts if
+        // there are any.
+        //
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
         if header_number == best_execution_chain_number + One::one() {
@@ -399,13 +392,13 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        bundles: Vec<OpaqueBundle>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
         let mut extrinsics = bundles
             .into_iter()
             .flat_map(|bundle| {
-                bundle.opaque_extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
                     match <<Block as BlockT>::Extrinsic>::decode(
                         &mut opaque_extrinsic.encode().as_slice(),
                     ) {
@@ -480,15 +473,15 @@ where
                 ))
             })?;
 
-        let signed_receipts = self
+        let receipts = self
             .primary_chain_client
             .runtime_api()
             .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
 
         let mut bad_receipts_to_write = vec![];
 
-        for signed_receipt in signed_receipts.iter() {
-            let secondary_hash = signed_receipt.execution_receipt.secondary_hash;
+        for execution_receipt in receipts.iter() {
+            let secondary_hash = execution_receipt.secondary_hash;
             match crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
@@ -498,18 +491,17 @@ where
             {
                 Some(local_receipt) => {
                     if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, &signed_receipt.execution_receipt)
+                        find_trace_mismatch(&local_receipt, execution_receipt)
                     {
                         bad_receipts_to_write.push((
-                            signed_receipt.execution_receipt.primary_number,
-                            signed_receipt.hash(),
+                            execution_receipt.primary_number,
+                            execution_receipt.hash(),
                             (trace_mismatch_index, secondary_hash),
                         ));
                     }
                 }
                 None => {
-                    let block_number: BlockNumber = signed_receipt
-                        .execution_receipt
+                    let block_number: BlockNumber = execution_receipt
                         .primary_number
                         .try_into()
                         .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
@@ -527,8 +519,8 @@ where
                     // The receipt of a prior block must exist, otherwise it means the receipt included
                     // on the primary chain points to an invalid secondary block.
                     bad_receipts_to_write.push((
-                        signed_receipt.execution_receipt.primary_number,
-                        signed_receipt.hash(),
+                        execution_receipt.primary_number,
+                        execution_receipt.hash(),
                         (0u32, block_hash),
                     ));
                 }
@@ -544,43 +536,43 @@ where
             .into_iter()
             .filter_map(|fraud_proof| {
                 let bad_receipt_number = fraud_proof.parent_number + 1;
-                let bad_receipt_hash = fraud_proof.bad_signed_receipt_hash;
+                let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
 
                 // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
                 // in case the bad receipt and corresponding farud proof are included in the same block.
                 if let Some(index) = bad_receipts_to_write
                     .iter()
                     .map(|(_, hash, _)| hash)
-                    .position(|v| *v == bad_receipt_hash)
+                    .position(|v| *v == bad_bundle_hash)
                 {
                     bad_receipts_to_write.swap_remove(index);
                     None
                 } else {
-                    Some((bad_receipt_number, bad_receipt_hash))
+                    Some((bad_receipt_number, bad_bundle_hash))
                 }
             })
             .collect::<Vec<_>>();
 
-        for (bad_receipt_number, bad_signed_receipt_hash, mismatch_info) in bad_receipts_to_write {
+        for (bad_receipt_number, bad_signed_bundle_hash, mismatch_info) in bad_receipts_to_write {
             crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
                 &*self.client,
                 bad_receipt_number,
-                bad_signed_receipt_hash,
+                bad_signed_bundle_hash,
                 mismatch_info,
             )?;
         }
 
-        for (bad_receipt_number, bad_signed_receipt_hash) in bad_receipts_to_delete {
+        for (bad_receipt_number, bad_signed_bundle_hash) in bad_receipts_to_delete {
             if let Err(e) = crate::aux_schema::delete_bad_receipt(
                 &*self.client,
                 bad_receipt_number,
-                bad_signed_receipt_hash,
+                bad_signed_bundle_hash,
             ) {
                 tracing::error!(
                     target: LOG_TARGET,
                     error = ?e,
                     ?bad_receipt_number,
-                    ?bad_signed_receipt_hash,
+                    ?bad_signed_bundle_hash,
                     "Failed to delete bad receipt",
                 );
             }
@@ -592,7 +584,7 @@ where
     fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
     ) -> Result<(), sp_blockchain::Error> {
-        if let Some((bad_signed_receipt_hash, trace_mismatch_index, block_hash)) =
+        if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
                 &*self.client,
             )?
@@ -611,7 +603,7 @@ where
                 .generate_proof::<PBlock>(
                     trace_mismatch_index,
                     &local_receipt,
-                    bad_signed_receipt_hash,
+                    bad_signed_bundle_hash,
                 )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
@@ -650,38 +642,20 @@ where
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
                 ExecutorId::ID,
-                &executor_id.clone().into(),
+                &executor_id.into(),
                 to_sign.as_ref(),
             ) {
-                Ok(Some(signature)) => {
-                    let signed_execution_receipt = SignedExecutionReceipt {
-                        execution_receipt,
-                        signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
-                            |err| {
-                                sp_blockchain::Error::Application(Box::from(format!(
-                                    "Failed to decode the signature of execution receipt: {err}"
-                                )))
-                            },
-                        )?,
-                        signer: executor_id,
-                    };
+                Ok(Some(_signature)) => {
+                    // let best_hash = self.primary_chain_client.info().best_hash;
 
-                    if let Err(e) = self
-                        .execution_receipt_sender
-                        .unbounded_send(signed_execution_receipt.clone())
-                    {
-                        tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send signed execution receipt");
-                    }
-
-                    let best_hash = self.primary_chain_client.info().best_hash;
-
+                    // TODO: Remove this
                     // Broadcast ER to all farmers via unsigned extrinsic.
-                    self.primary_chain_client
-                        .runtime_api()
-                        .submit_execution_receipt_unsigned(
-                            &BlockId::Hash(best_hash),
-                            signed_execution_receipt,
-                        )?;
+                    // self.primary_chain_client
+                    // .runtime_api()
+                    // .submit_execution_receipt_unsigned(
+                    // &BlockId::Hash(best_hash),
+                    // signed_execution_receipt,
+                    // )?;
 
                     Ok(())
                 }
