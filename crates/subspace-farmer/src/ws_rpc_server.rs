@@ -188,7 +188,7 @@ pub trait Rpc {
 /// ```
 pub struct RpcServerImpl {
     record_size: u32,
-    merkle_num_leaves: u32,
+    pieces_in_segment: u32,
     piece_getter: Arc<dyn PieceGetter + Send + Sync + 'static>,
     object_mappings: Arc<Vec<ObjectMappings>>,
 }
@@ -202,7 +202,7 @@ impl RpcServerImpl {
     ) -> Self {
         Self {
             record_size,
-            merkle_num_leaves: recorded_history_segment_size / record_size * 2,
+            pieces_in_segment: recorded_history_segment_size / record_size * 2,
             piece_getter,
             object_mappings,
         }
@@ -241,8 +241,8 @@ impl RpcServerImpl {
         // if not we might be able to do very fast object retrieval without assembling and
         // processing the whole segment.
         let last_data_piece_in_segment = {
-            let piece_position_in_segment = piece_index % u64::from(self.merkle_num_leaves);
-            let last_piece_position_in_segment = u64::from(self.merkle_num_leaves) / 2 - 1;
+            let piece_position_in_segment = piece_index % u64::from(self.pieces_in_segment);
+            let last_piece_position_in_segment = u64::from(self.pieces_in_segment) / 2 - 1;
 
             piece_position_in_segment >= last_piece_position_in_segment
         };
@@ -250,8 +250,8 @@ impl RpcServerImpl {
         // How much bytes are definitely available starting at `piece_index` and `offset` without
         // crossing segment boundary
         let bytes_available_in_segment = {
-            let data_shards = u64::from(self.merkle_num_leaves / 2);
-            let piece_position = piece_index % u64::from(self.merkle_num_leaves);
+            let data_shards = u64::from(self.pieces_in_segment / 2);
+            let piece_position = piece_index % u64::from(self.pieces_in_segment);
 
             // `-2` is because last 2 bytes might contain padding if a piece is the last piece in
             // the segment.
@@ -349,8 +349,8 @@ impl RpcServerImpl {
         offset: u16,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
-        let segment_index = piece_index / u64::from(self.merkle_num_leaves);
-        let piece_position_in_segment = piece_index % u64::from(self.merkle_num_leaves);
+        let segment_index = piece_index / u64::from(self.pieces_in_segment);
+        let piece_position_in_segment = piece_index % u64::from(self.pieces_in_segment);
         let offset_in_segment =
             piece_position_in_segment * u64::from(self.record_size) + u64::from(offset);
 
@@ -431,11 +431,11 @@ impl RpcServerImpl {
 
     /// Read the whole segment by its index (just records, skipping witnesses)
     fn read_segment(&self, segment_index: SegmentIndex) -> Result<Segment, Error> {
-        let first_piece_in_segment = segment_index * SegmentIndex::from(self.merkle_num_leaves);
+        let first_piece_in_segment = segment_index * SegmentIndex::from(self.pieces_in_segment);
         let mut segment_bytes =
-            Vec::<u8>::with_capacity((self.merkle_num_leaves * self.record_size) as usize);
+            Vec::<u8>::with_capacity((self.pieces_in_segment * self.record_size) as usize);
 
-        for piece_index in (first_piece_in_segment..).take(self.merkle_num_leaves as usize / 2) {
+        for piece_index in (first_piece_in_segment..).take(self.pieces_in_segment as usize / 2) {
             let piece = self.read_and_decode_piece(piece_index)?;
             segment_bytes.extend_from_slice(&piece[..self.record_size as usize]);
         }

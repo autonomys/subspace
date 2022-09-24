@@ -4,16 +4,17 @@ use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, RootBlock, BLAKE2B_256_HASH_SIZE,
-    PIECE_SIZE,
+    RECORD_SIZE,
 };
 
-const MERKLE_NUM_LEAVES: u32 = 8;
-const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
-const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
-const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+// This is data + parity shards
+const PIECES_IN_SEGMENT: u32 = 8;
+// In terms of source data that can be stored in the segment, not the size after archiving
+const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();
@@ -38,7 +39,8 @@ fn compare_block_objects_to_piece_objects<'a>(
 
 #[test]
 fn archiver() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg.clone()).unwrap();
 
     let (block_0, block_0_object_mapping) = {
         let mut block = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
@@ -109,7 +111,7 @@ fn archiver() {
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
     assert_eq!(
         first_archived_segment.pieces.count(),
-        MERKLE_NUM_LEAVES as usize
+        PIECES_IN_SEGMENT as usize
     );
     assert_eq!(first_archived_segment.root_block.segment_index(), 0);
     assert_eq!(
@@ -119,7 +121,7 @@ fn archiver() {
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 1);
-        assert_eq!(last_archived_block.partial_archived(), Some(7992));
+        assert_eq!(last_archived_block.partial_archived(), Some(8088));
     }
 
     // 4 objects fit into the first segment
@@ -144,6 +146,8 @@ fn archiver() {
     // Check that all pieces are valid
     for (position, piece) in first_archived_segment.pieces.as_pieces().enumerate() {
         assert!(archiver::is_piece_valid(
+            &kzg,
+            PIECES_IN_SEGMENT,
             piece,
             first_archived_segment.root_block.records_root(),
             position as u32,
@@ -162,6 +166,7 @@ fn archiver() {
         let mut archiver_with_initial_state = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
+            kzg.clone(),
             first_archived_segment.root_block,
             &block_1,
             block_1_object_mapping.clone(),
@@ -203,13 +208,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(13233));
+        assert_eq!(last_archived_block.partial_archived(), Some(13377));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(29143));
+        assert_eq!(last_archived_block.partial_archived(), Some(29463));
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -217,7 +222,7 @@ fn archiver() {
     let mut previous_root_block_hash = first_archived_segment.root_block.hash();
     let last_root_block = archived_segments.iter().last().unwrap().root_block;
     for archived_segment in archived_segments {
-        assert_eq!(archived_segment.pieces.count(), MERKLE_NUM_LEAVES as usize);
+        assert_eq!(archived_segment.pieces.count(), PIECES_IN_SEGMENT as usize);
         assert_eq!(
             archived_segment.root_block.segment_index(),
             expected_segment_index
@@ -229,6 +234,8 @@ fn archiver() {
 
         for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
+                &kzg,
+                PIECES_IN_SEGMENT,
                 piece,
                 archived_segment.root_block.records_root(),
                 position as u32,
@@ -241,7 +248,7 @@ fn archiver() {
     }
 
     // Add a block such that it fits in the next segment exactly
-    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 2948]>().to_vec();
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 3030]>().to_vec();
     let archived_segments = archiver.add_block(block_3.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
@@ -251,6 +258,7 @@ fn archiver() {
         let mut archiver_with_initial_state = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
+            kzg.clone(),
             last_root_block,
             &block_2,
             BlockObjectMapping::default(),
@@ -272,6 +280,8 @@ fn archiver() {
 
         for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
+                &kzg,
+                PIECES_IN_SEGMENT,
                 piece,
                 archived_segment.root_block.records_root(),
                 position as u32,
@@ -283,27 +293,28 @@ fn archiver() {
 
 #[test]
 fn invalid_usage() {
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
     assert_matches!(
-        Archiver::new(5, SEGMENT_SIZE),
+        Archiver::new(5, SEGMENT_SIZE, kzg.clone()),
         Err(ArchiverInstantiationError::RecordSizeTooSmall),
     );
 
     assert_matches!(
-        Archiver::new(10, 9),
+        Archiver::new(10, 9, kzg.clone()),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
     assert_matches!(
-        Archiver::new(SEGMENT_SIZE, SEGMENT_SIZE),
+        Archiver::new(SEGMENT_SIZE, SEGMENT_SIZE, kzg.clone()),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
 
     assert_matches!(
-        Archiver::new(17, SEGMENT_SIZE),
+        Archiver::new(17, SEGMENT_SIZE, kzg.clone()),
         Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
     assert_matches!(
-        Archiver::new(17, 34),
+        Archiver::new(17, 34, kzg.clone()),
         Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination),
     );
 
@@ -311,9 +322,10 @@ fn invalid_usage() {
         let result = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
+            kzg.clone(),
             RootBlock::V0 {
                 segment_index: 0,
-                records_root: Blake2b256Hash::default(),
+                records_root: Commitment::default(),
                 prev_root_block_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -338,9 +350,10 @@ fn invalid_usage() {
         let result = Archiver::with_initial_state(
             RECORD_SIZE,
             SEGMENT_SIZE,
+            kzg,
             RootBlock::V0 {
                 segment_index: 0,
-                records_root: Blake2b256Hash::default(),
+                records_root: Commitment::default(),
                 prev_root_block_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -369,7 +382,8 @@ fn invalid_usage() {
 
 #[test]
 fn one_byte_smaller_segment() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
 
     // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
     // but this should already produce archived segment since just enum variant and smallest compact
@@ -388,7 +402,8 @@ fn one_byte_smaller_segment() {
 
 #[test]
 fn spill_over_edge_case() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
 
     // Carefully compute the block size such that there is just 3 byte left to fill the segment
     assert!(archiver
@@ -412,7 +427,8 @@ fn spill_over_edge_case() {
 
 #[test]
 fn object_on_the_edge_of_segment() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     assert_eq!(
         archiver
             .add_block(
@@ -483,6 +499,6 @@ fn object_on_the_edge_of_segment() {
     // This will only need to be adjusted when implementation changes
     assert_eq!(
         archived_segment[1].object_mapping[0].objects[0].offset(),
-        88
+        104
     );
 }

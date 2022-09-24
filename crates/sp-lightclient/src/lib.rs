@@ -34,9 +34,11 @@ use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use std::marker::PhantomData;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockWeight, EonIndex, PublicKey, Randomness, RecordsRoot, RewardSignature, Salt, SegmentIndex,
-    SolutionRange, MERKLE_NUM_LEAVES, RECORD_SIZE,
+    SolutionRange, PIECES_IN_SEGMENT, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -388,14 +390,17 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // verify solution
         let max_plot_size = self.store.chain_constants().max_plot_size;
         let segment_index =
-            header_digests.pre_digest.solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
+            header_digests.pre_digest.solution.piece_index / u64::from(PIECES_IN_SEGMENT);
         let position = u32::try_from(
-            header_digests.pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES),
+            header_digests.pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT),
         )
         .expect("Position within segment always fits into u32; qed");
         let records_root =
             self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
         let total_pieces = self.total_pieces(parent_header.header.hash())?;
+
+        // TODO: Probably should have public parameters in chain constants instead
+        let kzg = Kzg::new(kzg::test_public_parameters());
 
         verify_solution(
             &header_digests.pre_digest.solution,
@@ -407,6 +412,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 piece_check_params: Some(PieceCheckParams {
                     records_root,
                     position,
+                    kzg: &kzg,
+                    pieces_in_segment: PIECES_IN_SEGMENT,
                     record_size: RECORD_SIZE,
                     max_plot_size,
                     total_pieces,
@@ -804,7 +811,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
         }
 
-        Ok(records_roots_count * u64::from(MERKLE_NUM_LEAVES))
+        Ok(records_roots_count * u64::from(PIECES_IN_SEGMENT))
     }
 
     /// Finds a records root mapped against a segment index in the chain with chain_tip as the tip of the chain.

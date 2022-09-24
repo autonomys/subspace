@@ -25,6 +25,16 @@ pub fn blake2b_256_hash(data: &[u8]) -> Blake2b256Hash {
     blake2b_256_hash_with_key(data, &[])
 }
 
+/// BLAKE2b-256 hashing of a single value truncated to 254 bits.
+///
+/// TODO: We probably wouldn't need this eventually
+pub fn blake2b_256_254_hash(data: &[u8]) -> Blake2b256Hash {
+    let mut hash = blake2b_256_hash_with_key(data, &[]);
+    // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
+    hash[31] &= 0b00111111;
+    hash
+}
+
 /// BLAKE2b-256 keyed hashing of a single value.
 ///
 /// PANIC: Panics if key is longer than 64 bytes.

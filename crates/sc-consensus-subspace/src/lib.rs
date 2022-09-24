@@ -79,10 +79,12 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, RootBlock, Salt, SegmentIndex, Solution, SolutionRange,
-    MERKLE_NUM_LEAVES, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
@@ -488,6 +490,7 @@ pub struct SubspaceLink<Block: BlockT> {
     /// Root blocks that are expected to appear in the corresponding blocks, used for block
     /// validation
     root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    kzg: Kzg,
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
@@ -950,23 +953,27 @@ where
         }
 
         let segment_index: SegmentIndex =
-            pre_digest.solution.piece_index / SegmentIndex::from(MERKLE_NUM_LEAVES);
+            pre_digest.solution.piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
         let position =
-            u32::try_from(pre_digest.solution.piece_index % u64::from(MERKLE_NUM_LEAVES))
+            u32::try_from(pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT))
                 .expect("Position within segment always fits into u32; qed");
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
         let maybe_records_root = if block_number.is_one() {
-            let archived_segments = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-                .expect("Incorrect parameters for archiver")
-                .add_block(
-                    self.client
-                        .block(&BlockId::Number(Zero::zero()))?
-                        .ok_or(Error::GenesisUnavailable)?
-                        .encode(),
-                    BlockObjectMapping::default(),
-                );
+            let archived_segments = Archiver::new(
+                RECORD_SIZE,
+                RECORDED_HISTORY_SEGMENT_SIZE,
+                self.subspace_link.kzg.clone(),
+            )
+            .expect("Incorrect parameters for archiver")
+            .add_block(
+                self.client
+                    .block(&BlockId::Number(Zero::zero()))?
+                    .ok_or(Error::GenesisUnavailable)?
+                    .encode(),
+                BlockObjectMapping::default(),
+            );
             archived_segments.into_iter().find_map(|archived_segment| {
                 if archived_segment.root_block.segment_index() == segment_index {
                     Some(archived_segment.root_block.records_root())
@@ -983,6 +990,8 @@ where
         // Piece is not checked during initial block verification because it requires access to
         // root block, check it now.
         subspace_verification::check_piece(
+            &self.subspace_link.kzg,
+            PIECES_IN_SEGMENT,
             records_root,
             position,
             RECORD_SIZE,
@@ -1311,6 +1320,9 @@ where
         .expect("Must always be able to get chain constants")
         .confirmation_depth_k();
 
+    // TODO: Probably should have public parameters in chain constants instead
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let link = SubspaceLink {
         config,
         new_slot_notification_sender,
@@ -1321,6 +1333,7 @@ where
         archived_segment_notification_stream,
         imported_block_notification_stream,
         root_blocks: Arc::new(Mutex::new(LruCache::new(confirmation_depth_k as usize))),
+        kzg,
     };
 
     let import = SubspaceBlockImport::new(

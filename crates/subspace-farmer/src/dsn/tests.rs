@@ -17,7 +17,7 @@ use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
     bidirectional_distance, crypto, ArchivedBlockProgress, Blake2b256Hash, FlatPieces,
-    LastArchivedBlock, Piece, PieceIndex, PieceIndexHash, RootBlock, PIECE_SIZE, U256,
+    LastArchivedBlock, Piece, PieceIndex, PieceIndexHash, RecordsRoot, RootBlock, PIECE_SIZE, U256,
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
@@ -264,7 +264,7 @@ async fn test_dsn_sync() {
             let archived_segment = {
                 let root_block = RootBlock::V0 {
                     segment_index,
-                    records_root: Blake2b256Hash::default(),
+                    records_root: RecordsRoot::default(),
                     prev_root_block_hash: Blake2b256Hash::default(),
                     last_archived_block,
                 };

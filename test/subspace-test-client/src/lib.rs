@@ -30,6 +30,8 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{Decode, Encode};
 use std::sync::Arc;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     FlatPieces, Piece, Solution, Tag, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -193,9 +195,13 @@ where
 {
     let genesis_block_id = BlockId::Number(sp_runtime::traits::Zero::zero());
 
-    let mut archiver =
-        subspace_archiving::archiver::Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
-            .expect("Incorrect parameters for archiver");
+    let kzg = Kzg::new(kzg::test_public_parameters());
+    let mut archiver = subspace_archiving::archiver::Archiver::new(
+        RECORD_SIZE,
+        RECORDED_HISTORY_SEGMENT_SIZE,
+        kzg,
+    )
+    .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
     archiver

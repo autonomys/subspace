@@ -28,8 +28,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_archiving::archiver::is_piece_valid;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey,
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RecordsRoot,
 };
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
@@ -772,12 +774,15 @@ impl SinglePlotFarm {
             total_pieces: farmer_protocol_info.total_pieces,
         };
 
+        let kzg = Kzg::new(kzg::test_public_parameters());
+
         let plotter = VerifyingPlotter {
             single_plot_plotter: self.plotter(),
             span: self.span.clone(),
             verification_client,
             farmer_protocol_info,
             pieces_verification_enabled,
+            kzg,
         };
 
         dsn::sync(self.node.clone(), options, plotter)
@@ -813,6 +818,7 @@ struct VerifyingPlotter<RC> {
     single_plot_plotter: SinglePlotPlotter,
     farmer_protocol_info: FarmerProtocolInfo,
     pieces_verification_enabled: bool,
+    kzg: Kzg,
 }
 
 impl<RC: RpcClient> VerifyingPlotter<RC> {
@@ -826,17 +832,17 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
             return Err(PiecesVerificationError::InvalidRawData);
         }
 
-        let merkle_num_leaves = (self.farmer_protocol_info.recorded_history_segment_size
+        let pieces_in_segment = self.farmer_protocol_info.recorded_history_segment_size
             / self.farmer_protocol_info.record_size.get()
-            * 2) as u64;
-        if merkle_num_leaves.is_zero() {
+            * 2;
+        if pieces_in_segment.is_zero() {
             return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
         }
 
         // Calculate segment indexes collection
         let segment_indexes = piece_indexes
             .iter()
-            .map(|piece_index| piece_index / merkle_num_leaves)
+            .map(|piece_index| piece_index / u64::from(pieces_in_segment))
             .collect::<Vec<_>>();
 
         // Split segment indexes collection into allowed max sized chunks
@@ -866,14 +872,16 @@ impl<RC: RpcClient> VerifyingPlotter<RC> {
                     Err(PiecesVerificationError::NoRecordsRootFound)
                 }
             })
-            .collect::<Result<Vec<Blake2b256Hash>, PiecesVerificationError>>()?;
+            .collect::<Result<Vec<RecordsRoot>, PiecesVerificationError>>()?;
 
         // Perform an actual piece validity check
         for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {
-            let position = u32::try_from(piece_index % merkle_num_leaves)
+            let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
                 .expect("Position within segment always fits into u32; qed");
 
             if !is_piece_valid(
+                &self.kzg,
+                pieces_in_segment,
                 piece,
                 root,
                 position,

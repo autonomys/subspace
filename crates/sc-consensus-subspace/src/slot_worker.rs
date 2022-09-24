@@ -42,7 +42,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{
-    Randomness, RewardSignature, Salt, Solution, MERKLE_NUM_LEAVES, RECORD_SIZE,
+    Randomness, RewardSignature, Salt, Solution, PIECES_IN_SEGMENT, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, derive_target};
 use subspace_verification::{
@@ -211,8 +211,8 @@ where
             }
 
             let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
-            let segment_index = solution.piece_index / u64::from(MERKLE_NUM_LEAVES);
-            let position = u32::try_from(solution.piece_index % u64::from(MERKLE_NUM_LEAVES))
+            let segment_index = solution.piece_index / u64::from(PIECES_IN_SEGMENT);
+            let position = u32::try_from(solution.piece_index % u64::from(PIECES_IN_SEGMENT))
                 .expect("Position within segment always fits into u32; qed");
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
@@ -258,6 +258,8 @@ where
                     piece_check_params: Some(PieceCheckParams {
                         records_root,
                         position,
+                        kzg: &self.subspace_link.kzg,
+                        pieces_in_segment: PIECES_IN_SEGMENT,
                         record_size: RECORD_SIZE,
                         max_plot_size,
                         total_pieces,

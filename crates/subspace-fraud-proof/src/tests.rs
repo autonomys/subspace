@@ -14,6 +14,7 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn execution_proof_creation_and_verification_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -341,6 +342,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn invalid_execution_proof_should_not_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);

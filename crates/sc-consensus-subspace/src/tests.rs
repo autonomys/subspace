@@ -66,6 +66,8 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature, RECORDED_HISTORY_SEGMENT_SIZE,
@@ -433,7 +435,8 @@ fn rejects_empty_block() {
 fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
     let genesis_block_id = BlockId::Number(Zero::zero());
 
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+    let kzg = Kzg::new(kzg::test_public_parameters());
+    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
         .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
