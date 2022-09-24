@@ -20,7 +20,7 @@ use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_consensus::BlockImport;
+use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
@@ -67,6 +67,8 @@ where
     pub parent_hash: Block::Hash,
     /// block's number.
     pub number: NumberFor<Block>,
+    /// Fork choice of the block.
+    pub fork_choice: ForkChoiceStrategy,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -109,7 +111,7 @@ pub(super) async fn start_worker<
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -123,10 +125,10 @@ pub(super) async fn start_worker<
             {
                 let span = span.clone();
 
-                move |primary_hash, bundles, shuffling_seed, maybe_new_runtime| {
+                move |primary_info, bundles, shuffling_seed, maybe_new_runtime| {
                     bundle_processor
                         .clone()
-                        .process_bundles(primary_hash, bundles, shuffling_seed, maybe_new_runtime)
+                        .process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
                         .instrument(span.clone())
                         .boxed()
                 }
@@ -138,7 +140,8 @@ pub(super) async fn start_worker<
                          hash,
                          parent_hash: _,
                          number,
-                     }| (hash, number),
+                         fork_choice,
+                     }| (hash, number, fork_choice),
                 )
                 .collect(),
             Box::pin(imported_block_notification_stream),
@@ -219,7 +222,7 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
     primary_chain_client: &PClient,
     best_secondary_number: NumberFor<Block>,
     processor: ProcessorFn,
-    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
+    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy)>,
     mut block_imports: BlockImports,
     block_import_throttling_buffer_size: u32,
 ) where
@@ -228,14 +231,14 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
             Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
-    BlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
+    BlockImports: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
@@ -244,14 +247,14 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
         .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
 
     // Notify about active leaves on startup before starting the loop
-    for (hash, number) in std::mem::take(&mut leaves) {
+    for (hash, number, fork_choice) in std::mem::take(&mut leaves) {
         let _ = active_leaves.insert(hash, number);
         // Skip the blocks that have been processed by the execution chain.
         if number > best_secondary_number.into() {
             if let Err(error) = process_primary_block::<Block, PBlock, _, _>(
                 primary_chain_client,
                 &processor,
-                (hash, number),
+                (hash, number, fork_choice),
             )
             .await
             {
@@ -274,7 +277,7 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
     loop {
         tokio::select! {
             maybe_block_import = block_imports.next() => {
-                let (block_number, mut block_import_acknowledgement_sender) = match maybe_block_import {
+                let (block_number, fork_choice, mut block_import_acknowledgement_sender) = match maybe_block_import {
                     Some(block_import) => block_import,
                     None => {
                         // Can be None on graceful shutdown.
@@ -289,6 +292,7 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
                     hash: header.hash(),
                     parent_hash: *header.parent_hash(),
                     number: *header.number(),
+                    fork_choice
                 };
                 let _ = block_info_sender.feed(block_info).await;
                 let _ = block_import_acknowledgement_sender.send(()).await;
@@ -373,7 +377,7 @@ where
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
             Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
             Randomness,
             Option<Cow<'static, [u8]>>,
@@ -396,7 +400,7 @@ where
     process_primary_block::<Block, PBlock, _, _>(
         primary_chain_client,
         processor,
-        (block_info.hash, block_info.number),
+        (block_info.hash, block_info.number, block_info.fork_choice),
     )
     .await?;
 
@@ -410,7 +414,7 @@ where
 async fn process_primary_block<Block, PBlock, PClient, ProcessorFn>(
     primary_chain_client: &PClient,
     processor: &ProcessorFn,
-    (block_hash, block_number): (PBlock::Hash, NumberFor<PBlock>),
+    (block_hash, block_number, fork_choice): (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
 ) -> Result<(), ApiError>
 where
     Block: BlockT,
@@ -418,7 +422,7 @@ where
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
             Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
             Randomness,
             Option<Cow<'static, [u8]>>,
@@ -483,7 +487,7 @@ where
         .extrinsics_shuffling_seed(&block_id, header)?;
 
     processor(
-        (block_hash, block_number),
+        (block_hash, block_number, fork_choice),
         bundles,
         shuffling_seed,
         maybe_new_runtime,
