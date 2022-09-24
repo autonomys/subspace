@@ -90,6 +90,7 @@ mod pallet {
         UnexpectedSigner,
         /// Invalid transaction bundle signature.
         BadSignature,
+        /// An invalid execution receipt found in the bundle.
         Receipt(ExecutionReceiptError),
     }
 
@@ -101,12 +102,8 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
     pub enum ExecutionReceiptError {
-        /// The signer of execution receipt is unexpected.
-        UnexpectedSigner,
         /// The parent execution receipt is unknown.
         MissingParent,
-        /// Invalid execution receipt signature.
-        BadSignature,
         /// The execution receipt is stale.
         Stale,
         /// The execution receipt points to a block unknown to the history.
@@ -115,12 +112,6 @@ mod pallet {
         TooFarInFuture,
         /// Receipts are not in ascending order.
         Unsorted,
-    }
-
-    impl<T> From<ExecutionReceiptError> for Error<T> {
-        fn from(e: ExecutionReceiptError) -> Self {
-            Self::ExecutionReceipt(e)
-        }
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
@@ -141,8 +132,6 @@ mod pallet {
     pub enum Error<T> {
         /// Invalid bundle.
         Bundle(BundleError),
-        /// Invalid execution receipt.
-        ExecutionReceipt(ExecutionReceiptError),
         /// Invalid fraud proof.
         FraudProof(FraudProofError),
     }

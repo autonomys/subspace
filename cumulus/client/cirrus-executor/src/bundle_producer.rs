@@ -1,5 +1,5 @@
 use crate::worker::ExecutorSlotInfo;
-use crate::BundleSender;
+use crate::{BundleSender, ExecutionReceiptFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
@@ -10,8 +10,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_core::ByteArray;
 use sp_executor::{
-    Bundle, BundleHeader, ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature,
-    SignedBundle, SignedOpaqueBundle,
+    Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
+    SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -212,8 +212,7 @@ where
         &self,
         primary_hash: PBlock::Hash,
         header_number: NumberFor<Block>,
-    ) -> sp_blockchain::Result<Vec<ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>>
-    {
+    ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
         let best_execution_chain_number = self
             .primary_chain_client
             .runtime_api()

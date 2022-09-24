@@ -508,13 +508,6 @@ pub enum GossipMessageError {
         got: ExecutorId,
         expected: ExecutorId,
     },
-    #[error("The signature of execution receipt is invalid")]
-    BadExecutionReceiptSignature,
-    #[error("Invalid execution receipt author, got: {got}, expected: {expected}")]
-    InvalidExecutionReceiptAuthor {
-        got: ExecutorId,
-        expected: ExecutorId,
-    },
 }
 
 impl From<sp_blockchain::Error> for GossipMessageError {
