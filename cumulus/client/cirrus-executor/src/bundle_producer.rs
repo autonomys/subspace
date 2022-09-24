@@ -15,7 +15,7 @@ use sp_executor::{
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, One};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;

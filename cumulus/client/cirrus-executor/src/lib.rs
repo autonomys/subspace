@@ -626,7 +626,10 @@ where
                 });
             }
 
-            self.validate_gossiped_execution_receipt(signed_bundle_hash, &bundle.receipt)?;
+            // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
+            for receipt in &bundle.receipts {
+                self.validate_gossiped_execution_receipt(signed_bundle_hash, receipt)?;
+            }
 
             for extrinsic in bundle.extrinsics.iter() {
                 let tx_hash = self.transaction_pool.hash_of(extrinsic);

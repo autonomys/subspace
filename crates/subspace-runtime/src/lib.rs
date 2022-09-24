@@ -560,11 +560,12 @@ fn extract_receipts(
                 signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_opaque_bundle.bundle.receipt)
+                Some(signed_opaque_bundle.bundle.receipts)
             } else {
                 None
             }
         })
+        .flatten()
         .collect()
 }
 
