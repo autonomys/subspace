@@ -20,7 +20,7 @@
 //!   and value is an offset of corresponding encoded piece in the plot (we can do this because all
 //!   pieces have the same size).
 //!
-//! In short, for every 4096 bytes we also store a record with 8-bytes tag and 8-bytes index (+some
+//! In short, for every piece we also store a record with 8-bytes tag and 8-bytes index (+some
 //! overhead of RocksDB itself).
 //!
 //! During farming we receive a global challenge and need to find a solution based on *target* and

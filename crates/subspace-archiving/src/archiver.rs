@@ -32,7 +32,7 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     crypto, ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock,
-    RootBlock, BLAKE2B_256_HASH_SIZE, PIECE_SIZE, WITNESS_SIZE,
+    RootBlock, BLAKE2B_256_HASH_SIZE, WITNESS_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -147,12 +147,6 @@ pub enum ArchiverInstantiationError {
         error("Segment size is not a multiple of record size")
     )]
     SegmentSizesNotMultipleOfRecordSize,
-    /// Wrong record and segment size, it will not be possible to produce pieces
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Wrong record and segment size, it will not be possible to produce pieces")
-    )]
-    WrongRecordAndSegmentCombination,
     /// Invalid last archived block, its size is the same as encoded block
     #[cfg_attr(
         feature = "thiserror",
@@ -242,10 +236,6 @@ impl Archiver {
         }
         if segment_size % record_size != 0 {
             return Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize);
-        }
-
-        if record_size + WITNESS_SIZE != PIECE_SIZE as u32 {
-            return Err(ArchiverInstantiationError::WrongRecordAndSegmentCombination);
         }
 
         let data_shards = segment_size / record_size;
@@ -745,7 +735,7 @@ pub fn is_piece_valid(
     position: u32,
     record_size: u32,
 ) -> bool {
-    if piece.len() != PIECE_SIZE {
+    if piece.len() != (record_size + WITNESS_SIZE) as usize {
         return false;
     }
 
