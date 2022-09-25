@@ -45,6 +45,7 @@ mod pallet {
     };
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps};
     use sp_std::fmt::Debug;
+    use subspace_runtime_primitives::CONFIRMATION_DEPTH_K;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -372,7 +373,7 @@ mod pallet {
                     let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         .priority(TransactionPriority::MAX)
                         .and_provides(first_primary_number)
-                        .longevity(TransactionLongevity::MAX)
+                        .longevity(CONFIRMATION_DEPTH_K as TransactionLongevity)
                         .propagate(true);
 
                     // primary_number is ensured to be larger than the best execution chain chain
