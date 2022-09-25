@@ -59,7 +59,7 @@ impl DbEntry {
 pub(super) struct CommitmentDatabases {
     base_directory: PathBuf,
     databases: LruCache<Salt, Arc<DbEntry>>,
-    metadata: Mutex<CommitmentMetadata>,
+    metadata: CommitmentMetadata,
 }
 
 impl CommitmentDatabases {
@@ -117,7 +117,7 @@ impl CommitmentDatabases {
         Ok(CommitmentDatabases {
             base_directory: base_directory.clone(),
             databases,
-            metadata: Mutex::new(metadata),
+            metadata,
         })
     }
 
@@ -166,7 +166,7 @@ impl CommitmentDatabases {
             let old_db_path = self.base_directory.join(hex::encode(old_salt));
 
             // Remove old commitments for `old_salt`
-            self.metadata.lock().mutate(|metadata| {
+            self.metadata.mutate(|metadata| {
                 metadata.remove(&old_salt);
 
                 Ok(())
@@ -196,14 +196,14 @@ impl CommitmentDatabases {
     }
 
     pub(super) fn mark_in_progress(&mut self, salt: Salt) -> Result<(), CommitmentError> {
-        self.metadata.lock().mutate(|metadata| {
+        self.metadata.mutate(|metadata| {
             metadata.insert(salt, CommitmentStatus::InProgress);
             Ok(())
         })
     }
 
     pub(super) fn mark_created(&mut self, salt: Salt) -> Result<(), CommitmentError> {
-        self.metadata.lock().mutate(|metadata| {
+        self.metadata.mutate(|metadata| {
             metadata.insert(salt, CommitmentStatus::Created);
             Ok(())
         })
