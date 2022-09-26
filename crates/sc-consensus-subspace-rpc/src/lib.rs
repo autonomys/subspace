@@ -32,6 +32,7 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
+use sc_piece_cache::PieceCache;
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -51,8 +52,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    RecordsRoot, SegmentIndex, Solution, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
+    Piece, PieceIndex, RecordsRoot, SegmentIndex, Solution, PIECES_IN_SEGMENT,
+    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -107,6 +108,9 @@ pub trait SubspaceRpcApi {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<RecordsRoot>>>;
+
+    #[method(name = "subspace_getPiece", blocking)]
+    fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>>;
 }
 
 #[derive(Default)]
@@ -128,7 +132,7 @@ struct ArchivedSegmentAcknowledgementSenders {
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block, Client> {
+pub struct SubspaceRpc<Block, Client, PC> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -137,6 +141,7 @@ pub struct SubspaceRpc<Block, Client> {
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     archived_segment_acknowledgement_senders: Arc<Mutex<ArchivedSegmentAcknowledgementSenders>>,
+    piece_cache: PC,
     next_subscription_id: AtomicU64,
     _phantom: PhantomData<Block>,
 }
@@ -148,17 +153,7 @@ pub struct SubspaceRpc<Block, Client> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client> SubspaceRpc<Block, Client>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block>
-        + BlockBackend<Block>
-        + HeaderBackend<Block>
-        + Send
-        + Sync
-        + 'static,
-    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-{
+impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
         client: Arc<Client>,
@@ -168,6 +163,7 @@ where
         archived_segment_notification_stream: SubspaceNotificationStream<
             ArchivedSegmentNotification,
         >,
+        piece_cache: PC,
     ) -> Self {
         Self {
             client,
@@ -178,6 +174,7 @@ where
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
             archived_segment_acknowledgement_senders: Arc::default(),
+            piece_cache,
             next_subscription_id: AtomicU64::default(),
             _phantom: PhantomData::default(),
         }
@@ -185,7 +182,7 @@ where
 }
 
 #[async_trait]
-impl<Block, Client> SubspaceRpcApiServer for SubspaceRpc<Block, Client>
+impl<Block, Client, PC> SubspaceRpcApiServer for SubspaceRpc<Block, Client, PC>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -195,6 +192,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    PC: PieceCache + Send + Sync + 'static,
 {
     fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
@@ -567,5 +565,18 @@ where
         }
 
         records_root_result
+    }
+
+    fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>> {
+        match self.piece_cache.get_piece(piece_index) {
+            Ok(maybe_piece) => Ok(maybe_piece),
+            Err(error) => {
+                error!("Failed to get piece with index {piece_index} from cache: {error}");
+
+                Err(JsonRpseeError::Custom(
+                    "Internal error during `get_piece` call".to_string(),
+                ))
+            }
+        }
     }
 }

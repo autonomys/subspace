@@ -29,6 +29,7 @@ use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
 use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
+use sc_piece_cache::PieceCache;
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_transaction_pool_api::TransactionPool;
@@ -42,7 +43,7 @@ use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
-pub struct FullDeps<C, P> {
+pub struct FullDeps<C, P, PC> {
     /// The client instance to use.
     pub client: Arc<C>,
     /// Transaction pool instance.
@@ -59,11 +60,14 @@ pub struct FullDeps<C, P> {
     /// A stream with notifications about archived segment creation.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
+    /// Caching layer for pieces produced during archiving to make them available for some time
+    /// after they were produced.
+    pub piece_cache: PC,
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P>(
-    deps: FullDeps<C, P>,
+pub fn create_full<C, P, PC>(
+    deps: FullDeps<C, P, PC>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
@@ -78,6 +82,7 @@ where
         + BlockBuilder<Block>
         + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
+    PC: PieceCache + Send + Sync + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -88,6 +93,7 @@ where
         new_slot_notification_stream,
         reward_signing_notification_stream,
         archived_segment_notification_stream,
+        piece_cache,
     } = deps;
 
     module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
@@ -100,6 +106,7 @@ where
             new_slot_notification_stream,
             reward_signing_notification_stream,
             archived_segment_notification_stream,
+            piece_cache,
         )
         .into_rpc(),
     )?;

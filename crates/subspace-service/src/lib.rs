@@ -25,6 +25,7 @@ use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use dsn::start_dsn_node;
 use frame_system_rpc_runtime_api::AccountNonceApi;
+use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
@@ -37,6 +38,7 @@ use sc_consensus_subspace::{
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_piece_cache::{AuxPieceCache, PieceCache};
 use sc_service::error::Error as ServiceError;
 use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
@@ -56,9 +58,11 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
+use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
+use tracing::error;
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -480,6 +484,37 @@ where
         );
     }
 
+    let piece_cache = AuxPieceCache::new(client.clone());
+
+    task_manager
+        .spawn_handle()
+        .spawn_blocking("subspace-piece-cache", None, {
+            let piece_cache = piece_cache.clone();
+            let mut archived_segment_notification_stream =
+                archived_segment_notification_stream.subscribe();
+
+            async move {
+                while let Some(archived_segment_notification) =
+                    archived_segment_notification_stream.next().await
+                {
+                    let segment_index = archived_segment_notification
+                        .archived_segment
+                        .root_block
+                        .segment_index();
+                    if let Err(error) = piece_cache.add_pieces(
+                        segment_index * u64::from(PIECES_IN_SEGMENT),
+                        &archived_segment_notification.archived_segment.pieces,
+                    ) {
+                        error!(
+                            %segment_index,
+                            %error,
+                            "Failed to store pieces for segment in cache"
+                        );
+                    }
+                }
+            }
+        });
+
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         network: network.clone(),
         client: client.clone(),
@@ -503,6 +538,7 @@ where
                     reward_signing_notification_stream: reward_signing_notification_stream.clone(),
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
+                    piece_cache: piece_cache.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)
