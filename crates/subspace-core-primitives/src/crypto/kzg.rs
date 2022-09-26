@@ -336,8 +336,8 @@ impl Kzg {
             .map(|commitment| Witness(commitment.0))
     }
 
-    /// Verifies that `value` is the evaluation at `index` of the polynomial of `polynomial_degree`
-    /// matching the `commitment`
+    /// Verifies that `value` is the evaluation at `index` of the polynomial created from
+    /// `num_values` values matching the `commitment`.
     pub fn verify(
         &self,
         commitment: &Commitment,
@@ -346,9 +346,16 @@ impl Kzg {
         value: &[u8],
         witness: &Witness,
     ) -> bool {
+        let degree_of_polynomial = match num_values.checked_sub(1) {
+            Some(degree_of_polynomial) => degree_of_polynomial,
+            None => {
+                return false;
+            }
+        };
+
         // Generate all the x-axis points of the domain on which all the row polynomials reside
         let eval_domain = match EvaluationDomain::new(
-            num_values
+            degree_of_polynomial
                 .try_into()
                 .expect("Always fits into usize on 32-bit+ platforms; qed"),
         ) {
