@@ -1,0 +1,17 @@
+[package]
+name = "sc-piece-cache"
+description = "Cache of pieces in aux storage"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+	"/src",
+	"/Cargo.toml",
+	"/README.md",
+]
+
+[dependencies]
+parity-scale-codec = { version = "3.1.5" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }

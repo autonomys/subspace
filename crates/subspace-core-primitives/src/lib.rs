@@ -256,6 +256,18 @@ impl TryFrom<&[u8]> for Piece {
     }
 }
 
+impl TryFrom<Vec<u8>> for Piece {
+    type Error = &'static str;
+
+    fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
+        if vec.len() != PIECE_SIZE {
+            Err("Wrong piece size, expected: 32768")
+        } else {
+            Ok(Self(vec))
+        }
+    }
+}
+
 impl Deref for Piece {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
