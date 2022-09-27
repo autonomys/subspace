@@ -146,6 +146,8 @@ where
 {
     /// Block number
     pub block_number: NumberFor<Block>,
+    /// Fork choice
+    pub fork_choice: ForkChoiceStrategy,
     /// Sender for archived root blocks
     pub root_block_sender: mpsc::Sender<RootBlock>,
     /// Sender for pausing the block import when executor is not fast enough to process
@@ -1190,7 +1192,7 @@ where
 
         // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
         // range), if there's a tie we go with the longest chain.
-        block.fork_choice = {
+        let fork_choice = {
             let (last_best, last_best_number) = (info.best_hash, info.best_number);
 
             let last_best_weight = if &last_best == block.header.parent_hash() {
@@ -1207,14 +1209,13 @@ where
                     })?
             };
 
-            Some(ForkChoiceStrategy::Custom(
-                match total_weight.cmp(&last_best_weight) {
-                    Ordering::Greater => true,
-                    Ordering::Equal => block_number > last_best_number,
-                    Ordering::Less => false,
-                },
-            ))
+            ForkChoiceStrategy::Custom(match total_weight.cmp(&last_best_weight) {
+                Ordering::Greater => true,
+                Ordering::Equal => block_number > last_best_number,
+                Ordering::Less => false,
+            })
         };
+        block.fork_choice = Some(fork_choice);
 
         let import_result = self.inner.import_block(block, new_cache).await?;
         let (root_block_sender, root_block_receiver) = mpsc::channel(0);
@@ -1224,6 +1225,7 @@ where
         self.imported_block_notification_sender
             .notify(move || ImportedBlockNotification {
                 block_number,
+                fork_choice,
                 root_block_sender,
                 block_import_acknowledgement_sender,
             });
