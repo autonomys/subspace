@@ -49,8 +49,11 @@ parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
 }
 
+type DomainId = u64;
+
 impl crate::Config for Test {
     type Event = Event;
+    type DomainId = DomainId;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
