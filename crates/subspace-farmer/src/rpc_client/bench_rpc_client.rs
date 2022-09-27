@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -143,5 +143,9 @@ impl RpcClient for BenchRpcClient {
 
     async fn records_roots(&self, _: Vec<SegmentIndex>) -> Result<Vec<Option<RecordsRoot>>, Error> {
         Ok(Default::default())
+    }
+
+    async fn get_piece(&self, _piece_index: PieceIndex) -> Result<Option<Piece>, Error> {
+        unimplemented!()
     }
 }
