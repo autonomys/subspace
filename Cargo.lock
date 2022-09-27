@@ -6094,6 +6094,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "sc-client-api",
  "sc-consensus-subspace",
+ "sc-piece-cache",
  "sc-rpc",
  "sc-utils",
  "sp-api",
@@ -6423,6 +6424,15 @@ dependencies = [
  "sc-utils",
  "serde_json",
  "wasm-timer",
+]
+
+[[package]]
+name = "sc-piece-cache"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sc-client-api",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -8219,6 +8229,7 @@ dependencies = [
  "sc-consensus-subspace-rpc",
  "sc-executor",
  "sc-network",
+ "sc-piece-cache",
  "sc-rpc",
  "sc-rpc-api",
  "sc-service",
@@ -8241,6 +8252,7 @@ dependencies = [
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
+ "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-networking",
  "subspace-runtime-primitives",

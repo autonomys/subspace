@@ -225,7 +225,7 @@ pub struct LocalChallenge {
 /// archival history of the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Piece(Vec<u8>);
+pub struct Piece(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
 impl Default for Piece {
     fn default() -> Self {
@@ -252,6 +252,18 @@ impl TryFrom<&[u8]> for Piece {
             Err("Wrong piece size, expected: 32768")
         } else {
             Ok(Self(slice.to_vec()))
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for Piece {
+    type Error = &'static str;
+
+    fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
+        if vec.len() != PIECE_SIZE {
+            Err("Wrong piece size, expected: 32768")
+        } else {
+            Ok(Self(vec))
         }
     }
 }
@@ -284,7 +296,7 @@ impl AsMut<[u8]> for Piece {
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FlatPieces(Vec<u8>);
+pub struct FlatPieces(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
 impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
