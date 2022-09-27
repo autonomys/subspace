@@ -33,7 +33,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
-use derive_more::{Add, Display, Div, Mul, Sub};
+use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 #[cfg(feature = "std")]
 use libp2p::multihash::{Code, Multihash};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -648,7 +648,9 @@ mod private_u256 {
 }
 
 /// 256-bit unsigned integer
-#[derive(Debug, Display, Add, Sub, Mul, Div, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(
+    Debug, Display, Add, Sub, Mul, Div, Rem, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash,
+)]
 pub struct U256(private_u256::U256);
 
 impl U256 {
@@ -801,5 +803,51 @@ impl From<PieceIndexHash> for U256 {
 impl From<U256> for PieceIndexHash {
     fn from(number: U256) -> Self {
         Self(number.to_be_bytes())
+    }
+}
+
+impl TryFrom<U256> for u64 {
+    type Error = &'static str;
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        Self::try_from(value.0)
+    }
+}
+
+/// Data structure representing sector ID in farmer's plot
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
+
+impl AsRef<[u8]> for SectorId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl SectorId {
+    /// Create new sector ID by deriving it from public key and sector index
+    pub fn new(public_key: &PublicKey, sector_index: u64) -> Self {
+        Self(crypto::blake2b_256_hash_list(&[
+            public_key.as_ref(),
+            &sector_index.to_le_bytes(),
+        ]))
+    }
+
+    /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
+    /// of blockchain_history is `total_pieces`
+    pub fn derive_piece_index(
+        &self,
+        piece_offset: PieceIndex,
+        total_pieces: PieceIndex,
+    ) -> PieceIndex {
+        let piece_index = U256::from_le_bytes(crypto::blake2b_256_hash_list(&[
+            &self.0,
+            &piece_offset.to_le_bytes(),
+        ])) % U256::from(total_pieces);
+
+        piece_index
+            .try_into()
+            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
     }
 }
