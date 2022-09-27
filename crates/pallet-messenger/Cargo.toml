@@ -1,0 +1,41 @@
+[package]
+name = "pallet-messenger"
+version = "0.1.0"
+authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Subspace node pallet for cross domain and cross chain messaging"
+include = [
+  "/src",
+  "/Cargo.toml",
+  "/README.md",
+]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+log = { version = "0.4.17", default-features = false }
+scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
+sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+
+[dev-dependencies]
+sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+
+[features]
+default = ["std"]
+std = [
+  "codec/std",
+  "frame-support/std",
+  "frame-system/std",
+  "hex/std",
+  "log/std",
+  "scale-info/std",
+  "sp-std/std",
+]
+try-runtime = ["frame-support/try-runtime"]
