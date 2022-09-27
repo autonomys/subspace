@@ -19,7 +19,6 @@ use std::{fmt, fs, io};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::PublicKey;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::Node;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use tokio::runtime::Handle;
 use tracing::{error, info, info_span};
@@ -222,7 +221,6 @@ pub struct SingleDiskFarmOptions<RC, PF> {
     pub enable_dsn_archiving: bool,
     pub enable_dsn_sync: bool,
     pub enable_farming: bool,
-    pub relay_server_node: Option<Node>,
 }
 
 /// Abstraction on top of `SinglePlotFarm` instances contained within the same physical disk (or
@@ -259,7 +257,6 @@ impl SingleDiskFarm {
             enable_dsn_archiving,
             enable_dsn_sync,
             enable_farming,
-            relay_server_node,
         } = options;
 
         let plot_sizes =
@@ -354,9 +351,7 @@ impl SingleDiskFarm {
                         single_disk_semaphore,
                         enable_farming,
                         reward_address,
-                        enable_dsn_archiving,
                         enable_dsn_sync,
-                        relay_server_node: relay_server_node.clone(),
                         verification_client: verification_client.clone(),
                     })
                 })

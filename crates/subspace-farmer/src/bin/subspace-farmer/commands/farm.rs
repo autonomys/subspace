@@ -10,9 +10,7 @@ use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
 use subspace_farmer::{NodeRpcClient, Plot, RpcClient};
-use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{Config, RelayMode};
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 
 const GEMINI_2A_GENESIS_HASH: [u8; 32] = [
     0x43, 0xd1, 0x0f, 0xfd, 0x50, 0x99, 0x03, 0x80, 0xff, 0xe6, 0xc9, 0x39, 0x21, 0x45, 0x43, 0x1d,
@@ -74,34 +72,6 @@ pub(crate) async fn farm_multi_disk(
     let mut record_size = None;
     let mut recorded_history_segment_size = None;
 
-    // Starting the relay server node.
-    let (relay_server_node, mut relay_node_runner) = subspace_networking::create(Config {
-        listen_on,
-        allow_non_globals_in_dht: true,
-        relay_mode: RelayMode::Server,
-        ..Config::with_generated_keypair()
-    })
-    .await?;
-
-    relay_server_node
-        .on_new_listener(Arc::new({
-            let node_id = relay_server_node.id();
-
-            move |multiaddr| {
-                info!(
-                    "Relay listening on {}",
-                    multiaddr.clone().with(Protocol::P2p(node_id.into()))
-                );
-            }
-        }))
-        .detach();
-
-    tokio::spawn(async move {
-        relay_node_runner.run().await;
-    });
-
-    trace!(node_id = %relay_server_node.id(), "Relay Node started");
-
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later (note that multiple farms can use the same location for metadata)
     for (farm_index, mut disk_farm) in disk_farms.into_iter().enumerate() {
@@ -159,7 +129,7 @@ pub(crate) async fn farm_multi_disk(
             farming_client,
             reward_address,
             bootstrap_nodes: bootstrap_nodes.clone(),
-            listen_on: vec![],
+            listen_on: listen_on.clone(),
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
@@ -172,7 +142,6 @@ pub(crate) async fn farm_multi_disk(
                     options.max_plot_size,
                 )
             },
-            relay_server_node: Some(relay_server_node.clone()),
         })
         .await?;
 

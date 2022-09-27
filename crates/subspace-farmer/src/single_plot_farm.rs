@@ -1,25 +1,18 @@
-pub mod dsn_archiving;
 #[cfg(test)]
 mod tests;
 
 use crate::commitments::{CommitmentError, Commitments};
-use crate::dsn::{self, OnSync, PieceIndexHashNumber, SyncOptions};
 use crate::farming::Farming;
 use crate::identity::Identity;
 use crate::object_mappings::ObjectMappings;
 use crate::plot::{Plot, PlotError};
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
-use crate::single_plot_farm::dsn_archiving::start_archiving;
-use crate::utils::CallOnDrop;
 use crate::ws_rpc_server::PieceGetter;
 use anyhow::anyhow;
-use async_trait::async_trait;
 use derive_more::{Display, From};
-use futures::future::try_join_all;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use num_traits::Zero;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -27,12 +20,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::{fs, io, mem};
-use subspace_archiving::archiver::is_piece_valid;
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PublicKey, RecordsRoot,
-};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PublicKey};
 use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
@@ -42,11 +30,11 @@ use subspace_networking::{
     PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeRequestHandler,
     PiecesByRangeResponse, PiecesToPlot,
 };
-use subspace_rpc_primitives::{FarmerProtocolInfo, MAX_SEGMENT_INDEXES_PER_REQUEST};
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{error, info, trace, warn, Instrument, Span};
+use tracing::{error, info, trace, Instrument, Span};
 use ulid::Ulid;
 
 /// A bit more than 4M. Should correspond to requested range size from DSN.
@@ -304,12 +292,13 @@ pub struct PlotFactoryOptions<'a> {
 
 pub trait PlotFactory = Fn(PlotFactoryOptions<'_>) -> Result<Plot, PlotError> + Send + Sync;
 
+//TODO: Restore dsn-sync or remove unused variables.
+#[allow(dead_code)]
 pub(crate) struct SinglePlotFarmOptions<RC, PF> {
     pub(crate) id: SinglePlotFarmId,
     pub(crate) plot_directory: PathBuf,
     pub(crate) metadata_directory: PathBuf,
     pub(crate) allocated_plotting_space: u64,
-    pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) farming_client: RC,
     pub(crate) plot_factory: PF,
     /// Nodes to connect to on creation, must end with `/p2p/QmFoo` at the end.
@@ -319,9 +308,10 @@ pub(crate) struct SinglePlotFarmOptions<RC, PF> {
     pub(crate) single_disk_semaphore: SingleDiskSemaphore,
     pub(crate) enable_farming: bool,
     pub(crate) reward_address: PublicKey,
-    pub(crate) enable_dsn_archiving: bool,
+
+    // TODO: remove or restore DSN-sync related fields
+    pub(crate) farmer_protocol_info: FarmerProtocolInfo,
     pub(crate) enable_dsn_sync: bool,
-    pub(crate) relay_server_node: Option<Node>,
     /// Client used for pieces verification
     pub(crate) verification_client: RC,
 }
@@ -353,7 +343,7 @@ impl SinglePlotFarm {
             plot_directory,
             metadata_directory,
             allocated_plotting_space,
-            farmer_protocol_info,
+            farmer_protocol_info: _,
             farming_client,
             plot_factory,
             bootstrap_nodes,
@@ -361,10 +351,8 @@ impl SinglePlotFarm {
             single_disk_semaphore,
             enable_farming,
             reward_address,
-            enable_dsn_archiving,
-            enable_dsn_sync,
-            relay_server_node,
-            verification_client,
+            enable_dsn_sync: _,
+            verification_client: _,
         } = options;
 
         fs::create_dir_all(&plot_directory)?;
@@ -544,13 +532,8 @@ impl SinglePlotFarm {
             ))
         };
 
-        let (node, mut node_runner) = Handle::current().block_on(async move {
-            if let Some(relay_server_node) = relay_server_node {
-                relay_server_node.spawn(network_node_config).await
-            } else {
-                subspace_networking::create(network_node_config).await
-            }
-        })?;
+        let (node, mut node_runner) = Handle::current()
+            .block_on(async move { subspace_networking::create(network_node_config).await })?;
 
         // Replace the default peer sync status provider based on actual Node status.
         {
@@ -605,74 +588,11 @@ impl SinglePlotFarm {
             plot,
             commitments,
             object_mappings,
-            node: node.clone(),
+            node,
             single_disk_semaphore,
             span: Span::current(),
             tasks,
         };
-
-        // Start DSN archiving
-        if enable_dsn_archiving {
-            let archiving_fut = start_archiving(
-                id,
-                farmer_protocol_info.record_size.get(),
-                farmer_protocol_info.recorded_history_segment_size,
-                farm.object_mappings().clone(),
-                node,
-                farm.plotter(),
-                farm.single_disk_semaphore.clone(),
-            );
-
-            farm.tasks.push(Box::pin(async move {
-                if let Err(error) = archiving_fut.await {
-                    error!(%error, "DSN archiving task has ended with error");
-                } else {
-                    warn!("DSN archiving task has finished");
-                }
-
-                Ok(())
-            }));
-        }
-
-        // Start DSN syncing
-        if enable_dsn_sync {
-            // TODO: operate with number of pieces to fetch, instead of range calculations
-            let sync_range_size = (PieceIndexHashNumber::MAX / farmer_protocol_info.total_pieces)
-                .saturating_mul(&1024u32.into()); // 4M per stream
-
-            let dsn_sync_fut = farm.dsn_sync(
-                verification_client,
-                farmer_protocol_info,
-                sync_range_size,
-                true,
-            );
-            let dsn_sync_node = farm.node.clone();
-
-            farm.tasks.push(Box::pin(async move {
-                trace!("Started waiting for connected peers.");
-                let wait_result = dsn_sync_node.wait_for_connected_peers().await;
-
-                match wait_result {
-                    Ok(_) => {
-                        trace!("Waiting for connected peers succeeded.");
-                    }
-                    Err(error) => {
-                        error!(?error, "Waiting for connected peers failed.");
-                    }
-                };
-
-                match dsn_sync_fut.await {
-                    Ok(()) => {
-                        info!("DSN sync finished.");
-                    }
-                    Err(error) => {
-                        error!(?error, "DSN sync failed");
-                    }
-                }
-
-                Ok(())
-            }));
-        }
 
         Ok(farm)
     }
@@ -758,176 +678,5 @@ impl SinglePlotFarm {
         }
 
         Ok(())
-    }
-
-    pub(crate) fn dsn_sync<RC: RpcClient>(
-        &self,
-        verification_client: RC,
-        farmer_protocol_info: FarmerProtocolInfo,
-        range_size: PieceIndexHashNumber,
-        pieces_verification_enabled: bool,
-    ) -> impl Future<Output = anyhow::Result<()>> {
-        let options = SyncOptions {
-            range_size,
-            public_key: self.public_key,
-            max_plot_size: farmer_protocol_info.max_plot_size,
-            total_pieces: farmer_protocol_info.total_pieces,
-        };
-
-        let kzg = Kzg::new(kzg::test_public_parameters());
-
-        let plotter = VerifyingPlotter {
-            single_plot_plotter: self.plotter(),
-            span: self.span.clone(),
-            verification_client,
-            farmer_protocol_info,
-            pieces_verification_enabled,
-            kzg,
-        };
-
-        dsn::sync(self.node.clone(), options, plotter)
-    }
-}
-
-/// Pieces verification errors.
-#[derive(Error, Debug)]
-pub enum PiecesVerificationError {
-    /// Invalid pieces data provided
-    #[error("Invalid pieces data provided")]
-    InvalidRawData,
-    /// Invalid farmer protocol info provided
-    #[error("Invalid farmer protocol info provided")]
-    InvalidFarmerProtocolInfo,
-    /// Pieces verification failed.
-    #[error("Pieces verification failed.")]
-    InvalidPieces,
-    /// RPC client failed.
-    #[error("RPC client failed. jsonrpsee error: {0}")]
-    RpcError(Box<dyn std::error::Error + Send + Sync>),
-    /// RPC client returned empty records_root.
-    #[error("RPC client returned empty records root.")]
-    NoRecordsRootFound,
-}
-
-// Defines actions on receiving pieces batch. It verifies the pieces against the blockchain and
-// plots them.
-struct VerifyingPlotter<RC> {
-    // RPC client for verification
-    verification_client: RC,
-    span: Span,
-    single_plot_plotter: SinglePlotPlotter,
-    farmer_protocol_info: FarmerProtocolInfo,
-    pieces_verification_enabled: bool,
-    kzg: Kzg,
-}
-
-impl<RC: RpcClient> VerifyingPlotter<RC> {
-    // Verifies pieces against the blockchain.
-    async fn verify_pieces_at_blockchain(
-        &self,
-        piece_indexes: &[PieceIndex],
-        pieces: &FlatPieces,
-    ) -> Result<(), PiecesVerificationError> {
-        if piece_indexes.len() != pieces.count() {
-            return Err(PiecesVerificationError::InvalidRawData);
-        }
-
-        let pieces_in_segment = self.farmer_protocol_info.recorded_history_segment_size
-            / self.farmer_protocol_info.record_size.get()
-            * 2;
-        if pieces_in_segment.is_zero() {
-            return Err(PiecesVerificationError::InvalidFarmerProtocolInfo);
-        }
-
-        // Calculate segment indexes collection
-        let segment_indexes = piece_indexes
-            .iter()
-            .map(|piece_index| piece_index / u64::from(pieces_in_segment))
-            .collect::<Vec<_>>();
-
-        // Split segment indexes collection into allowed max sized chunks
-        // and run a future records_roots RPC call for each chunk.
-        let roots_futures = segment_indexes
-            .chunks(MAX_SEGMENT_INDEXES_PER_REQUEST)
-            .map(|segment_indexes_chunk| {
-                self.verification_client
-                    .records_roots(segment_indexes_chunk.to_vec())
-            })
-            .collect::<Vec<_>>();
-
-        // Wait for all the RPC calls, flatten the results collection,
-        // and check for empty result for any of the records root call.
-        let roots = try_join_all(roots_futures)
-            .await
-            .map_err(|err| PiecesVerificationError::RpcError(err))?
-            .into_iter()
-            .flatten()
-            .zip(piece_indexes.iter())
-            .map(|(root, piece_index)| {
-                if let Some(root) = root {
-                    Ok(root)
-                } else {
-                    error!(piece_index, "No records root found for piece_index.");
-
-                    Err(PiecesVerificationError::NoRecordsRootFound)
-                }
-            })
-            .collect::<Result<Vec<RecordsRoot>, PiecesVerificationError>>()?;
-
-        // Perform an actual piece validity check
-        for ((piece, piece_index), root) in pieces.as_pieces().zip(piece_indexes).zip(roots) {
-            let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
-                .expect("Position within segment always fits into u32; qed");
-
-            if !is_piece_valid(
-                &self.kzg,
-                pieces_in_segment,
-                piece,
-                root,
-                position,
-                self.farmer_protocol_info.record_size.get(),
-            ) {
-                error!(?piece_index, "Piece validation failed.");
-
-                return Err(PiecesVerificationError::InvalidPieces);
-            }
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl<RC: RpcClient> OnSync for VerifyingPlotter<RC> {
-    #[tracing::instrument(parent = &self.span, skip_all)]
-    async fn on_pieces(
-        &self,
-        pieces: FlatPieces,
-        piece_indexes: Vec<PieceIndex>,
-    ) -> anyhow::Result<()> {
-        if self.pieces_verification_enabled {
-            self.verify_pieces_at_blockchain(&piece_indexes, &pieces)
-                .await?;
-        }
-
-        let plotter = self.single_plot_plotter.clone();
-        let (farm_creation_start_sender, farm_creation_start_receiver) =
-            std::sync::mpsc::sync_channel(1);
-        // Makes sure background blocking task below is finished before this function's future is
-        // dropped
-        let _plot_pieces_guard = CallOnDrop::new(move || {
-            let _ = farm_creation_start_receiver.recv();
-        });
-        tokio::task::spawn_blocking(move || {
-            plotter.plot_pieces(PiecesToPlot {
-                pieces,
-                piece_indexes,
-            })?;
-
-            let _ = farm_creation_start_sender.send(());
-
-            Ok(())
-        })
-        .await?
     }
 }

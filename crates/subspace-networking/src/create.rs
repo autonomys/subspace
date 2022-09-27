@@ -9,7 +9,7 @@ use crate::utils::convert_multiaddresses;
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
-use libp2p::core::transport::{Boxed, MemoryTransport, OrTransport};
+use libp2p::core::transport::Boxed;
 use libp2p::dns::TokioDnsConfig;
 use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
@@ -19,8 +19,6 @@ use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
 use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
-use libp2p::relay::v2::client::transport::ClientTransport;
-use libp2p::relay::v2::client::Client as RelayClient;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
@@ -92,8 +90,6 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// Defines relay mode for the Node,
-    pub relay_mode: RelayMode,
     /// Parent node instance (if any) to keep alive.
     ///
     /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
@@ -164,7 +160,6 @@ impl Config {
             value_getter: Arc::new(|_key| None),
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            relay_mode: RelayMode::NoRelay,
             parent_node: None,
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
@@ -209,7 +204,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         mplex_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        relay_mode,
         parent_node,
         networking_parameters_registry,
         request_response_protocols,
@@ -218,21 +212,11 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         max_established_outgoing_connections,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
-    // Create relay client transport and client.
-    let (relay_transport, relay_client) = RelayClient::new_transport_and_behaviour(local_peer_id);
 
-    let transport = build_transport(
-        &keypair,
-        timeout,
-        yamux_config,
-        mplex_config,
-        relay_transport,
-    )?;
+    let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let is_relay_server = relay_mode.is_relay_server();
-
         let behaviour = Behavior::new(BehaviorConfig {
             peer_id: local_peer_id,
             identify,
@@ -240,8 +224,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             gossipsub,
             value_getter,
             request_response_protocols,
-            is_relay_server,
-            relay_client,
         });
 
         let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
@@ -270,27 +252,15 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             }
         }
 
-        // Setup relay addresses
-        if let RelayMode::Client(relay_server_address) = relay_mode {
-            // Setup circuit for the accepting relay client. This will reserve a circuit.
-            swarm.listen_on(relay_server_address)?;
-        }
-
-        if is_relay_server {
-            // Will potentially act as relay server for which memory transport is necessary
-            swarm.listen_on(Multiaddr::from(Protocol::Memory(0)))?;
-        }
-
         // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
         let shared = Arc::new(Shared::new(local_peer_id, parent_node, command_sender));
         let shared_weak = Arc::downgrade(&shared);
 
-        let node = Node::new(shared, is_relay_server);
+        let node = Node::new(shared);
         let node_runner = NodeRunner::new(NodeRunnerConfig {
             allow_non_globals_in_dht,
-            is_relay_server,
             command_receiver,
             swarm,
             shared_weak,
@@ -316,7 +286,6 @@ fn build_transport(
     timeout: Duration,
     yamux_config: YamuxConfig,
     mplex_config: MplexConfig,
-    relay_transport: ClientTransport,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
         let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
@@ -325,13 +294,10 @@ fn build_transport(
         let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpTransport::new(
             GenTcpConfig::default().nodelay(true),
         ))?);
-        let transport = dns_tcp.or_transport(ws);
 
-        // Add MemoryTransport to the chain to enable in-memory relay configurations.
-        MemoryTransport::default().or_transport(transport)
+        dns_tcp.or_transport(ws)
     };
 
-    let transport = OrTransport::new(relay_transport, transport);
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
         .into_authentic(keypair)
         .expect("Signing libp2p-noise static DH keypair failed.");

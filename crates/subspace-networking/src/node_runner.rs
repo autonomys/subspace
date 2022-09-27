@@ -14,9 +14,8 @@ use libp2p::kad::{
     GetClosestPeersError, GetClosestPeersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId,
     QueryResult, Quorum,
 };
-use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::{AddressScore, DialError, SwarmEvent};
+use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
@@ -44,7 +43,6 @@ enum QueryResultSender {
 pub struct NodeRunner {
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
-    is_relay_server: bool,
     command_receiver: mpsc::Receiver<Command>,
     swarm: Swarm<Behavior>,
     shared_weak: Weak<Shared>,
@@ -73,7 +71,6 @@ pub struct NodeRunner {
 // Helper struct for NodeRunner configuration (clippy requirement).
 pub(crate) struct NodeRunnerConfig {
     pub allow_non_globals_in_dht: bool,
-    pub is_relay_server: bool,
     pub command_receiver: mpsc::Receiver<Command>,
     pub swarm: Swarm<Behavior>,
     pub shared_weak: Weak<Shared>,
@@ -88,7 +85,6 @@ impl NodeRunner {
     pub(crate) fn new(
         NodeRunnerConfig {
             allow_non_globals_in_dht,
-            is_relay_server,
             command_receiver,
             swarm,
             shared_weak,
@@ -101,7 +97,6 @@ impl NodeRunner {
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
-            is_relay_server,
             command_receiver,
             swarm,
             shared_weak,
@@ -257,12 +252,6 @@ impl NodeRunner {
             SwarmEvent::Behaviour(Event::RequestResponse(event)) => {
                 self.handle_request_response_event(event).await;
             }
-            SwarmEvent::Behaviour(Event::Relay(event)) => {
-                trace!("Relay event: {:?}", event);
-            }
-            SwarmEvent::Behaviour(Event::RelayClient(event)) => {
-                trace!("Relay Client event: {:?}", event);
-            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
@@ -271,15 +260,6 @@ impl NodeRunner {
                     }
                 };
                 shared.listeners.lock().push(address.clone());
-                if matches!(address.iter().next(), Some(Protocol::Memory(_))) {
-                    // This is necessary for local connections using circuit relay
-                    if self.is_relay_server {
-                        self.swarm
-                            .add_external_address(address.clone(), AddressScore::Infinite);
-                    }
-                } else {
-                    // TODO: Add support for public address for add_external_address, AutoNAT
-                }
                 shared.handlers.new_listener.call_simple(&address);
             }
             SwarmEvent::ConnectionEstablished {
