@@ -155,6 +155,7 @@ async fn run_executor(
             .then(|imported_block_notification| async move {
                 (
                     imported_block_notification.block_number,
+                    imported_block_notification.fork_choice,
                     imported_block_notification.block_import_acknowledgement_sender,
                 )
             }),

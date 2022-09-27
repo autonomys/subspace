@@ -4,15 +4,16 @@ use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{
     Reconstructor, ReconstructorError, ReconstructorInstantiationError,
 };
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PIECE_SIZE, RECORD_SIZE,
 };
 
-const MERKLE_NUM_LEAVES: u32 = 8;
-const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
-const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
-const SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+// This is data + parity shards
+const PIECES_IN_SEGMENT: u32 = 8;
+// In terms of source data that can be stored in the segment, not the size after archiving
+const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
     pieces
@@ -27,7 +28,8 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 
 #[test]
 fn basic() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -78,7 +80,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(7992)
+                archived_progress: ArchivedBlockProgress::Partial(65428)
             }
         );
 
@@ -97,7 +99,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(7992)
+                archived_progress: ArchivedBlockProgress::Partial(65428)
             }
         );
     }
@@ -117,7 +119,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(3896)
+                archived_progress: ArchivedBlockProgress::Partial(32592)
             }
         );
 
@@ -136,7 +138,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(3896)
+                archived_progress: ArchivedBlockProgress::Partial(32592)
             }
         );
     }
@@ -156,7 +158,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(19806)
+                archived_progress: ArchivedBlockProgress::Partial(163366)
             }
         );
     }
@@ -177,7 +179,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(19806)
+                archived_progress: ArchivedBlockProgress::Partial(163366)
             }
         );
     }
@@ -197,7 +199,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(35716)
+                archived_progress: ArchivedBlockProgress::Partial(294140)
             }
         );
     }
@@ -218,7 +220,7 @@ fn basic() {
             contents.root_block.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(35716)
+                archived_progress: ArchivedBlockProgress::Partial(294140)
             }
         );
     }
@@ -226,7 +228,8 @@ fn basic() {
 
 #[test]
 fn partial_data() {
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -249,10 +252,10 @@ fn partial_data() {
             .add_segment(
                 &pieces
                     .iter()
-                    .take(MERKLE_NUM_LEAVES as usize / 2)
+                    .take(PIECES_IN_SEGMENT as usize / 2)
                     .cloned()
                     .map(Some)
-                    .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES as usize / 2))
+                    .chain(iter::repeat(None).take(PIECES_IN_SEGMENT as usize / 2))
                     .collect::<Vec<_>>(),
             )
             .unwrap();
@@ -266,11 +269,11 @@ fn partial_data() {
             .unwrap()
             .add_segment(
                 &iter::repeat(None)
-                    .take(MERKLE_NUM_LEAVES as usize / 2)
+                    .take(PIECES_IN_SEGMENT as usize / 2)
                     .chain(
                         pieces
                             .iter()
-                            .skip(MERKLE_NUM_LEAVES as usize / 2)
+                            .skip(PIECES_IN_SEGMENT as usize / 2)
                             .cloned()
                             .map(Some),
                     )
@@ -284,9 +287,9 @@ fn partial_data() {
     {
         // Mix of data and parity shards
         let mut pieces = pieces.into_iter().map(Some).collect::<Vec<_>>();
-        pieces[MERKLE_NUM_LEAVES as usize / 4..]
+        pieces[PIECES_IN_SEGMENT as usize / 4..]
             .iter_mut()
-            .take(MERKLE_NUM_LEAVES as usize / 2)
+            .take(PIECES_IN_SEGMENT as usize / 2)
             .for_each(|piece| {
                 piece.take();
             });
@@ -301,6 +304,7 @@ fn partial_data() {
 
 #[test]
 fn invalid_usage() {
+    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
     assert_matches!(
         Reconstructor::new(10, 9),
         Err(ReconstructorInstantiationError::SegmentSizeTooSmall),
@@ -315,12 +319,7 @@ fn invalid_usage() {
         Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
-    assert_matches!(
-        Reconstructor::new(17, 34),
-        Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination),
-    );
-
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that overflows into the next segments
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize * 4]>().to_vec();
 
@@ -335,10 +334,10 @@ fn invalid_usage() {
             .add_segment(
                 &flat_pieces_to_regular(&archived_segments[0].pieces)
                     .iter()
-                    .take(MERKLE_NUM_LEAVES as usize / 2 - 1)
+                    .take(PIECES_IN_SEGMENT as usize / 2 - 1)
                     .cloned()
                     .map(Some)
-                    .chain(iter::repeat(None).take(MERKLE_NUM_LEAVES as usize / 2 + 1))
+                    .chain(iter::repeat(None).take(PIECES_IN_SEGMENT as usize / 2 + 1))
                     .collect::<Vec<_>>(),
             );
 
@@ -351,7 +350,7 @@ fn invalid_usage() {
             .unwrap()
             .add_segment(
                 &iter::repeat_with(|| Some(rand::random::<[u8; PIECE_SIZE]>().into()))
-                    .take(MERKLE_NUM_LEAVES as usize)
+                    .take(PIECES_IN_SEGMENT as usize)
                     .collect::<Vec<_>>(),
             );
 

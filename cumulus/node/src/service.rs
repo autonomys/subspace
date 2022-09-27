@@ -9,6 +9,7 @@ use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, StateBackendFor};
+use sc_consensus::ForkChoiceStrategy;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
@@ -227,7 +228,7 @@ where
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
-    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -306,8 +307,6 @@ where
 
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
-    let (execution_receipt_sender, execution_receipt_receiver) =
-        tracing_unbounded("execution_receipt_stream");
 
     let executor = Executor::new(
         primary_chain_client,
@@ -320,7 +319,6 @@ where
         Box::new(task_manager.spawn_handle()),
         transaction_pool,
         Arc::new(bundle_sender),
-        Arc::new(execution_receipt_sender),
         backend.clone(),
         code_executor.clone(),
         validator,
@@ -334,7 +332,6 @@ where
             network: network.clone(),
             executor: executor.clone(),
             bundle_receiver,
-            execution_receipt_receiver,
         });
     spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
 

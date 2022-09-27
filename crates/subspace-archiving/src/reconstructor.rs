@@ -8,7 +8,6 @@ use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::{
     ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, SegmentIndex,
-    BLAKE2B_256_HASH_SIZE, PIECE_SIZE,
 };
 
 /// Reconstructor-related instantiation error.
@@ -27,12 +26,6 @@ pub enum ReconstructorInstantiationError {
         error("Segment size is not a multiple of record size")
     )]
     SegmentSizesNotMultipleOfRecordSize,
-    /// Wrong record and segment size, it will not be possible to produce pieces
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Wrong record and segment size, it will not be possible to produce pieces")
-    )]
-    WrongRecordAndSegmentCombination,
 }
 
 /// Reconstructor-related instantiation error
@@ -61,7 +54,7 @@ pub enum ReconstructorError {
 
 /// Data structure that contains information reconstructed from given segment (potentially using
 /// information from segments that were added previously)
-#[derive(Debug, Default, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ReconstructedContents {
     /// Root block stored in a segment
     pub root_block: Option<RootBlock>,
@@ -97,16 +90,10 @@ impl Reconstructor {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        // We take N data records and will creates the same number of parity records, hence `*2`
-        let merkle_num_leaves = segment_size / record_size * 2;
-        let witness_size = BLAKE2B_256_HASH_SIZE * merkle_num_leaves.ilog2() as usize;
-        if record_size as usize + witness_size != PIECE_SIZE {
-            return Err(ReconstructorInstantiationError::WrongRecordAndSegmentCombination);
-        }
-
-        let shards = segment_size / record_size;
-        let reed_solomon = ReedSolomon::new(shards as usize, shards as usize)
-            .expect("ReedSolomon should always be correctly instantiated");
+        let data_shards = segment_size / record_size;
+        let parity_shards = data_shards;
+        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
+            .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
             record_size,

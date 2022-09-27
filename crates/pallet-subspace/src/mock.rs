@@ -35,6 +35,8 @@ use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, LocalChallenge, Piece, Randomness,
     RecordsRoot, RootBlock, Salt, SegmentIndex, Solution, SolutionRange, Tag, PIECE_SIZE,
@@ -132,7 +134,7 @@ impl pallet_offences_subspace::Config for Test {
 pub const SLOT_PROBABILITY: (u64, u64) = (3, 10);
 
 pub const INITIAL_SOLUTION_RANGE: SolutionRange =
-    u64::MAX / (1024 * 1024 * 1024 / 4096) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
+    u64::MAX / (1024 * 1024 * 1024 / PIECE_SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
@@ -345,9 +347,10 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
 }
 
 pub fn create_archived_segment() -> ArchivedSegment {
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE).unwrap();
+    let kzg = Kzg::new(kzg::test_public_parameters());
+    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
-    let mut block = vec![0u8; 1024 * 1024];
+    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rand::thread_rng().fill(block.as_mut_slice());
     archiver
         .add_block(block, Default::default())

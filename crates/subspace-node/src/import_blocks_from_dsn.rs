@@ -153,14 +153,14 @@ where
     let mut reconstructor = Reconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
         .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    let merkle_num_leaves = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
+    let pieces_in_segment = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
 
     // TODO: Check latest known root block on chain and skip downloading of corresponding segments
     // Collection is intentional to make sure downloading starts right away and not lazily
     for segment_index in 0.. {
-        let source_pieces_results = (0..merkle_num_leaves / 2)
+        let source_pieces_results = (0..pieces_in_segment / 2)
             .map(|piece_position| {
-                let piece_index: PieceIndex = segment_index * merkle_num_leaves + piece_position;
+                let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
 
                 node.get_value(multimess::create_piece_index_fake_multihash(piece_index))
             })
@@ -168,7 +168,7 @@ where
             .collect::<Vec<_>>()
             .await;
 
-        let mut pieces = vec![None::<Piece>; merkle_num_leaves as usize];
+        let mut pieces = vec![None::<Piece>; pieces_in_segment as usize];
         let mut found_one_piece = false;
 
         for (source_piece_result, piece) in source_pieces_results.into_iter().zip(pieces.iter_mut())

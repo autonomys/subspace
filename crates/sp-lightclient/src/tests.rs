@@ -19,9 +19,11 @@ use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
 use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Piece, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange, Tag,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
@@ -62,13 +64,17 @@ fn derive_solution_range(target: Tag, tag: Tag) -> SolutionRange {
     subspace_core_primitives::bidirectional_distance(&target, &tag) * 2
 }
 
-fn valid_piece(pub_key: schnorrkel::PublicKey) -> (Piece, u64, SegmentIndex, RecordsRoot) {
+fn valid_piece(
+    pub_key: schnorrkel::PublicKey,
+    kzg: &Kzg,
+) -> (Piece, u64, SegmentIndex, RecordsRoot) {
     // we don't care about the block data
     let mut rng = StdRng::seed_from_u64(0);
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE).unwrap();
+    let mut archiver =
+        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
 
     let archived_segment = archiver
         .add_block(block, Default::default())
@@ -86,6 +92,8 @@ fn valid_piece(pub_key: schnorrkel::PublicKey) -> (Piece, u64, SegmentIndex, Rec
         .unwrap();
 
     assert!(subspace_archiving::archiver::is_piece_valid(
+        kzg,
+        PIECES_IN_SEGMENT,
         piece,
         archived_segment.root_block.records_root(),
         position as u32,
@@ -111,6 +119,7 @@ struct ValidHeaderParams<'a> {
     keypair: &'a Keypair,
     randomness: Randomness,
     salt: Salt,
+    kzg: &'a Kzg,
 }
 
 fn valid_header(
@@ -123,8 +132,9 @@ fn valid_header(
         keypair,
         randomness,
         salt,
+        kzg,
     } = params;
-    let (encoding, piece_index, segment_index, records_root) = valid_piece(keypair.public);
+    let (encoding, piece_index, segment_index, records_root) = valid_piece(keypair.public, kzg);
     let tag: Tag = create_tag(encoding.as_ref(), salt);
     let global_challenge = derive_global_challenge(&randomness, slot);
     let local_challenge = derive_local_challenge(keypair, global_challenge);
@@ -299,6 +309,7 @@ fn add_headers_to_chain(
     keypair: &Keypair,
     headers_to_add: NumberOf<Header>,
     maybe_fork_chain: Option<ForkAt>,
+    kzg: &Kzg,
 ) -> HashOf<Header> {
     let best_header_ext = importer.store.best_header();
     let constants = importer.store.chain_constants();
@@ -350,6 +361,7 @@ fn add_headers_to_chain(
                 keypair,
                 randomness,
                 salt,
+                kzg,
             });
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
@@ -450,6 +462,8 @@ fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: N
 
 #[test]
 fn test_header_import_missing_parent() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let constants = default_test_constants();
     let (mut store, _genesis_hash) = initialize_store(constants, true, None);
     let (randomness, salt) = default_randomness_and_salt();
@@ -461,6 +475,7 @@ fn test_header_import_missing_parent() {
         keypair: &keypair,
         randomness,
         salt,
+        kzg: &kzg,
     });
     store.store_records_root(segment_index, records_root);
     let mut importer = HeaderImporter::new(store);
@@ -472,16 +487,18 @@ fn test_header_import_missing_parent() {
 
 #[test]
 fn test_header_import_non_canonical() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let constants = default_test_constants();
     let (store, _genesis_hash) = initialize_store(constants, true, None);
     let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
-    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None);
+    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_2);
 
     // import canonical block 3
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_3);
     let best_header = importer.store.header(hash_of_3).unwrap();
@@ -496,6 +513,7 @@ fn test_header_import_non_canonical() {
             parent_hash: hash_of_2,
             is_best: Some(false),
         }),
+        &kzg,
     );
 
     let best_header_ext = importer.store.best_header();
@@ -506,16 +524,18 @@ fn test_header_import_non_canonical() {
 
 #[test]
 fn test_header_import_canonical() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let constants = default_test_constants();
     let (store, _genesis_hash) = initialize_store(constants, true, None);
     let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None);
+    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_5);
 
     // import some more canonical blocks
-    let hash_of_25 = add_headers_to_chain(&mut importer, &keypair, 20, None);
+    let hash_of_25 = add_headers_to_chain(&mut importer, &keypair, 20, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_25);
     assert_eq!(importer.store.headers_at_number(25).len(), 1);
@@ -523,16 +543,18 @@ fn test_header_import_canonical() {
 
 #[test]
 fn test_header_import_non_canonical_with_equal_block_weight() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let constants = default_test_constants();
     let (store, _genesis_hash) = initialize_store(constants, true, None);
     let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
-    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None);
+    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_2);
 
     // import canonical block 3
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_3);
     let best_header = importer.store.header(hash_of_3).unwrap();
@@ -547,6 +569,7 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
             parent_hash: hash_of_2,
             is_best: None,
         }),
+        &kzg,
     );
 
     let best_header_ext = importer.store.best_header();
@@ -557,6 +580,8 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
 
 #[test]
 fn test_chain_reorg_to_longer_chain() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.k_depth = 4;
     let (store, genesis_hash) = initialize_store(constants, true, None);
@@ -567,7 +592,7 @@ fn test_chain_reorg_to_longer_chain() {
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_4);
     assert_eq!(
@@ -584,6 +609,7 @@ fn test_chain_reorg_to_longer_chain() {
             parent_hash: genesis_hash,
             is_best: Some(false),
         }),
+        &kzg,
     );
     assert_eq!(best_header.header.hash(), hash_of_4);
     // block 0 is still finalized
@@ -594,7 +620,7 @@ fn test_chain_reorg_to_longer_chain() {
     ensure_finalized_heads_have_no_forks(&importer.store, 0);
 
     // add new best header at 5
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 1, None);
+    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 1, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_5);
 
@@ -611,6 +637,7 @@ fn test_chain_reorg_to_longer_chain() {
             parent_hash: hash_of_4,
             is_best: Some(false),
         }),
+        &kzg,
     );
 
     // best header should still be the same
@@ -632,6 +659,7 @@ fn test_chain_reorg_to_longer_chain() {
             parent_hash: fork_hash_of_8,
             is_best: Some(true),
         }),
+        &kzg,
     );
     assert_eq!(importer.store.best_header().header.hash(), hash_of_9);
 
@@ -641,6 +669,8 @@ fn test_chain_reorg_to_longer_chain() {
 
 #[test]
 fn test_reorg_to_heavier_smaller_chain() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.k_depth = 4;
     let (store, genesis_hash) = initialize_store(constants, true, None);
@@ -651,7 +681,7 @@ fn test_reorg_to_heavier_smaller_chain() {
         genesis_hash
     );
 
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None);
+    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_5);
     assert_eq!(importer.store.finalized_header().header.number, 1);
@@ -680,6 +710,7 @@ fn test_reorg_to_heavier_smaller_chain() {
             keypair: &keypair,
             randomness: digests_at_2.global_randomness,
             salt: digests_at_2.salt,
+            kzg: &kzg,
         });
     seal_header(&keypair, &mut header);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
@@ -707,6 +738,8 @@ fn test_reorg_to_heavier_smaller_chain() {
 
 #[test]
 fn test_next_global_randomness_digest() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.global_randomness_interval = 5;
     let (store, genesis_hash) = initialize_store(constants, true, None);
@@ -717,7 +750,7 @@ fn test_next_global_randomness_digest() {
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with out next global randomness
@@ -736,6 +769,7 @@ fn test_next_global_randomness_digest() {
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
             salt: digests_at_4.salt,
+            kzg: &kzg,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -775,6 +809,8 @@ fn test_next_global_randomness_digest() {
 
 #[test]
 fn test_next_solution_range_digest_with_adjustment_enabled() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, true, None);
@@ -785,7 +821,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with out next global randomness
@@ -804,6 +840,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
             salt: digests_at_4.salt,
+            kzg: &kzg,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -844,6 +881,8 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
 
 #[test]
 fn test_next_solution_range_digest_with_adjustment_disabled() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
@@ -854,7 +893,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with out next global randomness
@@ -873,6 +912,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
             salt: digests_at_4.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -898,6 +938,8 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
 
 #[test]
 fn test_enable_solution_range_adjustment_without_override() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
@@ -908,7 +950,7 @@ fn test_enable_solution_range_adjustment_without_override() {
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
     // solution range adjustment is disabled
     assert!(!importer.store.best_header().should_adjust_solution_range);
@@ -929,6 +971,7 @@ fn test_enable_solution_range_adjustment_without_override() {
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
             salt: digests_at_4.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -963,6 +1006,8 @@ fn test_enable_solution_range_adjustment_without_override() {
 
 #[test]
 fn test_enable_solution_range_adjustment_with_override_between_update_intervals() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
@@ -973,7 +1018,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
         genesis_hash
     );
 
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_3);
     // solution range adjustment is disabled
     assert!(!importer.store.best_header().should_adjust_solution_range);
@@ -994,6 +1039,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
             keypair: &keypair,
             randomness: digests_at_3.global_randomness,
             salt: digests_at_3.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -1028,6 +1074,8 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
 
 #[test]
 fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
@@ -1038,7 +1086,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
     // solution range adjustment is disabled
     assert!(!importer.store.best_header().should_adjust_solution_range);
@@ -1059,6 +1107,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
             salt: digests_at_4.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -1087,6 +1136,8 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
 
 #[test]
 fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_already_enabled() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, true, None);
@@ -1097,7 +1148,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with enable solution range adjustment digest
@@ -1116,6 +1167,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
             salt: digests_at_4.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -1142,6 +1194,8 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
 
 #[test]
 fn test_next_salt_digest() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.eon_duration = 10;
     constants.next_salt_reveal_interval = 3;
@@ -1155,7 +1209,7 @@ fn test_next_salt_digest() {
         genesis_hash
     );
 
-    let hash_of_10 = add_headers_to_chain(&mut importer, &keypair, 10, None);
+    let hash_of_10 = add_headers_to_chain(&mut importer, &keypair, 10, None, &kzg);
     let header_at_10 = importer.store.best_header();
     assert_eq!(header_at_10.header.hash(), hash_of_10);
     assert_eq!(header_at_10.salt_derivation_info.eon_index, 0);
@@ -1204,6 +1258,7 @@ fn test_next_salt_digest() {
             keypair: &keypair,
             randomness: digests_at_10.global_randomness,
             salt: digests_at_10.salt,
+            kzg: &kzg,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -1239,6 +1294,8 @@ fn test_next_salt_digest() {
 
 #[test]
 fn test_next_salt_reveal_in_same_block_as_eon_change() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.eon_duration = 10;
     constants.next_salt_reveal_interval = 3;
@@ -1252,7 +1309,7 @@ fn test_next_salt_reveal_in_same_block_as_eon_change() {
         genesis_hash
     );
 
-    let hash_of_10 = add_headers_to_chain(&mut importer, &keypair, 10, None);
+    let hash_of_10 = add_headers_to_chain(&mut importer, &keypair, 10, None, &kzg);
     let header_at_10 = importer.store.best_header();
     assert_eq!(header_at_10.header.hash(), hash_of_10);
     assert_eq!(header_at_10.salt_derivation_info.eon_index, 0);
@@ -1272,6 +1329,7 @@ fn test_next_salt_reveal_in_same_block_as_eon_change() {
             keypair: &keypair,
             randomness: digests_at_10.global_randomness,
             salt: digests_at_10.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -1320,6 +1378,8 @@ fn test_next_salt_reveal_in_same_block_as_eon_change() {
 
 #[test]
 fn test_current_salt_reveal_and_eon_change_in_same_block() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     constants.eon_duration = 10;
     constants.next_salt_reveal_interval = 3;
@@ -1333,7 +1393,7 @@ fn test_current_salt_reveal_and_eon_change_in_same_block() {
         genesis_hash
     );
 
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &kzg);
     let header_at_3 = importer.store.best_header();
     assert_eq!(header_at_3.header.hash(), hash_of_3);
     assert_eq!(header_at_3.salt_derivation_info.eon_index, 0);
@@ -1356,6 +1416,7 @@ fn test_current_salt_reveal_and_eon_change_in_same_block() {
             keypair: &keypair,
             randomness: digests_at_3.global_randomness,
             salt: digests_at_3.salt,
+            kzg: &kzg,
         });
     importer
         .store
@@ -1386,7 +1447,7 @@ fn test_current_salt_reveal_and_eon_change_in_same_block() {
     assert_eq!(header_at_4.salt_derivation_info.maybe_randomness, None);
 }
 
-fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>) {
+fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>, kzg: &Kzg) {
     let mut constants = default_test_constants();
     constants.k_depth = 7;
     constants.storage_bound =
@@ -1395,7 +1456,7 @@ fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Head
     let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     // import some more canonical blocks
-    let hash_of_50 = add_headers_to_chain(&mut importer, &keypair, 50, None);
+    let hash_of_50 = add_headers_to_chain(&mut importer, &keypair, 50, None, kzg);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_50);
 
@@ -1414,21 +1475,29 @@ fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Head
 
 #[test]
 fn test_storage_bound_with_headers_beyond_k_depth_is_zero() {
-    ensure_store_is_storage_bounded(0)
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
+    ensure_store_is_storage_bounded(0, &kzg)
 }
 
 #[test]
 fn test_storage_bound_with_headers_beyond_k_depth_is_one() {
-    ensure_store_is_storage_bounded(1)
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
+    ensure_store_is_storage_bounded(1, &kzg)
 }
 
 #[test]
 fn test_storage_bound_with_headers_beyond_k_depth_is_more_than_one() {
-    ensure_store_is_storage_bounded(5)
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
+    ensure_store_is_storage_bounded(5, &kzg)
 }
 
 #[test]
 fn test_block_author_different_farmer() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     let keypair_allowed = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
@@ -1446,6 +1515,7 @@ fn test_block_author_different_farmer() {
             keypair: &keypair_disallowed,
             randomness,
             salt,
+            kzg: &kzg,
         });
     seal_header(&keypair_disallowed, &mut header);
     constants.genesis_digest_items.next_solution_range = solution_range;
@@ -1465,6 +1535,8 @@ fn test_block_author_different_farmer() {
 
 #[test]
 fn test_block_author_first_farmer() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     let keypair = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
@@ -1481,6 +1553,7 @@ fn test_block_author_first_farmer() {
             keypair: &keypair,
             randomness,
             salt,
+            kzg: &kzg,
         });
     header
         .digest
@@ -1504,6 +1577,8 @@ fn test_block_author_first_farmer() {
 
 #[test]
 fn test_block_author_allow_any_farmer() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     let keypair = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
@@ -1520,6 +1595,7 @@ fn test_block_author_allow_any_farmer() {
             keypair: &keypair,
             randomness,
             salt,
+            kzg: &kzg,
         });
     header
         .digest
@@ -1541,6 +1617,8 @@ fn test_block_author_allow_any_farmer() {
 
 #[test]
 fn test_disallow_root_plot_public_key_override() {
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
     let mut constants = default_test_constants();
     let keypair_allowed = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
@@ -1557,6 +1635,7 @@ fn test_disallow_root_plot_public_key_override() {
             keypair: &keypair_allowed,
             randomness,
             salt,
+            kzg: &kzg,
         });
     let keypair_disallowed = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair_disallowed.public.to_bytes());

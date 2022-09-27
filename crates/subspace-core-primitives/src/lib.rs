@@ -16,7 +16,6 @@
 //! Core primitives for Subspace Network.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(int_log)]
@@ -29,6 +28,7 @@ pub mod objects;
 
 extern crate alloc;
 
+use crate::crypto::kzg::Commitment;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
@@ -43,10 +43,14 @@ use serde::{Deserialize, Serialize};
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Byte size of a piece in Subspace Network, 4KiB.
+/// Byte size of a piece in Subspace Network, 32KiB.
 ///
 /// This can not changed after the network is launched.
-pub const PIECE_SIZE: usize = 4096;
+pub const PIECE_SIZE: usize = 32 * 1024;
+/// Size of witness for a segment record (in bytes).
+pub const WITNESS_SIZE: u32 = 48;
+/// Size of a segment record given the global piece size (in bytes).
+pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -90,7 +94,7 @@ pub type BlockWeight = u128;
 pub type SegmentIndex = u64;
 
 /// Records root type.
-pub type RecordsRoot = Blake2b256Hash;
+pub type RecordsRoot = Commitment;
 
 /// Eon Index type.
 pub type EonIndex = u64;
@@ -99,7 +103,7 @@ pub type EonIndex = u64;
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
 /// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
-/// Merkle Tree and will result in witness size of `log2(MERKLE_NUM_LEAVES) * SHA256_HASH_SIZE`.
+/// Merkle Tree and will result in witness size of `log2(PIECES_IN_SEGMENT) * SHA256_HASH_SIZE`.
 ///
 /// This number is a tradeoff:
 /// * as this number goes up, fewer [`RootBlock`]s are required to be stored for verifying archival
@@ -110,15 +114,11 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 ///   number of root blocks goes up making sync less efficient and less records are needed to be
 ///   lost before part of the archived history become unrecoverable, reducing reliability of the
 ///   data stored on the network
-pub const MERKLE_NUM_LEAVES: u32 = 256;
-/// Size of witness for a segment record (in bytes).
-pub const WITNESS_SIZE: u32 = BLAKE2B_256_HASH_SIZE as u32 * MERKLE_NUM_LEAVES.ilog2();
-/// Size of a segment record given the global piece size (in bytes).
-pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+pub const PIECES_IN_SEGMENT: u32 = 256;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
-/// be erasure coded and together with corresponding witnesses will result in `MERKLE_NUM_LEAVES`
+/// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
 /// pieces of archival history.
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * MERKLE_NUM_LEAVES / 2;
+pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 /// Randomness context
 pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
@@ -225,7 +225,7 @@ pub struct LocalChallenge {
 /// archival history of the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Piece(Vec<u8>);
+pub struct Piece(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
 impl Default for Piece {
     fn default() -> Self {
@@ -249,9 +249,21 @@ impl TryFrom<&[u8]> for Piece {
     type Error = &'static str;
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         if slice.len() != PIECE_SIZE {
-            Err("Wrong piece size, expected: 4096")
+            Err("Wrong piece size, expected: 32768")
         } else {
             Ok(Self(slice.to_vec()))
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for Piece {
+    type Error = &'static str;
+
+    fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
+        if vec.len() != PIECE_SIZE {
+            Err("Wrong piece size, expected: 32768")
+        } else {
+            Ok(Self(vec))
         }
     }
 }
@@ -284,7 +296,7 @@ impl AsMut<[u8]> for Piece {
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FlatPieces(Vec<u8>);
+pub struct FlatPieces(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
 impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
@@ -435,7 +447,7 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum RootBlock {

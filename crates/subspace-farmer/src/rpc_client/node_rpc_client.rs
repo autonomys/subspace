@@ -29,6 +29,7 @@ impl NodeRpcClient {
         let client = Arc::new(
             WsClientBuilder::default()
                 .max_concurrent_requests(WS_PRC_MAX_CONCURRENT_REQUESTS)
+                .max_request_body_size(20 * 1024 * 1024)
                 .build(url)
                 .await?,
         );

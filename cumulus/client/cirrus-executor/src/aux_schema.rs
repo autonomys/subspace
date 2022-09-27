@@ -14,10 +14,10 @@ const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
 const EXECUTION_RECEIPT_START: &[u8] = b"execution_receipt_start";
 const EXECUTION_RECEIPT_BLOCK_NUMBER: &[u8] = b"execution_receipt_block_number";
 
-/// bad_receipt_block_number => all_bad_signed_receipt_hashes_at_this_block
-const BAD_SIGNED_RECEIPT_HASHES: &[u8] = b"bad_signed_receipt_hashes";
+/// bad_receipt_block_number => all_bad_signed_bundle_hashes_at_this_block
+const BAD_SIGNED_BUNDLE_HASHES: &[u8] = b"bad_signed_bundle_hashes";
 
-/// bad_signed_receipt_hash => (trace_mismatch_index, associated_local_block_hash)
+/// bad_signed_bundle_hash => (trace_mismatch_index, associated_local_block_hash)
 const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 
 /// Set of block numbers at which there is at least one bad receipt detected.
@@ -32,8 +32,8 @@ fn execution_receipt_key(block_hash: impl Encode) -> Vec<u8> {
     (EXECUTION_RECEIPT, block_hash).encode()
 }
 
-fn bad_receipt_mismatch_info_key(signed_receipt_hash: impl Encode) -> Vec<u8> {
-    (BAD_RECEIPT_MISMATCH_INFO, signed_receipt_hash).encode()
+fn bad_receipt_mismatch_info_key(signed_bundle_hash: impl Encode) -> Vec<u8> {
+    (BAD_RECEIPT_MISMATCH_INFO, signed_bundle_hash).encode()
 }
 
 fn load_decode<Backend: AuxStore, T: Decode>(
@@ -138,13 +138,13 @@ pub(super) fn target_receipt_is_pruned(
 
 /// Writes a bad execution receipt to aux storage.
 ///
-/// Use `bad_signed_receipt_hash` instead of the hash of execution receipt as key to
+/// Use `bad_signed_bundle_hash` instead of the hash of execution receipt as key to
 /// avoid the potential collision that two dishonest executors produced an identical
 /// invalid receipt even it's less likely.
 pub(super) fn write_bad_receipt<Backend, PBlock, Hash>(
     backend: &Backend,
     bad_receipt_number: NumberFor<PBlock>,
-    bad_signed_receipt_hash: H256,
+    bad_signed_bundle_hash: H256,
     trace_mismatch_info: (u32, Hash),
 ) -> Result<(), ClientError>
 where
@@ -152,18 +152,18 @@ where
     PBlock: BlockT,
     Hash: Encode,
 {
-    let bad_signed_receipt_hashes_key = (BAD_SIGNED_RECEIPT_HASHES, bad_receipt_number).encode();
-    let mut bad_signed_receipt_hashes: Vec<H256> =
-        load_decode(backend, bad_signed_receipt_hashes_key.as_slice())?.unwrap_or_default();
-    bad_signed_receipt_hashes.push(bad_signed_receipt_hash);
+    let bad_signed_bundle_hashes_key = (BAD_SIGNED_BUNDLE_HASHES, bad_receipt_number).encode();
+    let mut bad_signed_bundle_hashes: Vec<H256> =
+        load_decode(backend, bad_signed_bundle_hashes_key.as_slice())?.unwrap_or_default();
+    bad_signed_bundle_hashes.push(bad_signed_bundle_hash);
 
     let mut to_insert = vec![
         (
-            bad_signed_receipt_hashes_key,
-            bad_signed_receipt_hashes.encode(),
+            bad_signed_bundle_hashes_key,
+            bad_signed_bundle_hashes.encode(),
         ),
         (
-            bad_receipt_mismatch_info_key(bad_signed_receipt_hash),
+            bad_receipt_mismatch_info_key(bad_signed_bundle_hash),
             trace_mismatch_info.encode(),
         ),
     ];
@@ -190,27 +190,27 @@ where
 pub(super) fn delete_bad_receipt<Backend: AuxStore>(
     backend: &Backend,
     block_number: BlockNumber,
-    signed_receipt_hash: H256,
+    signed_bundle_hash: H256,
 ) -> Result<(), ClientError> {
-    let bad_signed_receipt_hashes_key = (BAD_SIGNED_RECEIPT_HASHES, block_number).encode();
+    let bad_signed_bundle_hashes_key = (BAD_SIGNED_BUNDLE_HASHES, block_number).encode();
     let mut hashes_at_block_number: Vec<H256> =
-        load_decode(backend, bad_signed_receipt_hashes_key.as_slice())?.unwrap_or_default();
+        load_decode(backend, bad_signed_bundle_hashes_key.as_slice())?.unwrap_or_default();
 
     if let Some(index) = hashes_at_block_number
         .iter()
-        .position(|&x| x == signed_receipt_hash)
+        .position(|&x| x == signed_bundle_hash)
     {
         hashes_at_block_number.swap_remove(index);
     } else {
         return Err(ClientError::Backend(format!(
-            "Deleting an inexistent bad receipt {signed_receipt_hash:?}, available: {hashes_at_block_number:?}",
+            "Deleting an inexistent bad receipt {signed_bundle_hash:?}, available: {hashes_at_block_number:?}",
         )));
     }
 
-    let mut keys_to_delete = vec![bad_receipt_mismatch_info_key(signed_receipt_hash)];
+    let mut keys_to_delete = vec![bad_receipt_mismatch_info_key(signed_bundle_hash)];
 
     let to_insert = if hashes_at_block_number.is_empty() {
-        keys_to_delete.push(bad_signed_receipt_hashes_key);
+        keys_to_delete.push(bad_signed_bundle_hashes_key);
 
         let mut bad_receipt_numbers: Vec<BlockNumber> =
             load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.ok_or_else(|| {
@@ -227,7 +227,7 @@ pub(super) fn delete_bad_receipt<Backend: AuxStore>(
         }
     } else {
         vec![(
-            bad_signed_receipt_hashes_key,
+            bad_signed_bundle_hashes_key,
             hashes_at_block_number.encode(),
         )]
     };
@@ -245,15 +245,15 @@ fn delete_expired_bad_receipt_info_at<Backend: AuxStore, Number: Encode>(
     backend: &Backend,
     block_number: Number,
 ) -> Result<(), sp_blockchain::Error> {
-    let bad_signed_receipt_hashes_key = (BAD_SIGNED_RECEIPT_HASHES, block_number).encode();
+    let bad_signed_bundle_hashes_key = (BAD_SIGNED_BUNDLE_HASHES, block_number).encode();
 
     let bad_receipt_hashes: Vec<H256> =
-        load_decode(backend, bad_signed_receipt_hashes_key.as_slice())?.unwrap_or_default();
+        load_decode(backend, bad_signed_bundle_hashes_key.as_slice())?.unwrap_or_default();
 
     let keys_to_delete = bad_receipt_hashes
         .into_iter()
         .map(bad_receipt_mismatch_info_key)
-        .chain(std::iter::once(bad_signed_receipt_hashes_key))
+        .chain(std::iter::once(bad_signed_bundle_hashes_key))
         .collect::<Vec<_>>();
 
     backend.insert_aux(
@@ -322,20 +322,19 @@ where
         load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
     for bad_receipt_number in bad_receipt_numbers {
-        let bad_signed_receipt_hashes_key =
-            (BAD_SIGNED_RECEIPT_HASHES, bad_receipt_number).encode();
-        let bad_signed_receipt_hashes: Vec<H256> =
-            load_decode(backend, bad_signed_receipt_hashes_key.as_slice())?.unwrap_or_default();
+        let bad_signed_bundle_hashes_key = (BAD_SIGNED_BUNDLE_HASHES, bad_receipt_number).encode();
+        let bad_signed_bundle_hashes: Vec<H256> =
+            load_decode(backend, bad_signed_bundle_hashes_key.as_slice())?.unwrap_or_default();
 
         let mut fork_receipt_hashes = vec![];
-        for bad_signed_receipt_hash in bad_signed_receipt_hashes.iter() {
+        for bad_signed_bundle_hash in bad_signed_bundle_hashes.iter() {
             let (trace_mismatch_index, block_hash): (u32, Block::Hash) = load_decode(
                 backend,
-                bad_receipt_mismatch_info_key(bad_signed_receipt_hash).as_slice(),
+                bad_receipt_mismatch_info_key(bad_signed_bundle_hash).as_slice(),
             )?
             .ok_or_else(|| {
                 ClientError::Backend(format!(
-                        "Trace mismatch info not found for `bad_signed_receipt_hash`: {bad_signed_receipt_hash:?}"
+                        "Trace mismatch info not found for `bad_signed_bundle_hash`: {bad_signed_bundle_hash:?}"
                 ))
             })?;
 
@@ -352,12 +351,12 @@ where
                     );
                 }
                 return Ok(Some((
-                    *bad_signed_receipt_hash,
+                    *bad_signed_bundle_hash,
                     trace_mismatch_index,
                     block_hash,
                 )));
             } else {
-                fork_receipt_hashes.push(bad_signed_receipt_hash);
+                fork_receipt_hashes.push(bad_signed_bundle_hash);
             }
         }
 
@@ -622,8 +621,8 @@ mod tests {
             substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();
 
         let bad_receipts_at = |number: BlockNumber| -> Option<HashSet<Hash>> {
-            let bad_signed_receipt_hashes_key = (BAD_SIGNED_RECEIPT_HASHES, number).encode();
-            load_decode(&client, bad_signed_receipt_hashes_key.as_slice())
+            let bad_signed_bundle_hashes_key = (BAD_SIGNED_BUNDLE_HASHES, number).encode();
+            load_decode(&client, bad_signed_bundle_hashes_key.as_slice())
                 .unwrap()
                 .map(|v: Vec<Hash>| v.into_iter().collect())
         };

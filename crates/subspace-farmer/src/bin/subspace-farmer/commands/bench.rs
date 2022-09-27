@@ -12,8 +12,8 @@ use std::{fmt, io};
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::objects::{PieceObject, PieceObjectMapping};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, FlatPieces, LastArchivedBlock, PublicKey, RootBlock,
-    PIECE_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, FlatPieces, LastArchivedBlock, PublicKey, RecordsRoot,
+    RootBlock, PIECE_SIZE,
 };
 use subspace_farmer::rpc_client::bench_rpc_client::{BenchRpcClient, BENCH_FARMER_PROTOCOL_INFO};
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
@@ -223,7 +223,7 @@ pub(crate) async fn bench(
                 let archived_segment = {
                     let root_block = RootBlock::V0 {
                         segment_index,
-                        records_root: Blake2b256Hash::default(),
+                        records_root: RecordsRoot::default(),
                         prev_root_block_hash: Blake2b256Hash::default(),
                         last_archived_block,
                     };

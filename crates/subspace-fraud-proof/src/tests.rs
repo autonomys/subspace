@@ -6,14 +6,16 @@ use cirrus_test_service::runtime::Header;
 use cirrus_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use codec::Encode;
 use sc_client_api::{HeaderBackend, StorageProof};
+use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
-use sp_executor::{BundleHeader, ExecutionPhase, FraudProof, OpaqueBundle};
+use sp_executor::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn execution_proof_creation_and_verification_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -92,16 +94,25 @@ async fn execution_proof_creation_and_verification_should_work() {
     //
     // alice.wait_for_blocks(1).await;
 
+    let dummy_receipt = ExecutionReceipt {
+        primary_number: ferdie.client.info().best_number,
+        primary_hash: ferdie.client.info().best_hash,
+        secondary_hash: alice.client.info().best_hash,
+        trace: Vec::new(),
+        trace_root: Default::default(),
+    };
+
     let bundles = vec![OpaqueBundle {
         header: BundleHeader {
             primary_hash: ferdie.client.info().best_hash,
             slot_number: Default::default(),
             extrinsics_root: Default::default(),
         },
-        opaque_extrinsics: test_txs
+        extrinsics: test_txs
             .iter()
             .map(|xt| OpaqueExtrinsic::from_bytes(&xt.encode()).unwrap())
             .collect(),
+        receipts: vec![dummy_receipt],
     }];
 
     let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {
@@ -109,11 +120,16 @@ async fn execution_proof_creation_and_verification_should_work() {
         // bypass the check of `latest_primary_number = old_best_secondary_number + 1` in `process_bundles`.
         //
         // This invalid primary hash does not affect the test result.
-        (Hash::random(), ferdie.client.info().best_number + 1)
+        (
+            Hash::random(),
+            ferdie.client.info().best_number + 1,
+            ForkChoiceStrategy::LongestChain,
+        )
     } else {
         (
             ferdie.client.info().best_hash,
             ferdie.client.info().best_number,
+            ForkChoiceStrategy::LongestChain,
         )
     };
     alice
@@ -157,20 +173,13 @@ async fn execution_proof_creation_and_verification_should_work() {
         .runtime_api()
         .intermediate_roots(&BlockId::Hash(best_hash))
         .expect("Get intermediate roots");
-    println!(
-        "intermediate_roots: {:?}",
-        intermediate_roots
-            .clone()
-            .into_iter()
-            .map(Hash::from)
-            .collect::<Vec<_>>()
-    );
 
-    assert_eq!(
-        intermediate_roots.len(),
-        test_txs.len() + 1,
-        "🐛 ERROR: runtime API `intermediate_roots()` obviously returned a wrong result"
-    );
+    if intermediate_roots.len() != test_txs.len() + 1 {
+        panic!(
+            "🐛 ERROR: runtime API `intermediate_roots()` obviously returned a wrong result, intermediate_roots: {:?}",
+            intermediate_roots.into_iter().map(Hash::from).collect::<Vec<_>>(),
+        );
+    }
 
     let new_header = Header::new(
         *header.number(),
@@ -224,7 +233,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let parent_number_alice = ferdie.client.info().best_number;
 
     let fraud_proof = FraudProof {
-        bad_signed_receipt_hash: Hash::random(),
+        bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: *parent_header.state_root(),
@@ -281,7 +290,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         );
 
         let fraud_proof = FraudProof {
-            bad_signed_receipt_hash: Hash::random(),
+            bad_signed_bundle_hash: Hash::random(),
             parent_number: parent_number_alice,
             parent_hash: parent_hash_alice,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
@@ -327,7 +336,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     assert_eq!(post_execution_root, *header.state_root());
 
     let fraud_proof = FraudProof {
-        bad_signed_receipt_hash: Hash::random(),
+        bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: intermediate_roots.last().unwrap().into(),
@@ -339,6 +348,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn invalid_execution_proof_should_not_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
@@ -489,7 +499,7 @@ async fn invalid_execution_proof_should_not_work() {
     let parent_number_alice = ferdie.client.info().best_number;
 
     let fraud_proof = FraudProof {
-        bad_signed_receipt_hash: Hash::random(),
+        bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
@@ -500,7 +510,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let fraud_proof = FraudProof {
-        bad_signed_receipt_hash: Hash::random(),
+        bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
@@ -511,7 +521,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let fraud_proof = FraudProof {
-        bad_signed_receipt_hash: Hash::random(),
+        bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
