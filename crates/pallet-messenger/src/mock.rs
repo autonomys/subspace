@@ -49,7 +49,7 @@ parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
 }
 
-type DomainId = u64;
+pub(crate) type DomainId = u64;
 
 impl crate::Config for Test {
     type Event = Event;

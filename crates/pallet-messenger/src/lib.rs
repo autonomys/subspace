@@ -52,17 +52,17 @@ pub type Nonce = U256;
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, MaxEncodedLen)]
 pub struct Channel {
     /// Channel identifier.
-    channel_id: ChannelId,
+    pub(crate) channel_id: ChannelId,
     /// State of the channel.
-    state: ChannelState,
+    pub(crate) state: ChannelState,
     /// Next inbox nonce.
-    next_inbox_nonce: Nonce,
+    pub(crate) next_inbox_nonce: Nonce,
     /// Next outbox nonce.
-    next_outbox_nonce: Nonce,
+    pub(crate) next_outbox_nonce: Nonce,
     /// Latest delivered outbox message nonce.
-    latest_delivered_message_nonce: Nonce,
+    pub(crate) latest_delivered_message_nonce: Nonce,
     /// Maximum outgoing non-delivered messages.
-    max_outgoing_messages: u64,
+    pub(crate) max_outgoing_messages: u64,
 }
 
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -106,18 +106,40 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Emits when a channel between two domains in initiated
+        /// Emits when a channel between two domains in initiated.
         ChannelInitiated {
             /// Foreign domain id this channel connects to.
             domain_id: T::DomainId,
-            /// Channel ID
+            /// Channel ID of the said channel.
+            channel_id: ChannelId,
+        },
+
+        /// Emits when a channel between two domains in closed.
+        ChannelClosed {
+            /// Foreign domain id this channel connects to.
+            domain_id: T::DomainId,
+            /// Channel ID of the said channel.
+            channel_id: ChannelId,
+        },
+
+        /// Emits when a channel between two domains in open.
+        ChannelOpen {
+            /// Foreign domain id this channel connects to.
+            domain_id: T::DomainId,
+            /// Channel ID of the said channel.
             channel_id: ChannelId,
         },
     }
 
     /// `pallet-messenger` errors
     #[pallet::error]
-    pub enum Error<T> {}
+    pub enum Error<T> {
+        /// Emits when there is no channel for a given Channel ID.
+        MissingChannel,
+
+        /// Emits when the said channel is not in an open state.
+        InvalidChannelState,
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -132,6 +154,7 @@ mod pallet {
             params: InitiateChannelParams,
         ) -> DispatchResult {
             ensure_root(origin)?;
+            // TODO(ved): test validity of the domain
 
             let channel_id = NextChannelId::<T>::get(domain_id);
             let next_channel_id = channel_id
@@ -152,6 +175,64 @@ mod pallet {
             );
 
             NextChannelId::<T>::insert(domain_id, next_channel_id);
+            Self::deposit_event(Event::ChannelInitiated {
+                domain_id,
+                channel_id,
+            });
+
+            Ok(())
+        }
+
+        /// An open channel is closed with a foreign domain.
+        /// Channel is set to Closed and do not accept or receive any messages.
+        /// Only a root user can close an open channel.
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn close_channel(
+            origin: OriginFor<T>,
+            domain_id: T::DomainId,
+            channel_id: ChannelId,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            Channels::<T>::try_mutate(domain_id, channel_id, |maybe_channel| -> DispatchResult {
+                let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+
+                ensure!(
+                    channel.state == ChannelState::Open,
+                    Error::<T>::InvalidChannelState
+                );
+
+                channel.state = ChannelState::Closed;
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::ChannelInitiated {
+                domain_id,
+                channel_id,
+            });
+
+            Ok(())
+        }
+    }
+
+    impl<T: Config> Pallet<T> {
+        /// Opens an initiated channel.
+        #[allow(dead_code)]
+        pub(crate) fn open_channel(
+            domain_id: T::DomainId,
+            channel_id: ChannelId,
+        ) -> DispatchResult {
+            Channels::<T>::try_mutate(domain_id, channel_id, |maybe_channel| -> DispatchResult {
+                let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+
+                ensure!(
+                    channel.state == ChannelState::Initiated,
+                    Error::<T>::InvalidChannelState
+                );
+
+                channel.state = ChannelState::Open;
+                Ok(())
+            })?;
+
             Self::deposit_event(Event::ChannelInitiated {
                 domain_id,
                 channel_id,
