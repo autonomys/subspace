@@ -568,15 +568,10 @@ where
     }
 
     fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>> {
-        match self.piece_cache.get_piece(piece_index) {
-            Ok(maybe_piece) => Ok(maybe_piece),
-            Err(error) => {
-                error!("Failed to get piece with index {piece_index} from cache: {error}");
+        self.piece_cache.get_piece(piece_index).map_err(|error| {
+            error!("Failed to get piece with index {piece_index} from cache: {error}");
 
-                Err(JsonRpseeError::Custom(
-                    "Internal error during `get_piece` call".to_string(),
-                ))
-            }
-        }
+            JsonRpseeError::Custom("Internal error during `get_piece` call".to_string())
+        })
     }
 }

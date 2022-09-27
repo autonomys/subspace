@@ -8,7 +8,6 @@ use sc_client_api::backend::AuxStore;
 use std::error::Error;
 use std::fmt::Debug;
 use std::sync::Arc;
-// use sc_client_api::blockchain::Error;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndex};
 
 /// Caching layer for pieces produced during archiving to make them available for some time after
@@ -50,6 +49,10 @@ where
         // TODO: Limit number of stored pieces
         Self { aux_store }
     }
+
+    fn key(piece_index: PieceIndex) -> Vec<u8> {
+        (Self::KEY_PREFIX, piece_index).encode()
+    }
 }
 
 impl<AS> PieceCache for AuxPieceCache<AS>
@@ -64,7 +67,7 @@ where
     ) -> Result<(), Box<dyn Error>> {
         let keys = (first_piece_index..)
             .take(pieces.count())
-            .map(|index| (Self::KEY_PREFIX, index).encode())
+            .map(Self::key)
             .collect::<Vec<_>>();
         self.aux_store
             .insert_aux(
@@ -82,7 +85,7 @@ where
     fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Box<dyn Error>> {
         Ok(self
             .aux_store
-            .get_aux((Self::KEY_PREFIX, piece_index).encode().as_slice())?
+            .get_aux(Self::key(piece_index).as_slice())?
             .map(|piece| {
                 Piece::try_from(piece).expect("Always correct piece unless DB is corrupted; qed")
             }))
