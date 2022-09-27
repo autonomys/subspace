@@ -16,6 +16,7 @@
 //! Pallet Executor
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(is_sorted)]
 
 #[cfg(test)]
 mod tests;
@@ -89,6 +90,7 @@ mod pallet {
         UnexpectedSigner,
         /// Invalid transaction bundle signature.
         BadSignature,
+        /// An invalid execution receipt found in the bundle.
         Receipt(ExecutionReceiptError),
     }
 
@@ -100,24 +102,16 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
     pub enum ExecutionReceiptError {
-        /// The signer of execution receipt is unexpected.
-        UnexpectedSigner,
         /// The parent execution receipt is unknown.
         MissingParent,
-        /// Invalid execution receipt signature.
-        BadSignature,
         /// The execution receipt is stale.
         Stale,
         /// The execution receipt points to a block unknown to the history.
         UnknownBlock,
         /// The execution receipt is too far in the future.
         TooFarInFuture,
-    }
-
-    impl<T> From<ExecutionReceiptError> for Error<T> {
-        fn from(e: ExecutionReceiptError) -> Self {
-            Self::ExecutionReceipt(e)
-        }
+        /// Receipts are not in ascending order.
+        Unsorted,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
@@ -138,8 +132,6 @@ mod pallet {
     pub enum Error<T> {
         /// Invalid bundle.
         Bundle(BundleError),
-        /// Invalid execution receipt.
-        ExecutionReceipt(ExecutionReceiptError),
         /// Invalid fraud proof.
         FraudProof(FraudProofError),
     }
@@ -179,7 +171,9 @@ mod pallet {
                 signed_opaque_bundle
             );
 
-            Self::apply_execution_receipt(&signed_opaque_bundle.bundle.receipt);
+            for receipt in &signed_opaque_bundle.bundle.receipts {
+                Self::apply_execution_receipt(receipt);
+            }
 
             Self::deposit_event(Event::TransactionBundleStored {
                 bundle_hash: signed_opaque_bundle.hash(),
@@ -350,7 +344,7 @@ mod pallet {
             match call {
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
-                } => Self::pre_dispatch_execution_receipt(&signed_opaque_bundle.bundle.receipt),
+                } => Self::pre_dispatch_execution_receipts(&signed_opaque_bundle.bundle.receipts),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -371,11 +365,17 @@ mod pallet {
                         );
                         return InvalidTransactionCode::Bundle.into();
                     }
-                    let primary_number = signed_opaque_bundle.bundle.receipt.primary_number;
+
+                    let first_primary_number = signed_opaque_bundle
+                        .bundle
+                        .receipts
+                        .get(0)
+                        .expect("Receipts in a bundle must be non-empty; qed")
+                        .primary_number;
 
                     let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         .priority(TransactionPriority::MAX)
-                        .and_provides(primary_number)
+                        .and_provides(first_primary_number)
                         .longevity(TransactionLongevity::MAX)
                         .propagate(true);
 
@@ -383,10 +383,12 @@ mod pallet {
                     // number above.
                     //
                     // No requires if it's the next expected execution chain number.
-                    if primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
+                    if first_primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
                         builder.build()
                     } else {
-                        builder.and_requires(primary_number - One::one()).build()
+                        builder
+                            .and_requires(first_primary_number - One::one())
+                            .build()
                     }
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
@@ -448,64 +450,84 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn pre_dispatch_execution_receipt(
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    fn pre_dispatch_execution_receipts(
+        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), TransactionValidityError> {
-        let primary_number = execution_receipt.primary_number;
-        let best_number = ExecutionChainBestNumber::<T>::get();
+        let mut best_number = ExecutionChainBestNumber::<T>::get();
 
-        // Ensure the block number of next execution receipt is `best_number + 1`.
-        if primary_number != best_number + One::one() {
-            if primary_number <= best_number {
-                return Err(InvalidTransaction::Stale.into());
-            } else {
-                return Err(InvalidTransaction::Future.into());
+        for execution_receipt in execution_receipts {
+            let primary_number = execution_receipt.primary_number;
+
+            // Ensure the block number of next execution receipt is `best_number + 1`.
+            if primary_number != best_number + One::one() {
+                if primary_number <= best_number {
+                    return Err(InvalidTransaction::Stale.into());
+                } else {
+                    return Err(InvalidTransaction::Future.into());
+                }
             }
-        }
 
-        // TODO: is this check unnecessary as it's actually guaranteed by the above one?
-        // Ensure the parent receipt exists after block #1.
-        if primary_number > One::one() {
-            ensure!(
-                Receipts::<T>::get(primary_number - One::one()).is_some(),
-                TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
-            );
+            // TODO: is this check unnecessary as it's actually guaranteed by the above one?
+            // Ensure the parent receipt exists after block #1.
+            if primary_number > One::one() {
+                ensure!(
+                    Receipts::<T>::get(primary_number - One::one()).is_some(),
+                    TransactionValidityError::Invalid(
+                        InvalidTransactionCode::ExecutionReceipt.into()
+                    )
+                );
+            }
+
+            best_number += One::one();
         }
 
         Ok(())
     }
 
-    fn validate_execution_receipt(
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    fn validate_execution_receipts(
+        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), ExecutionReceiptError> {
+        if !execution_receipts
+            .iter()
+            .map(|r| r.primary_number)
+            .is_sorted()
+        {
+            return Err(ExecutionReceiptError::Unsorted);
+        }
+
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
-        // Due to `initialize_block` is skipped while calling the runtime api, the block
-        // hash mapping for last block is unknown to the transaction pool, but this info
-        // is already available in System.
-        let point_to_parent_block = execution_receipt.primary_number
-            == current_block_number - One::one()
-            && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
+        let mut best_number = ExecutionChainBestNumber::<T>::get();
 
-        if !point_to_parent_block
-            && BlockHash::<T>::get(execution_receipt.primary_number)
-                != execution_receipt.primary_hash
-        {
-            return Err(ExecutionReceiptError::UnknownBlock);
-        }
+        for execution_receipt in execution_receipts {
+            // Due to `initialize_block` is skipped while calling the runtime api, the block
+            // hash mapping for last block is unknown to the transaction pool, but this info
+            // is already available in System.
+            let point_to_parent_block = execution_receipt.primary_number
+                == current_block_number - One::one()
+                && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
 
-        // Ensure the receipt is neither old nor too new.
-        let primary_number = execution_receipt.primary_number;
+            if !point_to_parent_block
+                && BlockHash::<T>::get(execution_receipt.primary_number)
+                    != execution_receipt.primary_hash
+            {
+                return Err(ExecutionReceiptError::UnknownBlock);
+            }
 
-        let best_number = ExecutionChainBestNumber::<T>::get();
-        if primary_number <= best_number {
-            return Err(ExecutionReceiptError::Stale);
-        }
+            // Ensure the receipt is neither old nor too new.
+            let primary_number = execution_receipt.primary_number;
 
-        if primary_number == current_block_number
-            || primary_number > best_number + T::MaximumReceiptDrift::get()
-        {
-            return Err(ExecutionReceiptError::TooFarInFuture);
+            if primary_number <= best_number {
+                return Err(ExecutionReceiptError::Stale);
+            }
+
+            if primary_number == current_block_number
+                || primary_number > best_number + T::MaximumReceiptDrift::get()
+            {
+                return Err(ExecutionReceiptError::TooFarInFuture);
+            }
+
+            best_number += One::one();
         }
 
         Ok(())
@@ -530,7 +552,7 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::UnexpectedSigner);
         }
 
-        Self::validate_execution_receipt(&bundle.receipt).map_err(BundleError::Receipt)?;
+        Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
         Ok(())
     }

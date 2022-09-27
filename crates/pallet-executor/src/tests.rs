@@ -1,4 +1,3 @@
-/* Rework the tests when `bundle.receipt` is changed to `bundle.receipts`.
 use crate::{
     self as pallet_executor, BlockHash, ExecutionChainBestNumber, OldestReceiptNumber, Receipts,
 };
@@ -7,7 +6,8 @@ use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
 use sp_executor::{
-    ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof, SignedExecutionReceipt,
+    Bundle, BundleHeader, ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof,
+    SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -91,51 +91,96 @@ fn new_test_ext() -> sp_io::TestExternalities {
 fn create_dummy_receipt(
     primary_number: BlockNumber,
     primary_hash: Hash,
-) -> SignedExecutionReceipt<BlockNumber, Hash, H256> {
-    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
-    let signer = pair.public();
-
-    let execution_receipt = ExecutionReceipt {
+) -> ExecutionReceipt<BlockNumber, Hash, H256> {
+    ExecutionReceipt {
         primary_number,
         primary_hash,
         secondary_hash: H256::random(),
         trace: Vec::new(),
         trace_root: Default::default(),
+    }
+}
+
+fn create_dummy_bundle(
+    primary_number: BlockNumber,
+    primary_hash: Hash,
+) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
+    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+    let signer = pair.public();
+
+    let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
+
+    let bundle = Bundle {
+        header: BundleHeader {
+            primary_hash,
+            slot_number: 0u64,
+            extrinsics_root: Default::default(),
+        },
+        receipts: vec![execution_receipt],
+        extrinsics: Vec::new(),
     };
 
-    let signature = pair.sign(execution_receipt.hash().as_ref());
+    let signature = pair.sign(bundle.hash().as_ref());
 
-    SignedExecutionReceipt {
-        execution_receipt,
+    SignedOpaqueBundle {
+        bundle,
+        signature,
+        signer,
+    }
+}
+
+fn create_dummy_bundle_with_receipts(
+    primary_hash: Hash,
+    receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
+) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
+    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+    let signer = pair.public();
+
+    let header = BundleHeader {
+        primary_hash,
+        slot_number: 0u64,
+        extrinsics_root: Default::default(),
+    };
+
+    let bundle = Bundle {
+        header,
+        receipts,
+        extrinsics: Vec::new(),
+    };
+
+    let signature = pair.sign(bundle.hash().as_ref());
+
+    SignedOpaqueBundle {
+        bundle,
         signature,
         signer,
     }
 }
 
 #[test]
-fn submit_execution_receipt_should_work() {
-    let dummy_receipts = (1u64..=256u64 + 3u64)
-        .map(|n| create_dummy_receipt(n, Hash::random()))
+fn submit_execution_receipt_incrementally_should_work() {
+    let dummy_bundles = (1u64..=256u64 + 3u64)
+        .map(|n| create_dummy_bundle(n, Hash::random()))
         .collect::<Vec<_>>();
 
     new_test_ext().execute_with(|| {
         (0..256).for_each(|index| {
             assert_ok!(pallet_executor::Pallet::<Test>::pre_dispatch(
-                &pallet_executor::Call::submit_execution_receipt {
-                    signed_execution_receipt: dummy_receipts[index].clone()
+                &pallet_executor::Call::submit_transaction_bundle {
+                    signed_opaque_bundle: dummy_bundles[index].clone()
                 }
             ));
-            assert_ok!(Executor::submit_execution_receipt(
+            assert_ok!(Executor::submit_transaction_bundle(
                 Origin::none(),
-                dummy_receipts[index].clone(),
+                dummy_bundles[index].clone(),
             ));
             assert_eq!(OldestReceiptNumber::<Test>::get(), 1);
         });
 
         assert!(Receipts::<Test>::get(257).is_none());
-        assert_ok!(Executor::submit_execution_receipt(
+        assert_ok!(Executor::submit_transaction_bundle(
             Origin::none(),
-            dummy_receipts[256].clone(),
+            dummy_bundles[256].clone(),
         ));
         // The oldest ER should be deleted.
         assert!(Receipts::<Test>::get(1).is_none());
@@ -147,16 +192,16 @@ fn submit_execution_receipt_should_work() {
 
         assert_noop!(
             pallet_executor::Pallet::<Test>::pre_dispatch(
-                &pallet_executor::Call::submit_execution_receipt {
-                    signed_execution_receipt: dummy_receipts[258].clone()
+                &pallet_executor::Call::submit_transaction_bundle {
+                    signed_opaque_bundle: dummy_bundles[258].clone()
                 }
             ),
             TransactionValidityError::Invalid(InvalidTransaction::Future)
         );
 
-        assert_ok!(Executor::submit_execution_receipt(
+        assert_ok!(Executor::submit_transaction_bundle(
             Origin::none(),
-            dummy_receipts[257].clone(),
+            dummy_bundles[257].clone(),
         ));
         assert!(Receipts::<Test>::get(2).is_none());
         assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
@@ -166,10 +211,10 @@ fn submit_execution_receipt_should_work() {
 
 #[test]
 fn submit_execution_receipt_with_huge_gap_should_work() {
-    let (dummy_receipts, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64 + 2)
+    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64 + 2)
         .map(|n| {
             let primary_hash = Hash::random();
-            (create_dummy_receipt(n, primary_hash), primary_hash)
+            (create_dummy_bundle(n, primary_hash), primary_hash)
         })
         .unzip();
 
@@ -195,31 +240,31 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
         (0..255).for_each(|index| {
-            assert_ok!(Executor::submit_execution_receipt(
+            assert_ok!(Executor::submit_transaction_bundle(
                 Origin::none(),
-                dummy_receipts[index].clone(),
+                dummy_bundles[index].clone(),
             ));
         });
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
-        assert_ok!(Executor::submit_execution_receipt(
+        assert_ok!(Executor::submit_transaction_bundle(
             Origin::none(),
-            dummy_receipts[255].clone(),
+            dummy_bundles[255].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(0));
 
         assert!(BlockHash::<Test>::contains_key(1));
-        assert_ok!(Executor::submit_execution_receipt(
+        assert_ok!(Executor::submit_transaction_bundle(
             Origin::none(),
-            dummy_receipts[256].clone(),
+            dummy_bundles[256].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(1));
 
         assert!(BlockHash::<Test>::contains_key(2));
-        assert_ok!(Executor::submit_execution_receipt(
+        assert_ok!(Executor::submit_transaction_bundle(
             Origin::none(),
-            dummy_receipts[257].clone(),
+            dummy_bundles[257].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(2));
         assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
@@ -227,9 +272,74 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
 }
 
 #[test]
+fn submit_bundle_with_many_reeipts_should_work() {
+    let (receipts, mut block_hashes): (Vec<_>, Vec<_>) = (1u64..=255u64)
+        .map(|n| {
+            let primary_hash = Hash::random();
+            (create_dummy_receipt(n, primary_hash), primary_hash)
+        })
+        .unzip();
+
+    let primary_hash_255 = *block_hashes.last().unwrap();
+    let bundle1 = create_dummy_bundle_with_receipts(primary_hash_255, receipts);
+
+    let primary_hash_256 = Hash::random();
+    block_hashes.push(primary_hash_256);
+    let bundle2 = create_dummy_bundle(256, primary_hash_256);
+
+    let primary_hash_257 = Hash::random();
+    block_hashes.push(primary_hash_257);
+    let bundle3 = create_dummy_bundle(257, primary_hash_257);
+
+    let primary_hash_258 = Hash::random();
+    block_hashes.push(primary_hash_258);
+    let bundle4 = create_dummy_bundle(258, primary_hash_258);
+
+    let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
+        System::set_block_number(1);
+        System::initialize(&1, &System::parent_hash(), &Default::default());
+        <Executor as Hooks<BlockNumber>>::on_initialize(1);
+        System::finalize();
+
+        for b in 2..=n {
+            System::set_block_number(b);
+            System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
+            <Executor as Hooks<BlockNumber>>::on_initialize(b);
+            System::finalize();
+        }
+    };
+
+    new_test_ext().execute_with(|| {
+        run_to_block(256 + 2, block_hashes);
+
+        // Submit ancient receipts still works even the block hash mapping for [1, 256)
+        // in System has been removed.
+        assert!(!frame_system::BlockHash::<Test>::contains_key(1));
+        assert!(!frame_system::BlockHash::<Test>::contains_key(255));
+        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle1));
+        assert_eq!(ExecutionChainBestNumber::<Test>::get(), 255);
+
+        // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
+        assert!(BlockHash::<Test>::contains_key(0));
+        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle2));
+        assert!(!BlockHash::<Test>::contains_key(0));
+
+        assert!(BlockHash::<Test>::contains_key(1));
+        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle3));
+        assert!(!BlockHash::<Test>::contains_key(1));
+
+        assert!(BlockHash::<Test>::contains_key(2));
+        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle4));
+        assert!(!BlockHash::<Test>::contains_key(2));
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
+        assert_eq!(ExecutionChainBestNumber::<Test>::get(), 258);
+    });
+}
+
+#[test]
 fn submit_fraud_proof_should_work() {
-    let dummy_receipts = (1u64..=256u64)
-        .map(|n| create_dummy_receipt(n, Hash::random()))
+    let dummy_bundles = (1u64..=256u64)
+        .map(|n| create_dummy_bundle(n, Hash::random()))
         .collect::<Vec<_>>();
 
     let dummy_proof = FraudProof {
@@ -244,9 +354,9 @@ fn submit_fraud_proof_should_work() {
 
     new_test_ext().execute_with(|| {
         (0u64..256u64).for_each(|index| {
-            assert_ok!(Executor::submit_execution_receipt(
+            assert_ok!(Executor::submit_transaction_bundle(
                 Origin::none(),
-                dummy_receipts[index as usize].clone(),
+                dummy_bundles[index as usize].clone(),
             ));
             assert!(Receipts::<Test>::get(index + 1).is_some());
         });
@@ -260,4 +370,3 @@ fn submit_fraud_proof_should_work() {
         });
     });
 }
-*/

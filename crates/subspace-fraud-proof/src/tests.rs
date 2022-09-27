@@ -112,7 +112,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             .iter()
             .map(|xt| OpaqueExtrinsic::from_bytes(&xt.encode()).unwrap())
             .collect(),
-        receipt: dummy_receipt,
+        receipts: vec![dummy_receipt],
     }];
 
     let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {

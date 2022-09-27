@@ -1,5 +1,5 @@
 use crate::worker::ExecutorSlotInfo;
-use crate::BundleSender;
+use crate::{BundleSender, ExecutionReceiptFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
@@ -10,8 +10,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_core::ByteArray;
 use sp_executor::{
-    Bundle, BundleHeader, ExecutionReceipt, ExecutorApi, ExecutorId, ExecutorSignature,
-    SignedBundle, SignedOpaqueBundle,
+    Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
+    SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -143,7 +143,7 @@ where
             .expect_header(BlockId::Number(parent_number))?
             .state_root();
 
-        let receipt = self.next_expected_receipt_on_primary_chain(primary_hash)?;
+        let receipts = self.expected_receipts_on_primary_chain(primary_hash, parent_number)?;
 
         let bundle = Bundle {
             header: BundleHeader {
@@ -151,7 +151,7 @@ where
                 slot_number: slot_info.slot.into(),
                 extrinsics_root,
             },
-            receipt,
+            receipts,
             extrinsics,
         };
 
@@ -208,10 +208,11 @@ where
         }
     }
 
-    fn next_expected_receipt_on_primary_chain(
+    fn expected_receipts_on_primary_chain(
         &self,
         primary_hash: PBlock::Hash,
-    ) -> sp_blockchain::Result<ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>> {
+        header_number: NumberFor<Block>,
+    ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
         let best_execution_chain_number = self
             .primary_chain_client
             .runtime_api()
@@ -221,25 +222,57 @@ where
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-        let block_hash = self
-            .client
-            .hash((best_execution_chain_number + 1).into())?
+        let load_receipt = |block_hash| {
+            crate::aux_schema::load_execution_receipt::<
+                _,
+                Block::Hash,
+                NumberFor<PBlock>,
+                PBlock::Hash,
+            >(&*self.client, block_hash)?
             .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!("Receipt not found for {block_hash}"))
+            })
+        };
+
+        let header_number: BlockNumber = header_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
+
+        // Ideally, the receipt of current block will be included in the next block, i.e., no
+        // missing receipts.
+        let receipts = if header_number == best_execution_chain_number + 1 {
+            let block_hash = self.client.hash(header_number.into())?.ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
-                    "Header hash not found for number {best_execution_chain_number}"
+                    "Hash for Block {:?} not found",
+                    header_number
                 ))
             })?;
+            vec![load_receipt(block_hash)?]
+        } else {
+            // Receipts for some previous blocks are missing.
+            let max_drift = self
+                .primary_chain_client
+                .runtime_api()
+                .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
 
-        let receipt = crate::aux_schema::load_execution_receipt::<
-            _,
-            Block::Hash,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-        >(&*self.client, block_hash)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Receipt not found for {block_hash}"))
-        })?;
+            let max_drift: BlockNumber = max_drift
+                .try_into()
+                .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-        Ok(receipt)
+            let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
+
+            let mut to_send = best_execution_chain_number + 1;
+            let mut receipts = Vec::with_capacity((max_allowed - to_send + 1) as usize);
+            while to_send <= max_allowed {
+                let block_hash = self.client.hash(to_send.into())?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
+                })?;
+                receipts.push(load_receipt(block_hash)?);
+                to_send += 1;
+            }
+            receipts
+        };
+
+        Ok(receipts)
     }
 }

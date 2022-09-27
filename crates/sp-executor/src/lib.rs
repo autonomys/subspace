@@ -104,8 +104,8 @@ impl<Hash: Encode> BundleHeader<Hash> {
 pub struct Bundle<Extrinsic, Number, Hash, SecondaryHash> {
     /// The bundle header.
     pub header: BundleHeader<Hash>,
-    /// Next expected receipt by the primay chain when the bundle was created.
-    pub receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
+    /// Expected receipts by the primay chain when the bundle was created.
+    pub receipts: Vec<ExecutionReceipt<Number, Hash, SecondaryHash>>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
@@ -130,7 +130,7 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
     pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, SecondaryHash> {
         let Bundle {
             header,
-            receipt,
+            receipts,
             extrinsics,
         } = self;
         let opaque_extrinsics = extrinsics
@@ -142,7 +142,7 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
             .collect();
         OpaqueBundle {
             header,
-            receipt,
+            receipts,
             extrinsics: opaque_extrinsics,
         }
     }

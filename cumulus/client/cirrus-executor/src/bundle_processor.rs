@@ -1,5 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::{ExecutionReceiptFor, TransactionFor};
+use crate::TransactionFor;
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
@@ -15,12 +15,10 @@ use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_core::ByteArray;
-use sp_executor::{ExecutionReceipt, ExecutorApi, ExecutorId, OpaqueBundle};
-use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
+use sp_executor::{ExecutionReceipt, ExecutorApi, OpaqueBundle};
+use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
-use sp_runtime::RuntimeAppPublic;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
@@ -350,47 +348,7 @@ where
 
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
-        // TODO: Change `bundle.receipt` to `bundle.receipts` and send all the missing receipts if
-        // there are any.
-        //
-        // Ideally, the receipt of current block will be included in the next block, i.e., no
-        // missing receipts.
-        if header_number == best_execution_chain_number + One::one() {
-            self.try_sign_and_send_receipt(primary_hash, execution_receipt)
-        } else {
-            // Receipts for some previous blocks are missing.
-            let max_drift = self
-                .primary_chain_client
-                .runtime_api()
-                .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
-
-            let max_drift: BlockNumber = max_drift
-                .try_into()
-                .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-            let max_allowed = (best_execution_chain_number + max_drift.into()).min(header_number);
-
-            // TODO: parallelize and avoid spamming the missing receipts?
-            let mut to_send = best_execution_chain_number + One::one();
-            while to_send <= max_allowed {
-                let block_hash = self.client.hash(to_send)?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
-                })?;
-
-                let receipt = crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Execution receipt not found for block {block_hash}"
-                        ))
-                    })?;
-
-                self.try_sign_and_send_receipt(primary_hash, receipt)?;
-
-                to_send += One::one();
-            }
-
-            Ok(())
-        }
+        Ok(())
     }
 
     fn bundles_to_extrinsics(
@@ -624,55 +582,6 @@ where
         }
 
         Ok(())
-    }
-
-    fn try_sign_and_send_receipt(
-        &self,
-        primary_hash: PBlock::Hash,
-        execution_receipt: ExecutionReceiptFor<PBlock, Block::Hash>,
-    ) -> Result<(), sp_blockchain::Error> {
-        let executor_id = self
-            .primary_chain_client
-            .runtime_api()
-            .executor_id(&BlockId::Hash(primary_hash))?;
-
-        if self.is_authority
-            && SyncCryptoStore::has_keys(
-                &*self.keystore,
-                &[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
-            )
-        {
-            let to_sign = execution_receipt.hash();
-            match SyncCryptoStore::sign_with(
-                &*self.keystore,
-                ExecutorId::ID,
-                &executor_id.into(),
-                to_sign.as_ref(),
-            ) {
-                Ok(Some(_signature)) => {
-                    // let best_hash = self.primary_chain_client.info().best_hash;
-
-                    // TODO: Remove this
-                    // Broadcast ER to all farmers via unsigned extrinsic.
-                    // self.primary_chain_client
-                    // .runtime_api()
-                    // .submit_execution_receipt_unsigned(
-                    // &BlockId::Hash(best_hash),
-                    // signed_execution_receipt,
-                    // )?;
-
-                    Ok(())
-                }
-                Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
-                    "This should not happen as the existence of key was just checked",
-                ))),
-                Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
-                    "Error occurred when signing the execution receipt: {error}"
-                )))),
-            }
-        } else {
-            Ok(())
-        }
     }
 }
 
