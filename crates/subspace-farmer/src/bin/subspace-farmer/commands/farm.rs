@@ -56,7 +56,7 @@ pub(crate) async fn farm_multi_disk(
 
     let FarmingArgs {
         bootstrap_nodes,
-        listen_on: _,
+        listen_on,
         node_rpc_url,
         mut ws_server_listen_addr,
         reward_address,
@@ -129,7 +129,7 @@ pub(crate) async fn farm_multi_disk(
             farming_client,
             reward_address,
             bootstrap_nodes: bootstrap_nodes.clone(),
-            listen_on: vec![],
+            listen_on: listen_on.clone(),
             enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
             enable_dsn_sync: dsn_sync,
             enable_farming: !disable_farming,
