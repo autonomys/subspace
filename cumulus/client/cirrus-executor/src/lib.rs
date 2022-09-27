@@ -79,6 +79,7 @@ use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend};
+use sc_consensus::ForkChoiceStrategy;
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
@@ -208,7 +209,9 @@ where
     where
         SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
-        IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+        IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)>
+            + Send
+            + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     {
         let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
@@ -466,7 +469,7 @@ where
     #[doc(hidden)]
     pub async fn process_bundles(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
         bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
@@ -652,6 +655,9 @@ where
 }
 
 /// Returns the active leaves the overseer should start with.
+///
+/// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
+/// is only available in the imported primary block notifications.
 async fn active_leaves<PBlock, PClient, SC>(
     client: &PClient,
     select_chain: &SC,
@@ -688,6 +694,7 @@ where
                 hash,
                 parent_hash,
                 number,
+                fork_choice: ForkChoiceStrategy::LongestChain,
             })
         })
         .collect::<Vec<_>>();
@@ -699,6 +706,7 @@ where
         hash: best_block.hash(),
         parent_hash: *best_block.parent_hash(),
         number: *best_block.number(),
+        fork_choice: ForkChoiceStrategy::LongestChain,
     });
 
     /// The maximum number of active leaves we forward to the [`Overseer`] on startup.

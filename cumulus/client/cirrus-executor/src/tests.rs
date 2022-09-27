@@ -4,6 +4,7 @@ use cirrus_test_service::runtime::{Header, UncheckedExtrinsic};
 use cirrus_test_service::Keyring::{Alice, Bob, Ferdie};
 use codec::{Decode, Encode};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend, StateBackend};
+use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
@@ -233,7 +234,11 @@ async fn set_new_code_should_work() {
         .executor
         .clone()
         .process_bundles(
-            (primary_hash, primary_number),
+            (
+                primary_hash,
+                primary_number,
+                ForkChoiceStrategy::LongestChain,
+            ),
             Default::default(),
             BlakeTwo256::hash_of(&[1u8; 64]).into(),
             Some(new_runtime_wasm_blob.clone().into()),

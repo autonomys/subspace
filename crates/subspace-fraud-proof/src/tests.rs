@@ -6,6 +6,7 @@ use cirrus_test_service::runtime::Header;
 use cirrus_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use codec::Encode;
 use sc_client_api::{HeaderBackend, StorageProof};
+use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
 use sp_executor::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
@@ -119,11 +120,16 @@ async fn execution_proof_creation_and_verification_should_work() {
         // bypass the check of `latest_primary_number = old_best_secondary_number + 1` in `process_bundles`.
         //
         // This invalid primary hash does not affect the test result.
-        (Hash::random(), ferdie.client.info().best_number + 1)
+        (
+            Hash::random(),
+            ferdie.client.info().best_number + 1,
+            ForkChoiceStrategy::LongestChain,
+        )
     } else {
         (
             ferdie.client.info().best_hash,
             ferdie.client.info().best_number,
+            ForkChoiceStrategy::LongestChain,
         )
     };
     alice

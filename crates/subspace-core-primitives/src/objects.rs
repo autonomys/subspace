@@ -90,7 +90,7 @@ pub enum PieceObject {
         /// Object hash
         hash: Blake2b256Hash,
         /// Offset of the object
-        offset: u16,
+        offset: u32,
     },
 }
 
@@ -103,7 +103,7 @@ impl PieceObject {
     }
 
     /// Offset of the object
-    pub fn offset(&self) -> u16 {
+    pub fn offset(&self) -> u32 {
         match self {
             Self::V0 { offset, .. } => *offset,
         }
@@ -130,7 +130,7 @@ pub enum GlobalObject {
         /// Piece index where object is contained (at least its beginning, might not fit fully)
         piece_index: u64,
         /// Offset of the object
-        offset: u16,
+        offset: u32,
     },
 }
 
@@ -143,7 +143,7 @@ impl GlobalObject {
     }
 
     /// Offset of the object
-    pub fn offset(&self) -> u16 {
+    pub fn offset(&self) -> u32 {
         match self {
             Self::V0 { offset, .. } => *offset,
         }

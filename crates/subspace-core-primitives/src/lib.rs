@@ -43,10 +43,10 @@ use serde::{Deserialize, Serialize};
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Byte size of a piece in Subspace Network, 4KiB.
+/// Byte size of a piece in Subspace Network, 32KiB.
 ///
 /// This can not changed after the network is launched.
-pub const PIECE_SIZE: usize = 4096;
+pub const PIECE_SIZE: usize = 32 * 1024;
 /// Size of witness for a segment record (in bytes).
 pub const WITNESS_SIZE: u32 = 48;
 /// Size of a segment record given the global piece size (in bytes).
@@ -249,7 +249,7 @@ impl TryFrom<&[u8]> for Piece {
     type Error = &'static str;
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         if slice.len() != PIECE_SIZE {
-            Err("Wrong piece size, expected: 4096")
+            Err("Wrong piece size, expected: 32768")
         } else {
             Ok(Self(slice.to_vec()))
         }

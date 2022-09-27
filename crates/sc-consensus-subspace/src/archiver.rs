@@ -442,6 +442,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                     block_number,
                     mut root_block_sender,
                     block_import_acknowledgement_sender,
+                    ..
                 }) = imported_block_notification_stream.next().await
                 {
                     drop(block_import_acknowledgement_sender);

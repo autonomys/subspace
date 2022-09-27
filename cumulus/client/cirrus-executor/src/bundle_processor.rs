@@ -167,7 +167,11 @@ where
     // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
-        (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
+        (primary_hash, primary_number, fork_choice): (
+            PBlock::Hash,
+            NumberFor<PBlock>,
+            ForkChoiceStrategy,
+        ),
         bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
@@ -223,8 +227,8 @@ where
             import_block.body = Some(body);
             import_block.state_action =
                 StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-            // TODO: double check the fork choice is correct, see also ParachainBlockImport.
-            import_block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+            // Follow the primary block's fork choice.
+            import_block.fork_choice = Some(fork_choice);
             import_block
         };
 

@@ -7,8 +7,8 @@ use tempfile::TempDir;
 
 #[tokio::main]
 async fn main() {
-    let batch_size = 4096; // 16M
-    let piece_count = 2u64.pow(20); // 4G
+    let batch_size = 16 * 1024 * 1024 / PIECE_SIZE as u64; // 16M
+    let piece_count = 4 * 1024 * 1024 * 1024 / PIECE_SIZE as u64; // 4G
     let base_directory = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
 
     let mut pieces = vec![0u8; batch_size as usize * PIECE_SIZE];
