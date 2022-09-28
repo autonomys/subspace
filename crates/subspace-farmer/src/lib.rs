@@ -40,6 +40,7 @@ pub(crate) mod object_mappings;
 pub(crate) mod plot;
 pub mod rpc_client;
 pub mod single_disk_farm;
+pub mod single_disk_plot;
 pub mod single_plot_farm;
 mod utils;
 pub mod ws_rpc_server;
