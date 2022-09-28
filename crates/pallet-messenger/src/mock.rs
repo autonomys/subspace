@@ -1,8 +1,14 @@
+use crate::{ChannelId, Channels};
 use frame_support::parameter_types;
+use frame_support::storage::generator::StorageDoubleMap;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
+use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
+use sp_state_machine::backend::Backend;
+use sp_state_machine::{prove_read, InMemoryBackend};
+use sp_trie::StorageProof;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -62,8 +68,27 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .unwrap();
 
     let mut t: sp_io::TestExternalities = t.into();
-
     t.execute_with(|| System::set_block_number(1));
-
     t
+}
+
+fn storage_proof_for_key(
+    backend: InMemoryBackend<sp_core::Blake2Hasher>,
+    key: StorageKey,
+) -> (H256, StorageProof) {
+    let state_version = sp_runtime::StateVersion::default();
+    let root = backend.storage_root(std::iter::empty(), state_version).0;
+    let proof = StorageProof::new(prove_read(backend, &[key]).unwrap().iter_nodes());
+    (root, proof)
+}
+
+pub(crate) fn storage_proof_of_channels(
+    backend: InMemoryBackend<sp_core::Blake2Hasher>,
+    domain_id: DomainId,
+    channel_id: ChannelId,
+) -> (H256, StorageKey, StorageProof) {
+    let key = Channels::<Test>::storage_double_map_final_key(domain_id, channel_id);
+    let storage_key = StorageKey(key);
+    let (root, proof) = storage_proof_for_key(backend, storage_key.clone());
+    (root, storage_key, proof)
 }

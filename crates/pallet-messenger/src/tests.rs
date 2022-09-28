@@ -1,6 +1,9 @@
 use crate::mock::{new_test_ext, DomainId, Event, Messenger, Origin, System, Test};
-use crate::{ChannelId, ChannelState, Error, InitiateChannelParams, U256};
+use crate::verification::{StorageProofVerifier, VerificationError};
+use crate::{Channel, ChannelId, ChannelState, Channels, Error, InitiateChannelParams, U256};
 use frame_support::{assert_err, assert_ok};
+use sp_core::storage::StorageKey;
+use sp_core::Blake2Hasher;
 
 fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
     assert_ok!(Messenger::initiate_channel(
@@ -86,4 +89,71 @@ fn test_close_open_channel() {
             channel_id,
         }));
     });
+}
+
+#[test]
+fn test_storage_proof_verification_invalid() {
+    let mut t = new_test_ext();
+    let domain_id = 0;
+    let channel_id = U256::zero();
+    t.execute_with(|| {
+        create_channel(domain_id, channel_id);
+        assert_ok!(Messenger::open_channel(domain_id, channel_id));
+    });
+
+    let (_, _, storage_proof) =
+        crate::mock::storage_proof_of_channels(t.as_backend(), domain_id, channel_id);
+    let res: Result<Channel, VerificationError> =
+        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+            Default::default(),
+            storage_proof,
+            StorageKey(vec![]),
+        );
+    assert_err!(res, VerificationError::InvalidProof);
+}
+
+#[test]
+fn test_storage_proof_verification_missing_value() {
+    let mut t = new_test_ext();
+    let domain_id = 0;
+    let channel_id = U256::zero();
+    t.execute_with(|| {
+        create_channel(domain_id, channel_id);
+        assert_ok!(Messenger::open_channel(domain_id, channel_id));
+    });
+
+    let (state_root, storage_key, storage_proof) =
+        crate::mock::storage_proof_of_channels(t.as_backend(), domain_id, U256::one());
+    let res: Result<Channel, VerificationError> =
+        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+            state_root,
+            storage_proof,
+            storage_key,
+        );
+    assert_err!(res, VerificationError::MissingValue);
+}
+
+#[test]
+fn test_storage_proof_verification() {
+    let mut t = new_test_ext();
+    let domain_id = 0;
+    let channel_id = U256::zero();
+    let mut expected_channel = None;
+    t.execute_with(|| {
+        create_channel(domain_id, channel_id);
+        assert_ok!(Messenger::open_channel(domain_id, channel_id));
+        expected_channel = Channels::<Test>::get(domain_id, channel_id);
+    });
+
+    let (state_root, storage_key, storage_proof) =
+        crate::mock::storage_proof_of_channels(t.as_backend(), domain_id, channel_id);
+    let res: Result<Channel, VerificationError> =
+        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+            state_root,
+            storage_proof,
+            storage_key,
+        );
+
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap(), expected_channel.unwrap())
 }

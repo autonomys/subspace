@@ -24,6 +24,8 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+mod verification;
+
 use codec::{Decode, Encode, MaxEncodedLen};
 pub use pallet::*;
 use scale_info::TypeInfo;

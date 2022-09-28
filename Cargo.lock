@@ -4587,6 +4587,7 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "hash-db",
  "hex",
  "log",
  "parity-scale-codec",
@@ -4594,7 +4595,9 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
