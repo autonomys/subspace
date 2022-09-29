@@ -4582,6 +4582,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-messenger"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "hex",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-object-store"
 version = "0.1.0"
 dependencies = [
