@@ -68,6 +68,10 @@ fn test_close_open_channel() {
 
         let channel = Messenger::channels(domain_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Open);
+        System::assert_last_event(Event::Messenger(crate::Event::<Test>::ChannelOpen {
+            domain_id,
+            channel_id,
+        }));
 
         assert_ok!(Messenger::close_channel(
             Origin::root(),
@@ -77,5 +81,9 @@ fn test_close_open_channel() {
 
         let channel = Messenger::channels(domain_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Closed);
+        System::assert_last_event(Event::Messenger(crate::Event::<Test>::ChannelClosed {
+            domain_id,
+            channel_id,
+        }));
     });
 }

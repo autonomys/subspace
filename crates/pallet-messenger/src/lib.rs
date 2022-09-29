@@ -205,7 +205,7 @@ mod pallet {
                 Ok(())
             })?;
 
-            Self::deposit_event(Event::ChannelInitiated {
+            Self::deposit_event(Event::ChannelClosed {
                 domain_id,
                 channel_id,
             });
@@ -233,7 +233,7 @@ mod pallet {
                 Ok(())
             })?;
 
-            Self::deposit_event(Event::ChannelInitiated {
+            Self::deposit_event(Event::ChannelOpen {
                 domain_id,
                 channel_id,
             });
