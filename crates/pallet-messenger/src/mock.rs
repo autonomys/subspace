@@ -8,6 +8,7 @@ use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_state_machine::backend::Backend;
 use sp_state_machine::{prove_read, InMemoryBackend};
+use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -20,6 +21,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
+        SystemDomainTracker: mock_system_domain_tracker::{Pallet, Storage},
         Messenger: crate::{Pallet, Call, Event<T>}
     }
 );
@@ -57,9 +59,37 @@ parameter_types! {
 
 pub(crate) type DomainId = u64;
 
+#[frame_support::pallet]
+mod mock_system_domain_tracker {
+    use frame_support::pallet_prelude::*;
+    use sp_core::H256;
+    use sp_messenger::SystemDomainTracker;
+
+    #[pallet::config]
+    pub trait Config: frame_system::Config {}
+
+    /// Pallet messenger used to communicate between domains and other blockchains.
+    #[pallet::pallet]
+    #[pallet::generate_store(pub (super) trait Store)]
+    #[pallet::without_storage_info]
+    pub struct Pallet<T>(_);
+
+    #[pallet::storage]
+    pub(super) type StateRoot<T: Config> = StorageValue<_, H256, ValueQuery>;
+
+    impl<T: Config> SystemDomainTracker<H256> for Pallet<T> {
+        fn latest_state_roots() -> Vec<H256> {
+            vec![StateRoot::<T>::get()]
+        }
+    }
+}
+
+impl mock_system_domain_tracker::Config for Test {}
+
 impl crate::Config for Test {
     type Event = Event;
     type DomainId = DomainId;
+    type SystemDomainTracker = SystemDomainTracker;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

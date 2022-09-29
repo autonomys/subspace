@@ -4594,6 +4594,7 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-io",
+ "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
  "sp-std",
@@ -7580,6 +7581,10 @@ dependencies = [
  "thiserror",
  "zstd",
 ]
+
+[[package]]
+name = "sp-messenger"
+version = "0.1.0"
 
 [[package]]
 name = "sp-objects"

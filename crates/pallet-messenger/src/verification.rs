@@ -1,5 +1,6 @@
-use codec::Decode;
+use codec::{Decode, Encode};
 use hash_db::Hasher;
+use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use std::marker::PhantomData;
@@ -32,4 +33,14 @@ impl<H: Hasher> StorageProofVerifier<H> {
 
         Ok(decoded)
     }
+}
+
+/// Proof combines the storage proofs to validate messages.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub(crate) struct Proof<StateRoot> {
+    state_root: StateRoot,
+    /// Storage proof that src_domain state_root is registered on System domain
+    // TODO(ved): add system domain proof when store is available
+    /// Storage proof that message is processed on src_domain.
+    pub(crate) message_proof: StorageProof,
 }

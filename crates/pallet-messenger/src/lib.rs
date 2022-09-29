@@ -18,12 +18,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
+// TODO(ved): remove once all the types and traits are connected
+#![allow(dead_code)]
 
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
 
+mod messages;
 mod verification;
 
 use codec::{Decode, Encode, MaxEncodedLen};
@@ -61,8 +64,8 @@ pub struct Channel {
     pub(crate) next_inbox_nonce: Nonce,
     /// Next outbox nonce.
     pub(crate) next_outbox_nonce: Nonce,
-    /// Latest delivered outbox message nonce.
-    pub(crate) latest_delivered_message_nonce: Nonce,
+    /// Latest outbox message nonce for which response was received from dst_domain.
+    pub(crate) latest_response_received_message_nonce: Nonce,
     /// Maximum outgoing non-delivered messages.
     pub(crate) max_outgoing_messages: u64,
 }
@@ -77,13 +80,19 @@ mod pallet {
     use crate::{Channel, ChannelId, ChannelState, InitiateChannelParams, U256};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
+    use sp_messenger::SystemDomainTracker;
+    use sp_runtime::traits::Hash;
     use sp_runtime::ArithmeticError;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-        // Domain ID uniquely identifies a Domain
+        /// Domain ID uniquely identifies a Domain.
         type DomainId: Parameter + Member + Default + Copy + MaxEncodedLen;
+        /// System domain tracker.
+        type SystemDomainTracker: SystemDomainTracker<
+            <<Self as frame_system::Config>::Hashing as Hash>::Output,
+        >;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -171,7 +180,7 @@ mod pallet {
                     state: ChannelState::Initiated,
                     next_inbox_nonce: Default::default(),
                     next_outbox_nonce: Default::default(),
-                    latest_delivered_message_nonce: Default::default(),
+                    latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: params.max_outgoing_messages,
                 },
             );
@@ -218,7 +227,6 @@ mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Opens an initiated channel.
-        #[allow(dead_code)]
         pub(crate) fn open_channel(
             domain_id: T::DomainId,
             channel_id: ChannelId,
