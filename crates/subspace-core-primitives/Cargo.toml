@@ -18,7 +18,7 @@ derive_more = "0.99.17"
 dusk-bls12_381 = { version = "0.11", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
 dusk-bytes = "0.1"
 dusk-plonk = { version = "0.12.0", default-features = false, features = ["alloc"], git = "https://github.com/subspace/plonk", rev = "193e68ba3d20f737d730e4b6edc757e4f639e7c3" }
-hex = { version  = "0.4.3", default-features = false }
+hex = { version  = "0.4.3", default-features = false, features = ["alloc"] }
 libp2p = {version = "0.46.1", optional = true, default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 parity-scale-codec = { version = "3.1.5", default-features = false, features = ["derive"] }

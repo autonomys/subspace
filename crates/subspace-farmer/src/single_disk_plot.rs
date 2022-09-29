@@ -1,7 +1,7 @@
 use crate::identity::Identity;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
-use anyhow::anyhow;
+use bytesize::ByteSize;
 use derive_more::{Display, From};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -16,6 +16,7 @@ use subspace_core_primitives::PublicKey;
 use subspace_networking::Node;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::SubspaceCodec;
+use thiserror::Error;
 use tracing::{error, Instrument, Span};
 use ulid::Ulid;
 
@@ -57,9 +58,8 @@ pub enum SingleDiskPlotInfo {
         /// sector indexes or else they'll essentially plot the same data and will not result in
         /// increased probability of winning the reward.
         first_sector_index: u64,
-        /// How much space in bytes is allocated for plot in this plot (metadata space is not
-        /// included)
-        allocated_plotting_space: u64,
+        /// How much space in bytes is allocated for this plot
+        allocated_space: u64,
     },
 }
 
@@ -71,14 +71,14 @@ impl SingleDiskPlotInfo {
         genesis_hash: [u8; 32],
         public_key: PublicKey,
         first_sector_index: u64,
-        allocated_plotting_space: u64,
+        allocated_space: u64,
     ) -> Self {
         Self::V0 {
             id,
             genesis_hash,
             public_key,
             first_sector_index,
-            allocated_plotting_space,
+            allocated_space,
         }
     }
 
@@ -139,13 +139,12 @@ impl SingleDiskPlotInfo {
         *first_sector_index
     }
 
-    /// How much space in bytes is allocated for plot in this plot (metadata space is not included)
-    pub fn allocated_plotting_space(&self) -> u64 {
+    /// How much space in bytes is allocated for this plot
+    pub fn allocated_space(&self) -> u64 {
         let Self::V0 {
-            allocated_plotting_space,
-            ..
+            allocated_space, ..
         } = self;
-        *allocated_plotting_space
+        *allocated_space
     }
 }
 
@@ -162,7 +161,7 @@ pub enum SingleDiskPlotSummary {
         /// First sector index in this plot
         first_sector_index: u64,
         // How much space in bytes can plot use for plot (metadata space is not included)
-        allocated_plotting_space: u64,
+        allocated_space: u64,
         /// Path to directory where plot is stored.
         directory: PathBuf,
     },
@@ -184,8 +183,8 @@ pub enum SingleDiskPlotSummary {
 pub struct SingleDiskPlotOptions<RC> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
-    /// How much space in bytes can farm use for plot
-    pub allocated_plotting_space: u64,
+    /// How much space in bytes can plot use for plot
+    pub allocated_space: u64,
     /// Identity associated with plot
     pub identity: Identity,
     /// Networking instance for external communication with DSN
@@ -196,6 +195,54 @@ pub struct SingleDiskPlotOptions<RC> {
     pub reward_address: PublicKey,
     /// Information about protocol necessary for farmer
     pub farmer_protocol_info: FarmerProtocolInfo,
+}
+
+/// Errors happening when trying to create/open single disk plot
+#[derive(Debug, Error)]
+pub enum SingleDiskPlotError {
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Can't resize plot after creation
+    #[error(
+        "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot was \
+        created, resizing isn't supported yet"
+    )]
+    CantResize {
+        /// Plot ID
+        id: SingleDiskPlotId,
+        /// Space allocated during plot creation
+        old_space: ByteSize,
+        /// New desired plot size
+        new_space: ByteSize,
+    },
+    /// Wrong chain (genesis hash)
+    #[error(
+        "Genesis hash of plot {id} {wrong_chain} is different from {correct_chain} when plot was \
+        created, is is not possible to use plot on a different chain"
+    )]
+    WrongChain {
+        /// Plot ID
+        id: SingleDiskPlotId,
+        /// Hex-encoded genesis hash during plot creation
+        // TODO: Wrapper type with `Display` impl for genesis hash
+        correct_chain: String,
+        /// Hex-encoded current genesis hash
+        wrong_chain: String,
+    },
+    /// Public key in identity doesn't match metadata
+    #[error(
+        "Public key of plot {id} {wrong_public_key} is different from {correct_public_key} when \
+        plot was created, something went wrong, likely due to manual edits"
+    )]
+    IdentityMismatch {
+        /// Plot ID
+        id: SingleDiskPlotId,
+        /// Public key used during plot creation
+        correct_public_key: PublicKey,
+        /// Current public key
+        wrong_public_key: PublicKey,
+    },
 }
 
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
@@ -209,13 +256,13 @@ pub struct SingleDiskPlot {
 
 impl SingleDiskPlot {
     /// Create new single disk plot instance
-    pub fn new<RC>(options: SingleDiskPlotOptions<RC>) -> anyhow::Result<Self>
+    pub fn new<RC>(options: SingleDiskPlotOptions<RC>) -> Result<Self, SingleDiskPlotError>
     where
         RC: RpcClient,
     {
         let SingleDiskPlotOptions {
             directory,
-            allocated_plotting_space,
+            allocated_space,
             identity,
             // TODO: Use this or remove
             node: _,
@@ -237,40 +284,28 @@ impl SingleDiskPlot {
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
             Some(single_disk_plot_info) => {
-                if allocated_plotting_space != single_disk_plot_info.allocated_plotting_space() {
-                    error!(
-                        id = %single_disk_plot_info.id(),
-                        "Usable plotting space {} is different from {} when farm was created, \
-                        resizing isn't supported yet",
-                        allocated_plotting_space,
-                        single_disk_plot_info.allocated_plotting_space(),
-                    );
-
-                    return Err(anyhow!("Can't resize farm after creation"));
+                if allocated_space != single_disk_plot_info.allocated_space() {
+                    return Err(SingleDiskPlotError::CantResize {
+                        id: *single_disk_plot_info.id(),
+                        old_space: ByteSize::b(single_disk_plot_info.allocated_space()),
+                        new_space: ByteSize::b(allocated_space),
+                    });
                 }
 
                 if &farmer_protocol_info.genesis_hash != single_disk_plot_info.genesis_hash() {
-                    error!(
-                        id = %single_disk_plot_info.id(),
-                        "Genesis hash {} is different from {} when farm was created, is is not \
-                        possible to use farm on a different chain",
-                        hex::encode(farmer_protocol_info.genesis_hash),
-                        hex::encode(single_disk_plot_info.genesis_hash()),
-                    );
-
-                    return Err(anyhow!("Wrong chain (genesis hash)"));
+                    return Err(SingleDiskPlotError::WrongChain {
+                        id: *single_disk_plot_info.id(),
+                        correct_chain: hex::encode(single_disk_plot_info.genesis_hash()),
+                        wrong_chain: hex::encode(farmer_protocol_info.genesis_hash),
+                    });
                 }
 
                 if &public_key != single_disk_plot_info.public_key() {
-                    error!(
-                        id = %single_disk_plot_info.id(),
-                        "Public key {} is different from {} when farm was created, something \
-                        went wrong, likely due to manual edits",
-                        hex::encode(&public_key),
-                        hex::encode(single_disk_plot_info.public_key()),
-                    );
-
-                    return Err(anyhow!("Public key in identity doesn't match metadata"));
+                    return Err(SingleDiskPlotError::IdentityMismatch {
+                        id: *single_disk_plot_info.id(),
+                        correct_public_key: *single_disk_plot_info.public_key(),
+                        wrong_public_key: public_key,
+                    });
                 }
 
                 single_disk_plot_info
@@ -288,7 +323,7 @@ impl SingleDiskPlot {
                     farmer_protocol_info.genesis_hash,
                     public_key,
                     first_sector_index,
-                    allocated_plotting_space,
+                    allocated_space,
                 );
 
                 single_disk_plot_info.store_to(&directory)?;
@@ -329,7 +364,7 @@ impl SingleDiskPlot {
             genesis_hash: *single_disk_plot_info.genesis_hash(),
             public_key: *single_disk_plot_info.public_key(),
             first_sector_index: single_disk_plot_info.first_sector_index(),
-            allocated_plotting_space: single_disk_plot_info.allocated_plotting_space(),
+            allocated_space: single_disk_plot_info.allocated_space(),
             directory,
         };
     }

@@ -32,6 +32,7 @@ use crate::crypto::kzg::Commitment;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
+use core::fmt;
 use core::ops::{Deref, DerefMut};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 #[cfg(feature = "std")]
@@ -138,6 +139,12 @@ const VRF_PROOF_LENGTH: usize = 64;
 pub struct PublicKey(
     #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; PUBLIC_KEY_LENGTH],
 );
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(&self.0))
+    }
+}
 
 impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
     fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
