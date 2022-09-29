@@ -1,24 +1,38 @@
+use crate::file_ext::FileExt;
 use crate::identity::Identity;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
+use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use memmap2::{MmapMut, MmapOptions};
+use parity_db::const_assert;
+use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
 use std::future::Future;
+use std::io::{Seek, SeekFrom};
 use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::SystemTime;
-use std::{fs, io};
-use subspace_core_primitives::PublicKey;
+use std::{fs, io, thread};
+use subspace_core_primitives::{plot_sector_size, PieceIndex, PublicKey, SectorId, PIECE_SIZE};
 use subspace_networking::Node;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::SubspaceCodec;
 use thiserror::Error;
-use tracing::{error, Instrument, Span};
+use tokio::runtime::Handle;
+use tracing::{debug, error, info_span, Instrument, Span};
 use ulid::Ulid;
+
+// Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
+// usize depending on chain parameters
+const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// An identifier for single disk plot, can be used for in logs, thread names, etc.
 #[derive(
@@ -179,6 +193,34 @@ pub enum SingleDiskPlotSummary {
     },
 }
 
+#[derive(Debug, Encode, Decode)]
+struct PlotMetadataHeader {
+    version: u8,
+    sector_count: u64,
+}
+
+impl PlotMetadataHeader {
+    fn encoded_size() -> usize {
+        let default = PlotMetadataHeader {
+            version: 0,
+            sector_count: 0,
+        };
+
+        default.encoded_size()
+    }
+}
+
+#[derive(Debug, Encode, Decode)]
+struct SectorMetadata {}
+
+impl SectorMetadata {
+    fn encoded_size() -> usize {
+        let default = SectorMetadata {};
+
+        default.encoded_size()
+    }
+}
+
 /// Options used to open single dis plot
 pub struct SingleDiskPlotOptions<RC> {
     /// Path to directory where plot are stored.
@@ -243,6 +285,12 @@ pub enum SingleDiskPlotError {
         /// Current public key
         wrong_public_key: PublicKey,
     },
+    /// Failed to decode metadata header
+    #[error("Failed to decode metadata header: {0}")]
+    FailedToDecodeMetadataHeader(parity_scale_codec::Error),
+    /// Unexpected metadata version
+    #[error("Unexpected metadata version {0}")]
+    UnexpectedMetadataVersion(u8),
 }
 
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
@@ -252,9 +300,20 @@ pub struct SingleDiskPlot {
     id: SingleDiskPlotId,
     span: Span,
     tasks: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>,
+    _plotting_join_handle: JoinOnDrop,
+    shutting_down: Arc<AtomicBool>,
+}
+
+impl Drop for SingleDiskPlot {
+    fn drop(&mut self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+    }
 }
 
 impl SingleDiskPlot {
+    const PLOT_FILE: &'static str = "plot.bin";
+    const METADATA_FILE: &'static str = "metadata.bin";
+
     /// Create new single disk plot instance
     pub fn new<RC>(options: SingleDiskPlotOptions<RC>) -> Result<Self, SingleDiskPlotError>
     where
@@ -268,7 +327,7 @@ impl SingleDiskPlot {
             node: _,
             farmer_protocol_info,
             // TODO: Use this or remove
-            rpc_client: _,
+            rpc_client,
             // TODO: Use this or remove
             reward_address: _,
         } = options;
@@ -281,6 +340,15 @@ impl SingleDiskPlot {
             SingleDiskSemaphore::new(NonZeroU16::new(10).expect("Not a zero; qed"));
 
         let public_key = identity.public_key().to_bytes().into();
+
+        // TODO: In case `space_l` changes on the fly, code below will break horribly
+        let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
+
+        assert_eq!(
+            plot_sector_size % PIECE_SIZE as u64,
+            0,
+            "Sector size must be multiple of piece size"
+        );
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
             Some(single_disk_plot_info) => {
@@ -332,16 +400,188 @@ impl SingleDiskPlot {
             }
         };
 
+        let single_disk_plot_id = *single_disk_plot_info.id();
+
+        // TODO: Account for plot overhead
+        let target_sector_count = allocated_space / plot_sector_size;
+        let plot_file_size = target_sector_count * plot_sector_size;
+
+        let mut metadata_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(directory.join(Self::METADATA_FILE))?;
+
+        metadata_file.advise_random_access()?;
+
+        let (mut metadata_header, mut metadata_header_mmap) =
+            if metadata_file.seek(SeekFrom::End(0))? == 0 {
+                let metadata_header = PlotMetadataHeader {
+                    version: 0,
+                    sector_count: 0,
+                };
+
+                metadata_file.preallocate(
+                    PlotMetadataHeader::encoded_size() as u64
+                        + SectorMetadata::encoded_size() as u64 * target_sector_count,
+                )?;
+                metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
+
+                let metadata_header_mmap = unsafe {
+                    MmapOptions::new()
+                        .len(PlotMetadataHeader::encoded_size())
+                        .map_mut(&metadata_file)?
+                };
+
+                (metadata_header, metadata_header_mmap)
+            } else {
+                let metadata_header_mmap = unsafe {
+                    MmapOptions::new()
+                        .len(PlotMetadataHeader::encoded_size())
+                        .map_mut(&metadata_file)?
+                };
+
+                let metadata_header =
+                    PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                        .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
+
+                if metadata_header.version != 0 {
+                    return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
+                        metadata_header.version,
+                    ));
+                }
+
+                (metadata_header, metadata_header_mmap)
+            };
+
+        let mut metadata_mmap = unsafe {
+            MmapOptions::new()
+                .offset(metadata_header.encoded_size() as u64)
+                .len(SectorMetadata::encoded_size())
+                .map_mut(&metadata_file)?
+        };
+
+        let plot_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(directory.join(Self::PLOT_FILE))?;
+
+        plot_file.preallocate(plot_file_size)?;
+
+        let mut plot_mmap = unsafe { MmapMut::map_mut(&plot_file)? };
+
         // TODO: Use this or remove
         let _codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
 
         let tasks =
             FuturesUnordered::<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>::new();
 
+        let shutting_down = Arc::new(AtomicBool::new(false));
+
+        // Plotting
+        let plotting_join_handle = thread::Builder::new()
+            .name(format!("p-{single_disk_plot_id}"))
+            .spawn({
+                let handle = Handle::current();
+                let shutting_down = Arc::clone(&shutting_down);
+                let pieces_per_sector = plot_sector_size.div_ceil(PIECE_SIZE as u64);
+
+                move || {
+                    let _tokio_handle_guard = handle.enter();
+                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
+                    let _span_guard = span.enter();
+
+                    // Initial plotting
+                    {
+                        let chunked_sectors = plot_mmap
+                            .as_mut()
+                            .chunks_exact_mut(plot_sector_size as usize);
+                        let chunked_metadata = metadata_mmap
+                            .as_mut()
+                            .chunks_exact_mut(SectorMetadata::encoded_size());
+                        let plot_initial_sector = chunked_sectors
+                            .zip(chunked_metadata)
+                            .enumerate()
+                            .skip(
+                                // Some sectors may already be plotted, skip them
+                                metadata_header.sector_count as usize,
+                            )
+                            .map(|(sector_index, (sector, metadata))| {
+                                (
+                                    sector_index as u64
+                                        + single_disk_plot_info.first_sector_index(),
+                                    sector,
+                                    metadata,
+                                )
+                            });
+
+                        // TODO: Concurrency
+                        for (sector_index, sector, metadata) in plot_initial_sector {
+                            if shutting_down.load(Ordering::Acquire) {
+                                debug!(
+                                    %sector_index,
+                                    "Instance is shutting down, interrupting plotting"
+                                );
+                                return;
+                            }
+                            let sector_id = SectorId::new(&public_key, sector_index);
+                            // TODO: Query from node before every sector such that sectors are
+                            //  always created with latest value
+                            let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
+                            let mut pieces =
+                                Vec::with_capacity(pieces_per_sector as usize * PIECE_SIZE);
+
+                            for piece_offset in 0..pieces_per_sector {
+                                if shutting_down.load(Ordering::Acquire) {
+                                    debug!(
+                                        %sector_index,
+                                        "Instance is shutting down, interrupting plotting"
+                                    );
+                                    return;
+                                }
+                                let piece_index =
+                                    sector_id.derive_piece_index(piece_offset, total_pieces);
+
+                                let piece = match handle.block_on(rpc_client.get_piece(piece_index))
+                                {
+                                    Ok(Some(piece)) => piece,
+                                    Ok(None) => {
+                                        error!(
+                                            %piece_index,
+                                            "Piece not found, can't create sector, this should \
+                                            never happen"
+                                        );
+                                        return;
+                                    }
+                                    Err(error) => {
+                                        error!(%error, "Failed to retriever piece");
+                                        return;
+                                    }
+                                };
+
+                                pieces.extend_from_slice(&piece);
+                            }
+
+                            // TODO: Encode pieces
+                            // TODO: Create table
+                            // TODO: Write table to sector
+                            // TODO: Write sector metadata
+
+                            metadata_header.sector_count += 1;
+                            metadata_header_mmap
+                                .copy_from_slice(metadata_header.encode().as_slice());
+                        }
+                    }
+                }
+            })?;
+
         let farm = Self {
-            id: *single_disk_plot_info.id(),
+            id: single_disk_plot_id,
             span: Span::current(),
             tasks,
+            _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
+            shutting_down,
         };
 
         Ok(farm)

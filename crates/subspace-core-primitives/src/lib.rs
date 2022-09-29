@@ -33,6 +33,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
+use core::num::NonZeroU16;
 use core::ops::{Deref, DerefMut};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 #[cfg(feature = "std")]
@@ -857,4 +858,21 @@ impl SectorId {
             .try_into()
             .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
     }
+}
+
+/// Size of a plotted sector on disk
+///
+/// Depends on `space_l` (specified in bits).
+///
+/// PANICS: Panics if `space_l` is smaller than `3`
+pub fn plot_sector_size(space_l: NonZeroU16) -> u64 {
+    let plot_sector_size_bits = u64::from(space_l.get())
+        .checked_mul(2u64.pow(u32::from(space_l.get())))
+        .expect("u16 is not big enough to cause overflow here; qed");
+
+    // When `space_l` is at least `3` it is guaranteed that we can divide above by `8` (2^3) without
+    // remainder
+    plot_sector_size_bits
+        .checked_div(u64::from(u8::BITS))
+        .expect("`space_l` must be 3 or more")
 }

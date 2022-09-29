@@ -16,9 +16,10 @@
 //! Primitives for Subspace RPC.
 
 use serde::{Deserialize, Serialize};
-use std::num::NonZeroU32;
+use std::num::{NonZeroU16, NonZeroU32};
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RewardSignature, Salt, SlotNumber, Solution, SolutionRange,
+    Blake2b256Hash, PublicKey, RewardSignature, Salt, SegmentIndex, SlotNumber, Solution,
+    SolutionRange,
 };
 
 /// Defines a limit for segment indexes array. It affects storage access on the runtime side.
@@ -39,6 +40,10 @@ pub struct FarmerProtocolInfo {
     pub max_plot_size: u64,
     /// Total number of pieces stored on the network
     pub total_pieces: u64,
+    /// Space parameter for proof-of-replication in bits
+    pub space_l: NonZeroU16,
+    /// Number of segments after which sector expires
+    pub sector_expiration: SegmentIndex,
 }
 
 /// Information about new slot that just arrived
