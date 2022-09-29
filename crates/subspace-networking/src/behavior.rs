@@ -7,28 +7,13 @@ use crate::create::ValueGetter;
 use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
 };
-use crate::shared::IdendityHash;
 use custom_record_store::CustomRecordStore;
 use derive_more::From;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
-use libp2p::multiaddr::Protocol;
 use libp2p::ping::{Ping, PingEvent};
-use libp2p::relay::v2::client::{Client as RelayClient, Event as RelayClientEvent};
-use libp2p::relay::v2::relay::rate_limiter::RateLimiter;
-use libp2p::relay::v2::relay::{Config as RelayConfig, Event as RelayEvent, Relay};
-use libp2p::swarm::behaviour::toggle::Toggle;
-use libp2p::{Multiaddr, NetworkBehaviour, PeerId};
-use std::time::{Duration, Instant};
-
-struct MemoryRateLimiter;
-
-impl RateLimiter for MemoryRateLimiter {
-    fn try_next(&mut self, _peer: PeerId, addr: &Multiaddr, _now: Instant) -> bool {
-        matches!(addr.iter().next(), Some(Protocol::Memory(_)))
-    }
-}
+use libp2p::{NetworkBehaviour, PeerId};
 
 pub(crate) struct BehaviorConfig {
     /// Identity keypair of a node used for authenticated connections.
@@ -43,10 +28,6 @@ pub(crate) struct BehaviorConfig {
     pub(crate) value_getter: ValueGetter,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
     pub(crate) request_response_protocols: Vec<Box<dyn RequestHandler>>,
-    /// Whether node can serve as relay server.
-    pub(crate) is_relay_server: bool,
-    /// Circuit relay client.
-    pub(crate) relay_client: RelayClient,
 }
 
 #[derive(NetworkBehaviour)]
@@ -54,17 +35,15 @@ pub(crate) struct BehaviorConfig {
 #[behaviour(event_process = false)]
 pub(crate) struct Behavior {
     pub(crate) identify: Identify,
-    pub(crate) kademlia: Kademlia<CustomRecordStore, IdendityHash>,
+    pub(crate) kademlia: Kademlia<CustomRecordStore>,
     pub(crate) gossipsub: Gossipsub,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponsesBehaviour,
-    pub(crate) relay: Toggle<Relay>,
-    pub(crate) relay_client: RelayClient,
 }
 
 impl Behavior {
     pub(crate) fn new(config: BehaviorConfig) -> Self {
-        let kademlia = Kademlia::<_, IdendityHash>::with_config(
+        let kademlia = Kademlia::with_config(
             config.peer_id,
             CustomRecordStore::new(config.value_getter),
             config.kademlia,
@@ -77,28 +56,6 @@ impl Behavior {
         )
         .expect("Correct configuration");
 
-        let relay = config
-            .is_relay_server
-            .then(|| {
-                Relay::new(config.peer_id, {
-                    // Duration::MAX causes runtime overflows and u32::MAX was recommended in the runtime error!
-                    let very_long_duration = Duration::from_secs(u32::MAX.into());
-
-                    RelayConfig {
-                        max_reservations: usize::MAX,
-                        max_reservations_per_peer: usize::MAX,
-                        reservation_duration: very_long_duration,
-                        reservation_rate_limiters: vec![Box::new(MemoryRateLimiter)],
-                        max_circuits: usize::MAX,
-                        max_circuits_per_peer: usize::MAX,
-                        max_circuit_duration: very_long_duration,
-                        max_circuit_bytes: u64::MAX,
-                        circuit_src_rate_limiters: vec![],
-                    }
-                })
-            })
-            .into();
-
         Self {
             identify: Identify::new(config.identify),
             kademlia,
@@ -109,8 +66,6 @@ impl Behavior {
             )
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
-            relay,
-            relay_client: config.relay_client,
         }
     }
 }
@@ -122,6 +77,4 @@ pub(crate) enum Event {
     Gossipsub(GossipsubEvent),
     Ping(PingEvent),
     RequestResponse(RequestResponseEvent),
-    Relay(RelayEvent),
-    RelayClient(RelayClientEvent),
 }
