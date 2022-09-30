@@ -21,6 +21,7 @@
 #[cfg(test)]
 mod tests;
 
+use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
@@ -194,18 +195,22 @@ mod pallet {
                 fraud_proof
             );
 
-            /*
-            // TODO Revert the execution chain.
-            let new_best: T::BlockNumber = fraud_proof.parent_number.into();
-            <ExecutionChainBestNumber<T>>::mutate(|current_best| {
-                let mut to_remove = new_best + One::one();
-                while to_remove <= *current_best {
-                    Receipts::<T>::remove(to_remove);
-                    to_remove += One::one();
+            // Revert the execution chain.
+            let (_, mut to_remove) = ReceiptHead::<T>::get();
+
+            let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
+            let new_best_hash = BlockHash::<T>::get(new_best_number);
+
+            ReceiptHead::<T>::put((new_best_hash, new_best_number));
+
+            while to_remove > new_best_number {
+                let block_hash = BlockHash::<T>::get(to_remove);
+                for receipt_hash in <ReceiptVotes<T>>::iter_key_prefix(block_hash) {
+                    Receipts::<T>::remove(receipt_hash);
                 }
-                *current_best = new_best;
-            });
-            */
+                let _ = <ReceiptVotes<T>>::clear_prefix(block_hash, u32::MAX, None);
+                to_remove -= One::one();
+            }
 
             // TODO: slash the executor accordingly.
 
@@ -271,7 +276,7 @@ mod pallet {
     pub(super) type BlockHash<T: Config> =
         StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
 
-    /// Mapping from the primary block number to the corresponding verified execution receipt.
+    /// Mapping from the receipt hash to the corresponding verified execution receipt.
     ///
     /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
     /// ones will be pruned once the size of receipts exceeds this number.
@@ -279,10 +284,17 @@ mod pallet {
     pub(super) type Receipts<T: Config> = StorageMap<
         _,
         Twox64Concat,
-        T::BlockNumber,
+        H256,
         ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
         OptionQuery,
     >;
+
+    /// Mapping for tracking the receipt votes.
+    ///
+    /// (primary_block_hash, receipt_hash, receipt_count)
+    #[pallet::storage]
+    pub(super) type ReceiptVotes<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, T::Hash, Blake2_128Concat, H256, u32, ValueQuery>;
 
     /// A pair of (block_hash, block_number) of the latest execution receipt.
     #[pallet::storage]
@@ -448,6 +460,23 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    /// Returns the block number of the latest receipt.
+    pub fn best_execution_chain_number() -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get();
+        best_number
+    }
+
+    /// Returns the block number of the oldest receipt still being tracked in the state.
+    pub fn oldest_receipt_number() -> T::BlockNumber {
+        Self::finalized_receipt_number() + One::one()
+    }
+
+    /// Returns the block number of latest _finalized_ receipt.
+    pub fn finalized_receipt_number() -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get();
+        best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
     fn pre_dispatch_transaction_bundle(
         signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), TransactionValidityError> {
@@ -470,8 +499,9 @@ impl<T: Config> Pallet<T> {
             // TODO: is this check unnecessary as it's actually guaranteed by the above one?
             // Ensure the parent receipt exists after block #1.
             if primary_number > One::one() {
+                let parent_hash = <BlockHash<T>>::get(primary_number - One::one());
                 ensure!(
-                    Receipts::<T>::get(primary_number - One::one()).is_some(),
+                    ReceiptVotes::<T>::iter_prefix(parent_hash).next().is_some(),
                     TransactionValidityError::Invalid(
                         InvalidTransactionCode::ExecutionReceipt.into()
                     )
@@ -595,15 +625,22 @@ impl<T: Config> Pallet<T> {
     ) {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
+        let receipt_hash = execution_receipt.hash();
 
         // Apply the execution receipt.
-        <Receipts<T>>::insert(primary_number, execution_receipt);
+        <Receipts<T>>::insert(receipt_hash, execution_receipt);
         <ReceiptHead<T>>::put((primary_hash, primary_number));
+        <ReceiptVotes<T>>::mutate(primary_hash, receipt_hash, |count| {
+            *count += 1;
+        });
 
-        // Remove the oldest once the receipts cache is full.
+        // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            Receipts::<T>::remove(to_prune);
-            BlockHash::<T>::remove(to_prune);
+            let block_hash = BlockHash::<T>::take(to_prune);
+            for receipt_hash in <ReceiptVotes<T>>::iter_key_prefix(block_hash) {
+                Receipts::<T>::remove(receipt_hash);
+            }
+            let _ = <ReceiptVotes<T>>::clear_prefix(block_hash, u32::MAX, None);
         }
 
         Self::deposit_event(Event::NewExecutionReceipt {
