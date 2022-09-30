@@ -259,6 +259,15 @@ mod pallet {
     #[pallet::getter(fn executor)]
     pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
 
+    /// Map of block number to block hash.
+    ///
+    /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
+    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
+    /// this mapping will grow indefinitely.
+    #[pallet::storage]
+    pub(super) type BlockHash<T: Config> =
+        StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
+
     /// Mapping from the primary block number to the corresponding verified execution receipt.
     ///
     /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
@@ -271,15 +280,6 @@ mod pallet {
         ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
         OptionQuery,
     >;
-
-    /// Map of block number to block hash.
-    ///
-    /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
-    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
-    /// this mapping will grow indefinitely.
-    #[pallet::storage]
-    pub(super) type BlockHash<T: Config> =
-        StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
 
     /// Latest execution chain block number.
     #[pallet::storage]
@@ -344,7 +344,7 @@ mod pallet {
             match call {
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
-                } => Self::pre_dispatch_execution_receipts(&signed_opaque_bundle.bundle.receipts),
+                } => Self::pre_dispatch_transaction_bundle(signed_opaque_bundle),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -450,9 +450,11 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn pre_dispatch_execution_receipts(
-        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
+    fn pre_dispatch_transaction_bundle(
+        signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), TransactionValidityError> {
+        let execution_receipts = &signed_opaque_bundle.bundle.receipts;
+
         let mut best_number = ExecutionChainBestNumber::<T>::get();
 
         for execution_receipt in execution_receipts {
