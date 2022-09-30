@@ -44,7 +44,9 @@ mod pallet {
         BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionCode,
         InvalidTransactionProof, SignedOpaqueBundle,
     };
-    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps};
+    use sp_runtime::traits::{
+        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
+    };
     use sp_std::fmt::Debug;
     use subspace_runtime_primitives::CONFIRMATION_DEPTH_K;
 
@@ -338,6 +340,20 @@ mod pallet {
                     .clone()
                     .expect("Executor authority must be provided at genesis; qed"),
             );
+            let primary_number = T::BlockNumber::zero();
+            let primary_hash = frame_system::Pallet::<T>::block_hash(primary_number);
+            let genesis_receipt = ExecutionReceipt {
+                primary_number,
+                primary_hash,
+                secondary_hash: T::SecondaryHash::default(),
+                trace: Vec::new(),
+                trace_root: Default::default(),
+            };
+            let receipt_hash = genesis_receipt.hash();
+            BlockHash::<T>::insert(primary_number, primary_hash);
+            Receipts::<T>::insert(receipt_hash, genesis_receipt);
+            ReceiptHead::<T>::put((primary_hash, primary_number));
+            ReceiptVotes::<T>::insert(primary_hash, receipt_hash, 1);
         }
     }
 
@@ -502,20 +518,21 @@ impl<T: Config> Pallet<T> {
                 }
             }
 
-            // TODO: is this check unnecessary as it's actually guaranteed by the above one?
-            // Ensure the parent receipt exists after block #1.
-            if primary_number > One::one() {
-                let parent_hash = <BlockHash<T>>::get(primary_number - One::one());
-                ensure!(
-                    ReceiptVotes::<T>::iter_prefix(parent_hash).next().is_some(),
-                    TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into()
-                    )
-                );
-            }
-
             best_number += One::one();
         }
+
+        // Ensure the parent receipt exists.
+        let first_primary_number = execution_receipts
+            .get(0)
+            .ok_or_else(|| {
+                TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
+            })?
+            .primary_number;
+        let parent_hash = <BlockHash<T>>::get(first_primary_number - One::one());
+        ensure!(
+            ReceiptVotes::<T>::iter_prefix(parent_hash).next().is_some(),
+            TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
+        );
 
         Ok(())
     }
