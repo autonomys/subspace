@@ -114,6 +114,8 @@ mod pallet {
         TooFarInFuture,
         /// Receipts are not in ascending order.
         Unsorted,
+        /// Receipts in a bundle can not be empty.
+        Empty,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
@@ -122,6 +124,10 @@ mod pallet {
         ExecutionReceiptPruned,
         /// Trying to prove an receipt from the future.
         ExecutionReceiptInFuture,
+        /// Unexpected hash type.
+        WrongHashType,
+        /// The execution receipt points to a block unknown to the history.
+        UnknownBlock,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -379,7 +385,7 @@ mod pallet {
                         .bundle
                         .receipts
                         .get(0)
-                        .expect("Receipts in a bundle must be non-empty; qed")
+                        .expect("Receipts in a bundle must be non-empty as checked above; qed")
                         .primary_number;
 
                     let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
@@ -517,6 +523,10 @@ impl<T: Config> Pallet<T> {
     fn validate_execution_receipts(
         execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), ExecutionReceiptError> {
+        if execution_receipts.is_empty() {
+            return Err(ExecutionReceiptError::Empty);
+        }
+
         if !execution_receipts
             .iter()
             .map(|r| r.primary_number)
@@ -599,6 +609,14 @@ impl<T: Config> Pallet<T> {
         ensure!(
             to_prove <= best_number,
             FraudProofError::ExecutionReceiptInFuture
+        );
+
+        let parent_hash = T::Hash::decode(&mut fraud_proof.parent_hash.encode().as_slice())
+            .map_err(|_| FraudProofError::WrongHashType)?;
+        let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
+        ensure!(
+            BlockHash::<T>::get(parent_number) == parent_hash,
+            FraudProofError::UnknownBlock
         );
 
         // TODO: prevent the spamming of fraud proof transaction.
