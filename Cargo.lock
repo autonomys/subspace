@@ -4540,7 +4540,6 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-trie",
- "subspace-runtime-primitives",
 ]
 
 [[package]]

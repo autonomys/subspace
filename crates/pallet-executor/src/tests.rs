@@ -60,6 +60,7 @@ impl frame_system::Config for Test {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const ConfirmationDepthK: u32 = 10;
 }
 
 impl pallet_executor::Config for Test {
@@ -67,6 +68,7 @@ impl pallet_executor::Config for Test {
     type SecondaryHash = H256;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ConfirmationDepthK = ConfirmationDepthK;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {

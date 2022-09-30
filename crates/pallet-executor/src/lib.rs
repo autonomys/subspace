@@ -48,7 +48,6 @@ mod pallet {
         CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
     use sp_std::fmt::Debug;
-    use subspace_runtime_primitives::CONFIRMATION_DEPTH_K;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -80,7 +79,11 @@ mod pallet {
         /// If the primary number of an execution receipt plus the maximum drift is bigger than the
         /// best execution chain number, this receipt will be rejected as being too far in the
         /// future.
+        #[pallet::constant]
         type MaximumReceiptDrift: Get<Self::BlockNumber>;
+
+        /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
+        type ConfirmationDepthK: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -213,10 +216,9 @@ mod pallet {
 
             while to_remove > new_best_number {
                 let block_hash = BlockHash::<T>::get(to_remove);
-                for receipt_hash in <ReceiptVotes<T>>::iter_key_prefix(block_hash) {
+                for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
                     Receipts::<T>::remove(receipt_hash);
                 }
-                let _ = <ReceiptVotes<T>>::clear_prefix(block_hash, u32::MAX, None);
                 to_remove -= One::one();
             }
 
@@ -407,7 +409,9 @@ mod pallet {
                     let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         .priority(TransactionPriority::MAX)
                         .and_provides(first_primary_number)
-                        .longevity(CONFIRMATION_DEPTH_K as TransactionLongevity)
+                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }))
                         .propagate(true);
 
                     // primary_number is ensured to be larger than the best execution chain chain
@@ -671,11 +675,13 @@ impl<T: Config> Pallet<T> {
 
         // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            let block_hash = BlockHash::<T>::take(to_prune);
-            for receipt_hash in <ReceiptVotes<T>>::iter_key_prefix(block_hash) {
-                Receipts::<T>::remove(receipt_hash);
-            }
-            let _ = <ReceiptVotes<T>>::clear_prefix(block_hash, u32::MAX, None);
+            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
+                if let Some(block_hash) = maybe_block_hash.take() {
+                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                        Receipts::<T>::remove(receipt_hash);
+                    }
+                }
+            })
         }
 
         Self::deposit_event(Event::NewExecutionReceipt {

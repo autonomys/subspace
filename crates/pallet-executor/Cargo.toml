@@ -21,7 +21,6 @@ sp-core = { version = "6.0.0", default-features = false, git = "https://github.c
 sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 
 [dev-dependencies]
 sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -39,6 +38,5 @@ std = [
   "sp-executor/std",
   "sp-runtime/std",
   "sp-std/std",
-  "subspace-runtime-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
