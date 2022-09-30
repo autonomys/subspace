@@ -37,10 +37,10 @@ impl<H: Hasher> StorageProofVerifier<H> {
 
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub(crate) struct Proof<StateRoot> {
+pub struct Proof<StateRoot> {
     state_root: StateRoot,
     /// Storage proof that src_domain state_root is registered on System domain
     // TODO(ved): add system domain proof when store is available
     /// Storage proof that message is processed on src_domain.
-    pub(crate) message_proof: StorageProof,
+    pub message_proof: StorageProof,
 }

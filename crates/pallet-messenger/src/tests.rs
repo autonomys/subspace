@@ -1,6 +1,9 @@
+use crate::messages::{MessagePayload, ProtocolMessage, ProtocolMessageRequest, VersionedPayload};
 use crate::mock::{new_test_ext, DomainId, Event, Messenger, Origin, System, Test};
 use crate::verification::{StorageProofVerifier, VerificationError};
-use crate::{Channel, ChannelId, ChannelState, Channels, Error, InitiateChannelParams, U256};
+use crate::{
+    Channel, ChannelId, ChannelState, Channels, Error, InitiateChannelParams, Nonce, Outbox, U256,
+};
 use frame_support::{assert_err, assert_ok};
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
@@ -14,7 +17,7 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
         },
     ));
 
-    System::assert_last_event(Event::Messenger(crate::Event::<Test>::ChannelInitiated {
+    System::assert_has_event(Event::Messenger(crate::Event::<Test>::ChannelInitiated {
         domain_id,
         channel_id,
     }));
@@ -25,12 +28,31 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
 
     let channel = Messenger::channels(domain_id, channel_id).unwrap();
     assert_eq!(channel.state, ChannelState::Initiated);
+    assert_eq!(channel.next_inbox_nonce, Nonce::zero());
+    assert_eq!(channel.next_outbox_nonce, Nonce::one());
+    assert_eq!(channel.latest_response_received_message_nonce, None);
+    assert_eq!(Outbox::<Test>::count(), 1);
+    let msg = Outbox::<Test>::get((domain_id, channel_id, Nonce::zero())).unwrap();
+    assert_eq!(msg.dst_domain_id, domain_id);
+    assert_eq!(msg.channel_id, channel_id);
+    assert_eq!(
+        msg.payload,
+        VersionedPayload::V0(MessagePayload::ProtocolMessage(ProtocolMessage::Request(
+            ProtocolMessageRequest::ChannelOpen
+        )))
+    );
+
+    System::assert_last_event(Event::Messenger(crate::Event::<Test>::OutboxMessage {
+        domain_id,
+        channel_id,
+        nonce: Nonce::zero(),
+    }));
 }
 
 #[test]
 fn test_initiate_channel() {
     new_test_ext().execute_with(|| {
-        let domain_id = 0;
+        let domain_id = 1;
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id)
     });
@@ -39,7 +61,7 @@ fn test_initiate_channel() {
 #[test]
 fn test_close_missing_channel() {
     new_test_ext().execute_with(|| {
-        let domain_id = 0;
+        let domain_id = 1;
         let channel_id = U256::zero();
         assert_err!(
             Messenger::close_channel(Origin::root(), domain_id, channel_id,),
@@ -51,7 +73,7 @@ fn test_close_missing_channel() {
 #[test]
 fn test_close_not_open_channel() {
     new_test_ext().execute_with(|| {
-        let domain_id = 0;
+        let domain_id = 1;
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id);
         assert_err!(
@@ -64,14 +86,14 @@ fn test_close_not_open_channel() {
 #[test]
 fn test_close_open_channel() {
     new_test_ext().execute_with(|| {
-        let domain_id = 0;
+        let domain_id = 1;
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id);
         assert_ok!(Messenger::open_channel(domain_id, channel_id));
 
         let channel = Messenger::channels(domain_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Open);
-        System::assert_last_event(Event::Messenger(crate::Event::<Test>::ChannelOpen {
+        System::assert_has_event(Event::Messenger(crate::Event::<Test>::ChannelOpen {
             domain_id,
             channel_id,
         }));
@@ -84,9 +106,25 @@ fn test_close_open_channel() {
 
         let channel = Messenger::channels(domain_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Closed);
-        System::assert_last_event(Event::Messenger(crate::Event::<Test>::ChannelClosed {
+        System::assert_has_event(Event::Messenger(crate::Event::<Test>::ChannelClosed {
             domain_id,
             channel_id,
+        }));
+
+        let msg = Outbox::<Test>::get((domain_id, channel_id, Nonce::one())).unwrap();
+        assert_eq!(msg.dst_domain_id, domain_id);
+        assert_eq!(msg.channel_id, channel_id);
+        assert_eq!(
+            msg.payload,
+            VersionedPayload::V0(MessagePayload::ProtocolMessage(ProtocolMessage::Request(
+                ProtocolMessageRequest::ChannelClose
+            )))
+        );
+
+        System::assert_last_event(Event::Messenger(crate::Event::<Test>::OutboxMessage {
+            domain_id,
+            channel_id,
+            nonce: Nonce::one(),
         }));
     });
 }
@@ -94,7 +132,7 @@ fn test_close_open_channel() {
 #[test]
 fn test_storage_proof_verification_invalid() {
     let mut t = new_test_ext();
-    let domain_id = 0;
+    let domain_id = 1;
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id);
@@ -115,7 +153,7 @@ fn test_storage_proof_verification_invalid() {
 #[test]
 fn test_storage_proof_verification_missing_value() {
     let mut t = new_test_ext();
-    let domain_id = 0;
+    let domain_id = 1;
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id);
@@ -136,7 +174,7 @@ fn test_storage_proof_verification_missing_value() {
 #[test]
 fn test_storage_proof_verification() {
     let mut t = new_test_ext();
-    let domain_id = 0;
+    let domain_id = 1;
     let channel_id = U256::zero();
     let mut expected_channel = None;
     t.execute_with(|| {

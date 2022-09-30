@@ -33,6 +33,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
+use sp_runtime::traits::Hash;
 
 /// State of a channel.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, MaxEncodedLen)]
@@ -65,23 +66,29 @@ pub struct Channel {
     /// Next outbox nonce.
     pub(crate) next_outbox_nonce: Nonce,
     /// Latest outbox message nonce for which response was received from dst_domain.
-    pub(crate) latest_response_received_message_nonce: Nonce,
+    pub(crate) latest_response_received_message_nonce: Option<Nonce>,
     /// Maximum outgoing non-delivered messages.
-    pub(crate) max_outgoing_messages: u64,
+    pub(crate) max_outgoing_messages: u32,
 }
 
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct InitiateChannelParams {
-    max_outgoing_messages: u64,
+    max_outgoing_messages: u32,
 }
+
+pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::{Channel, ChannelId, ChannelState, InitiateChannelParams, U256};
+    use crate::messages::{
+        Message, MessagePayload, ProtocolMessage, ProtocolMessageRequest, VersionedPayload,
+    };
+    use crate::{
+        Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, StateRootOf, U256,
+    };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_messenger::SystemDomainTracker;
-    use sp_runtime::traits::Hash;
     use sp_runtime::ArithmeticError;
 
     #[pallet::config]
@@ -89,10 +96,10 @@ mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
         /// Domain ID uniquely identifies a Domain.
         type DomainId: Parameter + Member + Default + Copy + MaxEncodedLen;
+        /// Gets the domain_id that is treated as src_domain for outgoing messages.
+        type SelfDomainId: Get<Self::DomainId>;
         /// System domain tracker.
-        type SystemDomainTracker: SystemDomainTracker<
-            <<Self as frame_system::Config>::Hashing as Hash>::Output,
-        >;
+        type SystemDomainTracker: SystemDomainTracker<StateRootOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -112,6 +119,36 @@ mod pallet {
     #[pallet::getter(fn channels)]
     pub(super) type Channels<T: Config> =
         StorageDoubleMap<_, Identity, T::DomainId, Identity, ChannelId, Channel, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn inbox)]
+    pub(super) type Inbox<T: Config> = CountedStorageMap<
+        _,
+        Identity,
+        (T::DomainId, ChannelId, Nonce),
+        Message<T::DomainId>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn outbox)]
+    pub(super) type Outbox<T: Config> = CountedStorageMap<
+        _,
+        Identity,
+        (T::DomainId, ChannelId, Nonce),
+        Message<T::DomainId>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn responses)]
+    pub(super) type Responses<T: Config> = CountedStorageMap<
+        _,
+        Identity,
+        (T::DomainId, ChannelId, Nonce),
+        Message<T::DomainId>,
+        OptionQuery,
+    >;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -140,6 +177,13 @@ mod pallet {
             /// Channel ID of the said channel.
             channel_id: ChannelId,
         },
+
+        /// Emits when a new message is added to the outbox.
+        OutboxMessage {
+            domain_id: T::DomainId,
+            channel_id: ChannelId,
+            nonce: Nonce,
+        },
     }
 
     /// `pallet-messenger` errors
@@ -150,6 +194,9 @@ mod pallet {
 
         /// Emits when the said channel is not in an open state.
         InvalidChannelState,
+
+        /// Emits when the outbox is full for a channel.
+        OutboxFull,
     }
 
     #[pallet::call]
@@ -191,6 +238,15 @@ mod pallet {
                 channel_id,
             });
 
+            Self::new_outbox_message(
+                T::SelfDomainId::get(),
+                domain_id,
+                channel_id,
+                VersionedPayload::V0(MessagePayload::ProtocolMessage(ProtocolMessage::Request(
+                    ProtocolMessageRequest::ChannelOpen,
+                ))),
+            )?;
+
             Ok(())
         }
 
@@ -221,12 +277,22 @@ mod pallet {
                 channel_id,
             });
 
+            Self::new_outbox_message(
+                T::SelfDomainId::get(),
+                domain_id,
+                channel_id,
+                VersionedPayload::V0(MessagePayload::ProtocolMessage(ProtocolMessage::Request(
+                    ProtocolMessageRequest::ChannelClose,
+                ))),
+            )?;
+
             Ok(())
         }
     }
 
     impl<T: Config> Pallet<T> {
         /// Opens an initiated channel.
+        /// Sets the next inbox nonce as One.
         pub(crate) fn open_channel(
             domain_id: T::DomainId,
             channel_id: ChannelId,
@@ -239,6 +305,8 @@ mod pallet {
                     Error::<T>::InvalidChannelState
                 );
 
+                // set the next inbox nonce as One as the channel open request is nonce 0.
+                channel.next_inbox_nonce = Nonce::one();
                 channel.state = ChannelState::Open;
                 Ok(())
             })?;

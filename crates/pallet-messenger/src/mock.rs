@@ -86,9 +86,14 @@ mod mock_system_domain_tracker {
 
 impl mock_system_domain_tracker::Config for Test {}
 
+parameter_types! {
+    pub const SelfDomainId: DomainId = 0;
+}
+
 impl crate::Config for Test {
     type Event = Event;
     type DomainId = DomainId;
+    type SelfDomainId = SelfDomainId;
     type SystemDomainTracker = SystemDomainTracker;
 }
 
