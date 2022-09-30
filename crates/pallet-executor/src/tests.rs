@@ -1,6 +1,4 @@
-use crate::{
-    self as pallet_executor, BlockHash, ExecutionChainBestNumber, OldestReceiptNumber, Receipts,
-};
+use crate::{self as pallet_executor, BlockHash, ReceiptVotes, Receipts};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
@@ -159,12 +157,26 @@ fn create_dummy_bundle_with_receipts(
 
 #[test]
 fn submit_execution_receipt_incrementally_should_work() {
-    let dummy_bundles = (1u64..=256u64 + 3u64)
-        .map(|n| create_dummy_bundle(n, Hash::random()))
-        .collect::<Vec<_>>();
+    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64 + 3u64)
+        .map(|n| {
+            let primary_hash = Hash::random();
+            (create_dummy_bundle(n, primary_hash), primary_hash)
+        })
+        .unzip();
+
+    let receipt_hash = |block_number| {
+        dummy_bundles[block_number as usize - 1]
+            .clone()
+            .bundle
+            .receipts[0]
+            .hash()
+    };
 
     new_test_ext().execute_with(|| {
         (0..256).for_each(|index| {
+            let block_hash = block_hashes[index];
+            BlockHash::<Test>::insert((index + 1) as u64, block_hash);
+
             assert_ok!(pallet_executor::Pallet::<Test>::pre_dispatch(
                 &pallet_executor::Call::submit_transaction_bundle {
                     signed_opaque_bundle: dummy_bundles[index].clone()
@@ -174,21 +186,22 @@ fn submit_execution_receipt_incrementally_should_work() {
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
-            assert_eq!(OldestReceiptNumber::<Test>::get(), 1);
+
+            assert_eq!(Executor::finalized_receipt_number(), 0);
         });
 
-        assert!(Receipts::<Test>::get(257).is_none());
+        assert!(Receipts::<Test>::get(receipt_hash(257)).is_none());
         assert_ok!(Executor::submit_transaction_bundle(
             Origin::none(),
             dummy_bundles[256].clone(),
         ));
         // The oldest ER should be deleted.
-        assert!(Receipts::<Test>::get(1).is_none());
-        assert_eq!(OldestReceiptNumber::<Test>::get(), 2);
-        assert!(Receipts::<Test>::get(257).is_some());
+        assert!(Receipts::<Test>::get(receipt_hash(1)).is_none());
+        assert_eq!(Executor::finalized_receipt_number(), 1);
+        assert!(Receipts::<Test>::get(receipt_hash(257)).is_some());
 
-        assert!(Receipts::<Test>::get(2).is_some());
-        assert!(Receipts::<Test>::get(258).is_none());
+        assert!(Receipts::<Test>::get(receipt_hash(2)).is_some());
+        assert!(Receipts::<Test>::get(receipt_hash(258)).is_none());
 
         assert_noop!(
             pallet_executor::Pallet::<Test>::pre_dispatch(
@@ -203,9 +216,9 @@ fn submit_execution_receipt_incrementally_should_work() {
             Origin::none(),
             dummy_bundles[257].clone(),
         ));
-        assert!(Receipts::<Test>::get(2).is_none());
-        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
-        assert!(Receipts::<Test>::get(258).is_some());
+        assert!(Receipts::<Test>::get(receipt_hash(2)).is_none());
+        assert_eq!(Executor::finalized_receipt_number(), 2);
+        assert!(Receipts::<Test>::get(receipt_hash(258)).is_some());
     });
 }
 
@@ -267,7 +280,7 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
             dummy_bundles[257].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(2));
-        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
+        assert_eq!(Executor::finalized_receipt_number(), 2);
     });
 }
 
@@ -317,7 +330,7 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
         assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle1));
-        assert_eq!(ExecutionChainBestNumber::<Test>::get(), 255);
+        assert_eq!(Executor::best_execution_chain_number(), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
@@ -331,21 +344,24 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert!(BlockHash::<Test>::contains_key(2));
         assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle4));
         assert!(!BlockHash::<Test>::contains_key(2));
-        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
-        assert_eq!(ExecutionChainBestNumber::<Test>::get(), 258);
+        assert_eq!(Executor::finalized_receipt_number(), 2);
+        assert_eq!(Executor::best_execution_chain_number(), 258);
     });
 }
 
 #[test]
 fn submit_fraud_proof_should_work() {
-    let dummy_bundles = (1u64..=256u64)
-        .map(|n| create_dummy_bundle(n, Hash::random()))
-        .collect::<Vec<_>>();
+    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64)
+        .map(|n| {
+            let primary_hash = Hash::random();
+            (create_dummy_bundle(n, primary_hash), primary_hash)
+        })
+        .unzip();
 
     let dummy_proof = FraudProof {
         bad_signed_bundle_hash: Hash::random(),
         parent_number: 99,
-        parent_hash: H256::random(),
+        parent_hash: block_hashes[98],
         pre_state_root: H256::random(),
         post_state_root: H256::random(),
         proof: StorageProof::empty(),
@@ -353,20 +369,38 @@ fn submit_fraud_proof_should_work() {
     };
 
     new_test_ext().execute_with(|| {
-        (0u64..256u64).for_each(|index| {
+        (0usize..256usize).for_each(|index| {
+            let block_hash = block_hashes[index];
+            BlockHash::<Test>::insert((index + 1) as u64, block_hash);
+
             assert_ok!(Executor::submit_transaction_bundle(
                 Origin::none(),
-                dummy_bundles[index as usize].clone(),
+                dummy_bundles[index].clone(),
             ));
-            assert!(Receipts::<Test>::get(index + 1).is_some());
+
+            let receipt_hash = dummy_bundles[index].clone().bundle.receipts[0].hash();
+            assert!(Receipts::<Test>::get(receipt_hash).is_some());
+            let mut votes = ReceiptVotes::<Test>::iter_prefix(block_hash);
+            assert_eq!(votes.next(), Some((receipt_hash, 1)));
+            assert_eq!(votes.next(), None);
         });
 
         assert_ok!(Executor::submit_fraud_proof(Origin::none(), dummy_proof));
-        assert_eq!(<ExecutionChainBestNumber<Test>>::get(), 99);
-        assert!(Receipts::<Test>::get(99).is_some());
+        assert_eq!(Executor::best_execution_chain_number(), 99);
+        let receipt_hash = dummy_bundles[98].clone().bundle.receipts[0].hash();
+        assert!(Receipts::<Test>::get(receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.
         (100..=256).for_each(|block_number| {
-            assert!(Receipts::<Test>::get(block_number).is_none());
+            let receipt_hash = dummy_bundles[block_number as usize - 1]
+                .clone()
+                .bundle
+                .receipts[0]
+                .hash();
+            assert!(Receipts::<Test>::get(receipt_hash).is_none());
+            let block_hash = block_hashes[block_number as usize - 1];
+            assert!(ReceiptVotes::<Test>::iter_prefix(block_hash)
+                .next()
+                .is_none());
         });
     });
 }
