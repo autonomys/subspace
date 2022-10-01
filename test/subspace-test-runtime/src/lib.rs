@@ -241,6 +241,7 @@ parameter_types! {
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
+    pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -252,7 +253,7 @@ impl pallet_subspace::Config for Runtime {
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
-    type ConfirmationDepthK = ConstU32<CONFIRMATION_DEPTH_K>;
+    type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
@@ -485,6 +486,7 @@ impl pallet_executor::Config for Runtime {
     type SecondaryHash = cirrus_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ConfirmationDepthK = ConfirmationDepthK;
 }
 
 parameter_types! {
