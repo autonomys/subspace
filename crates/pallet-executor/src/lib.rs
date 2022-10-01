@@ -399,20 +399,23 @@ mod pallet {
                         return InvalidTransactionCode::Bundle.into();
                     }
 
+                    let mut builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
+                        .priority(TransactionPriority::MAX)
+                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }))
+                        .propagate(true);
+
+                    for receipt in &signed_opaque_bundle.bundle.receipts {
+                        builder = builder.and_provides(receipt.primary_number);
+                    }
+
                     let first_primary_number = signed_opaque_bundle
                         .bundle
                         .receipts
                         .get(0)
                         .expect("Receipts in a bundle must be non-empty as checked above; qed")
                         .primary_number;
-
-                    let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides(first_primary_number)
-                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
-                            panic!("Block number always fits in TransactionLongevity; qed")
-                        }))
-                        .propagate(true);
 
                     // primary_number is ensured to be larger than the best execution chain chain
                     // number above.
