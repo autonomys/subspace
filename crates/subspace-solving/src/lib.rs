@@ -53,7 +53,7 @@ pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
 // TODO: Separate type for global challenge
 /// Derive global slot challenge from global randomness.
 pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Blake2b256Hash {
-    crypto::blake2b_256_hash_pair(global_randomness, &slot.to_le_bytes())
+    crypto::blake2b_256_hash_list(&[global_randomness, &slot.to_le_bytes()])
 }
 
 fn create_local_challenge_transcript(global_challenge: &Blake2b256Hash) -> Transcript {
