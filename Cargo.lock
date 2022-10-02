@@ -8013,6 +8013,7 @@ dependencies = [
  "async-trait",
  "backoff",
  "base58",
+ "bitvec",
  "blake2-rfc",
  "bytesize",
  "clap 3.2.16",

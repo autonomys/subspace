@@ -8,7 +8,6 @@
     trait_alias,
     try_blocks
 )]
-#![feature(int_roundings)]
 
 //! # `subspace-farmer` library implementation overview
 //!

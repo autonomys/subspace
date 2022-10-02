@@ -3,6 +3,7 @@ use crate::identity::Identity;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::utils::JoinOnDrop;
+use bitvec::prelude::*;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use futures::stream::FuturesUnordered;
@@ -10,6 +11,7 @@ use futures::StreamExt;
 use memmap2::{MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -21,10 +23,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fs, io, thread};
-use subspace_core_primitives::{plot_sector_size, PieceIndex, PublicKey, SectorId, PIECE_SIZE};
+use subspace_core_primitives::crypto::blake2b_256_254_hash;
+use subspace_core_primitives::{
+    plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, PIECE_SIZE,
+};
 use subspace_networking::Node;
 use subspace_rpc_primitives::FarmerProtocolInfo;
-use subspace_solving::SubspaceCodec;
+use subspace_solving::{derive_piece_chunk_otp, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tracing::{debug, error, info_span, Instrument, Span};
@@ -211,11 +216,13 @@ impl PlotMetadataHeader {
 }
 
 #[derive(Debug, Encode, Decode)]
-struct SectorMetadata {}
+struct SectorMetadata {
+    expires_at: SegmentIndex,
+}
 
 impl SectorMetadata {
     fn encoded_size() -> usize {
-        let default = SectorMetadata {};
+        let default = SectorMetadata { expires_at: 0 };
 
         default.encoded_size()
     }
@@ -485,7 +492,6 @@ impl SingleDiskPlot {
             .spawn({
                 let handle = Handle::current();
                 let shutting_down = Arc::clone(&shutting_down);
-                let pieces_per_sector = plot_sector_size.div_ceil(PIECE_SIZE as u64);
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -517,7 +523,7 @@ impl SingleDiskPlot {
                             });
 
                         // TODO: Concurrency
-                        for (sector_index, sector, metadata) in plot_initial_sector {
+                        for (sector_index, sector, sector_metadata) in plot_initial_sector {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
@@ -529,10 +535,16 @@ impl SingleDiskPlot {
                             // TODO: Query from node before every sector such that sectors are
                             //  always created with latest value
                             let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
-                            let mut pieces =
-                                Vec::with_capacity(pieces_per_sector as usize * PIECE_SIZE);
+                            let current_segment_index = farmer_protocol_info.total_pieces
+                                / u64::from(farmer_protocol_info.recorded_history_segment_size)
+                                / u64::from(farmer_protocol_info.record_size.get())
+                                * 2;
+                            let expires_at =
+                                current_segment_index + farmer_protocol_info.sector_expiration;
 
-                            for piece_offset in 0..pieces_per_sector {
+                            for (piece_offset, sector_piece) in
+                                sector.chunks_exact_mut(PIECE_SIZE).enumerate()
+                            {
                                 if shutting_down.load(Ordering::Acquire) {
                                     debug!(
                                         %sector_index,
@@ -540,34 +552,59 @@ impl SingleDiskPlot {
                                     );
                                     return;
                                 }
-                                let piece_index =
-                                    sector_id.derive_piece_index(piece_offset, total_pieces);
+                                let piece_index = sector_id
+                                    .derive_piece_index(piece_offset as PieceIndex, total_pieces);
 
-                                let piece = match handle.block_on(rpc_client.get_piece(piece_index))
-                                {
-                                    Ok(Some(piece)) => piece,
-                                    Ok(None) => {
-                                        error!(
-                                            %piece_index,
-                                            "Piece not found, can't create sector, this should \
-                                            never happen"
+                                let mut piece: Piece =
+                                    match handle.block_on(rpc_client.get_piece(piece_index)) {
+                                        Ok(Some(piece)) => piece,
+                                        Ok(None) => {
+                                            error!(
+                                                %piece_index,
+                                                "Piece not found, can't create sector, this should \
+                                                never happen"
+                                            );
+                                            return;
+                                        }
+                                        Err(error) => {
+                                            error!(%error, "Failed to retriever piece");
+                                            return;
+                                        }
+                                    };
+
+                                let piece_commitment = blake2b_256_254_hash(
+                                    &piece[..farmer_protocol_info.record_size.get() as usize],
+                                );
+
+                                // Encode piece
+                                piece
+                                    .as_mut()
+                                    .view_bits_mut::<Lsb0>()
+                                    .chunks_mut(farmer_protocol_info.space_l.get() as usize)
+                                    .enumerate()
+                                    .par_bridge()
+                                    .for_each(|(chunk_index, bits)| {
+                                        // Derive one-time pad
+                                        let mut otp = derive_piece_chunk_otp(
+                                            &sector_id,
+                                            &piece_commitment,
+                                            chunk_index as u32,
                                         );
-                                        return;
-                                    }
-                                    Err(error) => {
-                                        error!(%error, "Failed to retriever piece");
-                                        return;
-                                    }
-                                };
+                                        // XOR chunk bit by bit with one-time pad
+                                        bits.iter_mut()
+                                            .zip(otp.view_bits_mut::<Lsb0>().iter())
+                                            .for_each(|(mut a, b)| {
+                                                *a ^= *b;
+                                            });
+                                    });
 
-                                pieces.extend_from_slice(&piece);
+                                sector_piece.copy_from_slice(&piece);
                             }
 
-                            // TODO: Encode pieces
-                            // TODO: Create table
-                            // TODO: Write table to sector
-                            // TODO: Write sector metadata
+                            // TODO: Invert table in future
 
+                            sector_metadata
+                                .copy_from_slice(&SectorMetadata { expires_at }.encode());
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
