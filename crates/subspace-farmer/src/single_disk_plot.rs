@@ -352,6 +352,18 @@ pub enum FarmingError {
         /// Lower-level error
         error: io::Error,
     },
+    /// Failed to create memory mapping for metadata
+    #[error("Failed to create memory mapping for metadata: {error}")]
+    FailedToMapMetadata {
+        /// Lower-level error
+        error: io::Error,
+    },
+    /// Failed to decode sector metadata
+    #[error("Failed to decode sector metadata: {error}")]
+    FailedToDecodeMetadata {
+        /// Lower-level error
+        error: parity_scale_codec::Error,
+    },
 }
 
 /// Errors that happen in background tasks
@@ -536,7 +548,7 @@ impl SingleDiskPlot {
 
         let metadata_header = Arc::new(Mutex::new(metadata_header));
 
-        let mut metadata_mmap = unsafe {
+        let mut metadata_mmap_mut = unsafe {
             MmapOptions::new()
                 .offset(RESERVED_PLOT_METADATA)
                 .len(SectorMetadata::encoded_size() * target_sector_count as usize)
@@ -591,7 +603,7 @@ impl SingleDiskPlot {
                         let chunked_sectors = plot_mmap_mut
                             .as_mut()
                             .chunks_exact_mut(plot_sector_size as usize);
-                        let chunked_metadata = metadata_mmap
+                        let chunked_metadata = metadata_mmap_mut
                             .as_mut()
                             .chunks_exact_mut(SectorMetadata::encoded_size());
                         let plot_initial_sector = chunked_sectors
@@ -740,13 +752,21 @@ impl SingleDiskPlot {
                                     .map_mut(&plot_file)
                                     .map_err(|error| FarmingError::FailedToMapPlot { error })?
                             };
+                            let metadata_mmap = unsafe {
+                                MmapOptions::new()
+                                    .offset(RESERVED_PLOT_METADATA)
+                                    .len(SectorMetadata::encoded_size() * sector_count as usize)
+                                    .map(&metadata_file)
+                                    .map_err(|error| FarmingError::FailedToMapMetadata { error })?
+                            };
                             let shutting_down = Arc::clone(&shutting_down);
 
                             let solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
                             // TODO: This loop should happen in a blocking task
-                            for (sector_index, sector) in plot_mmap
+                            for (sector_index, (sector, sector_metadata)) in plot_mmap
                                 .chunks_exact(plot_sector_size as usize)
+                                .zip(metadata_mmap.chunks_exact(SectorMetadata::encoded_size()))
                                 .enumerate()
                             {
                                 if shutting_down.load(Ordering::Acquire) {
@@ -773,6 +793,12 @@ impl SingleDiskPlot {
                                     expanded_chunk,
                                     slot_info.voting_solution_range,
                                 ) {
+                                    let sector_metadata =
+                                        SectorMetadata::decode(&mut &*sector_metadata).map_err(
+                                            |error| FarmingError::FailedToDecodeMetadata { error },
+                                        )?;
+
+                                    let _ = sector_metadata;
                                     // TODO: Correct solution data structure
                                     // debug!("Solution found");
                                     // trace!(?solution, "Solution found");
