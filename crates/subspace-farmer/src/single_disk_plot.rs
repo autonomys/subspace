@@ -1,11 +1,13 @@
 use crate::file_ext::FileExt;
 use crate::identity::Identity;
+use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::utils::JoinOnDrop;
 use bitvec::prelude::*;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
+use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use memmap2::{MmapMut, MmapOptions};
@@ -229,14 +231,6 @@ impl SectorMetadata {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum FarmingError {
-    #[error("jsonrpsee error: {0}")]
-    RpcError(Box<dyn std::error::Error + Send + Sync>),
-    #[error("Plot read error: {0}")]
-    PlotRead(io::Error),
-}
-
 /// Options used to open single dis plot
 pub struct SingleDiskPlotOptions<RC> {
     /// Path to directory where plot are stored.
@@ -256,6 +250,7 @@ pub struct SingleDiskPlotOptions<RC> {
 /// Errors happening when trying to create/open single disk plot
 #[derive(Debug, Error)]
 pub enum SingleDiskPlotError {
+    // TODO: Make more variants out of this generic one
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -310,13 +305,68 @@ pub enum SingleDiskPlotError {
     NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
+/// Errors that happen during plotting
+#[derive(Debug, Error)]
+pub enum PlottingError {
+    /// Failed to retriever farmer protocol info
+    #[error("Failed to retriever farmer protocol info: {error}")]
+    FailedToGetFarmerProtocolInfo {
+        /// Lower-level error
+        error: rpc_client::Error,
+    },
+    /// Piece not found, can't create sector, this should never happen
+    #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
+    PieceNotFound {
+        /// Piece index
+        piece_index: PieceIndex,
+    },
+    /// Failed to retriever piece
+    #[error("Failed to retriever piece {piece_index}: {error}")]
+    FailedToRetrievePiece {
+        /// Piece index
+        piece_index: PieceIndex,
+        /// Lower-level error
+        error: rpc_client::Error,
+    },
+}
+
+/// Errors that happen during farming
+#[derive(Debug, Error)]
+pub enum FarmingError {
+    /// Failed to retriever farmer protocol info
+    #[error("Failed to retriever farmer protocol info: {error}")]
+    FailedToGetFarmerProtocolInfo {
+        /// Lower-level error
+        error: rpc_client::Error,
+    },
+    /// Failed to create memory mapping for plot
+    #[error("Failed to create memory mapping for plot: {error}")]
+    FailedToMapPlot {
+        /// Lower-level error
+        error: io::Error,
+    },
+}
+
+/// Errors that happen in background tasks
+#[derive(Debug, Error)]
+pub enum BackgroundTaskError {
+    /// Plotting error
+    #[error(transparent)]
+    Plotting(#[from] PlottingError),
+    /// Farming error
+    #[error(transparent)]
+    Farming(#[from] FarmingError),
+}
+
+type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
+
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskPlot {
     id: SingleDiskPlotId,
     span: Span,
-    tasks: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>,
+    tasks: FuturesUnordered<BackgroundTask>,
     _plotting_join_handle: JoinOnDrop,
     _farming_join_handle: JoinOnDrop,
     shutting_down: Arc<AtomicBool>,
@@ -500,8 +550,18 @@ impl SingleDiskPlot {
         // TODO: Use this or remove
         let _codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
 
-        let tasks =
-            FuturesUnordered::<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>::new();
+        let (error_sender, error_receiver) = oneshot::channel();
+        let error_sender = Arc::new(Mutex::new(Some(error_sender)));
+
+        let tasks = FuturesUnordered::<BackgroundTask>::new();
+
+        tasks.push(Box::pin(async move {
+            if let Ok(error) = error_receiver.await {
+                return Err(error);
+            }
+
+            Ok(())
+        }));
 
         let shutting_down = Arc::new(AtomicBool::new(false));
 
@@ -512,6 +572,7 @@ impl SingleDiskPlot {
                 let metadata_header = Arc::clone(&metadata_header);
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
+                let error_sender = Arc::clone(&error_sender);
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -519,7 +580,7 @@ impl SingleDiskPlot {
                     let _span_guard = span.enter();
 
                     // Initial plotting
-                    {
+                    let initial_plotting_result = try {
                         let chunked_sectors = plot_mmap_mut
                             .as_mut()
                             .chunks_exact_mut(plot_sector_size as usize);
@@ -553,13 +614,9 @@ impl SingleDiskPlot {
                             }
                             let sector_id = SectorId::new(&public_key, sector_index);
                             let farmer_protocol_info =
-                                match handle.block_on(rpc_client.farmer_protocol_info()) {
-                                    Ok(farmer_protocol_info) => farmer_protocol_info,
-                                    Err(error) => {
-                                        error!(%error, "Failed to retriever farmer protocol info");
-                                        return;
-                                    }
-                                };
+                                handle.block_on(rpc_client.farmer_protocol_info()).map_err(
+                                    |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
+                                )?;
                             let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
                             // TODO: Consider adding current segment index to protocol info
                             //  explicitly, but, ideally, we need to remove 2x replication
@@ -584,22 +641,13 @@ impl SingleDiskPlot {
                                 let piece_index = sector_id
                                     .derive_piece_index(piece_offset as PieceIndex, total_pieces);
 
-                                let mut piece: Piece =
-                                    match handle.block_on(rpc_client.get_piece(piece_index)) {
-                                        Ok(Some(piece)) => piece,
-                                        Ok(None) => {
-                                            error!(
-                                                %piece_index,
-                                                "Piece not found, can't create sector, this should \
-                                                never happen"
-                                            );
-                                            return;
-                                        }
-                                        Err(error) => {
-                                            error!(%error, "Failed to retriever piece");
-                                            return;
-                                        }
-                                    };
+                                let mut piece: Piece = handle
+                                    .block_on(rpc_client.get_piece(piece_index))
+                                    .map_err(|error| PlottingError::FailedToRetrievePiece {
+                                        piece_index,
+                                        error,
+                                    })?
+                                    .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
                                 let piece_commitment = blake2b_256_254_hash(
                                     &piece[..farmer_protocol_info.record_size.get() as usize],
@@ -639,6 +687,14 @@ impl SingleDiskPlot {
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
                         }
+                    };
+
+                    if let Err(error) = initial_plotting_result {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error) {
+                                error!(%error, "Plotting failed to send error to background task");
+                            }
+                        }
                     }
                 }
             })?;
@@ -653,94 +709,90 @@ impl SingleDiskPlot {
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
-                    info!("Subscribing to slot info notifications");
-                    let mut slot_info_notifications =
-                        match handle.block_on(rpc_client.subscribe_slot_info()) {
-                            Ok(slot_info_notifications) => slot_info_notifications,
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    "Failed to subscribe to slot info notifications"
+                    let farming_result = try {
+                        info!("Subscribing to slot info notifications");
+                        let mut slot_info_notifications = handle
+                            .block_on(rpc_client.subscribe_slot_info())
+                            .map_err(|error| FarmingError::FailedToGetFarmerProtocolInfo {
+                                error,
+                            })?;
+
+                        while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
+                        {
+                            debug!(?slot_info, "New slot");
+
+                            let plot_mmap = {
+                                let mut options = MmapOptions::new();
+                                options.len(
+                                    (plot_sector_size * metadata_header.lock().sector_count)
+                                        as usize,
                                 );
-                                return;
-                            }
-                        };
 
-                    while let Some(slot_info) = handle.block_on(slot_info_notifications.next()) {
-                        debug!(?slot_info, "New slot");
+                                unsafe { options.map_mut(&plot_file) }
+                                    .map_err(|error| FarmingError::FailedToMapPlot { error })?
+                            };
+                            let shutting_down = Arc::clone(&shutting_down);
 
-                        let plot_mmap = {
-                            let mut options = MmapOptions::new();
-                            options.len(
-                                (plot_sector_size * metadata_header.lock().sector_count) as usize,
-                            );
+                            let solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-                            match unsafe { options.map_mut(&plot_file) } {
-                                Ok(plot_mmap) => plot_mmap,
-                                Err(error) => {
-                                    error!(
-                                        %error,
-                                        "Failed to create plot memory mapping"
+                            // TODO: This loop should happen in a blocking task
+                            for (sector_index, sector) in plot_mmap
+                                .chunks_exact(plot_sector_size as usize)
+                                .enumerate()
+                            {
+                                if shutting_down.load(Ordering::Acquire) {
+                                    debug!(
+                                        %sector_index,
+                                        "Instance is shutting down, interrupting plotting"
                                     );
                                     return;
                                 }
-                            }
-                        };
-                        let shutting_down = Arc::clone(&shutting_down);
 
-                        let solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
-
-                        // TODO: This loop should happen in a blocking task
-                        for (sector_index, sector) in plot_mmap
-                            .chunks_exact(plot_sector_size as usize)
-                            .enumerate()
-                        {
-                            if shutting_down.load(Ordering::Acquire) {
-                                debug!(
-                                    %sector_index,
-                                    "Instance is shutting down, interrupting plotting"
-                                );
-                                return;
-                            }
-
-                            let sector_id = SectorId::new(&public_key, sector_index as u64);
+                                let sector_id = SectorId::new(&public_key, sector_index as u64);
 
                             let local_challenge =
                                 sector_id.derive_local_challenge(&slot_info.global_challenge);
                             let audit_index: u64 =
                                 local_challenge % (plot_sector_size * u64::from(u8::BITS));
 
-                            let (_, chunk) = sector.view_bits().split_at(audit_index as usize);
-                            let (chunk, _) = chunk.split_at(space_l.get() as usize);
-                            let expanded_chunk = expand_chunk(chunk);
+                                let (_, chunk) = sector.view_bits().split_at(audit_index as usize);
+                                let (chunk, _) = chunk.split_at(space_l.get() as usize);
+                                let expanded_chunk = expand_chunk(chunk);
 
-                            if is_within_solution_range2(
-                                local_challenge,
-                                expanded_chunk,
-                                slot_info.voting_solution_range,
-                            ) {
-                                // TODO: Correct solution data structure
-                                // debug!("Solution found");
-                                // trace!(?solution, "Solution found");
-                                // let solution = Solution {
-                                // };
-                                // solutions.push(solution);
+                                if is_within_solution_range2(
+                                    local_challenge,
+                                    expanded_chunk,
+                                    slot_info.voting_solution_range,
+                                ) {
+                                    // TODO: Correct solution data structure
+                                    // debug!("Solution found");
+                                    // trace!(?solution, "Solution found");
+                                    // let solution = Solution {
+                                    // };
+                                    // solutions.push(solution);
+                                }
+                            }
+
+                            drop(solutions);
+                            // client
+                            //     .submit_solution_response(SolutionResponse {
+                            //         slot_number: slot_info.slot_number,
+                            //         solutions,
+                            //     })
+                            //     .await
+                            //     .map_err(FarmingError::RpcError)?;
+                        }
+                    };
+
+                    if let Err(error) = farming_result {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error) {
+                                error!(%error, "Farming failed to send error to background task");
                             }
                         }
-
-                        drop(solutions);
-                        // client
-                        //     .submit_solution_response(SolutionResponse {
-                        //         slot_number: slot_info.slot_number,
-                        //         solutions,
-                        //     })
-                        //     .await
-                        //     .map_err(FarmingError::RpcError)?;
                     }
                 }
             })?;
-
-        // TODO: Forward errors from background threads into async task that can be awaited for
 
         let farm = Self {
             id: single_disk_plot_id,
