@@ -416,7 +416,6 @@ impl SingleDiskPlot {
 
         // TODO: Account for plot overhead
         let target_sector_count = allocated_space / plot_sector_size;
-        let plot_file_size = target_sector_count * plot_sector_size;
 
         let mut metadata_file = OpenOptions::new()
             .read(true)
@@ -479,7 +478,8 @@ impl SingleDiskPlot {
             .create(true)
             .open(directory.join(Self::PLOT_FILE))?;
 
-        plot_file.preallocate(plot_file_size)?;
+        plot_file.preallocate(plot_sector_size * target_sector_count)?;
+        plot_file.advise_random_access()?;
 
         let mut plot_mmap = unsafe { MmapMut::map_mut(&plot_file)? };
 
