@@ -11,6 +11,7 @@ use futures::StreamExt;
 use memmap2::{MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
@@ -425,49 +426,51 @@ impl SingleDiskPlot {
 
         metadata_file.advise_random_access()?;
 
-        let (mut metadata_header, mut metadata_header_mmap) =
-            if metadata_file.seek(SeekFrom::End(0))? == 0 {
-                let metadata_header = PlotMetadataHeader {
-                    version: 0,
-                    sector_count: 0,
-                };
-
-                metadata_file.preallocate(
-                    PlotMetadataHeader::encoded_size() as u64
-                        + SectorMetadata::encoded_size() as u64 * target_sector_count,
-                )?;
-                metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
-
-                let metadata_header_mmap = unsafe {
-                    MmapOptions::new()
-                        .len(PlotMetadataHeader::encoded_size())
-                        .map_mut(&metadata_file)?
-                };
-
-                (metadata_header, metadata_header_mmap)
-            } else {
-                let metadata_header_mmap = unsafe {
-                    MmapOptions::new()
-                        .len(PlotMetadataHeader::encoded_size())
-                        .map_mut(&metadata_file)?
-                };
-
-                let metadata_header =
-                    PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
-                        .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
-
-                if metadata_header.version != 0 {
-                    return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
-                        metadata_header.version,
-                    ));
-                }
-
-                (metadata_header, metadata_header_mmap)
+        let (metadata_header, mut metadata_header_mmap) = if metadata_file.seek(SeekFrom::End(0))?
+            == 0
+        {
+            let metadata_header = PlotMetadataHeader {
+                version: 0,
+                sector_count: 0,
             };
+
+            metadata_file.preallocate(
+                PlotMetadataHeader::encoded_size() as u64
+                    + SectorMetadata::encoded_size() as u64 * target_sector_count,
+            )?;
+            metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
+
+            let metadata_header_mmap = unsafe {
+                MmapOptions::new()
+                    .len(PlotMetadataHeader::encoded_size())
+                    .map_mut(&metadata_file)?
+            };
+
+            (metadata_header, metadata_header_mmap)
+        } else {
+            let metadata_header_mmap = unsafe {
+                MmapOptions::new()
+                    .len(PlotMetadataHeader::encoded_size())
+                    .map_mut(&metadata_file)?
+            };
+
+            let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
+
+            if metadata_header.version != 0 {
+                return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
+                    metadata_header.version,
+                ));
+            }
+
+            (metadata_header, metadata_header_mmap)
+        };
+
+        let metadata_header = Arc::new(Mutex::new(metadata_header));
 
         let mut metadata_mmap = unsafe {
             MmapOptions::new()
-                .offset(metadata_header.encoded_size() as u64)
+                .offset(PlotMetadataHeader::encoded_size() as u64)
                 .len(SectorMetadata::encoded_size())
                 .map_mut(&metadata_file)?
         };
@@ -491,10 +494,10 @@ impl SingleDiskPlot {
 
         let shutting_down = Arc::new(AtomicBool::new(false));
 
-        // Plotting
         let plotting_join_handle = thread::Builder::new()
             .name(format!("p-{single_disk_plot_id}"))
             .spawn({
+                let metadata_header = Arc::clone(&metadata_header);
                 let shutting_down = Arc::clone(&shutting_down);
 
                 move || {
@@ -515,7 +518,7 @@ impl SingleDiskPlot {
                             .enumerate()
                             .skip(
                                 // Some sectors may already be plotted, skip them
-                                metadata_header.sector_count as usize,
+                                metadata_header.lock().sector_count as usize,
                             )
                             .map(|(sector_index, (sector, metadata))| {
                                 (
@@ -618,6 +621,7 @@ impl SingleDiskPlot {
 
                             sector_metadata
                                 .copy_from_slice(&SectorMetadata { expires_at }.encode());
+                            let mut metadata_header = metadata_header.lock();
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
