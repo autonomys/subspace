@@ -223,12 +223,16 @@ impl PlotMetadataHeader {
 
 #[derive(Debug, Encode, Decode)]
 struct SectorMetadata {
+    created_at: SegmentIndex,
     expires_at: SegmentIndex,
 }
 
 impl SectorMetadata {
     fn encoded_size() -> usize {
-        let default = SectorMetadata { expires_at: 0 };
+        let default = SectorMetadata {
+            created_at: 0,
+            expires_at: 0,
+        };
 
         default.encoded_size()
     }
@@ -683,8 +687,13 @@ impl SingleDiskPlot {
 
                             // TODO: Invert table in future
 
-                            sector_metadata
-                                .copy_from_slice(&SectorMetadata { expires_at }.encode());
+                            sector_metadata.copy_from_slice(
+                                &SectorMetadata {
+                                    created_at: current_segment_index,
+                                    expires_at,
+                                }
+                                .encode(),
+                            );
                             let mut metadata_header = metadata_header.lock();
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
