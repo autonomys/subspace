@@ -28,7 +28,6 @@ use subspace_core_primitives::{
     plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, PIECE_SIZE,
 };
 use subspace_networking::Node;
-use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{derive_piece_chunk_otp, SubspaceCodec};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -242,8 +241,6 @@ pub struct SingleDiskPlotOptions<RC> {
     pub rpc_client: RC,
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
-    /// Information about protocol necessary for farmer
-    pub farmer_protocol_info: FarmerProtocolInfo,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -298,6 +295,9 @@ pub enum SingleDiskPlotError {
     /// Unexpected metadata version
     #[error("Unexpected metadata version {0}")]
     UnexpectedMetadataVersion(u8),
+    /// Node RPC error
+    #[error("Node RPC error: {0}")]
+    NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
@@ -326,14 +326,14 @@ impl SingleDiskPlot {
     where
         RC: RpcClient,
     {
+        let handle = Handle::current();
+
         let SingleDiskPlotOptions {
             directory,
             allocated_space,
             identity,
             // TODO: Use this or remove
             node: _,
-            farmer_protocol_info,
-            // TODO: Use this or remove
             rpc_client,
             // TODO: Use this or remove
             reward_address: _,
@@ -348,6 +348,11 @@ impl SingleDiskPlot {
 
         let public_key = identity.public_key().to_bytes().into();
 
+        let farmer_protocol_info = tokio::task::block_in_place(|| {
+            Handle::current()
+                .block_on(rpc_client.farmer_protocol_info())
+                .map_err(SingleDiskPlotError::NodeRpcError)
+        })?;
         // TODO: In case `space_l` changes on the fly, code below will break horribly
         let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
 
@@ -490,7 +495,6 @@ impl SingleDiskPlot {
         let plotting_join_handle = thread::Builder::new()
             .name(format!("p-{single_disk_plot_id}"))
             .spawn({
-                let handle = Handle::current();
                 let shutting_down = Arc::clone(&shutting_down);
 
                 move || {
@@ -532,9 +536,18 @@ impl SingleDiskPlot {
                                 return;
                             }
                             let sector_id = SectorId::new(&public_key, sector_index);
-                            // TODO: Query from node before every sector such that sectors are
-                            //  always created with latest value
+                            let farmer_protocol_info =
+                                match handle.block_on(rpc_client.farmer_protocol_info()) {
+                                    Ok(farmer_protocol_info) => farmer_protocol_info,
+                                    Err(error) => {
+                                        error!(%error, "Failed to retriever farmer protocol info");
+                                        return;
+                                    }
+                                };
                             let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
+                            // TODO: Consider adding current segment index to protocol info
+                            //  explicitly, but, ideally, we need to remove 2x replication
+                            //  expectation from other places too
                             let current_segment_index = farmer_protocol_info.total_pieces
                                 / u64::from(farmer_protocol_info.recorded_history_segment_size)
                                 / u64::from(farmer_protocol_info.record_size.get())
