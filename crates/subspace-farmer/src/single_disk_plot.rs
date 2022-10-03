@@ -26,13 +26,14 @@ use std::time::SystemTime;
 use std::{fs, io, thread};
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::{
-    plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, PIECE_SIZE,
+    plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution, PIECE_SIZE,
 };
 use subspace_networking::Node;
-use subspace_solving::{derive_piece_chunk_otp, SubspaceCodec};
+use subspace_solving::{derive_piece_chunk_otp, expand_chunk, SubspaceCodec};
+use subspace_verification::is_within_solution_range2;
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{debug, error, info_span, Instrument, Span};
+use tracing::{debug, error, info, info_span, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -228,6 +229,14 @@ impl SectorMetadata {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum FarmingError {
+    #[error("jsonrpsee error: {0}")]
+    RpcError(Box<dyn std::error::Error + Send + Sync>),
+    #[error("Plot read error: {0}")]
+    PlotRead(io::Error),
+}
+
 /// Options used to open single dis plot
 pub struct SingleDiskPlotOptions<RC> {
     /// Path to directory where plot are stored.
@@ -309,6 +318,7 @@ pub struct SingleDiskPlot {
     span: Span,
     tasks: FuturesUnordered<Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>>,
     _plotting_join_handle: JoinOnDrop,
+    _farming_join_handle: JoinOnDrop,
     shutting_down: Arc<AtomicBool>,
 }
 
@@ -355,7 +365,8 @@ impl SingleDiskPlot {
                 .map_err(SingleDiskPlotError::NodeRpcError)
         })?;
         // TODO: In case `space_l` changes on the fly, code below will break horribly
-        let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
+        let space_l = farmer_protocol_info.space_l;
+        let plot_sector_size = plot_sector_size(space_l);
 
         assert_eq!(
             plot_sector_size % PIECE_SIZE as u64,
@@ -484,7 +495,7 @@ impl SingleDiskPlot {
         plot_file.preallocate(plot_sector_size * target_sector_count)?;
         plot_file.advise_random_access()?;
 
-        let mut plot_mmap = unsafe { MmapMut::map_mut(&plot_file)? };
+        let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
 
         // TODO: Use this or remove
         let _codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
@@ -497,8 +508,10 @@ impl SingleDiskPlot {
         let plotting_join_handle = thread::Builder::new()
             .name(format!("p-{single_disk_plot_id}"))
             .spawn({
+                let handle = handle.clone();
                 let metadata_header = Arc::clone(&metadata_header);
                 let shutting_down = Arc::clone(&shutting_down);
+                let rpc_client = rpc_client.clone();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -507,7 +520,7 @@ impl SingleDiskPlot {
 
                     // Initial plotting
                     {
-                        let chunked_sectors = plot_mmap
+                        let chunked_sectors = plot_mmap_mut
                             .as_mut()
                             .chunks_exact_mut(plot_sector_size as usize);
                         let chunked_metadata = metadata_mmap
@@ -596,7 +609,7 @@ impl SingleDiskPlot {
                                 piece
                                     .as_mut()
                                     .view_bits_mut::<Lsb0>()
-                                    .chunks_mut(farmer_protocol_info.space_l.get() as usize)
+                                    .chunks_mut(space_l.get() as usize)
                                     .enumerate()
                                     .par_bridge()
                                     .for_each(|(chunk_index, bits)| {
@@ -630,11 +643,111 @@ impl SingleDiskPlot {
                 }
             })?;
 
+        let farming_join_handle = thread::Builder::new()
+            .name(format!("f-{single_disk_plot_id}"))
+            .spawn({
+                let shutting_down = Arc::clone(&shutting_down);
+
+                move || {
+                    let _tokio_handle_guard = handle.enter();
+                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
+                    let _span_guard = span.enter();
+
+                    info!("Subscribing to slot info notifications");
+                    let mut slot_info_notifications =
+                        match handle.block_on(rpc_client.subscribe_slot_info()) {
+                            Ok(slot_info_notifications) => slot_info_notifications,
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    "Failed to subscribe to slot info notifications"
+                                );
+                                return;
+                            }
+                        };
+
+                    while let Some(slot_info) = handle.block_on(slot_info_notifications.next()) {
+                        debug!(?slot_info, "New slot");
+
+                        let plot_mmap = {
+                            let mut options = MmapOptions::new();
+                            options.len(
+                                (plot_sector_size * metadata_header.lock().sector_count) as usize,
+                            );
+
+                            match unsafe { options.map_mut(&plot_file) } {
+                                Ok(plot_mmap) => plot_mmap,
+                                Err(error) => {
+                                    error!(
+                                        %error,
+                                        "Failed to create plot memory mapping"
+                                    );
+                                    return;
+                                }
+                            }
+                        };
+                        let shutting_down = Arc::clone(&shutting_down);
+
+                        let solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+
+                        // TODO: This loop should happen in a blocking task
+                        for (sector_index, sector) in plot_mmap
+                            .chunks_exact(plot_sector_size as usize)
+                            .enumerate()
+                        {
+                            if shutting_down.load(Ordering::Acquire) {
+                                debug!(
+                                    %sector_index,
+                                    "Instance is shutting down, interrupting plotting"
+                                );
+                                return;
+                            }
+
+                            let sector_id = SectorId::new(&public_key, sector_index as u64);
+
+                            let local_challenge =
+                                sector_id.derive_local_challenge(&slot_info.global_challenge);
+                            let audit_index: u64 =
+                                local_challenge % (plot_sector_size * u64::from(u8::BITS));
+
+                            let (_, chunk) = sector.view_bits().split_at(audit_index as usize);
+                            let (chunk, _) = chunk.split_at(space_l.get() as usize);
+                            let expanded_chunk = expand_chunk(chunk);
+
+                            if is_within_solution_range2(
+                                local_challenge,
+                                expanded_chunk,
+                                slot_info.voting_solution_range,
+                            ) {
+                                // TODO: Correct solution data structure
+                                // debug!("Solution found");
+                                // trace!(?solution, "Solution found");
+                                // let solution = Solution {
+                                // };
+                                // solutions.push(solution);
+                            }
+                        }
+
+                        drop(solutions);
+                        // client
+                        //     .submit_solution_response(SolutionResponse {
+                        //         slot_number: slot_info.slot_number,
+                        //         solutions,
+                        //     })
+                        //     .await
+                        //     .map_err(FarmingError::RpcError)?;
+                    }
+                }
+            })?;
+
+        // TODO: Forward errors from background threads into async task that can be awaited for
+
         let farm = Self {
             id: single_disk_plot_id,
             span: Span::current(),
             tasks,
             _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
+            _farming_join_handle: JoinOnDrop::new(farming_join_handle),
             shutting_down,
         };
 

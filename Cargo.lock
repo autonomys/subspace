@@ -8292,6 +8292,7 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "merlin 2.0.1",
  "num-traits",
  "num_cpus",

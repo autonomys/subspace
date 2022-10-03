@@ -38,6 +38,7 @@ mod file_ext;
 pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub(crate) mod plot;
+pub mod reward_signing;
 pub mod rpc_client;
 pub mod single_disk_farm;
 pub mod single_disk_plot;

@@ -28,6 +28,7 @@ pub mod objects;
 
 extern crate alloc;
 
+use crate::crypto::blake2b_256_hash_with_key;
 use crate::crypto::kzg::Commitment;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -857,6 +858,15 @@ impl SectorId {
         piece_index
             .try_into()
             .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+    }
+
+    /// Derive local challenge for this sector from provided global challenge
+    pub fn derive_local_challenge(&self, global_challenge: &Blake2b256Hash) -> SolutionRange {
+        let hash = blake2b_256_hash_with_key(global_challenge, &self.0);
+
+        SolutionRange::from_be_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ])
     }
 }
 

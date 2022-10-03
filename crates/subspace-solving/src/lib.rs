@@ -22,13 +22,17 @@
 
 mod codec;
 
+use bitvec::prelude::*;
 pub use codec::{BatchEncodeError, SubspaceCodec};
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
-use subspace_core_primitives::crypto::{blake2b_256_hash_list, blake2b_256_hash_with_key};
+use subspace_core_primitives::crypto::{
+    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key,
+};
 use subspace_core_primitives::{
-    Blake2b256Hash, LocalChallenge, Piece, Randomness, Salt, SectorId, Tag, TagSignature, TAG_SIZE,
+    Blake2b256Hash, LocalChallenge, Piece, Randomness, Salt, SectorId, SolutionRange, Tag,
+    TagSignature, TAG_SIZE,
 };
 
 const LOCAL_CHALLENGE_LABEL: &[u8] = b"subspace_local_challenge";
@@ -173,4 +177,23 @@ pub fn derive_piece_chunk_otp(
     [
         hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
     ]
+}
+
+/// Expand chunk to be the same size as solution range for further comparison
+pub fn expand_chunk(chunk: &BitSlice<u8, Lsb0>) -> SolutionRange {
+    let mut bytes = 0u64.to_le_bytes();
+
+    bytes
+        .view_bits_mut::<Lsb0>()
+        .iter_mut()
+        .zip(chunk)
+        .for_each(|(mut expanded, source)| {
+            *expanded = *source;
+        });
+
+    let hash = blake2b_256_hash(&bytes);
+
+    SolutionRange::from_le_bytes([
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+    ])
 }
