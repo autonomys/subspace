@@ -42,6 +42,9 @@ use ulid::Ulid;
 // usize depending on chain parameters
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
+/// Reserve 1M of space for plot metadata (for potential future expansion)
+const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
+
 /// An identifier for single disk plot, can be used for in logs, thread names, etc.
 #[derive(
     Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
@@ -485,8 +488,6 @@ impl SingleDiskPlot {
             .create(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        metadata_file.advise_random_access()?;
-
         let (metadata_header, mut metadata_header_mmap) = if metadata_file.seek(SeekFrom::End(0))?
             == 0
         {
@@ -496,7 +497,7 @@ impl SingleDiskPlot {
             };
 
             metadata_file.preallocate(
-                PlotMetadataHeader::encoded_size() as u64
+                RESERVED_PLOT_METADATA
                     + SectorMetadata::encoded_size() as u64 * target_sector_count,
             )?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
@@ -527,12 +528,14 @@ impl SingleDiskPlot {
             (metadata_header, metadata_header_mmap)
         };
 
+        metadata_file.advise_random_access()?;
+
         let metadata_header = Arc::new(Mutex::new(metadata_header));
 
         let mut metadata_mmap = unsafe {
             MmapOptions::new()
-                .offset(PlotMetadataHeader::encoded_size() as u64)
-                .len(SectorMetadata::encoded_size())
+                .offset(RESERVED_PLOT_METADATA)
+                .len(SectorMetadata::encoded_size() * target_sector_count as usize)
                 .map_mut(&metadata_file)?
         };
 
@@ -721,14 +724,11 @@ impl SingleDiskPlot {
                         {
                             debug!(?slot_info, "New slot");
 
-                            let plot_mmap = {
-                                let mut options = MmapOptions::new();
-                                options.len(
-                                    (plot_sector_size * metadata_header.lock().sector_count)
-                                        as usize,
-                                );
-
-                                unsafe { options.map_mut(&plot_file) }
+                            let sector_count = metadata_header.lock().sector_count;
+                            let plot_mmap = unsafe {
+                                MmapOptions::new()
+                                    .len((plot_sector_size * sector_count) as usize)
+                                    .map_mut(&plot_file)
                                     .map_err(|error| FarmingError::FailedToMapPlot { error })?
                             };
                             let shutting_down = Arc::clone(&shutting_down);
@@ -750,10 +750,10 @@ impl SingleDiskPlot {
 
                                 let sector_id = SectorId::new(&public_key, sector_index as u64);
 
-                            let local_challenge =
-                                sector_id.derive_local_challenge(&slot_info.global_challenge);
-                            let audit_index: u64 =
-                                local_challenge % (plot_sector_size * u64::from(u8::BITS));
+                                let local_challenge =
+                                    sector_id.derive_local_challenge(&slot_info.global_challenge);
+                                let audit_index: u64 =
+                                    local_challenge % (plot_sector_size * u64::from(u8::BITS));
 
                                 let (_, chunk) = sector.view_bits().split_at(audit_index as usize);
                                 let (chunk, _) = chunk.split_at(space_l.get() as usize);
