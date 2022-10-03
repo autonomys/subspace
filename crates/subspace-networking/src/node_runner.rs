@@ -11,8 +11,8 @@ use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
 use libp2p::kad::{
-    GetClosestPeersError, GetClosestPeersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId,
-    QueryResult, Quorum,
+    AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
+    GetProvidersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId, QueryResult, Quorum,
 };
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -30,11 +30,17 @@ use tracing::{debug, error, trace, warn};
 const RELAY_HOP_PROTOCOL_NAME: &[u8] = b"/libp2p/circuit/relay/0.2.0/hop";
 
 enum QueryResultSender {
-    GetValue {
+    Value {
         sender: oneshot::Sender<Option<Vec<u8>>>,
     },
-    GetClosestPeers {
+    ClosestPeers {
         sender: oneshot::Sender<Vec<PeerId>>,
+    },
+    Providers {
+        sender: oneshot::Sender<Option<Vec<PeerId>>>,
+    },
+    Announce {
+        sender: oneshot::Sender<bool>,
     },
 }
 
@@ -420,7 +426,7 @@ impl NodeRunner {
                 result: QueryResult::GetClosestPeers(results),
                 ..
             } => {
-                if let Some(QueryResultSender::GetClosestPeers { sender }) =
+                if let Some(QueryResultSender::ClosestPeers { sender }) =
                     self.query_id_receivers.remove(&id)
                 {
                     match results {
@@ -461,7 +467,7 @@ impl NodeRunner {
                 result: QueryResult::GetRecord(results),
                 ..
             } => {
-                if let Some(QueryResultSender::GetValue { sender }) =
+                if let Some(QueryResultSender::Value { sender }) =
                     self.query_id_receivers.remove(&id)
                 {
                     match results {
@@ -512,8 +518,67 @@ impl NodeRunner {
                     }
                 }
             }
-            _ => {
-                // Ignore other events.
+            KademliaEvent::OutboundQueryCompleted {
+                id,
+                result: QueryResult::GetProviders(results),
+                ..
+            } => {
+                if let Some(QueryResultSender::Providers { sender }) =
+                    self.query_id_receivers.remove(&id)
+                {
+                    match results {
+                        Ok(GetProvidersOk { key, providers, .. }) => {
+                            trace!(
+                                "Get providers query for {} yielded {} results",
+                                hex::encode(&key),
+                                providers.len(),
+                            );
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(Some(providers.into_iter().collect()));
+                        }
+                        Err(error) => {
+                            let GetProvidersError::Timeout { key, .. } = error;
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(None);
+
+                            debug!(
+                                "Get providers query for {} failed with no results",
+                                hex::encode(&key),
+                            );
+                        }
+                    }
+                }
+            }
+            KademliaEvent::OutboundQueryCompleted {
+                id,
+                result: QueryResult::StartProviding(results),
+                ..
+            } => {
+                if let Some(QueryResultSender::Announce { sender }) =
+                    self.query_id_receivers.remove(&id)
+                {
+                    match results {
+                        Ok(AddProviderOk { key }) => {
+                            trace!("Start providing query for {} succeeded", hex::encode(&key),);
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(true);
+                        }
+                        Err(error) => {
+                            let AddProviderError::Timeout { key } = error;
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(false);
+
+                            debug!("Start providing query for {} failed.", hex::encode(&key),);
+                        }
+                    }
+                }
+            }
+            kad_event => {
+                trace!("Kademlia event: {:?}", kad_event);
             }
         }
     }
@@ -547,7 +612,7 @@ impl NodeRunner {
 
                 self.query_id_receivers.insert(
                     query_id,
-                    QueryResultSender::GetValue {
+                    QueryResultSender::Value {
                         sender: result_sender,
                     },
                 );
@@ -641,7 +706,7 @@ impl NodeRunner {
 
                 self.query_id_receivers.insert(
                     query_id,
-                    QueryResultSender::GetClosestPeers {
+                    QueryResultSender::ClosestPeers {
                         sender: result_sender,
                     },
                 );
@@ -670,6 +735,43 @@ impl NodeRunner {
                 };
 
                 let _ = result_sender.send(kademlia_connection_initiated);
+            }
+            Command::AnnouncePiece { key, result_sender } => {
+                let res = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .start_providing(key.into());
+
+                match res {
+                    Ok(query_id) => {
+                        self.query_id_receivers.insert(
+                            query_id,
+                            QueryResultSender::Announce {
+                                sender: result_sender,
+                            },
+                        );
+                    }
+                    Err(error) => {
+                        error!(?key, ?error, "Failed to announce a piece.");
+
+                        let _ = result_sender.send(false);
+                    }
+                }
+            }
+            Command::GetPieceProviders { key, result_sender } => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_providers(key.into());
+
+                self.query_id_receivers.insert(
+                    query_id,
+                    QueryResultSender::Providers {
+                        sender: result_sender,
+                    },
+                );
             }
         }
     }

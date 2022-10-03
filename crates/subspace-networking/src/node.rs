@@ -145,6 +145,44 @@ impl From<oneshot::Canceled> for PublishError {
 }
 
 #[derive(Debug, Error)]
+pub enum GetPieceProvidersError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to announce a piece.
+    #[error("Failed to get piece providers.")]
+    GetPieceProviders,
+}
+
+impl From<oneshot::Canceled> for GetPieceProvidersError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum AnnouncePieceError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to announce a piece.
+    #[error("Failed to announce a piece.")]
+    Announce,
+}
+
+impl From<oneshot::Canceled> for AnnouncePieceError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum SendRequestError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
@@ -365,6 +403,53 @@ impl Node {
             }
 
             sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Announce piece by its key. Initiate 'start_providing' Kademlia operation.
+    pub async fn announce_piece(&self, key: Multihash) -> Result<(), AnnouncePieceError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!(?key, "Starting 'announce_piece' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::AnnouncePiece { key, result_sender })
+            .await?;
+
+        result_receiver
+            .await?
+            .then_some(())
+            .ok_or(AnnouncePieceError::Announce)
+    }
+
+    /// Get piece providers by its key. Initiate 'providers' Kademlia operation.
+    pub async fn get_piece_providers(
+        &self,
+        key: Multihash,
+    ) -> Result<Vec<PeerId>, GetPieceProvidersError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!(?key, "Starting 'get_piece_providers' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::GetPieceProviders { key, result_sender })
+            .await?;
+
+        if let Some(providers) = result_receiver.await? {
+            trace!(
+                "Kademlia 'GetProviders' returned {} providers.",
+                providers.len()
+            );
+
+            Ok(providers)
+        } else {
+            trace!("Kademlia 'GetProviders' returned an error (timeout).");
+
+            Err(GetPieceProvidersError::GetPieceProviders)
         }
     }
 

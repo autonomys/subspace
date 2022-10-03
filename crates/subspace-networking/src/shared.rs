@@ -53,6 +53,14 @@ pub(crate) enum Command {
     CheckConnectedPeers {
         result_sender: oneshot::Sender<bool>,
     },
+    AnnouncePiece {
+        key: Multihash,
+        result_sender: oneshot::Sender<bool>,
+    },
+    GetPieceProviders {
+        key: Multihash,
+        result_sender: oneshot::Sender<Option<Vec<PeerId>>>,
+    },
 }
 
 #[derive(Default, Debug)]
