@@ -1,8 +1,14 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
+use crate::behavior::custom_record_store::CustomRecordStore;
 use chrono::Duration;
+use libp2p::kad::record::Key;
+use libp2p::kad::store::RecordStore;
+use libp2p::kad::ProviderRecord;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
+use std::collections::HashSet;
+use std::sync::Arc;
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -54,4 +60,69 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 
     // Check after the second run (clean cache)
     assert_eq!(peers_cache.len(), 0);
+}
+
+#[allow(clippy::mutable_key_type)] // we use it hash set for sorting to compare collections
+#[test]
+fn check_custom_store_api() {
+    let mut store = CustomRecordStore::new(Arc::new(|_| None));
+
+    let key1: Key = b"key1".to_vec().into();
+    let provider1 = PeerId::random();
+    let rec1 = ProviderRecord {
+        provider: provider1,
+        key: key1,
+        expires: None,
+        addresses: Vec::new(),
+    };
+
+    let key2: Key = b"key2".to_vec().into();
+    let provider2 = PeerId::random();
+    let rec2 = ProviderRecord {
+        provider: provider2,
+        key: key2.clone(),
+        expires: None,
+        addresses: Vec::new(),
+    };
+
+    let provider3 = PeerId::random();
+    let rec3 = ProviderRecord {
+        provider: provider3,
+        key: key2.clone(),
+        expires: None,
+        addresses: Vec::new(),
+    };
+
+    // Check adding
+    store.add_provider(rec1.clone()).unwrap();
+    store.add_provider(rec2.clone()).unwrap();
+    store.add_provider(rec3.clone()).unwrap();
+
+    // Check providers retrieval
+    let provided_collection: HashSet<ProviderRecord> =
+        HashSet::from_iter(store.provided().map(|i| i.into_owned()));
+
+    assert_eq!(
+        HashSet::from_iter(vec![rec1, rec2.clone(), rec3.clone()].into_iter()),
+        provided_collection
+    );
+
+    // Check single provider retrieval
+    let provided_collection: HashSet<ProviderRecord> =
+        HashSet::from_iter(store.providers(&key2).into_iter());
+
+    assert_eq!(
+        HashSet::from_iter(vec![rec2.clone(), rec3].into_iter()),
+        provided_collection
+    );
+
+    // Remove provider
+    store.remove_provider(&key2, &provider3);
+    let provided_collection: HashSet<ProviderRecord> =
+        HashSet::from_iter(store.providers(&key2).into_iter());
+
+    assert_eq!(
+        HashSet::from_iter(vec![rec2].into_iter()),
+        provided_collection
+    );
 }
