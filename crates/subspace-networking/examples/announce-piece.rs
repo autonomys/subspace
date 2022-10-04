@@ -73,14 +73,14 @@ async fn main() {
         multihash
     };
 
-    node_2.announce_piece(key).await.unwrap();
+    node_2.announce(key).await.unwrap();
     println!("Node 2 announced key: {:?}", key);
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let providers_result = node_1.get_piece_providers(key).await;
+    let providers_result = node_1.get_providers(key).await;
 
-    println!("Node 1 get_piece_providers result: {:?}", providers_result);
+    println!("Node 1 get_providers result: {:?}", providers_result);
 
     println!("Exiting..");
 }

@@ -1,5 +1,5 @@
-use futures::future::join_all;
-use futures::StreamExt;
+use futures::stream::FuturesUnordered;
+use futures::{FutureExt, StreamExt};
 use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
@@ -57,10 +57,15 @@ where
                     .map(|hash| hash.into());
 
                 let pieces_announcements = keys_iter
-                    .map(|key| node.announce_piece(key))
-                    .collect::<Vec<_>>();
-                let announcement_result = join_all(pieces_announcements).await;
-                match announcement_result.iter().find(|res| res.is_err()) {
+                    .map(|key| node.announce(key).boxed())
+                    .collect::<FuturesUnordered<_>>();
+
+                match pieces_announcements
+                    .collect::<Vec<_>>()
+                    .await
+                    .iter()
+                    .find(|res| res.is_err())
+                {
                     None => {
                         trace!(target: "dsn", "Archived segment published.");
                     }

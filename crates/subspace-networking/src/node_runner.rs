@@ -736,7 +736,7 @@ impl NodeRunner {
 
                 let _ = result_sender.send(kademlia_connection_initiated);
             }
-            Command::AnnouncePiece { key, result_sender } => {
+            Command::Announce { key, result_sender } => {
                 let res = self
                     .swarm
                     .behaviour_mut()
@@ -759,7 +759,7 @@ impl NodeRunner {
                     }
                 }
             }
-            Command::GetPieceProviders { key, result_sender } => {
+            Command::GetProviders { key, result_sender } => {
                 let query_id = self
                     .swarm
                     .behaviour_mut()

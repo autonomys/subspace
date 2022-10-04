@@ -76,7 +76,8 @@ impl<'a> RecordStore<'a> for CustomRecordStore {
     }
 
     fn provided(&'a self) -> Self::ProvidedIter {
-        todo!("'provided' operation is not supported.")
+        // No iteration support for now.
+        Vec::new().into_iter()
     }
 
     fn remove_provider(&'a mut self, _key: &Key, _provider: &PeerId) {
