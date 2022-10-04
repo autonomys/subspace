@@ -81,7 +81,8 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 #[frame_support::pallet]
 mod pallet {
     use crate::messages::{
-        BundledMessage, Message, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        CrossDomainMessage, Message, Payload, ProtocolMessageRequest, RequestResponse,
+        VersionedPayload,
     };
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
@@ -208,20 +209,15 @@ mod pallet {
     type Tag<DomainId> = (DomainId, ChannelId, Nonce);
     fn unsigned_validity<T: Config>(
         prefix: &'static str,
-        requires: Option<Tag<T::DomainId>>,
         provides: Tag<T::DomainId>,
     ) -> TransactionValidity {
-        let mut builder = ValidTransaction::with_tag_prefix(prefix)
+        ValidTransaction::with_tag_prefix(prefix)
             .priority(TransactionPriority::MAX)
             .and_provides(provides)
             .longevity(TransactionLongevity::MAX)
             // We need this extrinsic to be propagated to the farmer nodes.
-            .propagate(true);
-        if let Some(requires) = requires {
-            builder = builder.and_requires(requires);
-        }
-
-        builder.build()
+            .propagate(true)
+            .build()
     }
 
     #[pallet::validate_unsigned]
@@ -231,7 +227,7 @@ mod pallet {
         /// Validate unsigned call to this module.
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             // Firstly let's check that we call the right function.
-            if let Call::receive_message { msg: bundled_msg } = call {
+            if let Call::relay_message { msg: bundled_msg } = call {
                 // fetch state roots from System domain tracker
                 let state_roots = T::SystemDomainTracker::latest_state_roots();
                 if !state_roots.contains(&bundled_msg.proof.state_root) {
@@ -246,19 +242,16 @@ mod pallet {
                 );
 
                 // verify nonce
-                let mut create_config = false;
-                let (prev_nonce, next_nonce) =
+                let mut should_init_channel = false;
+                let next_nonce =
                     match Channels::<T>::get(bundled_msg.src_domain_id, bundled_msg.channel_id) {
                         None => {
                             // if there is no channel config, this must the Channel open request.
                             // ensure nonce is 0
-                            create_config = true;
-                            (None, Nonce::zero())
+                            should_init_channel = true;
+                            Nonce::zero()
                         }
-                        Some(channel) => (
-                            channel.next_inbox_nonce.checked_sub(Nonce::one()),
-                            channel.next_inbox_nonce,
-                        ),
+                        Some(channel) => channel.next_inbox_nonce,
                     };
                 // nonce should be either be next or in future.
                 ensure!(
@@ -279,7 +272,7 @@ mod pallet {
                 >(bundled_msg.proof.clone(), StorageKey(key))
                 .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
 
-                if create_config {
+                if should_init_channel {
                     if let VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
                         ProtocolMessageRequest::ChannelOpen(params),
                     ))) = msg.payload
@@ -291,8 +284,6 @@ mod pallet {
                     }
                 }
 
-                let requires_tag =
-                    prev_nonce.map(|prev_nonce| (msg.dst_domain_id, msg.channel_id, prev_nonce));
                 let provides_tag = (msg.dst_domain_id, msg.channel_id, next_nonce);
                 Inbox::<T>::insert(
                     (
@@ -303,7 +294,7 @@ mod pallet {
                     msg,
                 );
 
-                unsigned_validity::<T>("MessengerInbox", requires_tag, provides_tag)
+                unsigned_validity::<T>("MessengerInbox", provides_tag)
             } else {
                 InvalidTransaction::Call.into()
             }
@@ -385,9 +376,9 @@ mod pallet {
 
         /// Receives an Inbox message that needs to be validated and processed.
         #[pallet::weight((10_000, Pays::No))]
-        pub fn receive_message(
+        pub fn relay_message(
             origin: OriginFor<T>,
-            msg: BundledMessage<T::DomainId, StateRootOf<T>>,
+            msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::process_inbox_messages(msg.src_domain_id, msg.nonce)?;

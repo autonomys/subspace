@@ -57,9 +57,9 @@ pub struct Message<DomainId> {
     pub payload: VersionedPayload,
 }
 
-/// Bundled message contains Message and its proof on src_domain.
+/// Cross Domain message contains Message and its proof on src_domain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct BundledMessage<DomainId, StateRoot> {
+pub struct CrossDomainMessage<DomainId, StateRoot> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -85,7 +85,6 @@ impl<T: Config> Pallet<T> {
             channel_id,
             |maybe_channel| -> DispatchResult {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
-                let next_outbox_nonce = channel.next_outbox_nonce;
                 // TODO(ved): ensure channel is ready to send messages.
                 // check if the outbox is full
                 let count = Outbox::<T>::count();
@@ -94,6 +93,7 @@ impl<T: Config> Pallet<T> {
                     Error::<T>::OutboxFull
                 );
 
+                let next_outbox_nonce = channel.next_outbox_nonce;
                 // add message to outbox
                 let msg = Message {
                     src_domain_id,
