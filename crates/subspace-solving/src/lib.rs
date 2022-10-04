@@ -27,6 +27,7 @@ pub use codec::{BatchEncodeError, SubspaceCodec};
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
+use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::crypto::{
     blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key,
 };
@@ -165,12 +166,12 @@ pub fn verify_tag_signature(
 /// reasonable size of `space_l`, but doesn't have to be used fully.
 pub fn derive_piece_chunk_otp(
     sector_id: &SectorId,
-    piece_commitment: &Blake2b256Hash,
+    piece_witness: &Witness,
     chunk_index: u32,
 ) -> [u8; 8] {
     let hash = blake2b_256_hash_list(&[
         sector_id.as_ref(),
-        piece_commitment.as_ref(),
+        &piece_witness.to_bytes(),
         &chunk_index.to_le_bytes(),
     ]);
 
