@@ -1,11 +1,10 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::Multihash;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PieceIndexHash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, ToMultihash};
 
 #[tokio::main]
 async fn main() {
@@ -13,10 +12,6 @@ async fn main() {
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-        value_getter: Arc::new(|key| {
-            // Return the reversed digest as a value
-            Some(key.digest().iter().copied().rev().collect())
-        }),
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };
