@@ -419,6 +419,61 @@ mod pallet {
         }
     }
 
+    type GenesisExecutorInfo<T> = (
+        <T as frame_system::Config>::AccountId,
+        BalanceOf<T>,
+        <T as frame_system::Config>::AccountId,
+        ExecutorId,
+    );
+
+    #[pallet::genesis_config]
+    pub struct GenesisConfig<T: Config> {
+        pub executors: Vec<GenesisExecutorInfo<T>>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
+                executors: Vec::new(),
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            for (executor, initial_stake, reward_address, executor_id) in self.executors.clone() {
+                assert!(
+                    initial_stake >= T::MinExecutorStake::get()
+                        && initial_stake <= T::MaxExecutorStake::get(),
+                    "Initial stake can not be too small or too large"
+                );
+                assert!(
+                    T::Currency::free_balance(&executor) >= initial_stake,
+                    "Genesis executor does not have enough balance to stake."
+                );
+                Pallet::<T>::lock_fund(&executor, initial_stake);
+                Executors::<T>::insert(
+                    executor,
+                    ExecutorConfig {
+                        public_key: executor_id,
+                        reward_address,
+                        is_active: true,
+                        stake: initial_stake,
+                        unlockings: BoundedVec::default(),
+                    },
+                );
+                TotalActiveStake::<T>::mutate(|total| {
+                    *total += initial_stake;
+                });
+                TotalActiveExecutors::<T>::mutate(|total| {
+                    *total += 1;
+                });
+            }
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// The amount of deposit is smaller than the `T::MinExecutorStake` bound.
