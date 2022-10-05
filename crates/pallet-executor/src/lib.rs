@@ -21,6 +21,7 @@
 #[cfg(test)]
 mod tests;
 
+use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
@@ -29,7 +30,7 @@ use sp_executor::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
     InvalidTransactionProof, SignedOpaqueBundle,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::RuntimeAppPublic;
 
@@ -43,7 +44,9 @@ mod pallet {
         BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionCode,
         InvalidTransactionProof, SignedOpaqueBundle,
     };
-    use sp_runtime::traits::{CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps};
+    use sp_runtime::traits::{
+        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
+    };
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -76,7 +79,11 @@ mod pallet {
         /// If the primary number of an execution receipt plus the maximum drift is bigger than the
         /// best execution chain number, this receipt will be rejected as being too far in the
         /// future.
+        #[pallet::constant]
         type MaximumReceiptDrift: Get<Self::BlockNumber>;
+
+        /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
+        type ConfirmationDepthK: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -112,6 +119,8 @@ mod pallet {
         TooFarInFuture,
         /// Receipts are not in ascending order.
         Unsorted,
+        /// Receipts in a bundle can not be empty.
+        Empty,
     }
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
@@ -120,6 +129,10 @@ mod pallet {
         ExecutionReceiptPruned,
         /// Trying to prove an receipt from the future.
         ExecutionReceiptInFuture,
+        /// Unexpected hash type.
+        WrongHashType,
+        /// The execution receipt points to a block unknown to the history.
+        UnknownBlock,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -194,15 +207,20 @@ mod pallet {
             );
 
             // Revert the execution chain.
-            let new_best: T::BlockNumber = fraud_proof.parent_number.into();
-            <ExecutionChainBestNumber<T>>::mutate(|current_best| {
-                let mut to_remove = new_best + One::one();
-                while to_remove <= *current_best {
-                    Receipts::<T>::remove(to_remove);
-                    to_remove += One::one();
+            let (_, mut to_remove) = ReceiptHead::<T>::get();
+
+            let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
+            let new_best_hash = BlockHash::<T>::get(new_best_number);
+
+            ReceiptHead::<T>::put((new_best_hash, new_best_number));
+
+            while to_remove > new_best_number {
+                let block_hash = BlockHash::<T>::get(to_remove);
+                for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                    Receipts::<T>::remove(receipt_hash);
                 }
-                *current_best = new_best;
-            });
+                to_remove -= One::one();
+            }
 
             // TODO: slash the executor accordingly.
 
@@ -259,19 +277,6 @@ mod pallet {
     #[pallet::getter(fn executor)]
     pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
 
-    /// Mapping from the primary block number to the corresponding verified execution receipt.
-    ///
-    /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
-    /// ones will be pruned once the size of receipts exceeds this number.
-    #[pallet::storage]
-    pub(super) type Receipts<T: Config> = StorageMap<
-        _,
-        Twox64Concat,
-        T::BlockNumber,
-        ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
-        OptionQuery,
-    >;
-
     /// Map of block number to block hash.
     ///
     /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
@@ -281,16 +286,30 @@ mod pallet {
     pub(super) type BlockHash<T: Config> =
         StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
 
-    /// Latest execution chain block number.
+    /// Mapping from the receipt hash to the corresponding verified execution receipt.
+    ///
+    /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
+    /// ones will be pruned once the size of receipts exceeds this number.
     #[pallet::storage]
-    #[pallet::getter(fn best_execution_chain_number)]
-    pub(super) type ExecutionChainBestNumber<T: Config> =
-        StorageValue<_, T::BlockNumber, ValueQuery>;
+    pub(super) type Receipts<T: Config> = StorageMap<
+        _,
+        Twox64Concat,
+        H256,
+        ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        OptionQuery,
+    >;
 
-    /// Number of the block that the oldest execution receipt points to.
+    /// Mapping for tracking the receipt votes.
+    ///
+    /// (primary_block_hash, receipt_hash, receipt_count)
     #[pallet::storage]
-    #[pallet::getter(fn oldest_receipt_number)]
-    pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
+    pub(super) type ReceiptVotes<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, T::Hash, Blake2_128Concat, H256, u32, ValueQuery>;
+
+    /// A pair of (block_hash, block_number) of the latest execution receipt.
+    #[pallet::storage]
+    #[pallet::getter(fn receipt_head)]
+    pub(super) type ReceiptHead<T: Config> = StorageValue<_, (T::Hash, T::BlockNumber), ValueQuery>;
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
@@ -323,6 +342,20 @@ mod pallet {
                     .clone()
                     .expect("Executor authority must be provided at genesis; qed"),
             );
+            let primary_number = T::BlockNumber::zero();
+            let primary_hash = frame_system::Pallet::<T>::block_hash(primary_number);
+            let genesis_receipt = ExecutionReceipt {
+                primary_number,
+                primary_hash,
+                secondary_hash: T::SecondaryHash::default(),
+                trace: Vec::new(),
+                trace_root: Default::default(),
+            };
+            let receipt_hash = genesis_receipt.hash();
+            BlockHash::<T>::insert(primary_number, primary_hash);
+            Receipts::<T>::insert(receipt_hash, genesis_receipt);
+            ReceiptHead::<T>::put((primary_hash, primary_number));
+            ReceiptVotes::<T>::insert(primary_hash, receipt_hash, 1);
         }
     }
 
@@ -344,7 +377,7 @@ mod pallet {
             match call {
                 Call::submit_transaction_bundle {
                     signed_opaque_bundle,
-                } => Self::pre_dispatch_execution_receipts(&signed_opaque_bundle.bundle.receipts),
+                } => Self::pre_dispatch_transaction_bundle(signed_opaque_bundle),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -366,24 +399,30 @@ mod pallet {
                         return InvalidTransactionCode::Bundle.into();
                     }
 
+                    let mut builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
+                        .priority(TransactionPriority::MAX)
+                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }))
+                        .propagate(true);
+
+                    for receipt in &signed_opaque_bundle.bundle.receipts {
+                        builder = builder.and_provides(receipt.primary_number);
+                    }
+
                     let first_primary_number = signed_opaque_bundle
                         .bundle
                         .receipts
                         .get(0)
-                        .expect("Receipts in a bundle must be non-empty; qed")
+                        .expect("Receipts in a bundle must be non-empty as checked above; qed")
                         .primary_number;
-
-                    let builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        .priority(TransactionPriority::MAX)
-                        .and_provides(first_primary_number)
-                        .longevity(TransactionLongevity::MAX)
-                        .propagate(true);
 
                     // primary_number is ensured to be larger than the best execution chain chain
                     // number above.
                     //
                     // No requires if it's the next expected execution chain number.
-                    if first_primary_number == ExecutionChainBestNumber::<T>::get() + One::one() {
+                    let (_, best_number) = <ReceiptHead<T>>::get();
+                    if first_primary_number == best_number + One::one() {
                         builder.build()
                     } else {
                         builder
@@ -450,10 +489,29 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn pre_dispatch_execution_receipts(
-        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
+    /// Returns the block number of the latest receipt.
+    pub fn best_execution_chain_number() -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get();
+        best_number
+    }
+
+    /// Returns the block number of the oldest receipt still being tracked in the state.
+    pub fn oldest_receipt_number() -> T::BlockNumber {
+        Self::finalized_receipt_number() + One::one()
+    }
+
+    /// Returns the block number of latest _finalized_ receipt.
+    pub fn finalized_receipt_number() -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get();
+        best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
+    fn pre_dispatch_transaction_bundle(
+        signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), TransactionValidityError> {
-        let mut best_number = ExecutionChainBestNumber::<T>::get();
+        let execution_receipts = &signed_opaque_bundle.bundle.receipts;
+
+        let (_, mut best_number) = <ReceiptHead<T>>::get();
 
         for execution_receipt in execution_receipts {
             let primary_number = execution_receipt.primary_number;
@@ -467,19 +525,21 @@ impl<T: Config> Pallet<T> {
                 }
             }
 
-            // TODO: is this check unnecessary as it's actually guaranteed by the above one?
-            // Ensure the parent receipt exists after block #1.
-            if primary_number > One::one() {
-                ensure!(
-                    Receipts::<T>::get(primary_number - One::one()).is_some(),
-                    TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into()
-                    )
-                );
-            }
-
             best_number += One::one();
         }
+
+        // Ensure the parent receipt exists.
+        let first_primary_number = execution_receipts
+            .get(0)
+            .ok_or_else(|| {
+                TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
+            })?
+            .primary_number;
+        let parent_hash = <BlockHash<T>>::get(first_primary_number - One::one());
+        ensure!(
+            ReceiptVotes::<T>::iter_prefix(parent_hash).next().is_some(),
+            TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
+        );
 
         Ok(())
     }
@@ -487,6 +547,10 @@ impl<T: Config> Pallet<T> {
     fn validate_execution_receipts(
         execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), ExecutionReceiptError> {
+        if execution_receipts.is_empty() {
+            return Err(ExecutionReceiptError::Empty);
+        }
+
         if !execution_receipts
             .iter()
             .map(|r| r.primary_number)
@@ -497,7 +561,7 @@ impl<T: Config> Pallet<T> {
 
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
-        let mut best_number = ExecutionChainBestNumber::<T>::get();
+        let (_, mut best_number) = <ReceiptHead<T>>::get();
 
         for execution_receipt in execution_receipts {
             // Due to `initialize_block` is skipped while calling the runtime api, the block
@@ -558,14 +622,25 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), FraudProofError> {
+        let (_, best_number) = <ReceiptHead<T>>::get();
+
         let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
         ensure!(
-            to_prove >= OldestReceiptNumber::<T>::get(),
+            to_prove > best_number.saturating_sub(T::ReceiptsPruningDepth::get()),
             FraudProofError::ExecutionReceiptPruned
         );
+
         ensure!(
-            to_prove <= ExecutionChainBestNumber::<T>::get(),
+            to_prove <= best_number,
             FraudProofError::ExecutionReceiptInFuture
+        );
+
+        let parent_hash = T::Hash::decode(&mut fraud_proof.parent_hash.encode().as_slice())
+            .map_err(|_| FraudProofError::WrongHashType)?;
+        let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
+        ensure!(
+            BlockHash::<T>::get(parent_number) == parent_hash,
+            FraudProofError::UnknownBlock
         );
 
         // TODO: prevent the spamming of fraud proof transaction.
@@ -592,20 +667,24 @@ impl<T: Config> Pallet<T> {
     ) {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
+        let receipt_hash = execution_receipt.hash();
 
         // Apply the execution receipt.
-        <Receipts<T>>::insert(primary_number, execution_receipt);
-        <ExecutionChainBestNumber<T>>::put(primary_number);
-        if primary_number == One::one() {
-            // Initialize the oldest receipt with block #1.
-            OldestReceiptNumber::<T>::put(primary_number);
-        }
+        <Receipts<T>>::insert(receipt_hash, execution_receipt);
+        <ReceiptHead<T>>::put((primary_hash, primary_number));
+        <ReceiptVotes<T>>::mutate(primary_hash, receipt_hash, |count| {
+            *count += 1;
+        });
 
-        // Remove the oldest once the receipts cache is full.
+        // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            Receipts::<T>::remove(to_prune);
-            BlockHash::<T>::remove(to_prune);
-            OldestReceiptNumber::<T>::put(to_prune + One::one());
+            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
+                if let Some(block_hash) = maybe_block_hash.take() {
+                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                        Receipts::<T>::remove(receipt_hash);
+                    }
+                }
+            })
         }
 
         Self::deposit_event(Event::NewExecutionReceipt {
