@@ -4543,6 +4543,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-executor-registry"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-executor",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-feeds"
 version = "0.1.0"
 dependencies = [
