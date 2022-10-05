@@ -26,7 +26,7 @@ use subspace_core_primitives::{
     PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
-    create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
+    create_chunk_signature, create_tag, derive_global_challenge, derive_local_challenge,
     derive_target, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
 use subspace_verification::derive_randomness;
@@ -145,35 +145,37 @@ fn valid_header(
     )
     .unwrap();
     let solution_range = derive_solution_range(target, tag);
-    let tag_signature = create_tag_signature(keypair, tag);
-    let pre_digest = PreDigest {
-        slot: slot.into(),
-        solution: Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            piece_index,
-            encoding,
-            tag_signature,
-            local_challenge,
-            tag,
-        },
-    };
-    let digests = vec![
-        DigestItem::global_randomness(randomness),
-        DigestItem::solution_range(solution_range),
-        DigestItem::salt(salt),
-        DigestItem::subspace_pre_digest(&pre_digest),
-    ];
-
-    let header = Header {
-        parent_hash,
-        number,
-        state_root: Default::default(),
-        extrinsics_root: Default::default(),
-        digest: Digest { logs: digests },
-    };
-
-    (header, solution_range, segment_index, records_root)
+    // TODO: Update implementation for V2 consensus
+    // let tag_signature = create_chunk_signature(keypair, tag);
+    // let pre_digest = PreDigest {
+    //     slot: slot.into(),
+    //     solution: Solution {
+    //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+    //         reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+    //         piece_index,
+    //         encoding,
+    //         tag_signature,
+    //         local_challenge,
+    //         tag,
+    //     },
+    // };
+    // let digests = vec![
+    //     DigestItem::global_randomness(randomness),
+    //     DigestItem::solution_range(solution_range),
+    //     DigestItem::salt(salt),
+    //     DigestItem::subspace_pre_digest(&pre_digest),
+    // ];
+    //
+    // let header = Header {
+    //     parent_hash,
+    //     number,
+    //     state_root: Default::default(),
+    //     extrinsics_root: Default::default(),
+    //     digest: Digest { logs: digests },
+    // };
+    //
+    // (header, solution_range, segment_index, records_root)
+    todo!()
 }
 
 fn seal_header(keypair: &Keypair, header: &mut Header) {
@@ -795,8 +797,8 @@ fn test_next_global_randomness_digest() {
     let pre_digest = extract_pre_digest(&header).unwrap();
     let randomness = derive_randomness(
         &PublicKey::from(&pre_digest.solution.public_key),
-        pre_digest.solution.tag,
-        &pre_digest.solution.tag_signature,
+        &pre_digest.solution.chunk,
+        &pre_digest.solution.chunk_signature,
     )
     .unwrap();
     let digests = header.digest_mut();
@@ -1235,8 +1237,8 @@ fn test_next_salt_digest() {
     let digests_at_4 = extract_pre_digest(&header_at_4.header).unwrap();
     let randomness_at_4 = derive_randomness(
         &PublicKey::from(&digests_at_4.solution.public_key),
-        digests_at_4.solution.tag,
-        &digests_at_4.solution.tag_signature,
+        &digests_at_4.solution.chunk,
+        &digests_at_4.solution.chunk_signature,
     )
     .unwrap();
     assert_eq!(
@@ -1350,8 +1352,8 @@ fn test_next_salt_reveal_in_same_block_as_eon_change() {
     let digests_at_4 = extract_pre_digest(&header_at_4.header).unwrap();
     let randomness_at_4 = derive_randomness(
         &PublicKey::from(&digests_at_4.solution.public_key),
-        digests_at_4.solution.tag,
-        &digests_at_4.solution.tag_signature,
+        &digests_at_4.solution.chunk,
+        &digests_at_4.solution.chunk_signature,
     )
     .unwrap();
     let next_salt = subspace_verification::derive_next_salt_from_randomness(0, &randomness_at_4);
@@ -1366,8 +1368,8 @@ fn test_next_salt_reveal_in_same_block_as_eon_change() {
     let digests_at_11 = extract_pre_digest(&header_at_11.header).unwrap();
     let randomness_at_11 = derive_randomness(
         &PublicKey::from(&digests_at_11.solution.public_key),
-        digests_at_11.solution.tag,
-        &digests_at_11.solution.tag_signature,
+        &digests_at_11.solution.chunk,
+        &digests_at_11.solution.chunk_signature,
     )
     .unwrap();
     assert_eq!(
@@ -1430,8 +1432,8 @@ fn test_current_salt_reveal_and_eon_change_in_same_block() {
     let digests_at_4 = extract_pre_digest(&header).unwrap();
     let randomness_at_4 = derive_randomness(
         &PublicKey::from(&digests_at_4.solution.public_key),
-        digests_at_4.solution.tag,
-        &digests_at_4.solution.tag_signature,
+        &digests_at_4.solution.chunk,
+        &digests_at_4.solution.chunk_signature,
     )
     .unwrap();
     let next_salt = subspace_verification::derive_next_salt_from_randomness(0, &randomness_at_4);

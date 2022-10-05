@@ -232,30 +232,30 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                         }
                     };
 
-                    match maybe_tag {
-                        Some((tag, piece_offset)) => {
-                            let (encoding, piece_index) = plot
-                                .read_piece_with_index(piece_offset)
-                                .map_err(FarmingError::PlotRead)?;
-                            let solution = Solution {
-                                public_key: identity.public_key().to_bytes().into(),
-                                reward_address,
-                                piece_index,
-                                encoding,
-                                tag_signature: identity.create_tag_signature(tag),
-                                local_challenge,
-                                tag,
-                            };
-                            debug!("Solution found");
-                            trace!(?solution, "Solution found");
-
-                            Ok(Some(solution))
-                        }
-                        None => {
-                            debug!("Solution not found");
-                            Ok(None)
-                        }
-                    }
+                    // match maybe_tag {
+                    //     Some((tag, piece_offset)) => {
+                    //         let (encoding, piece_index) = plot
+                    //             .read_piece_with_index(piece_offset)
+                    //             .map_err(FarmingError::PlotRead)?;
+                    //         let solution = Solution {
+                    //             public_key: identity.public_key().to_bytes().into(),
+                    //             reward_address,
+                    //             piece_index,
+                    //             encoding,
+                    //             tag_signature: identity.create_tag_signature(tag),
+                    //             local_challenge,
+                    //             tag,
+                    //         };
+                    //         debug!("Solution found");
+                    //         trace!(?solution, "Solution found");
+                    //
+                    //         Ok(Some(solution))
+                    //     }
+                    //     None => {
+                    debug!("Solution not found");
+                    Ok(None)
+                    //     }
+                    // }
                 }
             });
 
@@ -264,7 +264,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             client
                 .submit_solution_response(SolutionResponse {
                     slot_number: slot_info.slot_number,
-                    maybe_solution,
+                    solutions: maybe_solution.into_iter().collect(),
                 })
                 .await
                 .map_err(FarmingError::RpcError)?;

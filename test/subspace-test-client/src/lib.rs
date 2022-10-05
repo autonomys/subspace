@@ -39,7 +39,8 @@ use subspace_core_primitives::{
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::{
-    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+    create_chunk_signature, create_tag, derive_local_challenge, SubspaceCodec,
+    REWARD_SIGNING_CONTEXT,
 };
 use zeroize::Zeroizing;
 
@@ -171,20 +172,21 @@ async fn start_farming<Client>(
         if Into::<u64>::into(new_slot_info.slot) % 2 == 0 {
             let tag: Tag = create_tag(&encoding, new_slot_info.salt);
 
-            let _ = solution_sender
-                .send(Solution {
-                    public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                    reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                    piece_index,
-                    encoding: encoding.clone(),
-                    tag_signature: create_tag_signature(&keypair, tag),
-                    local_challenge: derive_local_challenge(
-                        &keypair,
-                        new_slot_info.global_challenge,
-                    ),
-                    tag,
-                })
-                .await;
+            // TODO: Update implementation for V2 consensus
+            // let _ = solution_sender
+            //     .send(Solution {
+            //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            //         reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            //         piece_index,
+            //         encoding: encoding.clone(),
+            //         tag_signature: create_chunk_signature(&keypair, tag),
+            //         local_challenge: derive_local_challenge(
+            //             &keypair,
+            //             new_slot_info.global_challenge,
+            //         ),
+            //         tag,
+            //     })
+            //     .await;
         }
     }
 }

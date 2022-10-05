@@ -71,10 +71,10 @@ pub struct SlotInfo {
 pub struct SolutionResponse {
     /// Slot number.
     pub slot_number: SlotNumber,
-    /// Optional solution.
+    /// Solution farmer has for the challenge.
     ///
-    /// Derived from the farmer's plot corresponding to `slot_number` above.
-    pub maybe_solution: Option<Solution<PublicKey, PublicKey>>,
+    /// Corresponds to `slot_number` above.
+    pub solutions: Vec<Solution<PublicKey, PublicKey>>,
 }
 
 /// Reward info that needs to be signed.

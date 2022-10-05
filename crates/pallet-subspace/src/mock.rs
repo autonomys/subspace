@@ -43,7 +43,7 @@ use subspace_core_primitives::{
     RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
-    create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
+    create_chunk_signature, create_tag, derive_global_challenge, derive_local_challenge,
     SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
 
@@ -195,33 +195,34 @@ pub fn go_to_block(
     let piece_index = 0;
     let mut encoding = Piece::default();
     subspace_codec.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = create_tag(&encoding, {
-        let salts = Subspace::salts();
-        if salts.switch_next_block {
-            salts.next.unwrap()
-        } else {
-            salts.current
-        }
-    });
-
-    let pre_digest = make_pre_digest(
-        slot.into(),
-        Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address,
-            piece_index: 0,
-            encoding,
-            tag_signature: create_tag_signature(keypair, tag),
-            local_challenge: LocalChallenge {
-                output: [0; 32],
-                proof: [0; 64],
-            },
-            tag,
-        },
-    );
-
-    System::reset_events();
-    System::initialize(&block, &parent_hash, &pre_digest);
+    // TODO: Update implementation for V2 consensus
+    // let tag: Tag = create_tag(&encoding, {
+    //     let salts = Subspace::salts();
+    //     if salts.switch_next_block {
+    //         salts.next.unwrap()
+    //     } else {
+    //         salts.current
+    //     }
+    // });
+    //
+    // let pre_digest = make_pre_digest(
+    //     slot.into(),
+    //     Solution {
+    //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+    //         reward_address,
+    //         piece_index: 0,
+    //         encoding,
+    //         tag_signature: create_chunk_signature(keypair, tag),
+    //         local_challenge: LocalChallenge {
+    //             output: [0; 32],
+    //             proof: [0; 64],
+    //         },
+    //         tag,
+    //     },
+    // );
+    //
+    // System::reset_events();
+    // System::initialize(&block, &parent_hash, &pre_digest);
 
     Subspace::on_initialize(block);
 }
@@ -278,23 +279,24 @@ pub fn generate_equivocation_proof(
 
     let make_header = |piece_index, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
-        let pre_digest = make_pre_digest(
-            slot,
-            Solution {
-                public_key: public_key.clone(),
-                reward_address,
-                piece_index,
-                encoding: encoding.clone(),
-                tag_signature: create_tag_signature(keypair, tag),
-                local_challenge: LocalChallenge {
-                    output: [0; 32],
-                    proof: [0; 64],
-                },
-                tag,
-            },
-        );
-        System::reset_events();
-        System::initialize(&current_block, &parent_hash, &pre_digest);
+        // TODO: Update implementation for V2 consensus
+        // let pre_digest = make_pre_digest(
+        //     slot,
+        //     Solution {
+        //         public_key: public_key.clone(),
+        //         reward_address,
+        //         piece_index,
+        //         encoding: encoding.clone(),
+        //         tag_signature: create_chunk_signature(keypair, tag),
+        //         local_challenge: LocalChallenge {
+        //             output: [0; 32],
+        //             proof: [0; 64],
+        //         },
+        //         tag,
+        //     },
+        // );
+        // System::reset_events();
+        // System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
         Timestamp::set_timestamp(*current_slot * Subspace::slot_duration());
         System::finalize()
@@ -396,26 +398,28 @@ pub fn create_signed_vote(
 
     let tag = create_tag(&encoding, salt);
 
-    let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
-        height,
-        parent_hash,
-        slot,
-        solution: Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address,
-            piece_index: 0,
-            encoding,
-            tag_signature: create_tag_signature(keypair, tag),
-            local_challenge: derive_local_challenge(keypair, global_challenge),
-            tag,
-        },
-    };
-
-    let signature = FarmerSignature::unchecked_from(
-        keypair
-            .sign(reward_signing_context.bytes(vote.hash().as_ref()))
-            .to_bytes(),
-    );
-
-    SignedVote { vote, signature }
+    // TODO: Update implementation for V2 consensus
+    // let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
+    //     height,
+    //     parent_hash,
+    //     slot,
+    //     solution: Solution {
+    //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+    //         reward_address,
+    //         piece_index: 0,
+    //         encoding,
+    //         tag_signature: create_chunk_signature(keypair, tag),
+    //         local_challenge: derive_local_challenge(keypair, global_challenge),
+    //         tag,
+    //     },
+    // };
+    //
+    // let signature = FarmerSignature::unchecked_from(
+    //     keypair
+    //         .sign(reward_signing_context.bytes(vote.hash().as_ref()))
+    //         .to_bytes(),
+    // );
+    //
+    // SignedVote { vote, signature }
+    todo!()
 }

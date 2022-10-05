@@ -607,8 +607,8 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let seed: &[u8] = b"extrinsics-shuffling-seed";
         let randomness = derive_randomness(
             &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            pre_digest.solution.tag,
-            &pre_digest.solution.tag_signature,
+            &pre_digest.solution.chunk,
+            &pre_digest.solution.chunk_signature,
         )
         .expect("Tag signature is verified by the client and must always be valid; qed");
         let mut data = Vec::with_capacity(seed.len() + randomness.len());

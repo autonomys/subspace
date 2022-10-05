@@ -156,7 +156,7 @@ impl TypeInfo for Commitment {
 }
 
 /// Witness for polynomial evaluation
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Witness(G1Affine);
 
 impl Witness {

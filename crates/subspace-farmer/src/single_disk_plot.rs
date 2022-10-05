@@ -27,16 +27,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fs, io, thread};
+use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
     plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution,
     PIECE_SIZE,
 };
+use subspace_rpc_primitives::SolutionResponse;
 use subspace_solving::{derive_chunk_otp, SubspaceCodec};
 use subspace_verification::is_within_solution_range2;
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{debug, error, info, info_span, Instrument, Span};
+use tracing::{debug, error, info, info_span, trace, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -353,6 +355,12 @@ pub enum FarmingError {
         /// Lower-level error
         error: parity_scale_codec::Error,
     },
+    /// Failed to submit solutions response
+    #[error("Failed to submit solutions response: {error}")]
+    FailedToSubmitSolutionsResponse {
+        /// Lower-level error
+        error: rpc_client::Error,
+    },
 }
 
 /// Errors that happen in background tasks
@@ -403,8 +411,7 @@ impl SingleDiskPlot {
             directory,
             allocated_space,
             rpc_client,
-            // TODO: Use this or remove
-            reward_address: _,
+            reward_address,
         } = options;
 
         fs::create_dir_all(&directory)?;
@@ -485,10 +492,12 @@ impl SingleDiskPlot {
         };
 
         let single_disk_plot_id = *single_disk_plot_info.id();
+        let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Account for plot overhead
         let target_sector_count = allocated_space / plot_sector_size;
 
+        // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -605,12 +614,7 @@ impl SingleDiskPlot {
                                 metadata_header.lock().sector_count as usize,
                             )
                             .map(|(sector_index, (sector, metadata))| {
-                                (
-                                    sector_index as u64
-                                        + single_disk_plot_info.first_sector_index(),
-                                    sector,
-                                    metadata,
-                                )
+                                (sector_index as u64 + first_sector_index, sector, metadata)
                             });
 
                         // TODO: Concurrency
@@ -736,6 +740,7 @@ impl SingleDiskPlot {
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
                 let shutting_down = Arc::clone(&shutting_down);
+                let identity = identity.clone();
                 let rpc_client = rpc_client.clone();
 
                 move || {
@@ -774,13 +779,16 @@ impl SingleDiskPlot {
                             };
                             let shutting_down = Arc::clone(&shutting_down);
 
-                            let solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+                            let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
                             // TODO: This loop should happen in a blocking task
-                            for (sector_index, (sector, sector_metadata)) in plot_mmap
+                            for (sector_index, sector, sector_metadata) in plot_mmap
                                 .chunks_exact(plot_sector_size as usize)
                                 .zip(metadata_mmap.chunks_exact(SectorMetadata::encoded_size()))
                                 .enumerate()
+                                .map(|(sector_index, (sector, metadata))| {
+                                    (sector_index as u64 + first_sector_index, sector, metadata)
+                                })
                             {
                                 if shutting_down.load(Ordering::Acquire) {
                                     debug!(
@@ -790,7 +798,7 @@ impl SingleDiskPlot {
                                     return;
                                 }
 
-                                let sector_id = SectorId::new(&public_key, sector_index as u64);
+                                let sector_id = SectorId::new(&public_key, sector_index);
 
                                 let local_challenge =
                                     sector_id.derive_local_challenge(&slot_info.global_challenge);
@@ -862,8 +870,7 @@ impl SingleDiskPlot {
                                         }
                                     };
                                     // Decode piece
-                                    piece
-                                        .as_mut()
+                                    piece[..record_size]
                                         .view_bits_mut::<Lsb0>()
                                         .chunks_mut(space_l.get() as usize)
                                         .enumerate()
@@ -882,20 +889,35 @@ impl SingleDiskPlot {
                                                     *a ^= *b;
                                                 });
                                         });
-                                    // let solution = Solution {
-                                    // };
-                                    // solutions.push(solution);
+
+                                    let solution = Solution {
+                                        public_key,
+                                        reward_address,
+                                        sector_index,
+                                        total_pieces: sector_metadata.total_pieces,
+                                        piece_offset: audit_piece_offset,
+                                        piece_record_hash: blake2b_256_254_hash(
+                                            &piece[..record_size],
+                                        ),
+                                        piece_witness,
+                                        chunk,
+                                        chunk_signature: identity.create_chunk_signature(&chunk),
+                                    };
+
+                                    trace!(?solution, "Solution found");
+
+                                    solutions.push(solution);
                                 }
                             }
 
-                            drop(solutions);
-                            // client
-                            //     .submit_solution_response(SolutionResponse {
-                            //         slot_number: slot_info.slot_number,
-                            //         solutions,
-                            //     })
-                            //     .await
-                            //     .map_err(FarmingError::RpcError)?;
+                            handle
+                                .block_on(rpc_client.submit_solution_response(SolutionResponse {
+                                    slot_number: slot_info.slot_number,
+                                    solutions,
+                                }))
+                                .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
+                                    error,
+                                })?;
                         }
                     };
 

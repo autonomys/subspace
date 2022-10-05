@@ -284,7 +284,7 @@ where
                     // data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
                         if let Ok(solution_response) = response_receiver.await {
-                            if let Some(solution) = solution_response.maybe_solution {
+                            for solution in solution_response.solutions {
                                 let public_key = FarmerPublicKey::from_slice(&solution.public_key)
                                     .expect("Always correct length; qed");
                                 let reward_address =
@@ -294,11 +294,13 @@ where
                                 let solution = Solution {
                                     public_key,
                                     reward_address,
-                                    piece_index: solution.piece_index,
-                                    encoding: solution.encoding,
-                                    tag_signature: solution.tag_signature,
-                                    local_challenge: solution.local_challenge,
-                                    tag: solution.tag,
+                                    sector_index: solution.sector_index,
+                                    total_pieces: solution.total_pieces,
+                                    piece_offset: solution.piece_offset,
+                                    piece_record_hash: solution.piece_record_hash,
+                                    piece_witness: solution.piece_witness,
+                                    chunk: solution.chunk,
+                                    chunk_signature: solution.chunk_signature,
                                 };
 
                                 let _ = solution_sender.send(solution).await;

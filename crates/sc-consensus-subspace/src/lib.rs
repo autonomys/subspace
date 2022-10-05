@@ -954,103 +954,104 @@ where
             return Err(Error::InvalidSalt(block_hash));
         }
 
-        let segment_index: SegmentIndex =
-            pre_digest.solution.piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
-        let position =
-            u32::try_from(pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT))
-                .expect("Position within segment always fits into u32; qed");
-
-        // This is not a very nice hack due to the fact that at the time first block is produced
-        // extrinsics with root blocks are not yet in runtime.
-        let maybe_records_root = if block_number.is_one() {
-            let archived_segments = Archiver::new(
-                RECORD_SIZE,
-                RECORDED_HISTORY_SEGMENT_SIZE,
-                self.subspace_link.kzg.clone(),
-            )
-            .expect("Incorrect parameters for archiver")
-            .add_block(
-                self.client
-                    .block(&BlockId::Number(Zero::zero()))?
-                    .ok_or(Error::GenesisUnavailable)?
-                    .encode(),
-                BlockObjectMapping::default(),
-            );
-            archived_segments.into_iter().find_map(|archived_segment| {
-                if archived_segment.root_block.segment_index() == segment_index {
-                    Some(archived_segment.root_block.records_root())
-                } else {
-                    None
-                }
-            })
-        } else {
-            aux_schema::load_records_root(self.client.as_ref(), segment_index)?
-        };
-
-        let records_root = maybe_records_root.ok_or(Error::RecordsRootNotFound(segment_index))?;
-
-        // Piece is not checked during initial block verification because it requires access to
-        // root block, check it now.
-        subspace_verification::check_piece(
-            &self.subspace_link.kzg,
-            PIECES_IN_SEGMENT,
-            records_root,
-            position,
-            RECORD_SIZE,
-            &pre_digest.solution,
-        )
-        .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
-
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
-
-        // Make sure that slot number is strictly increasing
-        if pre_digest.slot <= parent_slot {
-            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
-        }
-
-        if !skip_runtime_access {
-            // If the body is passed through, we need to use the runtime to check that the
-            // internally-set timestamp in the inherents actually matches the slot set in the seal
-            // and root blocks in the inherents are set correctly.
-            if let Some(extrinsics) = extrinsics {
-                if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
-                    debug!(
-                        target: "subspace",
-                        "Skipping `check_inherents` as authoring version is not compatible: {}",
-                        error,
-                    );
-                } else {
-                    let create_inherent_data_providers = self
-                        .create_inherent_data_providers
-                        .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
-                        .await
-                        .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
-
-                    let inherent_data = create_inherent_data_providers
-                        .create_inherent_data()
-                        .map_err(Error::CreateInherents)?;
-
-                    let inherent_res = self.client.runtime_api().check_inherents_with_context(
-                        &parent_block_id,
-                        origin.into(),
-                        Block::new(header, extrinsics),
-                        inherent_data,
-                    )?;
-
-                    if !inherent_res.ok() {
-                        for (i, e) in inherent_res.into_errors() {
-                            match create_inherent_data_providers
-                                .try_handle_error(&i, &e)
-                                .await
-                            {
-                                Some(res) => res.map_err(Error::CheckInherents)?,
-                                None => return Err(Error::CheckInherentsUnhandled(i)),
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // TODO: Update implementation for V2 consensus
+        // let segment_index: SegmentIndex =
+        //     pre_digest.solution.piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+        // let position =
+        //     u32::try_from(pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT))
+        //         .expect("Position within segment always fits into u32; qed");
+        //
+        // // This is not a very nice hack due to the fact that at the time first block is produced
+        // // extrinsics with root blocks are not yet in runtime.
+        // let maybe_records_root = if block_number.is_one() {
+        //     let archived_segments = Archiver::new(
+        //         RECORD_SIZE,
+        //         RECORDED_HISTORY_SEGMENT_SIZE,
+        //         self.subspace_link.kzg.clone(),
+        //     )
+        //     .expect("Incorrect parameters for archiver")
+        //     .add_block(
+        //         self.client
+        //             .block(&BlockId::Number(Zero::zero()))?
+        //             .ok_or(Error::GenesisUnavailable)?
+        //             .encode(),
+        //         BlockObjectMapping::default(),
+        //     );
+        //     archived_segments.into_iter().find_map(|archived_segment| {
+        //         if archived_segment.root_block.segment_index() == segment_index {
+        //             Some(archived_segment.root_block.records_root())
+        //         } else {
+        //             None
+        //         }
+        //     })
+        // } else {
+        //     aux_schema::load_records_root(self.client.as_ref(), segment_index)?
+        // };
+        //
+        // let records_root = maybe_records_root.ok_or(Error::RecordsRootNotFound(segment_index))?;
+        //
+        // // Piece is not checked during initial block verification because it requires access to
+        // // root block, check it now.
+        // subspace_verification::check_piece(
+        //     &self.subspace_link.kzg,
+        //     PIECES_IN_SEGMENT,
+        //     records_root,
+        //     position,
+        //     RECORD_SIZE,
+        //     &pre_digest.solution,
+        // )
+        // .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
+        //
+        // let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
+        //
+        // // Make sure that slot number is strictly increasing
+        // if pre_digest.slot <= parent_slot {
+        //     return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
+        // }
+        //
+        // if !skip_runtime_access {
+        //     // If the body is passed through, we need to use the runtime to check that the
+        //     // internally-set timestamp in the inherents actually matches the slot set in the seal
+        //     // and root blocks in the inherents are set correctly.
+        //     if let Some(extrinsics) = extrinsics {
+        //         if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
+        //             debug!(
+        //                 target: "subspace",
+        //                 "Skipping `check_inherents` as authoring version is not compatible: {}",
+        //                 error,
+        //             );
+        //         } else {
+        //             let create_inherent_data_providers = self
+        //                 .create_inherent_data_providers
+        //                 .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+        //                 .await
+        //                 .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+        //
+        //             let inherent_data = create_inherent_data_providers
+        //                 .create_inherent_data()
+        //                 .map_err(Error::CreateInherents)?;
+        //
+        //             let inherent_res = self.client.runtime_api().check_inherents_with_context(
+        //                 &parent_block_id,
+        //                 origin.into(),
+        //                 Block::new(header, extrinsics),
+        //                 inherent_data,
+        //             )?;
+        //
+        //             if !inherent_res.ok() {
+        //                 for (i, e) in inherent_res.into_errors() {
+        //                     match create_inherent_data_providers
+        //                         .try_handle_error(&i, &e)
+        //                         .await
+        //                     {
+        //                         Some(res) => res.map_err(Error::CheckInherents)?,
+        //                         None => return Err(Error::CheckInherentsUnhandled(i)),
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         Ok(())
     }
@@ -1139,27 +1140,29 @@ where
         };
 
         let added_weight = {
-            let global_challenge = derive_global_challenge(
-                &subspace_digest_items.global_randomness,
-                pre_digest.slot.into(),
-            );
-
-            // Verification of the local challenge was done before this
-            let target = SolutionRange::from_be_bytes(
-                derive_target(
-                    &PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
-                        .expect("Always correct length; qed"),
-                    global_challenge,
-                    &pre_digest.solution.local_challenge,
-                )
-                .expect("Verification of the local challenge was done before this; qed"),
-            );
-            let tag = SolutionRange::from_be_bytes(pre_digest.solution.tag);
-
-            BlockWeight::from(
-                SolutionRange::MAX
-                    - subspace_core_primitives::bidirectional_distance(&target, &tag),
-            )
+            // TODO: Update implementation for V2 consensus
+            // let global_challenge = derive_global_challenge(
+            //     &subspace_digest_items.global_randomness,
+            //     pre_digest.slot.into(),
+            // );
+            //
+            // // Verification of the local challenge was done before this
+            // let target = SolutionRange::from_be_bytes(
+            //     derive_target(
+            //         &PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
+            //             .expect("Always correct length; qed"),
+            //         global_challenge,
+            //         &pre_digest.solution.local_challenge,
+            //     )
+            //     .expect("Verification of the local challenge was done before this; qed"),
+            // );
+            // let tag = SolutionRange::from_be_bytes(pre_digest.solution.tag);
+            //
+            // BlockWeight::from(
+            //     SolutionRange::MAX
+            //         - subspace_core_primitives::bidirectional_distance(&target, &tag),
+            // )
+            0
         };
         let total_weight = parent_weight + added_weight;
 

@@ -29,7 +29,8 @@ use schnorrkel::{Keypair, PublicKey, SignatureResult};
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::crypto::{blake2b_256_hash_list, blake2b_256_hash_with_key};
 use subspace_core_primitives::{
-    Blake2b256Hash, LocalChallenge, Piece, Randomness, Salt, SectorId, Tag, TagSignature, TAG_SIZE,
+    Blake2b256Hash, Chunk, ChunkSignature, LocalChallenge, Piece, Randomness, Salt, SectorId, Tag,
+    TAG_SIZE,
 };
 
 const LOCAL_CHALLENGE_LABEL: &[u8] = b"subspace_local_challenge";
@@ -125,34 +126,34 @@ pub fn derive_target(
     Ok(in_out.make_bytes(PLOT_TARGET_CONTEXT))
 }
 
-/// Transcript used for creation and verification of VRF signatures for tags.
-pub fn create_tag_signature_transcript(tag: Tag) -> Transcript {
+/// Transcript used for creation and verification of VRF signatures for chunks.
+pub fn create_chunk_signature_transcript(chunk: &Chunk) -> Transcript {
     let mut transcript = Transcript::new(TAG_SIGNATURE_LABEL);
-    transcript.append_message(b"tag", &tag);
+    transcript.append_message(b"chunk", chunk.as_ref());
     transcript
 }
 
 /// Create tag signature using farmer's keypair.
-pub fn create_tag_signature(keypair: &Keypair, tag: Tag) -> TagSignature {
-    let (in_out, proof, _) = keypair.vrf_sign(create_tag_signature_transcript(tag));
+pub fn create_chunk_signature(keypair: &Keypair, chunk: &Chunk) -> ChunkSignature {
+    let (in_out, proof, _) = keypair.vrf_sign(create_chunk_signature_transcript(chunk));
 
-    TagSignature {
+    ChunkSignature {
         output: in_out.output.to_bytes(),
         proof: proof.to_bytes(),
     }
 }
 
-/// Verify that tag signature was created correctly.
-pub fn verify_tag_signature(
-    tag: Tag,
-    tag_signature: &TagSignature,
+/// Verify that chunk signature was created correctly.
+pub fn verify_chunk_signature(
+    chunk: &Chunk,
+    chunk_signature: &ChunkSignature,
     public_key: &PublicKey,
 ) -> SignatureResult<VRFInOut> {
     public_key
         .vrf_verify(
-            create_tag_signature_transcript(tag),
-            &VRFOutput(tag_signature.output),
-            &VRFProof::from_bytes(&tag_signature.proof)?,
+            create_chunk_signature_transcript(chunk),
+            &VRFOutput(chunk_signature.output),
+            &VRFProof::from_bytes(&chunk_signature.proof)?,
         )
         .map(|(in_out, _)| in_out)
 }

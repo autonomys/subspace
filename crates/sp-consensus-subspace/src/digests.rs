@@ -666,8 +666,8 @@ pub fn derive_next_global_randomness<Header: HeaderT>(
 
     derive_randomness(
         &PublicKey::from(&pre_digest.solution.public_key),
-        pre_digest.solution.tag,
-        &pre_digest.solution.tag_signature,
+        &pre_digest.solution.chunk,
+        &pre_digest.solution.chunk_signature,
     )
     .map(Some)
     .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))

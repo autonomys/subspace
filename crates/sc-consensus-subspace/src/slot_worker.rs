@@ -210,91 +210,92 @@ where
                 continue;
             }
 
-            let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
-            let segment_index = solution.piece_index / u64::from(PIECES_IN_SEGMENT);
-            let position = u32::try_from(solution.piece_index % u64::from(PIECES_IN_SEGMENT))
-                .expect("Position within segment always fits into u32; qed");
-            let mut maybe_records_root = runtime_api
-                .records_root(&parent_block_id, segment_index)
-                .ok()?;
-            let total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
+            // TODO: Update implementation for V2 consensus
+            // let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
+            // let segment_index = solution.piece_index / u64::from(PIECES_IN_SEGMENT);
+            // let position = u32::try_from(solution.piece_index % u64::from(PIECES_IN_SEGMENT))
+            //     .expect("Position within segment always fits into u32; qed");
+            // let mut maybe_records_root = runtime_api
+            //     .records_root(&parent_block_id, segment_index)
+            //     .ok()?;
+            // let total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
+            //
+            // // This is not a very nice hack due to the fact that at the time first block is produced
+            // // extrinsics with root blocks are not yet in runtime.
+            // if maybe_records_root.is_none() && parent_header.number().is_zero() {
+            //     maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
+            //         |(_block_number, root_blocks)| {
+            //             root_blocks.iter().find_map(|root_block| {
+            //                 if root_block.segment_index() == segment_index {
+            //                     Some(root_block.records_root())
+            //                 } else {
+            //                     None
+            //                 }
+            //             })
+            //         },
+            //     );
+            // }
+            //
+            // let records_root = match maybe_records_root {
+            //     Some(records_root) => records_root,
+            //     None => {
+            //         warn!(
+            //             target: "subspace",
+            //             "Records root for segment index {} not found (slot {})",
+            //             segment_index,
+            //             slot,
+            //         );
+            //         continue;
+            //     }
+            // };
+            //
+            // let solution_verification_result = verify_solution(
+            //     &solution,
+            //     slot.into(),
+            //     VerifySolutionParams {
+            //         global_randomness: &global_randomness,
+            //         solution_range: voting_solution_range,
+            //         salt,
+            //         piece_check_params: Some(PieceCheckParams {
+            //             records_root,
+            //             position,
+            //             kzg: &self.subspace_link.kzg,
+            //             pieces_in_segment: PIECES_IN_SEGMENT,
+            //             record_size: RECORD_SIZE,
+            //             max_plot_size,
+            //             total_pieces,
+            //         }),
+            //     },
+            // );
+            //
+            // if let Err(error) = solution_verification_result {
+            //     warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
+            // } else {
+            //     // Verification of the local challenge was done before this
+            //     let target = derive_target(
+            //         &PublicKey::from_bytes(solution.public_key.as_ref())
+            //             .expect("Always correct length; qed"),
+            //         global_challenge,
+            //         &solution.local_challenge,
+            //     )
+            //     .expect("Verification of the local challenge was done before this; qed");
+            //     // If solution is of high enough quality and block pre-digest wasn't produced yet,
+            //     // block reward is claimed
+            //     if maybe_pre_digest.is_none()
+            //         && is_within_solution_range(target, solution.tag, solution_range)
+            //     {
+            info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
-            // This is not a very nice hack due to the fact that at the time first block is produced
-            // extrinsics with root blocks are not yet in runtime.
-            if maybe_records_root.is_none() && parent_header.number().is_zero() {
-                maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
-                    |(_block_number, root_blocks)| {
-                        root_blocks.iter().find_map(|root_block| {
-                            if root_block.segment_index() == segment_index {
-                                Some(root_block.records_root())
-                            } else {
-                                None
-                            }
-                        })
-                    },
-                );
-            }
-
-            let records_root = match maybe_records_root {
-                Some(records_root) => records_root,
-                None => {
-                    warn!(
-                        target: "subspace",
-                        "Records root for segment index {} not found (slot {})",
-                        segment_index,
-                        slot,
-                    );
-                    continue;
-                }
-            };
-
-            let solution_verification_result = verify_solution(
-                &solution,
-                slot.into(),
-                VerifySolutionParams {
-                    global_randomness: &global_randomness,
-                    solution_range: voting_solution_range,
-                    salt,
-                    piece_check_params: Some(PieceCheckParams {
-                        records_root,
-                        position,
-                        kzg: &self.subspace_link.kzg,
-                        pieces_in_segment: PIECES_IN_SEGMENT,
-                        record_size: RECORD_SIZE,
-                        max_plot_size,
-                        total_pieces,
-                    }),
-                },
-            );
-
-            if let Err(error) = solution_verification_result {
-                warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
-            } else {
-                // Verification of the local challenge was done before this
-                let target = derive_target(
-                    &PublicKey::from_bytes(solution.public_key.as_ref())
-                        .expect("Always correct length; qed"),
-                    global_challenge,
-                    &solution.local_challenge,
-                )
-                .expect("Verification of the local challenge was done before this; qed");
-                // If solution is of high enough quality and block pre-digest wasn't produced yet,
-                // block reward is claimed
-                if maybe_pre_digest.is_none()
-                    && is_within_solution_range(target, solution.tag, solution_range)
-                {
-                    info!(target: "subspace", "🚜 Claimed block at slot {slot}");
-
-                    maybe_pre_digest.replace(PreDigest { solution, slot });
-                } else if !parent_header.number().is_zero() {
-                    // Not sending vote on top of genesis block since root blocks since piece
-                    // verification wouldn't be possible due to empty records root
-                    info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
-
-                    self.create_vote(solution, slot, parent_header, &parent_block_id)
-                        .await;
-                }
-            }
+            maybe_pre_digest.replace(PreDigest { solution, slot });
+            //     } else if !parent_header.number().is_zero() {
+            //         // Not sending vote on top of genesis block since root blocks since piece
+            //         // verification wouldn't be possible due to empty records root
+            //         info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
+            //
+            //         self.create_vote(solution, slot, parent_header, &parent_block_id)
+            //             .await;
+            //     }
+            // }
         }
 
         maybe_pre_digest

@@ -7,7 +7,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
-use subspace_core_primitives::{LocalChallenge, Solution, TagSignature};
+use subspace_core_primitives::{ChunkSignature, Solution};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
@@ -21,17 +21,16 @@ fn test_is_equivocation_proof_valid() {
     let solution = Solution {
         public_key: offender.clone(),
         reward_address: (),
-        piece_index: 0,
-        encoding: Default::default(),
-        tag_signature: TagSignature {
+        sector_index: 0,
+        total_pieces: 1,
+        piece_offset: 0,
+        piece_record_hash: Default::default(),
+        piece_witness: Default::default(),
+        chunk: Default::default(),
+        chunk_signature: ChunkSignature {
             output: Default::default(),
             proof: [0u8; 64],
         },
-        local_challenge: LocalChallenge {
-            output: Default::default(),
-            proof: [0u8; 64],
-        },
-        tag: [0u8; 8],
     };
 
     let mut first_header = Header {

@@ -27,13 +27,13 @@ use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    crypto, BlockNumber, EonIndex, PieceIndex, PieceIndexHash, PublicKey, Randomness, RecordsRoot,
-    RewardSignature, Salt, SlotNumber, Solution, SolutionRange, Tag, TagSignature, PIECE_SIZE,
-    RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
+    crypto, BlockNumber, Chunk, ChunkSignature, EonIndex, PieceIndex, PieceIndexHash, PublicKey,
+    Randomness, RecordsRoot, RewardSignature, Salt, SlotNumber, Solution, SolutionRange, Tag,
+    PIECE_SIZE, RANDOMNESS_CONTEXT, RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE, U256,
 };
 use subspace_solving::{
-    create_tag_signature_transcript, derive_global_challenge, derive_target, is_tag_valid,
-    verify_local_challenge, verify_tag_signature, SubspaceCodec,
+    create_chunk_signature_transcript, derive_global_challenge, derive_target,
+    verify_chunk_signature, verify_local_challenge, SubspaceCodec,
 };
 
 const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
@@ -88,9 +88,10 @@ fn check_piece_tag<FarmerPublicKey, RewardAddress>(
     salt: Salt,
     solution: &Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), Error> {
-    if !is_tag_valid(&solution.encoding, salt, solution.tag) {
-        return Err(Error::InvalidTag);
-    }
+    // TODO: Update implementation for V2 consensus
+    // if !is_tag_valid(&solution.encoding, salt, solution.tag) {
+    //     return Err(Error::InvalidTag);
+    // }
 
     Ok(())
 }
@@ -109,25 +110,26 @@ pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
 where
     &'a FarmerPublicKey: Into<PublicKey>,
 {
-    let mut piece = solution.encoding.clone();
-
-    // Ensure piece is decodable.
-    let public_key = Into::<PublicKey>::into(&solution.public_key);
-    let subspace_codec = SubspaceCodec::new(public_key.as_ref());
-    subspace_codec
-        .decode(&mut piece, solution.piece_index)
-        .map_err(|_| Error::InvalidPieceEncoding)?;
-
-    if !archiver::is_piece_valid(
-        kzg,
-        pieces_in_segment,
-        &piece,
-        records_root,
-        position,
-        record_size,
-    ) {
-        return Err(Error::InvalidPiece);
-    }
+    // TODO: Update implementation for V2 consensus
+    // let mut piece = solution.encoding.clone();
+    //
+    // // Ensure piece is decodable.
+    // let public_key = Into::<PublicKey>::into(&solution.public_key);
+    // let subspace_codec = SubspaceCodec::new(public_key.as_ref());
+    // subspace_codec
+    //     .decode(&mut piece, solution.piece_index)
+    //     .map_err(|_| Error::InvalidPieceEncoding)?;
+    //
+    // if !archiver::is_piece_valid(
+    //     kzg,
+    //     pieces_in_segment,
+    //     &piece,
+    //     records_root,
+    //     position,
+    //     record_size,
+    // ) {
+    //     return Err(Error::InvalidPiece);
+    // }
 
     Ok(())
 }
@@ -216,90 +218,91 @@ pub fn verify_solution<'a, FarmerPublicKey, RewardAddress>(
 where
     &'a FarmerPublicKey: Into<PublicKey>,
 {
-    let VerifySolutionParams {
-        global_randomness,
-        solution_range,
-        salt,
-        piece_check_params,
-    } = params;
-
-    let public_key = Into::<PublicKey>::into(&solution.public_key);
-    let sc_pub_key =
-        schnorrkel::PublicKey::from_bytes(public_key.as_ref()).expect("Always correct length; qed");
-    if let Err(error) = verify_local_challenge(
-        &sc_pub_key,
-        derive_global_challenge(global_randomness, slot),
-        &solution.local_challenge,
-    ) {
-        return Err(Error::InvalidLocalChallenge(error));
-    }
-
-    // Verification of the local challenge was done above
-    let target = match derive_target(
-        &sc_pub_key,
-        derive_global_challenge(global_randomness, slot),
-        &solution.local_challenge,
-    ) {
-        Ok(target) => target,
-        Err(error) => {
-            return Err(Error::InvalidLocalChallenge(error));
-        }
-    };
-
-    if !is_within_solution_range(solution.tag, target, solution_range) {
-        return Err(Error::OutsideSolutionRange);
-    }
-
-    if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &sc_pub_key) {
-        return Err(Error::InvalidSolutionSignature(error));
-    }
-
-    check_piece_tag(salt, solution)?;
-
-    if let Some(PieceCheckParams {
-        records_root,
-        position,
-        kzg,
-        pieces_in_segment,
-        record_size,
-        max_plot_size,
-        total_pieces,
-    }) = piece_check_params
-    {
-        if !is_within_max_plot(
-            solution.piece_index,
-            &public_key,
-            total_pieces,
-            max_plot_size,
-        ) {
-            return Err(Error::OutsideMaxPlot);
-        }
-
-        check_piece(
-            kzg,
-            pieces_in_segment,
-            records_root,
-            position,
-            record_size,
-            solution,
-        )?;
-    }
+    // TODO: Update implementation for V2 consensus
+    // let VerifySolutionParams {
+    //     global_randomness,
+    //     solution_range,
+    //     salt,
+    //     piece_check_params,
+    // } = params;
+    //
+    // let public_key = Into::<PublicKey>::into(&solution.public_key);
+    // let sc_pub_key =
+    //     schnorrkel::PublicKey::from_bytes(public_key.as_ref()).expect("Always correct length; qed");
+    // if let Err(error) = verify_local_challenge(
+    //     &sc_pub_key,
+    //     derive_global_challenge(global_randomness, slot),
+    //     &solution.local_challenge,
+    // ) {
+    //     return Err(Error::InvalidLocalChallenge(error));
+    // }
+    //
+    // // Verification of the local challenge was done above
+    // let target = match derive_target(
+    //     &sc_pub_key,
+    //     derive_global_challenge(global_randomness, slot),
+    //     &solution.local_challenge,
+    // ) {
+    //     Ok(target) => target,
+    //     Err(error) => {
+    //         return Err(Error::InvalidLocalChallenge(error));
+    //     }
+    // };
+    //
+    // if !is_within_solution_range(solution.tag, target, solution_range) {
+    //     return Err(Error::OutsideSolutionRange);
+    // }
+    //
+    // if let Err(error) = verify_tag_signature(solution.tag, &solution.tag_signature, &sc_pub_key) {
+    //     return Err(Error::InvalidSolutionSignature(error));
+    // }
+    //
+    // check_piece_tag(salt, solution)?;
+    //
+    // if let Some(PieceCheckParams {
+    //     records_root,
+    //     position,
+    //     kzg,
+    //     pieces_in_segment,
+    //     record_size,
+    //     max_plot_size,
+    //     total_pieces,
+    // }) = piece_check_params
+    // {
+    //     if !is_within_max_plot(
+    //         solution.piece_index,
+    //         &public_key,
+    //         total_pieces,
+    //         max_plot_size,
+    //     ) {
+    //         return Err(Error::OutsideMaxPlot);
+    //     }
+    //
+    //     check_piece(
+    //         kzg,
+    //         pieces_in_segment,
+    //         records_root,
+    //         position,
+    //         record_size,
+    //         solution,
+    //     )?;
+    // }
 
     Ok(())
 }
 
-/// Derive on-chain randomness from tag signature.
+/// Derive on-chain randomness from chunk signature.
 ///
 /// NOTE: If you are not the signer then you must verify the local challenge before calling this
 /// function.
 pub fn derive_randomness(
     public_key: &PublicKey,
-    tag: Tag,
-    tag_signature: &TagSignature,
+    chunk: &Chunk,
+    chunk_signature: &ChunkSignature,
 ) -> SignatureResult<Randomness> {
-    let in_out = VRFOutput(tag_signature.output).attach_input_hash(
+    let in_out = VRFOutput(chunk_signature.output).attach_input_hash(
         &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
-        create_tag_signature_transcript(tag),
+        create_chunk_signature_transcript(chunk),
     )?;
 
     Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
