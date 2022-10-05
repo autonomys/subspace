@@ -7,9 +7,10 @@ use futures::StreamExt;
 use jsonrpsee::ws_server::WsServerBuilder;
 use std::sync::Arc;
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmOptions};
+use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::single_plot_farm::PlotFactoryOptions;
 use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-use subspace_farmer::{NodeRpcClient, Plot, RpcClient};
+use subspace_farmer::{Identity, NodeRpcClient, Plot, RpcClient};
 use tracing::{info, warn};
 
 const GEMINI_2A_GENESIS_HASH: [u8; 32] = [
@@ -68,7 +69,7 @@ pub(crate) async fn farm_multi_disk(
         disable_farming,
     } = farming_args;
 
-    let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
+    let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
     let mut record_size = None;
     let mut recorded_history_segment_size = None;
 
@@ -119,98 +120,80 @@ pub(crate) async fn farm_multi_disk(
         record_size.replace(farmer_protocol_info.record_size);
         recorded_history_segment_size.replace(farmer_protocol_info.recorded_history_segment_size);
 
-        let single_disk_farm = SingleDiskFarm::new(SingleDiskFarmOptions {
-            plot_directory: disk_farm.plot_directory,
-            metadata_directory: disk_farm.metadata_directory,
-            allocated_plotting_space: disk_farm.allocated_plotting_space,
-            farmer_protocol_info,
-            disk_concurrency,
-            archiving_client,
-            farming_client,
+        let single_disk_plot = SingleDiskPlot::new(SingleDiskPlotOptions {
+            directory: disk_farm.plot_directory,
+            allocated_space: disk_farm.allocated_plotting_space,
+            rpc_client: farming_client,
             reward_address,
-            bootstrap_nodes: bootstrap_nodes.clone(),
-            listen_on: listen_on.clone(),
-            enable_dsn_archiving: matches!(archiving, ArchivingFrom::Dsn),
-            enable_dsn_sync: dsn_sync,
-            enable_farming: !disable_farming,
-            plot_factory: move |options: PlotFactoryOptions<'_>| {
-                Plot::open_or_create(
-                    options.single_plot_farm_id,
-                    options.plot_directory,
-                    options.metadata_directory,
-                    options.public_key,
-                    options.max_plot_size,
-                )
-            },
-        })
-        .await?;
+        })?;
 
-        single_disk_farms.push(single_disk_farm);
+        single_disk_plots.push(single_disk_plot);
     }
 
     let record_size = record_size.expect("At least one farm is always present, checked above; qed");
     let recorded_history_segment_size = recorded_history_segment_size
         .expect("At least one farm is always present, checked above; qed");
 
-    // Start RPC server
-    let ws_server = match WsServerBuilder::default()
-        .build(ws_server_listen_addr)
-        .await
-    {
-        Ok(ws_server) => ws_server,
-        Err(jsonrpsee::core::Error::Transport(error)) => {
-            warn!(
-                address = %ws_server_listen_addr,
-                %error,
-                "Failed to start WebSocket RPC server on, trying random port"
-            );
-            ws_server_listen_addr.set_port(0);
-            WsServerBuilder::default()
-                .build(ws_server_listen_addr)
-                .await?
-        }
-        Err(error) => {
-            return Err(error.into());
-        }
-    };
-    let ws_server_addr = ws_server.local_addr()?;
-    let rpc_server = RpcServerImpl::new(
-        record_size.get(),
-        recorded_history_segment_size,
-        Arc::new(
-            single_disk_farms
-                .iter()
-                .map(|single_disk_farm| single_disk_farm.piece_getter())
-                .collect::<Vec<_>>(),
-        ),
-        Arc::new(
-            single_disk_farms
-                .iter()
-                .flat_map(|single_disk_farm| {
-                    single_disk_farm
-                        .single_plot_farms()
-                        .iter()
-                        .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
-                })
-                .collect::<Vec<_>>(),
-        ),
-    );
-    let _ws_server_guard = CallOnDrop::new({
-        let ws_server = ws_server.start(rpc_server.into_rpc())?;
-        let tokio_handle = tokio::runtime::Handle::current();
+    // TODO: Restore functionality or remove
+    // // Start RPC server
+    // let ws_server = match WsServerBuilder::default()
+    //     .build(ws_server_listen_addr)
+    //     .await
+    // {
+    //     Ok(ws_server) => ws_server,
+    //     Err(jsonrpsee::core::Error::Transport(error)) => {
+    //         warn!(
+    //             address = %ws_server_listen_addr,
+    //             %error,
+    //             "Failed to start WebSocket RPC server on, trying random port"
+    //         );
+    //         ws_server_listen_addr.set_port(0);
+    //         WsServerBuilder::default()
+    //             .build(ws_server_listen_addr)
+    //             .await?
+    //     }
+    //     Err(error) => {
+    //         return Err(error.into());
+    //     }
+    // };
+    // let ws_server_addr = ws_server.local_addr()?;
+    // let rpc_server = RpcServerImpl::new(
+    //     record_size.get(),
+    //     recorded_history_segment_size,
+    //     Arc::new(
+    //         single_disk_farms
+    //             .iter()
+    //             .map(|single_disk_farm| single_disk_farm.piece_getter())
+    //             .collect::<Vec<_>>(),
+    //     ),
+    //     Arc::new(
+    //         single_disk_farms
+    //             .iter()
+    //             .flat_map(|single_disk_farm| {
+    //                 single_disk_farm
+    //                     .single_plot_farms()
+    //                     .iter()
+    //                     .map(|single_plot_farm| single_plot_farm.object_mappings().clone())
+    //             })
+    //             .collect::<Vec<_>>(),
+    //     ),
+    // );
+    // let _ws_server_guard = CallOnDrop::new({
+    //     let ws_server = ws_server.start(rpc_server.into_rpc())?;
+    //     let tokio_handle = tokio::runtime::Handle::current();
+    //
+    //     move || {
+    //         if let Ok(waiter) = ws_server.stop() {
+    //             tokio::task::block_in_place(move || tokio_handle.block_on(waiter));
+    //         }
+    //     }
+    // });
+    //
+    // info!("WS RPC server listening on {ws_server_addr}");
 
-        move || {
-            if let Ok(waiter) = ws_server.stop() {
-                tokio::task::block_in_place(move || tokio_handle.block_on(waiter));
-            }
-        }
-    });
-
-    info!("WS RPC server listening on {ws_server_addr}");
-
-    let mut single_disk_farms_stream = single_disk_farms
+    let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
-        .map(|single_disk_farm| single_disk_farm.wait())
+        .map(|single_disk_plot| single_disk_plot.wait())
         .collect::<FuturesUnordered<_>>();
 
     select(
@@ -220,7 +203,7 @@ pub(crate) async fn farm_multi_disk(
             Ok(())
         }),
         Box::pin(async move {
-            while let Some(result) = single_disk_farms_stream.next().await {
+            while let Some(result) = single_disk_plots_stream.next().await {
                 result?;
 
                 info!("Farm exited successfully");

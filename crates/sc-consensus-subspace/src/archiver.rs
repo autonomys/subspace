@@ -552,18 +552,18 @@ async fn send_archived_segment_notification(
         Box::pin(async {
             let get_value = move || archived_segment_notification;
 
-            // Try in a loop until receiver below gets notification back
-            loop {
-                archived_segment_notification_sender.notify(get_value.clone());
+            // // Try in a loop until receiver below gets notification back
+            // loop {
+            archived_segment_notification_sender.notify(get_value.clone());
 
-                futures_timer::Delay::new(ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL).await;
-
-                info!(
-                    target: "subspace",
-                    "Waiting for farmer to receive and acknowledge \
-                    archived segment",
-                );
-            }
+            // futures_timer::Delay::new(ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL).await;
+            //
+            // info!(
+            //     target: "subspace",
+            //     "Waiting for farmer to receive and acknowledge \
+            //     archived segment",
+            // );
+            // }
         }),
         Box::pin(acknowledgement_receiver.next()),
     )

@@ -68,7 +68,6 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
@@ -146,12 +145,10 @@ const EON_NEXT_SALT_REVEAL: u64 = EON_DURATION_IN_SLOTS
     .checked_sub(3600 * 24)
     .expect("Offset is smaller than eon duration; qed");
 
-// We assume initial plot size starts with the a single recorded history segment (which is erasure
-// coded of course, hence `*2`).
-const INITIAL_SOLUTION_RANGE: SolutionRange = SolutionRange::MAX
-    / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as SolutionRange
-    * SLOT_PROBABILITY.0
-    / SLOT_PROBABILITY.1;
+// We assume initial plot size starts with the a single sector, hence we have one attempt per time
+// slot.
+const INITIAL_SOLUTION_RANGE: SolutionRange =
+    SolutionRange::MAX / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0;
 
 /// Number of votes expected per block.
 ///
