@@ -19,7 +19,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::traits::Currency;
+use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 
 type BalanceOf<T> =
@@ -31,7 +31,7 @@ const EXECUTOR_LOCK_ID: LockIdentifier = *b"executor";
 mod pallet {
     use super::BalanceOf;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::LockableCurrency;
+    use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
     use sp_executor::ExecutorId;
     use sp_runtime::traits::Zero;
@@ -121,6 +121,51 @@ mod pallet {
             executor_config: ExecutorConfig<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+
+            ensure!(
+                executor_config.stake >= T::MinExecutorStake::get(),
+                Error::<T>::StakeTooSmall
+            );
+            ensure!(
+                executor_config.stake <= T::MaxExecutorStake::get(),
+                Error::<T>::StakeTooLarge
+            );
+            ensure!(
+                !Executors::<T>::contains_key(&who),
+                Error::<T>::AlreadyExecutor
+            );
+            ensure!(
+                Executors::<T>::count() <= T::MaxExecutorCount::get(),
+                Error::<T>::TooManyExecutors
+            );
+            ensure!(
+                T::Currency::free_balance(&who) >= executor_config.stake,
+                Error::<T>::InsufficientBalance
+            );
+            // TODO: executor_config.public_key sanity check.
+
+            Self::lock_fund(&who, executor_config.stake);
+
+            // Make the unlockings right forcibly.
+            let executor_config = ExecutorConfig {
+                unlockings: BoundedVec::default(),
+                ..executor_config
+            };
+            Executors::<T>::insert(&who, &executor_config);
+
+            if executor_config.is_active {
+                TotalActiveStake::<T>::mutate(|total| {
+                    *total += executor_config.stake;
+                });
+                TotalActiveExecutors::<T>::mutate(|total| {
+                    *total += 1;
+                });
+            }
+
+            Self::deposit_event(Event::<T>::NewExecutor {
+                who,
+                executor_config,
+            });
 
             Ok(())
         }
@@ -215,11 +260,32 @@ mod pallet {
     }
 
     #[pallet::error]
-    pub enum Error<T> {}
+    pub enum Error<T> {
+        /// The amount of deposit is smaller than the `T::MinExecutorStake` bound.
+        StakeTooSmall,
+
+        /// The amount of deposit is larger than the `T::MaxExecutorStake` bound.
+        StakeTooLarge,
+
+        /// An account is already an executor.
+        AlreadyExecutor,
+
+        /// The number of executors exceeds the `T::MaxExecutorCount` bound.
+        TooManyExecutors,
+
+        /// An account does not have enough balance.
+        InsufficientBalance,
+    }
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event<T: Config> {}
+    pub enum Event<T: Config> {
+        /// A new executor.
+        NewExecutor {
+            who: T::AccountId,
+            executor_config: ExecutorConfig<T>,
+        },
+    }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
@@ -235,5 +301,27 @@ mod pallet {
             // `withdraw_unlocked_deposit` manually.
             Weight::zero()
         }
+    }
+
+    /// A map tracking all the executors.
+    #[pallet::storage]
+    pub(super) type Executors<T: Config> =
+        CountedStorageMap<_, Twox64Concat, T::AccountId, ExecutorConfig<T>, OptionQuery>;
+
+    /// Total amount of active stake in the system.
+    ///
+    /// Sum of the `stake` of each active executor.
+    #[pallet::storage]
+    pub(super) type TotalActiveStake<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+
+    /// Total number of active executors.
+    #[pallet::storage]
+    pub(super) type TotalActiveExecutors<T> = StorageValue<_, u32, ValueQuery>;
+}
+
+impl<T: Config> Pallet<T> {
+    #[inline]
+    fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
+        T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
     }
 }
