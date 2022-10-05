@@ -31,7 +31,6 @@ use subspace_core_primitives::{
     plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution,
     PIECE_SIZE,
 };
-use subspace_networking::Node;
 use subspace_solving::{derive_chunk_otp, SubspaceCodec};
 use subspace_verification::is_within_solution_range2;
 use thiserror::Error;
@@ -245,10 +244,6 @@ pub struct SingleDiskPlotOptions<RC> {
     pub directory: PathBuf,
     /// How much space in bytes can plot use for plot
     pub allocated_space: u64,
-    /// Identity associated with plot
-    pub identity: Identity,
-    /// Networking instance for external communication with DSN
-    pub node: Node,
     /// RPC client connected to Subspace node
     pub rpc_client: RC,
     /// Address where farming rewards should go
@@ -382,6 +377,8 @@ type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError
 
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
+///
+/// Plot starts operating during creation and doesn't stop until dropped (or error happens).
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskPlot {
     id: SingleDiskPlotId,
@@ -412,9 +409,6 @@ impl SingleDiskPlot {
         let SingleDiskPlotOptions {
             directory,
             allocated_space,
-            identity,
-            // TODO: Use this or remove
-            node: _,
             rpc_client,
             // TODO: Use this or remove
             reward_address: _,
@@ -427,6 +421,8 @@ impl SingleDiskPlot {
         let _single_disk_semaphore =
             SingleDiskSemaphore::new(NonZeroU16::new(10).expect("Not a zero; qed"));
 
+        // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
+        let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
 
         let farmer_protocol_info = tokio::task::block_in_place(|| {
@@ -473,7 +469,8 @@ impl SingleDiskPlot {
                 single_disk_plot_info
             }
             None => {
-                // TODO: Global generator that makes sure to avoid returning the same sector index for multiple disks
+                // TODO: Global generator that makes sure to avoid returning the same sector index
+                //  for multiple disks
                 let first_sector_index = SystemTime::UNIX_EPOCH
                     .elapsed()
                     .expect("Unix epoch is always in the past; qed")
@@ -955,7 +952,8 @@ impl SingleDiskPlot {
         &self.id
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    /// Wait for background threads to exit or return an error
+    pub async fn wait(mut self) -> anyhow::Result<()> {
         while let Some(result) = self.tasks.next().instrument(self.span.clone()).await {
             result?;
         }
