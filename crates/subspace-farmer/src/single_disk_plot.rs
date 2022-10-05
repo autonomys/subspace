@@ -1,5 +1,6 @@
 use crate::file_ext::FileExt;
 use crate::identity::Identity;
+use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_farm::SingleDiskSemaphore;
@@ -743,6 +744,7 @@ impl SingleDiskPlot {
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
                 let shutting_down = Arc::clone(&shutting_down);
+                let rpc_client = rpc_client.clone();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -912,6 +914,13 @@ impl SingleDiskPlot {
                     }
                 }
             })?;
+
+        tasks.push(Box::pin(async move {
+            // TODO: Error handling here
+            reward_signing(rpc_client, identity).await.unwrap().await;
+
+            Ok(())
+        }));
 
         let farm = Self {
             id: single_disk_plot_id,
