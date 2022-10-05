@@ -4587,14 +4587,18 @@ version = "0.1.0"
 dependencies = [
  "frame-support",
  "frame-system",
+ "hash-db",
  "hex",
  "log",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
  "sp-io",
+ "sp-messenger",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
@@ -7577,6 +7581,10 @@ dependencies = [
  "thiserror",
  "zstd",
 ]
+
+[[package]]
+name = "sp-messenger"
+version = "0.1.0"
 
 [[package]]
 name = "sp-objects"
