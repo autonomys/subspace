@@ -63,15 +63,21 @@ async fn main() {
     let key = {
         let piece_index = 1u64;
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
-        let multihash: Multihash = piece_index_hash.into();
-
-        multihash
+        piece_index_hash.to_multihash()
     };
 
     node_2.announce_piece(key).await.unwrap();
     println!("Node 2 announced key: {:?}", key);
 
     tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let providers_result = node_1.get_piece_providers(key).await;
+
+    println!("Node 1 get_piece_providers result: {:?}", providers_result);
+
+    node_2.stop_announcing(key).await.unwrap();
+
+    tokio::time::sleep(Duration::from_secs(31)).await;
 
     let providers_result = node_1.get_piece_providers(key).await;
 
