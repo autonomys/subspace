@@ -329,7 +329,30 @@ mod pallet {
         pub fn pause_execution(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            Ok(())
+            Executors::<T>::try_mutate(&who, |maybe_executor_config| -> DispatchResult {
+                let executor_config = maybe_executor_config
+                    .as_mut()
+                    .ok_or(Error::<T>::NotExecutor)?;
+
+                if executor_config.is_active {
+                    if TotalActiveExecutors::<T>::get() as usize == 1 {
+                        return Err(Error::<T>::EmptyActiveExecutors.into());
+                    }
+
+                    executor_config.is_active = false;
+
+                    TotalActiveStake::<T>::mutate(|total| {
+                        *total -= executor_config.stake;
+                    });
+                    TotalActiveExecutors::<T>::mutate(|total| {
+                        *total -= 1;
+                    });
+
+                    Self::deposit_event(Event::<T>::Paused { who: who.clone() });
+                }
+
+                Ok(())
+            })
         }
 
         /// Participate in the bundle election again.
@@ -338,7 +361,26 @@ mod pallet {
         pub fn resume_execution(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            Ok(())
+            Executors::<T>::try_mutate(&who, |maybe_executor_config| -> DispatchResult {
+                let executor_config = maybe_executor_config
+                    .as_mut()
+                    .ok_or(Error::<T>::NotExecutor)?;
+
+                if !executor_config.is_active {
+                    executor_config.is_active = true;
+
+                    TotalActiveStake::<T>::mutate(|total| {
+                        *total += executor_config.stake;
+                    });
+                    TotalActiveExecutors::<T>::mutate(|total| {
+                        *total += 1;
+                    });
+
+                    Self::deposit_event(Event::<T>::Resumed { who: who.clone() });
+                }
+
+                Ok(())
+            })
         }
 
         /// Set a new executor public key.
@@ -346,8 +388,8 @@ mod pallet {
         /// It won't take effect until next epoch.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn update_public_key(origin: OriginFor<T>, new: ExecutorId) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+        pub fn update_public_key(origin: OriginFor<T>, _new: ExecutorId) -> DispatchResult {
+            let _who = ensure_signed(origin)?;
 
             Ok(())
         }
@@ -358,7 +400,22 @@ mod pallet {
         pub fn update_reward_address(origin: OriginFor<T>, new: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            Ok(())
+            Executors::<T>::try_mutate(&who, |maybe_executor_config| -> DispatchResult {
+                let executor_config = maybe_executor_config
+                    .as_mut()
+                    .ok_or(Error::<T>::NotExecutor)?;
+
+                if executor_config.reward_address != new {
+                    executor_config.reward_address = new.clone();
+
+                    Self::deposit_event(Event::<T>::RewardAddressUpdated {
+                        who: who.clone(),
+                        new,
+                    });
+                }
+
+                Ok(())
+            })
         }
     }
 
@@ -395,6 +452,9 @@ mod pallet {
 
         /// The unlocking entry is still undue.
         PrematureWithdrawal,
+
+        /// Active executors can not be empty.
+        EmptyActiveExecutors,
     }
 
     #[pallet::event]
@@ -422,6 +482,21 @@ mod pallet {
         WithdrawalCompleted {
             who: T::AccountId,
             withdrawn: BalanceOf<T>,
+        },
+
+        /// An executor paused the execution.
+        Paused { who: T::AccountId },
+
+        /// An executor resumed the execution.
+        Resumed { who: T::AccountId },
+
+        /// An executor updated its public key.
+        PublicKeyUpdated { who: T::AccountId, new: ExecutorId },
+
+        /// An executor updated its reward address.
+        RewardAddressUpdated {
+            who: T::AccountId,
+            new: T::AccountId,
         },
     }
 
