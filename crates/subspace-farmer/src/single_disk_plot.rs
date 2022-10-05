@@ -28,10 +28,11 @@ use std::time::SystemTime;
 use std::{fs, io, thread};
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
-    plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution, PIECE_SIZE,
+    plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution,
+    PIECE_SIZE,
 };
 use subspace_networking::Node;
-use subspace_solving::{derive_piece_chunk_otp, expand_chunk, SubspaceCodec};
+use subspace_solving::{derive_chunk_otp, SubspaceCodec};
 use subspace_verification::is_within_solution_range2;
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -223,14 +224,14 @@ impl PlotMetadataHeader {
 
 #[derive(Debug, Encode, Decode)]
 struct SectorMetadata {
-    created_at: SegmentIndex,
+    total_pieces: PieceIndex,
     expires_at: SegmentIndex,
 }
 
 impl SectorMetadata {
     fn encoded_size() -> usize {
         let default = SectorMetadata {
-            created_at: 0,
+            total_pieces: 0,
             expires_at: 0,
         };
 
@@ -637,8 +638,8 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
                             let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
-                            // TODO: Consider adding current segment index to protocol info
-                            //  explicitly, but, ideally, we need to remove 2x replication
+                            // TODO: Consider adding number of pieces in a sector to protocol info
+                            //  explicitly and, ideally, we need to remove 2x replication
                             //  expectation from other places too
                             let current_segment_index = farmer_protocol_info.total_pieces
                                 / u64::from(farmer_protocol_info.recorded_history_segment_size)
@@ -699,7 +700,7 @@ impl SingleDiskPlot {
                                     .par_bridge()
                                     .for_each(|(chunk_index, bits)| {
                                         // Derive one-time pad
-                                        let mut otp = derive_piece_chunk_otp(
+                                        let mut otp = derive_chunk_otp(
                                             &sector_id,
                                             &piece_witness,
                                             chunk_index as u32,
@@ -719,7 +720,7 @@ impl SingleDiskPlot {
 
                             sector_metadata.copy_from_slice(
                                 &SectorMetadata {
-                                    created_at: current_segment_index,
+                                    total_pieces,
                                     expires_at,
                                 }
                                 .encode(),
@@ -801,10 +802,38 @@ impl SingleDiskPlot {
                                     sector_id.derive_local_challenge(&slot_info.global_challenge);
                                 let audit_index: u64 =
                                     local_challenge % (plot_sector_size * u64::from(u8::BITS));
+                                // Offset of the piece in sector (in bytes)
+                                let audit_piece_offset = (audit_index / u64::from(u8::BITS))
+                                    / PIECE_SIZE as u64
+                                    * PIECE_SIZE as u64;
+                                // Audit index (chunk) within corresponding piece
+                                let audit_index_within_piece =
+                                    audit_index - audit_piece_offset * u64::from(u8::BITS);
+                                let mut piece = Piece::try_from(
+                                    &sector[audit_piece_offset as usize..][..PIECE_SIZE],
+                                )
+                                .expect("Slice is guaranteed to have correct length; qed");
 
-                                let (_, chunk) = sector.view_bits().split_at(audit_index as usize);
-                                let (chunk, _) = chunk.split_at(space_l.get() as usize);
-                                let expanded_chunk = expand_chunk(chunk);
+                                let record_size = farmer_protocol_info.record_size.get() as usize;
+                                // TODO: We are skipping witness part of the piece or else it is not
+                                //  decodable
+                                let maybe_chunk = piece[..record_size]
+                                    .view_bits()
+                                    .chunks_exact(space_l.get() as usize)
+                                    .nth(audit_index_within_piece as usize);
+
+                                let chunk = match maybe_chunk {
+                                    Some(chunk) => Chunk::from(chunk),
+                                    None => {
+                                        // TODO: Record size is not multiple of `space_l`, last bits
+                                        //  were not encoded and should not be used for solving
+                                        continue;
+                                    }
+                                };
+
+                                // TODO: This just have 20 bits of entropy as input, should we add
+                                //  something else?
+                                let expanded_chunk = chunk.expand();
 
                                 if is_within_solution_range2(
                                     local_challenge,
@@ -816,10 +845,50 @@ impl SingleDiskPlot {
                                             |error| FarmingError::FailedToDecodeMetadata { error },
                                         )?;
 
-                                    let _ = sector_metadata;
-                                    // TODO: Correct solution data structure
-                                    // debug!("Solution found");
-                                    // trace!(?solution, "Solution found");
+                                    debug!("Solution found");
+
+                                    let piece_witness = match Witness::try_from_bytes(
+                                        &<[u8; 48]>::try_from(&piece[record_size..]).expect(
+                                            "Witness must have correct size unless unless \
+                                            implementation is broken in a big way; qed",
+                                        ),
+                                    ) {
+                                        Ok(piece_witness) => piece_witness,
+                                        Err(error) => {
+                                            let piece_index = sector_id.derive_piece_index(
+                                                audit_piece_offset / PIECE_SIZE as u64,
+                                                sector_metadata.total_pieces,
+                                            );
+                                            error!(
+                                                ?error,
+                                                %piece_index,
+                                                "Failed to decode witness for piece, likely caused \
+                                                by on-disk data corruption"
+                                            );
+                                            continue;
+                                        }
+                                    };
+                                    // Decode piece
+                                    piece
+                                        .as_mut()
+                                        .view_bits_mut::<Lsb0>()
+                                        .chunks_mut(space_l.get() as usize)
+                                        .enumerate()
+                                        .par_bridge()
+                                        .for_each(|(chunk_index, bits)| {
+                                            // Derive one-time pad
+                                            let mut otp = derive_chunk_otp(
+                                                &sector_id,
+                                                &piece_witness,
+                                                chunk_index as u32,
+                                            );
+                                            // XOR chunk bit by bit with one-time pad
+                                            bits.iter_mut()
+                                                .zip(otp.view_bits_mut::<Lsb0>().iter())
+                                                .for_each(|(mut a, b)| {
+                                                    *a ^= *b;
+                                                });
+                                        });
                                     // let solution = Solution {
                                     // };
                                     // solutions.push(solution);

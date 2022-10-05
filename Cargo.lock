@@ -7985,6 +7985,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "blake2-rfc",
  "derive_more",
  "dusk-bls12_381",
@@ -8292,7 +8293,6 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
- "bitvec",
  "merlin 2.0.1",
  "num-traits",
  "num_cpus",

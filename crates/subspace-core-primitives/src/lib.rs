@@ -32,6 +32,7 @@ use crate::crypto::blake2b_256_hash_with_key;
 use crate::crypto::kzg::Commitment;
 use alloc::vec;
 use alloc::vec::Vec;
+use bitvec::prelude::*;
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU16;
@@ -386,6 +387,49 @@ impl AsRef<[u8]> for FlatPieces {
 impl AsMut<[u8]> for FlatPieces {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
+    }
+}
+
+/// Chunk within farmer's sector
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Chunk(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 8]);
+
+impl From<&BitSlice<u8, Lsb0>> for Chunk {
+    /// PANICS: Panics if bitslice provided is bigger than 64-bits long
+    fn from(bitslice: &BitSlice<u8, Lsb0>) -> Self {
+        if bitslice.len() as u64 > u64::from(u64::BITS) {
+            panic!("Can't create chunk from more than {} bits", u64::BITS);
+        }
+
+        let mut bytes = 0u64.to_le_bytes();
+
+        bytes
+            .view_bits_mut::<Lsb0>()
+            .iter_mut()
+            .zip(bitslice)
+            .for_each(|(mut expanded, source)| {
+                *expanded = *source;
+            });
+
+        Self(bytes)
+    }
+}
+
+impl AsRef<[u8]> for Chunk {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Chunk {
+    /// Expand chunk to be the same size as solution range for further comparison
+    pub fn expand(&self) -> SolutionRange {
+        let hash = crypto::blake2b_256_hash(&self.0);
+
+        SolutionRange::from_le_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ])
     }
 }
 
