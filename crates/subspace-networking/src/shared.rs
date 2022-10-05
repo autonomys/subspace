@@ -57,6 +57,10 @@ pub(crate) enum Command {
         key: Multihash,
         result_sender: oneshot::Sender<bool>,
     },
+    StopAnnouncing {
+        key: Multihash,
+        result_sender: oneshot::Sender<bool>,
+    },
     GetPieceProviders {
         key: Multihash,
         result_sender: oneshot::Sender<Option<Vec<PeerId>>>,

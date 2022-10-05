@@ -183,6 +183,25 @@ impl From<oneshot::Canceled> for AnnouncePieceError {
 }
 
 #[derive(Debug, Error)]
+pub enum StopAnnouncingError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to stop announcing an item.
+    #[error("Failed to stop announcing an item.")]
+    StopAnnouncing,
+}
+
+impl From<oneshot::Canceled> for StopAnnouncingError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum SendRequestError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
@@ -422,6 +441,24 @@ impl Node {
             .await?
             .then_some(())
             .ok_or(AnnouncePieceError::Announce)
+    }
+
+    /// Stop announcing item by its key. Initiate 'stop_providing' Kademlia operation.
+    pub async fn stop_announcing(&self, key: Multihash) -> Result<(), StopAnnouncingError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!(?key, "Starting 'stop_announcing' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::StopAnnouncing { key, result_sender })
+            .await?;
+
+        result_receiver
+            .await?
+            .then_some(())
+            .ok_or(StopAnnouncingError::StopAnnouncing)
     }
 
     /// Get piece providers by its key. Initiate 'providers' Kademlia operation.

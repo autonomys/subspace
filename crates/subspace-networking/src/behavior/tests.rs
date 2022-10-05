@@ -62,7 +62,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     assert_eq!(peers_cache.len(), 0);
 }
 
-#[allow(clippy::mutable_key_type)] // we use it hash set for sorting to compare collections
+#[allow(clippy::mutable_key_type)] // we use hash set for sorting to compare collections
 #[test]
 fn check_custom_store_api() {
     let mut store = CustomRecordStore::new(Arc::new(|_| None));
