@@ -41,9 +41,9 @@ const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
 // The default maximum incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_TTL_IN_SECS: u64 = 10;
+const KADEMLIA_PROVIDER_TTL_IN_SECS: u64 = 86400; /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: u64 = 20;
+const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: u64 = 3600; /* 1 hour */
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]

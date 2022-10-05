@@ -57,7 +57,7 @@ where
                     .map(|hash| hash.to_multihash());
 
                 let pieces_announcements = keys_iter
-                    .map(|key| node.announce(key).boxed())
+                    .map(|key| node.start_announcing(key).boxed())
                     .collect::<FuturesUnordered<_>>();
 
                 match pieces_announcements

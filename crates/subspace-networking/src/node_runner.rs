@@ -754,7 +754,7 @@ impl NodeRunner {
 
                 let _ = result_sender.send(kademlia_connection_initiated);
             }
-            Command::Announce { key, result_sender } => {
+            Command::StartAnnouncing { key, result_sender } => {
                 let res = self
                     .swarm
                     .behaviour_mut()

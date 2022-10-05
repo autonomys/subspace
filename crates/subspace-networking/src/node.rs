@@ -425,16 +425,16 @@ impl Node {
         }
     }
 
-    /// Announce iterm by its key. Initiate 'start_providing' Kademlia operation.
-    pub async fn announce(&self, key: Multihash) -> Result<(), AnnounceError> {
+    /// Start announcing item by its key. Initiate 'start_providing' Kademlia operation.
+    pub async fn start_announcing(&self, key: Multihash) -> Result<(), AnnounceError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
-        trace!(?key, "Starting 'announce' request.");
+        trace!(?key, "Starting 'start_announcing' request.");
 
         self.shared
             .command_sender
             .clone()
-            .send(Command::Announce { key, result_sender })
+            .send(Command::StartAnnouncing { key, result_sender })
             .await?;
 
         result_receiver
