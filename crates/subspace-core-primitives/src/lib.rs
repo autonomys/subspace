@@ -34,6 +34,8 @@ use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::ops::{Deref, DerefMut};
 use derive_more::{Add, Display, Div, Mul, Sub};
+#[cfg(feature = "std")]
+use libp2p::multihash::{Code, Multihash};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -518,6 +520,16 @@ pub struct PieceIndexHash(Blake2b256Hash);
 impl From<PieceIndexHash> for Blake2b256Hash {
     fn from(piece_index_hash: PieceIndexHash) -> Self {
         piece_index_hash.0
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<PieceIndexHash> for Multihash {
+    fn from(piece_index_hash: PieceIndexHash) -> Self {
+        libp2p::multihash::MultihashDigest::digest(
+            &Code::Identity,
+            &U256::from(piece_index_hash).to_be_bytes(),
+        )
     }
 }
 

@@ -4,8 +4,10 @@ use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
+use tracing::trace;
 
 pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync + 'static>;
 
@@ -14,11 +16,15 @@ pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync
 #[derive(Clone)]
 pub(crate) struct CustomRecordStore {
     value_getter: ValueGetter,
+    providers: HashMap<Key, Vec<ProviderRecord>>,
 }
 
 impl CustomRecordStore {
     pub(super) fn new(value_getter: ValueGetter) -> Self {
-        Self { value_getter }
+        Self {
+            value_getter,
+            providers: Default::default(),
+        }
     }
 }
 
@@ -52,20 +58,29 @@ impl<'a> RecordStore<'a> for CustomRecordStore {
         Vec::new().into_iter()
     }
 
-    fn add_provider(&'a mut self, _record: ProviderRecord) -> store::Result<()> {
-        // Don't allow to store providers.
-        Err(Error::MaxProvidedKeys)
+    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+        trace!("New provider record added: {:?}", record);
+
+        let records = self
+            .providers
+            .entry(record.key.clone())
+            .or_insert_with(Default::default);
+
+        records.push(record);
+
+        Ok(())
     }
 
-    fn providers(&'a self, _key: &Key) -> Vec<ProviderRecord> {
-        // No providers here.
-        Vec::new()
+    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+        self.providers.get(key).unwrap_or(&Vec::default()).clone()
     }
 
     fn provided(&'a self) -> Self::ProvidedIter {
-        // Nothing is provided.
+        // No iteration support for now.
         Vec::new().into_iter()
     }
 
-    fn remove_provider(&'a mut self, _key: &Key, _provider: &PeerId) {}
+    fn remove_provider(&'a mut self, _key: &Key, _provider: &PeerId) {
+        // TODO
+    }
 }
