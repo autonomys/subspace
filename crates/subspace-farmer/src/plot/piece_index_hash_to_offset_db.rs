@@ -72,7 +72,6 @@ impl IndexHashToOffsetDB {
                     uniform: true,
                     ref_counted: false,
                     compression: CompressionType::NoCompression,
-                    compression_threshold: 4096,
                 },
                 ColumnOptions {
                     preimage: false,
@@ -80,13 +79,13 @@ impl IndexHashToOffsetDB {
                     uniform: false,
                     ref_counted: false,
                     compression: CompressionType::NoCompression,
-                    compression_threshold: 4096,
                 },
             ],
             stats: false,
             sync_wal: true,
             sync_data: true,
             salt: None,
+            compression_threshold: Default::default(),
         }
     }
 

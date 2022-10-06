@@ -138,12 +138,12 @@ impl Commitments {
                     uniform: false,
                     ref_counted: false,
                     compression: parity_db::CompressionType::NoCompression,
-                    compression_threshold: 4096,
                 }],
                 sync_wal: true,
                 sync_data: true,
                 stats: false,
                 salt: None,
+                compression_threshold: Default::default(),
             };
             db_entry.lock().replace(Arc::new(
                 Db::open_or_create(&options)

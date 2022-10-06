@@ -94,12 +94,12 @@ impl CommitmentDatabases {
                         uniform: false,
                         ref_counted: false,
                         compression: CompressionType::NoCompression,
-                        compression_threshold: 4096,
                     }],
                     sync_wal: true,
                     sync_data: true,
                     stats: false,
                     salt: None,
+                    compression_threshold: Default::default(),
                 };
                 let db = Db::open_or_create(&options).map_err(CommitmentError::CommitmentDb)?;
                 databases.put(

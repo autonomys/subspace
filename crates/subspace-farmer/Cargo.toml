@@ -32,7 +32,7 @@ jsonrpsee = { version = "0.15.1", features = ["client", "macros", "server"] }
 libc = "0.2.131"
 lru = "0.7.8"
 num-traits = "0.2.15"
-parity-db = "0.3.17"
+parity-db = "0.4.1"
 parity-scale-codec = "3.1.5"
 parking_lot = "0.12.1"
 rand = "0.8.5"
