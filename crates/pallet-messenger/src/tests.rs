@@ -11,7 +11,8 @@ use crate::mock::{
 };
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
 use crate::{
-    Channel, ChannelId, ChannelState, Channels, Error, InitiateChannelParams, Nonce, Outbox, U256,
+    Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
+    InitiateChannelParams, Nonce, Outbox, OutboxResponses, U256,
 };
 use frame_support::{assert_err, assert_ok};
 use sp_core::storage::StorageKey;
@@ -63,7 +64,7 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
     }));
 }
 
-fn close_channel(domain_id: DomainId, channel_id: ChannelId) {
+fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonce: Option<Nonce>) {
     assert_ok!(Messenger::close_channel(
         Origin::root(),
         domain_id,
@@ -80,6 +81,10 @@ fn close_channel(domain_id: DomainId, channel_id: ChannelId) {
     let msg = Outbox::<Runtime>::get((domain_id, channel_id, Nonce::one())).unwrap();
     assert_eq!(msg.dst_domain_id, domain_id);
     assert_eq!(msg.channel_id, channel_id);
+    assert_eq!(
+        msg.last_delivered_message_response_nonce,
+        last_delivered_nonce
+    );
     assert_eq!(
         msg.payload,
         VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
@@ -145,7 +150,7 @@ fn test_close_open_channel() {
         }));
 
         // close channel
-        close_channel(domain_id, channel_id)
+        close_channel(domain_id, channel_id, None)
     });
 }
 
@@ -286,7 +291,7 @@ fn close_channel_between_domains(
 
     // initiate channel close on domain_a
     domain_a_test_ext.execute_with(|| {
-        close_channel(domain_b_id, channel_id);
+        close_channel(domain_b_id, channel_id, Some(Nonce::zero()));
     });
 
     channel_relay_request_and_response(
@@ -306,6 +311,21 @@ fn close_channel_between_domains(
             domain_id: domain_a_id,
             channel_id,
         }));
+
+        assert_eq!(channel.latest_response_received_message_nonce, None);
+        assert_eq!(
+            channel.next_inbox_nonce,
+            Nonce::one().checked_add(Nonce::one()).unwrap()
+        );
+        assert_eq!(channel.next_outbox_nonce, Nonce::zero());
+
+        // Outbox, Outbox responses, Inbox, InboxResponses must be empty
+        assert_eq!(Outbox::<domain_b::Runtime>::count(), 0);
+        assert_eq!(OutboxResponses::<domain_b::Runtime>::count(), 0);
+        assert_eq!(Inbox::<domain_b::Runtime>::count(), 0);
+
+        // latest inbox message response is cleared on next message
+        assert_eq!(InboxResponses::<domain_b::Runtime>::count(), 1);
     });
 
     // check channel state be closed on domain_a
@@ -327,6 +347,12 @@ fn close_channel_between_domains(
             domain_id: domain_b_id,
             channel_id,
         }));
+
+        // Outbox, Outbox responses, Inbox, InboxResponses must be empty
+        assert_eq!(Outbox::<domain_a::Runtime>::count(), 0);
+        assert_eq!(OutboxResponses::<domain_a::Runtime>::count(), 0);
+        assert_eq!(Inbox::<domain_a::Runtime>::count(), 0);
+        assert_eq!(InboxResponses::<domain_a::Runtime>::count(), 0);
     })
 }
 
@@ -391,7 +417,8 @@ fn channel_relay_request_and_response(
                 nonce,
                 payload: VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(
                     ProtocolMessageResponse(Ok(()))
-                )))
+                ))),
+                last_delivered_message_response_nonce: None
             }
         );
         assert_eq!(

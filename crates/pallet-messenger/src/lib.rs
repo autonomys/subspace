@@ -141,7 +141,7 @@ mod pallet {
     /// Used by the dst_domain to verify the message response.
     #[pallet::storage]
     #[pallet::getter(fn inbox_responses)]
-    pub(super) type InboxMessageResponses<T: Config> = CountedStorageMap<
+    pub(super) type InboxResponses<T: Config> = CountedStorageMap<
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
@@ -163,7 +163,7 @@ mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn outbox_responses)]
-    pub(super) type OutboxMessageResponses<T: Config> = CountedStorageMap<
+    pub(super) type OutboxResponses<T: Config> = CountedStorageMap<
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
@@ -482,7 +482,7 @@ mod pallet {
             .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))?;
 
             // derive the key as stored on the src_domain.
-            let key = StorageKey(InboxMessageResponses::<T>::hashed_key_for((
+            let key = StorageKey(InboxResponses::<T>::hashed_key_for((
                 T::SelfDomainId::get(),
                 xdm.channel_id,
                 xdm.nonce,
@@ -492,10 +492,7 @@ mod pallet {
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
 
             let provides_tag = (msg.dst_domain_id, msg.channel_id, xdm.nonce);
-            OutboxMessageResponses::<T>::insert(
-                (xdm.src_domain_id, xdm.channel_id, xdm.nonce),
-                msg,
-            );
+            OutboxResponses::<T>::insert((xdm.src_domain_id, xdm.channel_id, xdm.nonce), msg);
 
             unsigned_validity::<T>("MessengerOutboxResponse", provides_tag)
         }

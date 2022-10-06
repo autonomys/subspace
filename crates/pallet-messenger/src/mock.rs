@@ -1,4 +1,4 @@
-use crate::{ChannelId, Channels, Config, InboxMessageResponses, Nonce, Outbox, StateRootOf};
+use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRootOf};
 use frame_support::storage::generator::StorageDoubleMap;
 use sp_core::storage::StorageKey;
 use sp_runtime::traits::BlakeTwo256;
@@ -169,7 +169,7 @@ pub(crate) fn storage_proof_of_inbox_message_responses<T: Config>(
     channel_id: ChannelId,
     nonce: Nonce,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
-    let key = InboxMessageResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
+    let key = InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
     let storage_key = StorageKey(key);
     let (root, proof) = storage_proof_for_key::<T>(backend, storage_key.clone());
     (root, storage_key, proof)

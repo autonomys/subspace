@@ -1,7 +1,7 @@
 use crate::verification::Proof;
 use crate::{
-    ChannelId, Channels, Config, Error, Event, Inbox, InboxMessageResponses, InitiateChannelParams,
-    Nonce, Outbox, OutboxMessageResponses, Pallet,
+    ChannelId, Channels, Config, Error, Event, Inbox, InboxResponses, InitiateChannelParams, Nonce,
+    Outbox, OutboxResponses, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::ensure;
@@ -55,6 +55,8 @@ pub struct Message<DomainId> {
     pub nonce: Nonce,
     /// Payload of the message
     pub payload: VersionedPayload,
+    /// Last delivered message response nonce on src_domain.
+    pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
 /// Cross Domain message contains Message and its proof on src_domain.
@@ -101,6 +103,8 @@ impl<T: Config> Pallet<T> {
                     channel_id,
                     nonce: next_outbox_nonce,
                     payload,
+                    last_delivered_message_response_nonce: channel
+                        .latest_response_received_message_nonce,
                 };
                 Outbox::<T>::insert((dst_domain_id, channel_id, next_outbox_nonce), msg);
 
@@ -118,6 +122,24 @@ impl<T: Config> Pallet<T> {
                 Ok(())
             },
         )
+    }
+
+    /// Removes messages responses from Inbox responses as the src_domain signalled that responses are delivered.
+    /// all the messages with nonce <= latest_confirmed_nonce are deleted.
+    fn clean_delivered_message_responses(
+        dst_domain_id: T::DomainId,
+        channel_id: ChannelId,
+        latest_confirmed_nonce: Option<Nonce>,
+    ) {
+        let mut current_nonce = latest_confirmed_nonce;
+        while let Some(nonce) = current_nonce {
+            // fail if we have cleared all the messages
+            if InboxResponses::<T>::take((dst_domain_id, channel_id, nonce)).is_none() {
+                return;
+            }
+
+            current_nonce = nonce.checked_sub(Nonce::one())
+        }
     }
 
     pub(crate) fn process_inbox_messages(
@@ -140,7 +162,7 @@ impl<T: Config> Pallet<T> {
                 },
             };
 
-            InboxMessageResponses::<T>::insert(
+            InboxResponses::<T>::insert(
                 (dst_domain_id, channel_id, next_inbox_nonce),
                 Message {
                     src_domain_id: T::SelfDomainId::get(),
@@ -150,6 +172,8 @@ impl<T: Config> Pallet<T> {
                     payload: VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(
                         ProtocolMessageResponse(response),
                     ))),
+                    // this nonce is not considered in response context.
+                    last_delivered_message_response_nonce: None,
                 },
             );
 
@@ -163,6 +187,13 @@ impl<T: Config> Pallet<T> {
                 .checked_add(Nonce::one())
                 .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
             messages_processed += 1;
+
+            // clean any delivered inbox responses
+            Self::clean_delivered_message_responses(
+                dst_domain_id,
+                channel_id,
+                msg.last_delivered_message_response_nonce,
+            )
         }
 
         if messages_processed > 0 {
@@ -227,11 +258,9 @@ impl<T: Config> Pallet<T> {
 
         // TODO(ved): maybe a bound of number of message responses to process in a single call?
         let mut messages_processed = 0;
-        while let Some(msg) = OutboxMessageResponses::<T>::take((
-            dst_domain_id,
-            channel_id,
-            next_message_response_nonce,
-        )) {
+        while let Some(msg) =
+            OutboxResponses::<T>::take((dst_domain_id, channel_id, next_message_response_nonce))
+        {
             match msg.payload {
                 VersionedPayload::V0(Payload::Protocol(msg)) => match msg {
                     RequestResponse::Response(resp) => {
