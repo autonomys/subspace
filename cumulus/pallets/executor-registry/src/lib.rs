@@ -469,6 +469,15 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            assert!(
+                self.executors.len() >= T::MinExecutors::get() as usize,
+                "Too few genesis executors"
+            );
+            assert!(
+                self.executors.len() <= T::MaxExecutors::get() as usize,
+                "Too many genesis executors"
+            );
+
             for (executor, initial_stake, reward_address, executor_id) in self.executors.clone() {
                 assert!(
                     initial_stake >= T::MinExecutorStake::get()
