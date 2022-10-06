@@ -1,7 +1,7 @@
 use crate::verification::Proof;
 use crate::{
     ChannelId, Channels, Config, Error, Event, Inbox, InboxMessageResponses, InitiateChannelParams,
-    Nonce, Outbox, Pallet,
+    Nonce, Outbox, OutboxMessageResponses, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::ensure;
@@ -20,7 +20,7 @@ pub enum ProtocolMessageRequest {
 
 /// Defines protocol requests performed on domains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct ProtocolMessageResponse(Result<(), DispatchError>);
+pub struct ProtocolMessageResponse(pub Result<(), DispatchError>);
 
 /// Protocol message that encompasses  request or its response.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -132,9 +132,12 @@ impl<T: Config> Pallet<T> {
         let mut messages_processed = 0;
         while let Some(msg) = Inbox::<T>::take((dst_domain_id, channel_id, next_inbox_nonce)) {
             let response = match msg.payload {
-                VersionedPayload::V0(Payload::Protocol(msg)) => {
-                    Self::process_incoming_protocol_message(dst_domain_id, channel_id, msg)
-                }
+                VersionedPayload::V0(Payload::Protocol(msg)) => match msg {
+                    RequestResponse::Request(req) => {
+                        Self::process_incoming_protocol_message_req(dst_domain_id, channel_id, req)
+                    }
+                    RequestResponse::Response(_) => Err(Error::<T>::InvalidMessagePayload.into()),
+                },
             };
 
             InboxMessageResponses::<T>::insert(
@@ -177,21 +180,104 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn process_incoming_protocol_message(
+    fn process_incoming_protocol_message_req(
         domain_id: T::DomainId,
         channel_id: ChannelId,
-        req_resp: RequestResponse<ProtocolMessageRequest, ProtocolMessageResponse>,
+        req: ProtocolMessageRequest,
     ) -> Result<(), DispatchError> {
-        match req_resp {
-            RequestResponse::Request(req) => match req {
-                ProtocolMessageRequest::ChannelOpen(_) => {
-                    Self::do_open_channel(domain_id, channel_id)
-                }
-                ProtocolMessageRequest::ChannelClose => {
-                    Self::do_close_channel(domain_id, channel_id)
-                }
-            },
-            RequestResponse::Response(_) => Err(Error::<T>::InvalidMessagePayload.into()),
+        match req {
+            ProtocolMessageRequest::ChannelOpen(_) => Self::do_open_channel(domain_id, channel_id),
+            ProtocolMessageRequest::ChannelClose => Self::do_close_channel(domain_id, channel_id),
         }
+    }
+
+    fn process_incoming_protocol_message_response(
+        domain_id: T::DomainId,
+        channel_id: ChannelId,
+        req: ProtocolMessageRequest,
+        resp: ProtocolMessageResponse,
+    ) -> DispatchResult {
+        match (req, resp.0) {
+            // channel open request is accepted by dst_domain.
+            // open channel on our end.
+            (ProtocolMessageRequest::ChannelOpen(_), Ok(_)) => {
+                Self::do_open_channel(domain_id, channel_id)
+            }
+
+            // for rest of the branches we dont care about the outcome and return Ok
+            // for channel close request, we do not care about the response as channel is already closed.
+            // for channel open request and request is rejected, channel is left in init state and no new messages are accepted.
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn process_outbox_message_responses(
+        dst_domain_id: T::DomainId,
+        channel_id: ChannelId,
+    ) -> DispatchResult {
+        // fetch the next message response nonce to process
+        // starts with nonce 0
+        let mut last_message_response_nonce = Channels::<T>::get(dst_domain_id, channel_id)
+            .ok_or(Error::<T>::MissingChannel)?
+            .latest_response_received_message_nonce;
+
+        let mut next_message_response_nonce = last_message_response_nonce
+            .and_then(|nonce| nonce.checked_add(Nonce::one()))
+            .unwrap_or(Nonce::zero());
+
+        // TODO(ved): maybe a bound of number of message responses to process in a single call?
+        let mut messages_processed = 0;
+        while let Some(msg) = OutboxMessageResponses::<T>::take((
+            dst_domain_id,
+            channel_id,
+            next_message_response_nonce,
+        )) {
+            match msg.payload {
+                VersionedPayload::V0(Payload::Protocol(msg)) => match msg {
+                    RequestResponse::Response(resp) => {
+                        if let VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                            req,
+                        ))) = Outbox::<T>::take((
+                            dst_domain_id,
+                            channel_id,
+                            next_message_response_nonce,
+                        ))
+                        .ok_or(Error::<T>::MissingMessage)?
+                        .payload
+                        {
+                            Self::process_incoming_protocol_message_response(
+                                dst_domain_id,
+                                channel_id,
+                                req,
+                                resp,
+                            )
+                        } else {
+                            Err(Error::<T>::InvalidMessagePayload.into())
+                        }
+                    }
+                    RequestResponse::Request(_) => Err(Error::<T>::InvalidMessagePayload.into()),
+                },
+            }?;
+
+            last_message_response_nonce = Some(next_message_response_nonce);
+            next_message_response_nonce = next_message_response_nonce
+                .checked_add(Nonce::one())
+                .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
+            messages_processed += 1;
+        }
+
+        if messages_processed > 0 {
+            Channels::<T>::mutate(
+                dst_domain_id,
+                channel_id,
+                |maybe_channel| -> DispatchResult {
+                    let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+                    channel.latest_response_received_message_nonce = last_message_response_nonce;
+                    Ok(())
+                },
+            )?;
+        }
+
+        Ok(())
     }
 }
