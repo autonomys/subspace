@@ -1,6 +1,4 @@
-// This file is part of Substrate.
-
-// Copyright (C) 2017-2022 Parity Technologies (UK) Ltd.
+// Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +35,7 @@ mod pallet {
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
     use sp_executor::ExecutorId;
-    use sp_runtime::traits::{BlockNumberProvider, Saturating, Zero};
+    use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, Zero};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -46,32 +44,39 @@ mod pallet {
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
         /// Minimum SSC required to be an executor.
+        #[pallet::constant]
         type MinExecutorStake: Get<BalanceOf<Self>>;
 
         /// Maximum SSC that can be staked by a single executor.
+        #[pallet::constant]
         type MaxExecutorStake: Get<BalanceOf<Self>>;
 
         /// Minimum number of executors
-        type MinExecutorCount: Get<u32>;
+        #[pallet::constant]
+        type MinExecutors: Get<u32>;
 
         /// Maximum number of executors.
         ///
         /// Increase this number gradually as the network grows.
-        type MaxExecutorCount: Get<u32>;
+        #[pallet::constant]
+        type MaxExecutors: Get<u32>;
 
         /// Maximum number of ongoing unlocking items per executor.
-        type MaxUnlockingCount: Get<u32>;
+        #[pallet::constant]
+        type MaxWithdrawals: Get<u32>;
 
         /// Number of blocks the withdrawn stake has to remain locked before it can become free.
         ///
         /// Typically should be the same with fraud proof challenge period, like one week for arbitrum.
         ///
         /// TODO: Use Slot instead of BlockNumber, which is closer to the actual elapsed time.
-        type UnlockingDuration: Get<Self::BlockNumber>;
+        #[pallet::constant]
+        type WithdrawalDuration: Get<Self::BlockNumber>;
 
         /// The amount of time each epoch should last in blocks.
         ///
         /// The executor set for the bundle election is scheduled to rotate on each new epoch.
+        #[pallet::constant]
         type EpochDuration: Get<Self::BlockNumber>;
     }
 
@@ -80,12 +85,12 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Represents the inactive stake of an executor after calling `unlock_stake`.
+    /// Represents the inactive stake of an executor after calling `decrease_stake`.
     ///
-    /// An executor called `unlock_stake` to withdraw some stakes, which
+    /// An executor called `decrease_stake` to withdraw some stakes, which
     /// have to wait for another lock-up period before making it transferrable again.
     #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
-    pub struct Unlocking<Balance, BlockNumber> {
+    pub struct Withdrawal<Balance, BlockNumber> {
         /// Amount of the unlocking balance.
         pub amount: Balance,
         /// Block number after which the balance can be really unlocked.
@@ -111,7 +116,7 @@ mod pallet {
         pub stake: BalanceOf<T>,
 
         /// Inactive stake still being frozen, which can be freed up once mature.
-        pub unlockings: BoundedVec<Unlocking<BalanceOf<T>, T::BlockNumber>, T::MaxUnlockingCount>,
+        pub withdrawals: BoundedVec<Withdrawal<BalanceOf<T>, T::BlockNumber>, T::MaxWithdrawals>,
     }
 
     #[pallet::call]
@@ -121,16 +126,19 @@ mod pallet {
         #[pallet::weight(10_000)]
         pub fn register(
             origin: OriginFor<T>,
-            executor_config: ExecutorConfig<T>,
+            public_key: ExecutorId,
+            reward_address: T::AccountId,
+            is_active: bool,
+            stake: BalanceOf<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             ensure!(
-                executor_config.stake >= T::MinExecutorStake::get(),
+                stake >= T::MinExecutorStake::get(),
                 Error::<T>::StakeTooSmall
             );
             ensure!(
-                executor_config.stake <= T::MaxExecutorStake::get(),
+                stake <= T::MaxExecutorStake::get(),
                 Error::<T>::StakeTooLarge
             );
             ensure!(
@@ -138,27 +146,29 @@ mod pallet {
                 Error::<T>::AlreadyExecutor
             );
             ensure!(
-                Executors::<T>::count() <= T::MaxExecutorCount::get(),
+                Executors::<T>::count() <= T::MaxExecutors::get(),
                 Error::<T>::TooManyExecutors
             );
             ensure!(
-                T::Currency::free_balance(&who) >= executor_config.stake,
+                T::Currency::free_balance(&who) >= stake,
                 Error::<T>::InsufficientBalance
             );
-            // TODO: executor_config.public_key sanity check.
+            // TODO: public_key sanity check.
 
-            Self::lock_fund(&who, executor_config.stake);
+            Self::lock_fund(&who, stake);
 
-            // Make the unlockings right forcibly.
             let executor_config = ExecutorConfig {
-                unlockings: BoundedVec::default(),
-                ..executor_config
+                public_key,
+                reward_address,
+                is_active,
+                stake,
+                withdrawals: BoundedVec::default(),
             };
             Executors::<T>::insert(&who, &executor_config);
 
-            if executor_config.is_active {
+            if is_active {
                 TotalActiveStake::<T>::mutate(|total| {
-                    *total += executor_config.stake;
+                    *total += stake;
                 });
                 TotalActiveExecutors::<T>::mutate(|total| {
                     *total += 1;
@@ -180,7 +190,7 @@ mod pallet {
             let _who = ensure_signed(origin)?;
 
             // TODO:
-            // Ensure the number of remaining executors can't be lower than T::MinExecutorCount.
+            // Ensure the number of remaining executors can't be lower than T::MinExecutors.
             // Ensure the executor has no funds locked in this pallet(deposits and pending_withdrawals).
             // Remove the corresponding entry from the Executors.
             // Deposit an event Deregistered.
@@ -191,12 +201,12 @@ mod pallet {
         /// Increase the executor's stake by locking some more balance.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn stake_extra(origin: OriginFor<T>, extra: BalanceOf<T>) -> DispatchResult {
+        pub fn increase_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            if !extra.is_zero() {
+            if !amount.is_zero() {
                 ensure!(
-                    T::Currency::free_balance(&who) >= extra,
+                    T::Currency::free_balance(&who) >= amount,
                     Error::<T>::InsufficientBalance
                 );
 
@@ -205,24 +215,29 @@ mod pallet {
                         .as_mut()
                         .ok_or(Error::<T>::NotExecutor)?;
 
-                    executor_config.stake = executor_config.stake.saturating_add(extra);
+                    let new_stake = executor_config
+                        .stake
+                        .checked_add(&amount)
+                        .ok_or(Error::<T>::StakeTooLarge)?;
 
-                    if executor_config.stake > T::MaxExecutorStake::get() {
+                    if new_stake > T::MaxExecutorStake::get() {
                         return Err(Error::<T>::StakeTooLarge);
                     }
+
+                    executor_config.stake = new_stake;
 
                     Self::lock_fund(&who, executor_config.stake);
 
                     if executor_config.is_active {
                         TotalActiveStake::<T>::mutate(|total| {
-                            *total += extra;
+                            *total += amount;
                         });
                     }
 
                     Ok(())
                 })?;
 
-                Self::deposit_event(Event::<T>::Staked { who, extra });
+                Self::deposit_event(Event::<T>::StakeIncreased { who, amount });
             }
 
             Ok(())
@@ -234,7 +249,7 @@ mod pallet {
         /// can be withdrawn to be transferrable.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn unlock_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
+        pub fn decrease_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             if !amount.is_zero() {
@@ -243,22 +258,27 @@ mod pallet {
                         .as_mut()
                         .ok_or(Error::<T>::NotExecutor)?;
 
-                    executor_config.stake = executor_config.stake.saturating_sub(amount);
+                    let new_stake = executor_config
+                        .stake
+                        .checked_sub(&amount)
+                        .ok_or(Error::<T>::InsufficientStake)?;
 
-                    if executor_config.stake < T::MinExecutorStake::get() {
+                    if new_stake < T::MinExecutorStake::get() {
                         return Err(Error::<T>::InsufficientStake);
                     }
 
-                    let new_unlocking = Unlocking {
+                    executor_config.stake = new_stake;
+
+                    let new_withdrawal = Withdrawal {
                         amount,
                         locked_until: frame_system::Pallet::<T>::current_block_number()
-                            + T::UnlockingDuration::get(),
+                            + T::WithdrawalDuration::get(),
                     };
 
                     executor_config
-                        .unlockings
-                        .try_push(new_unlocking)
-                        .map_err(|_| Error::<T>::TooManyUnlockings)?;
+                        .withdrawals
+                        .try_push(new_withdrawal)
+                        .map_err(|_| Error::<T>::TooManyWithdrawals)?;
 
                     if executor_config.is_active {
                         TotalActiveStake::<T>::mutate(|total| {
@@ -269,7 +289,10 @@ mod pallet {
                     Ok(())
                 })?;
 
-                Self::deposit_event(Event::<T>::UnlockStakeInitiated { who, amount });
+                Self::deposit_event(Event::<T>::StakeDecreasedAndWithdrawalInitiated {
+                    who,
+                    amount,
+                });
             }
 
             Ok(())
@@ -280,9 +303,9 @@ mod pallet {
         /// The balance being locked will become free on success.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn withdraw_unlocked_stake(
+        pub fn withdraw_decreased_stake(
             origin: OriginFor<T>,
-            unlocking_index: u32,
+            withdrawal_index: u32,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -291,16 +314,16 @@ mod pallet {
                     .as_mut()
                     .ok_or(Error::<T>::NotExecutor)?;
 
-                if unlocking_index as usize >= executor_config.unlockings.len() {
-                    return Err(Error::<T>::InvalidUnlockingIndex.into());
+                if withdrawal_index as usize >= executor_config.withdrawals.len() {
+                    return Err(Error::<T>::InvalidWithdrawalIndex.into());
                 }
 
-                let Unlocking {
+                let Withdrawal {
                     amount,
                     locked_until,
                 } = executor_config
-                    .unlockings
-                    .swap_remove(unlocking_index as usize);
+                    .withdrawals
+                    .swap_remove(withdrawal_index as usize);
 
                 let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
@@ -309,7 +332,7 @@ mod pallet {
                 }
 
                 let inactive_stake = executor_config
-                    .unlockings
+                    .withdrawals
                     .iter()
                     .fold(Zero::zero(), |acc, x| acc + x.amount);
 
@@ -338,7 +361,7 @@ mod pallet {
                     .ok_or(Error::<T>::NotExecutor)?;
 
                 if executor_config.is_active {
-                    if TotalActiveExecutors::<T>::get() as usize == 1 {
+                    if TotalActiveExecutors::<T>::get() == 1u32 {
                         return Err(Error::<T>::EmptyActiveExecutors.into());
                     }
 
@@ -464,7 +487,7 @@ mod pallet {
                         reward_address,
                         is_active: true,
                         stake: initial_stake,
-                        unlockings: BoundedVec::default(),
+                        withdrawals: BoundedVec::default(),
                     },
                 );
                 TotalActiveStake::<T>::mutate(|total| {
@@ -488,7 +511,7 @@ mod pallet {
         /// An account is already an executor.
         AlreadyExecutor,
 
-        /// The number of executors exceeds the `T::MaxExecutorCount` bound.
+        /// The number of executors exceeds the `T::MaxExecutors` bound.
         TooManyExecutors,
 
         /// An account does not have enough balance.
@@ -502,13 +525,13 @@ mod pallet {
         /// If you want to withdraw all the stake, use `deregister` instead.
         InsufficientStake,
 
-        /// The unlocking queue size reached the upper bound.
-        TooManyUnlockings,
+        /// The withdrawal queue size reached the upper bound.
+        TooManyWithdrawals,
 
-        /// The unlocking entry does not exist for the given index.
-        InvalidUnlockingIndex,
+        /// The withdrawal entry does not exist for the given index.
+        InvalidWithdrawalIndex,
 
-        /// The unlocking entry is still undue.
+        /// The withdrawal entry is still undue.
         PrematureWithdrawal,
 
         /// Active executors can not be empty.
@@ -525,13 +548,13 @@ mod pallet {
         },
 
         /// An executor deposited this account.
-        Staked {
+        StakeIncreased {
             who: T::AccountId,
-            extra: BalanceOf<T>,
+            amount: BalanceOf<T>,
         },
 
         /// An executor requested to unstake this account.
-        UnlockStakeInitiated {
+        StakeDecreasedAndWithdrawalInitiated {
             who: T::AccountId,
             amount: BalanceOf<T>,
         },
@@ -591,7 +614,6 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    #[inline]
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
     }

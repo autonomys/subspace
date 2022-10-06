@@ -1,6 +1,6 @@
 use crate::{
     self as pallet_executor_registry, Error, ExecutorConfig, Executors, TotalActiveExecutors,
-    TotalActiveStake, Unlocking,
+    TotalActiveStake, Withdrawal,
 };
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
 use frame_support::{assert_noop, assert_ok, bounded_vec, parameter_types};
@@ -78,11 +78,11 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     pub const MinExecutorStake: Balance = 10;
     pub const MaxExecutorStake: Balance = 1000;
-    pub const MinExecutorCount: u32 = 1;
-    pub const MaxExecutorCount: u32 = 10;
+    pub const MinExecutors: u32 = 1;
+    pub const MaxExecutors: u32 = 10;
     pub const EpochDuration: BlockNumber = 3;
-    pub const MaxUnlockingCount: u32 = 1;
-    pub const UnlockingDuration: BlockNumber = 10;
+    pub const MaxWithdrawals: u32 = 1;
+    pub const WithdrawalDuration: BlockNumber = 10;
 }
 
 impl pallet_executor_registry::Config for Test {
@@ -90,11 +90,11 @@ impl pallet_executor_registry::Config for Test {
     type Currency = Balances;
     type MinExecutorStake = MinExecutorStake;
     type MaxExecutorStake = MaxExecutorStake;
-    type MinExecutorCount = MinExecutorCount;
-    type MaxExecutorCount = MaxExecutorCount;
+    type MinExecutors = MinExecutors;
+    type MaxExecutors = MaxExecutors;
     type EpochDuration = EpochDuration;
-    type MaxUnlockingCount = MaxUnlockingCount;
-    type UnlockingDuration = UnlockingDuration;
+    type MaxWithdrawals = MaxWithdrawals;
+    type WithdrawalDuration = WithdrawalDuration;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -128,64 +128,79 @@ fn register_should_work() {
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 1);
 
-        let executor_config = ExecutorConfig {
-            public_key: ExecutorPair::from_seed(&U256::from(2u32).into()).public(),
-            is_active: true,
-            reward_address: 2 + 10_000,
-            stake: 200,
-            unlockings: Default::default(),
-        };
+        let public_key = ExecutorPair::from_seed(&U256::from(2u32).into()).public();
+        let reward_address = 2 + 10_000;
+        let is_active = true;
+        let stake = 200;
 
         assert_noop!(
             ExecutorRegistry::register(
                 Origin::signed(1),
-                ExecutorConfig {
-                    stake: 100_000,
-                    ..executor_config.clone()
-                }
+                public_key.clone(),
+                reward_address,
+                is_active,
+                100_000,
             ),
             Error::<Test>::StakeTooLarge
         );
         assert_noop!(
             ExecutorRegistry::register(
                 Origin::signed(1),
-                ExecutorConfig {
-                    stake: 1,
-                    ..executor_config.clone()
-                }
+                public_key.clone(),
+                reward_address,
+                true,
+                1
             ),
             Error::<Test>::StakeTooSmall
         );
         assert_noop!(
             ExecutorRegistry::register(
                 Origin::signed(8),
-                ExecutorConfig {
-                    stake: 100,
-                    ..executor_config.clone()
-                }
+                public_key.clone(),
+                reward_address,
+                true,
+                100
             ),
             Error::<Test>::InsufficientBalance
         );
         assert_noop!(
-            ExecutorRegistry::register(Origin::signed(1), executor_config.clone()),
+            ExecutorRegistry::register(
+                Origin::signed(1),
+                public_key.clone(),
+                reward_address,
+                true,
+                stake
+            ),
             Error::<Test>::AlreadyExecutor
         );
 
         assert_ok!(ExecutorRegistry::register(
             Origin::signed(2),
-            executor_config.clone()
+            public_key.clone(),
+            reward_address,
+            is_active,
+            stake,
         ));
         assert_eq!(
             frame_system::Account::<Test>::get(&2).data,
             AccountData {
                 free: 2000,
                 reserved: 0,
-                misc_frozen: 200,
-                fee_frozen: 200
+                misc_frozen: stake,
+                fee_frozen: stake
             }
         );
-        assert_eq!(Executors::<Test>::get(&2), Some(executor_config));
-        assert_eq!(TotalActiveStake::<Test>::get(), 100 + 200);
+        assert_eq!(
+            Executors::<Test>::get(&2),
+            Some(ExecutorConfig {
+                public_key,
+                reward_address,
+                is_active,
+                stake,
+                withdrawals: Default::default()
+            })
+        );
+        assert_eq!(TotalActiveStake::<Test>::get(), 100 + stake);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 2);
     });
 }
@@ -204,7 +219,7 @@ fn stake_extra_should_work() {
             }
         );
         let extra = 200;
-        assert_ok!(ExecutorRegistry::stake_extra(Origin::signed(1), extra));
+        assert_ok!(ExecutorRegistry::increase_stake(Origin::signed(1), extra));
         assert_eq!(
             Executors::<Test>::get(&1).unwrap(),
             ExecutorConfig {
@@ -225,7 +240,7 @@ fn stake_extra_should_work() {
 }
 
 #[test]
-fn unlock_and_withdraw_stake_should_work() {
+fn decrease_and_withdraw_stake_should_work() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
 
@@ -239,13 +254,20 @@ fn unlock_and_withdraw_stake_should_work() {
             }
         );
         assert_noop!(
-            ExecutorRegistry::unlock_stake(Origin::signed(1), 1000),
+            ExecutorRegistry::decrease_stake(Origin::signed(1), 1000),
+            Error::<Test>::InsufficientStake
+        );
+        assert_noop!(
+            ExecutorRegistry::decrease_stake(Origin::signed(1), Balance::MAX),
             Error::<Test>::InsufficientStake
         );
         let executor_config = Executors::<Test>::get(&1).unwrap();
-        let to_unlock = 10;
+        let to_decrease = 10;
 
-        assert_ok!(ExecutorRegistry::unlock_stake(Origin::signed(1), to_unlock));
+        assert_ok!(ExecutorRegistry::decrease_stake(
+            Origin::signed(1),
+            to_decrease
+        ));
 
         assert_eq!(
             frame_system::Account::<Test>::get(&1).data,
@@ -260,31 +282,31 @@ fn unlock_and_withdraw_stake_should_work() {
         assert_eq!(
             Executors::<Test>::get(&1).unwrap(),
             ExecutorConfig {
-                unlockings: bounded_vec![Unlocking {
+                withdrawals: bounded_vec![Withdrawal {
                     amount: 10,
                     locked_until: 11
                 }],
-                stake: executor_config.stake - to_unlock,
+                stake: executor_config.stake - to_decrease,
                 ..executor_config
             }
         );
 
         System::set_block_number(11);
         assert_noop!(
-            ExecutorRegistry::withdraw_unlocked_stake(Origin::signed(1), 0),
+            ExecutorRegistry::withdraw_decreased_stake(Origin::signed(1), 0),
             Error::<Test>::PrematureWithdrawal
         );
 
         System::set_block_number(12);
         let executor_config = Executors::<Test>::get(&1).unwrap();
-        assert_ok!(ExecutorRegistry::withdraw_unlocked_stake(
+        assert_ok!(ExecutorRegistry::withdraw_decreased_stake(
             Origin::signed(1),
             0
         ));
         assert_eq!(
             Executors::<Test>::get(&1).unwrap(),
             ExecutorConfig {
-                unlockings: Default::default(),
+                withdrawals: Default::default(),
                 ..executor_config
             }
         );
@@ -308,17 +330,17 @@ fn pause_and_resume_execution_should_work() {
             Error::<Test>::EmptyActiveExecutors
         );
 
-        let executor_config = ExecutorConfig {
-            public_key: ExecutorPair::from_seed(&U256::from(2u32).into()).public(),
-            is_active: false,
-            reward_address: 2 + 10_000,
-            stake: 200,
-            unlockings: Default::default(),
-        };
+        let public_key = ExecutorPair::from_seed(&U256::from(2u32).into()).public();
+        let reward_address = 2 + 10_000;
+        let is_active = false;
+        let stake = 200;
 
         assert_ok!(ExecutorRegistry::register(
             Origin::signed(2),
-            executor_config
+            public_key,
+            reward_address,
+            is_active,
+            stake
         ));
 
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
