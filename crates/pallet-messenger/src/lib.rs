@@ -89,6 +89,7 @@ mod pallet {
         Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, StateRootOf, U256,
     };
     use frame_support::pallet_prelude::*;
+    use frame_support::transactional;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_messenger::SystemDomainTracker;
@@ -201,6 +202,15 @@ mod pallet {
         /// Emits when a new message is added to the outbox.
         OutboxMessage {
             domain_id: T::DomainId,
+            channel_id: ChannelId,
+            nonce: Nonce,
+        },
+
+        /// Emits when a message response is available for Inbox message.
+        InboxMessageResponse {
+            /// Destination domain ID.
+            domain_id: T::DomainId,
+            /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
         },
@@ -327,6 +337,7 @@ mod pallet {
         /// Channel is set to initiated and do not accept or receive any messages.
         /// Only a root user can create the channel.
         #[pallet::weight((10_000, Pays::No))]
+        #[transactional]
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_domain_id: T::DomainId,
@@ -355,6 +366,7 @@ mod pallet {
         /// Channel is set to Closed and do not accept or receive any messages.
         /// Only a root user can close an open channel.
         #[pallet::weight((10_000, Pays::No))]
+        #[transactional]
         pub fn close_channel(
             origin: OriginFor<T>,
             domain_id: T::DomainId,

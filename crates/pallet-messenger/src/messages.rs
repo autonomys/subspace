@@ -150,6 +150,12 @@ impl<T: Config> Pallet<T> {
                 },
             );
 
+            Self::deposit_event(Event::InboxMessageResponse {
+                domain_id: dst_domain_id,
+                channel_id,
+                nonce: next_inbox_nonce,
+            });
+
             next_inbox_nonce = next_inbox_nonce
                 .checked_add(Nonce::one())
                 .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
