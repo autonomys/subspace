@@ -887,19 +887,26 @@ impl SectorId {
 
     /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
     /// of blockchain_history is `total_pieces`
+    ///
+    /// Returns `Err(())` if `total_pieces` is zero, which is invalid.
+    #[allow(clippy::result_unit_err)]
     pub fn derive_piece_index(
         &self,
         piece_offset: PieceIndex,
         total_pieces: PieceIndex,
-    ) -> PieceIndex {
+    ) -> Result<PieceIndex, ()> {
+        if total_pieces == 0 {
+            return Err(());
+        }
+
         let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
             &piece_offset.to_le_bytes(),
             &self.0,
         )) % U256::from(total_pieces);
 
-        piece_index
-            .try_into()
-            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+        Ok(piece_index.try_into().expect(
+            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
+        ))
     }
 
     /// Derive local challenge for this sector from provided global challenge

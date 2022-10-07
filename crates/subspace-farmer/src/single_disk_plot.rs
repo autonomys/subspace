@@ -618,7 +618,8 @@ impl SingleDiskPlot {
                             });
 
                         // TODO: Concurrency
-                        for (sector_index, sector, sector_metadata) in plot_initial_sector {
+                        'sector: for (sector_index, sector, sector_metadata) in plot_initial_sector
+                        {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
@@ -652,8 +653,18 @@ impl SingleDiskPlot {
                                     );
                                     return;
                                 }
-                                let piece_index = sector_id
-                                    .derive_piece_index(piece_offset as PieceIndex, total_pieces);
+                                let piece_index = match sector_id
+                                    .derive_piece_index(piece_offset as PieceIndex, total_pieces)
+                                {
+                                    Ok(piece_index) => piece_index,
+                                    Err(()) => {
+                                        error!(
+                                            "Total number of pieces received from node is 0, this \
+                                            should never happen! Aborting sector plotting."
+                                        );
+                                        break 'sector;
+                                    }
+                                };
 
                                 let mut piece: Piece = handle
                                     .block_on(rpc_client.get_piece(piece_index))
@@ -856,16 +867,33 @@ impl SingleDiskPlot {
                                     ) {
                                         Ok(piece_witness) => piece_witness,
                                         Err(error) => {
-                                            let piece_index = sector_id.derive_piece_index(
+                                            if let Ok(piece_index) = sector_id.derive_piece_index(
                                                 audit_piece_offset / PIECE_SIZE as u64,
                                                 sector_metadata.total_pieces,
-                                            );
-                                            error!(
-                                                ?error,
-                                                %piece_index,
-                                                "Failed to decode witness for piece, likely caused \
-                                                by on-disk data corruption"
-                                            );
+                                            ) {
+                                                error!(
+                                                    ?error,
+                                                    ?sector_id,
+                                                    %audit_piece_offset,
+                                                    %piece_index,
+                                                    "Failed to decode witness for piece, likely \
+                                                    caused by on-disk data corruption"
+                                                );
+                                            } else {
+                                                error!(
+                                                    ?sector_id,
+                                                    %audit_piece_offset,
+                                                    "Failed to decode witness for piece, likely \
+                                                    caused by on-disk data corruption"
+                                                );
+                                                error!(
+                                                    ?sector_id,
+                                                    %audit_piece_offset,
+                                                    "Total number of pieces in sector metadata is \
+                                                    0, this means on-disk data were corrupted or \
+                                                    severe implementation bug!"
+                                                );
+                                            }
                                             continue;
                                         }
                                     };
