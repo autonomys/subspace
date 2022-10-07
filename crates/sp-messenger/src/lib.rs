@@ -17,6 +17,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod endpoint;
+
 /// A trait used by domains to track and fetch info about system domain.
 pub trait SystemDomainTracker<StateRoot> {
     /// Get the latest state roots of the K-deep System domain blocks.

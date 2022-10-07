@@ -1,7 +1,9 @@
 use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRootOf};
 use frame_support::storage::generator::StorageDoubleMap;
 use sp_core::storage::StorageKey;
+use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_runtime::traits::BlakeTwo256;
+use sp_runtime::DispatchResult;
 use sp_state_machine::backend::Backend;
 use sp_state_machine::{prove_read, InMemoryBackend};
 use sp_trie::StorageProof;
@@ -12,12 +14,13 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{mock_system_domain_tracker, DomainId,TestExternalities};
+        use crate::mock::{mock_system_domain_tracker, DomainId, TestExternalities, MockEndpoint};
         use frame_support::parameter_types;
         use sp_core::H256;
         use sp_runtime::testing::Header;
         use sp_runtime::traits::{BlakeTwo256, ConstU16, ConstU32, ConstU64, IdentityLookup};
         use sp_std::vec::Vec;
+        use sp_messenger::endpoint::{EndpointHandler, Endpoint};
 
         type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
         type Block = frame_system::mocking::MockBlock<Runtime>;
@@ -77,6 +80,12 @@ macro_rules! impl_runtime {
             type DomainId = DomainId;
             type SelfDomainId = SelfDomainId;
             type SystemDomainTracker = SystemDomainTracker;
+            /// function to fetch endpoint response handler by Endpoint.
+            fn get_endpoint_response_handler(
+                _endpoint: &Endpoint,
+            ) -> Option<Box<dyn EndpointHandler<Self::DomainId>>>{
+                Some(Box::new(MockEndpoint{}))
+            }
         }
 
         pub fn new_test_ext() -> TestExternalities {
@@ -89,6 +98,26 @@ macro_rules! impl_runtime {
            t
         }
     };
+}
+
+pub struct MockEndpoint {}
+impl EndpointHandler<DomainId> for MockEndpoint {
+    fn message(&self, _src_domain_id: DomainId, req: EndpointRequest) -> EndpointResponse {
+        let req = req.payload;
+        assert_eq!(req, vec![1, 2, 3, 4]);
+        Ok(vec![5, 6, 7, 8])
+    }
+
+    fn message_response(
+        &self,
+        _dst_domain_id: DomainId,
+        _req: EndpointRequest,
+        resp: EndpointResponse,
+    ) -> DispatchResult {
+        let resp = resp.unwrap();
+        assert_eq!(resp, vec![5, 6, 7, 8]);
+        Ok(())
+    }
 }
 
 pub(crate) mod domain_a {

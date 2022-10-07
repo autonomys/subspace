@@ -1,6 +1,5 @@
 use crate::messages::{
-    CrossDomainMessage, Message, Payload, ProtocolMessageRequest, ProtocolMessageResponse,
-    RequestResponse, VersionedPayload,
+    CrossDomainMessage, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use crate::mock::domain_a::{
     new_test_ext as new_domain_a_ext, Event, Messenger, Origin, Runtime, System,
@@ -12,11 +11,12 @@ use crate::mock::{
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
 use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
-    InitiateChannelParams, Nonce, Outbox, OutboxResponses, U256,
+    InitiateChannelParams, Nonce, Outbox, OutboxMessageStatus, OutboxResponses, U256,
 };
 use frame_support::{assert_err, assert_ok};
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
+use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_runtime::traits::ValidateUnsigned;
 use sp_runtime::transaction_validity::TransactionSource;
 
@@ -281,6 +281,68 @@ fn open_channel_between_domains(
     channel_id
 }
 
+fn send_message_between_domains(
+    domain_a_test_ext: &mut TestExternalities,
+    domain_b_test_ext: &mut TestExternalities,
+    msg: EndpointPayload,
+    channel_id: ChannelId,
+) {
+    let domain_b_id = domain_b::SelfDomainId::get();
+
+    // send message form outbox
+    domain_a_test_ext.execute_with(|| {
+        let resp = <domain_a::Messenger as Sender<DomainId>>::send_message(
+            domain_b_id,
+            EndpointRequest {
+                src_endpoint: Endpoint::Id(0),
+                dst_endpoint: Endpoint::Id(0),
+                payload: msg,
+            },
+        );
+        assert_ok!(resp);
+        domain_a::System::assert_last_event(Event::Messenger(
+            crate::Event::<Runtime>::OutboxMessage {
+                domain_id: domain_b_id,
+                channel_id,
+                nonce: Nonce::one(),
+            },
+        ));
+    });
+
+    channel_relay_request_and_response(
+        domain_a_test_ext,
+        domain_b_test_ext,
+        channel_id,
+        Nonce::one(),
+    );
+
+    // check state on domain_b
+    domain_b_test_ext.execute_with(|| {
+        // Outbox, Outbox responses, Inbox, InboxResponses must be empty
+        assert_eq!(Outbox::<domain_b::Runtime>::count(), 0);
+        assert_eq!(OutboxResponses::<domain_b::Runtime>::count(), 0);
+        assert_eq!(Inbox::<domain_b::Runtime>::count(), 0);
+
+        // latest inbox message response is cleared on next message
+        assert_eq!(InboxResponses::<domain_b::Runtime>::count(), 1);
+    });
+
+    // check state on domain_a
+    domain_a_test_ext.execute_with(|| {
+        // Outbox, Outbox responses, Inbox, InboxResponses must be empty
+        assert_eq!(Outbox::<domain_a::Runtime>::count(), 0);
+        assert_eq!(OutboxResponses::<domain_a::Runtime>::count(), 0);
+        assert_eq!(Inbox::<domain_a::Runtime>::count(), 0);
+        assert_eq!(InboxResponses::<domain_a::Runtime>::count(), 0);
+
+        let channel = domain_a::Messenger::channels(domain_b_id, channel_id).unwrap();
+        assert_eq!(
+            channel.latest_response_received_message_nonce,
+            Some(Nonce::one())
+        );
+    });
+}
+
 fn close_channel_between_domains(
     domain_a_test_ext: &mut TestExternalities,
     domain_b_test_ext: &mut TestExternalities,
@@ -400,6 +462,14 @@ fn channel_relay_request_and_response(
 
         domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
             domain_b::Runtime,
+        >::InboxMessage {
+            domain_id: domain_a_id,
+            channel_id,
+            nonce,
+        }));
+
+        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
+            domain_b::Runtime,
         >::InboxMessageResponse {
             domain_id: domain_a_id,
             channel_id,
@@ -408,19 +478,10 @@ fn channel_relay_request_and_response(
 
         let response =
             domain_b::Messenger::inbox_responses((domain_a_id, channel_id, nonce)).unwrap();
-        assert_eq!(
-            response,
-            Message {
-                src_domain_id: domain_b_id,
-                dst_domain_id: domain_a_id,
-                channel_id,
-                nonce,
-                payload: VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(
-                    ProtocolMessageResponse(Ok(()))
-                ))),
-                last_delivered_message_response_nonce: None
-            }
-        );
+        assert_eq!(response.src_domain_id, domain_b_id);
+        assert_eq!(response.dst_domain_id, domain_a_id);
+        assert_eq!(response.channel_id, channel_id);
+        assert_eq!(response.nonce, nonce);
         assert_eq!(
             domain_a::Messenger::inbox((domain_b_id, channel_id, nonce)),
             None
@@ -469,6 +530,15 @@ fn channel_relay_request_and_response(
             domain_a::Messenger::outbox_responses((domain_b_id, channel_id, nonce)),
             None
         );
+
+        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
+            domain_a::Runtime,
+        >::OutboxMessageStatus {
+            domain_id: domain_b_id,
+            channel_id,
+            nonce,
+            status: OutboxMessageStatus::Ok,
+        }));
     })
 }
 
@@ -491,4 +561,21 @@ fn test_close_channel_between_domains() {
 
     // close open channel
     close_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext, channel_id)
+}
+
+#[test]
+fn test_send_message_between_domains() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    let mut domain_b_test_ext = domain_b::new_test_ext();
+    // open channel between domain_a and domain_b
+    // domain_a initiates the channel open
+    let channel_id = open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+
+    // send message
+    send_message_between_domains(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        vec![1, 2, 3, 4],
+        channel_id,
+    )
 }
