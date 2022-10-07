@@ -53,7 +53,7 @@ where
             let result = if let PieceKey::PieceIndex(idx) = req.key {
                 piece_getter(&idx)
             } else {
-                // TODO
+                // TODO: Report an error if we decide to support both key types
                 None
             };
 
@@ -64,7 +64,7 @@ where
 
     let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
 
-    let span = sc_tracing::tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
+    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
 
     info!(target: "dsn", "Subspace networking initialized: Node ID is {}", node.id());
@@ -72,7 +72,6 @@ where
     spawner.spawn_essential("node-runner", Some("subspace-networking"), {
         let span = span.clone();
         Box::pin(async move {
-            //   let _enter = span.enter();
             node_runner.run().instrument(span).await;
         })
     });

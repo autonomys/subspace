@@ -7,7 +7,7 @@ use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRe
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 
-//TODO: rename all module names
+//TODO: rename all module names if we keep this enum
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub enum PieceKey {
     PieceIndex(PieceIndex),
@@ -17,7 +17,7 @@ pub enum PieceKey {
 /// Piece-by-hash protocol request.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct PieceByHashRequest {
-    //TODO: rename
+    //TODO: rename if we keep the enum
     /// Piece index hash
     pub key: PieceKey,
 }

@@ -28,9 +28,6 @@ use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
-// Defines a protocol name specific for the relay server
-const RELAY_HOP_PROTOCOL_NAME: &[u8] = b"/libp2p/circuit/relay/0.2.0/hop";
-
 enum QueryResultSender {
     Value {
         sender: oneshot::Sender<Option<Vec<u8>>>,
@@ -370,13 +367,8 @@ impl NodeRunner {
                 .protocols
                 .iter()
                 .any(|protocol| protocol.as_bytes() == kademlia.protocol_name());
-            let relay_server_enabled = info
-                .protocols
-                .iter()
-                .any(|protocol| protocol.as_bytes() == RELAY_HOP_PROTOCOL_NAME);
 
-            let proper_protocols_supported = !relay_server_enabled && kademlia_enabled;
-            if proper_protocols_supported {
+            if kademlia_enabled {
                 for address in info.listen_addrs {
                     if !self.allow_non_globals_in_dht && !utils::is_global_address_or_dns(&address)
                     {
@@ -399,22 +391,12 @@ impl NodeRunner {
                     kademlia.add_address(&peer_id, address);
                 }
             } else {
-                if !kademlia_enabled {
-                    trace!(
-                        %local_peer_id,
-                        %peer_id,
-                        "Peer doesn't support our Kademlia DHT protocol ({}). Adding to the DTH skipped.",
-                        String::from_utf8_lossy(kademlia.protocol_name())
-                    )
-                }
-
-                if relay_server_enabled {
-                    trace!(
-                        %local_peer_id,
-                        %peer_id,
-                        "Peer identified as a relay server. Adding to the DHT skipped.",
-                    )
-                }
+                trace!(
+                    %local_peer_id,
+                    %peer_id,
+                    "Peer doesn't support our Kademlia DHT protocol ({}). Adding to the DTH skipped.",
+                    String::from_utf8_lossy(kademlia.protocol_name())
+                )
             }
         }
     }
