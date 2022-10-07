@@ -30,9 +30,10 @@ use sp_executor::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
     InvalidTransactionProof, SignedOpaqueBundle,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::RuntimeAppPublic;
+use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
@@ -314,10 +315,17 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            <BlockHash<T>>::insert(
-                block_number - One::one(),
-                frame_system::Pallet::<T>::parent_hash(),
-            );
+            let parent_number = block_number - One::one();
+            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
+
+            <BlockHash<T>>::insert(parent_number, parent_hash);
+
+            // The genesis block hash is not finalized until the genesis block building is done,
+            // hence the genesis receipt is initialized after the genesis building.
+            if parent_number.is_zero() {
+                Self::initialize_genesis_receipt(parent_hash);
+            }
+
             T::DbWeight::get().writes(1)
         }
     }
@@ -342,20 +350,6 @@ mod pallet {
                     .clone()
                     .expect("Executor authority must be provided at genesis; qed"),
             );
-            let primary_number = T::BlockNumber::zero();
-            let primary_hash = frame_system::Pallet::<T>::block_hash(primary_number);
-            let genesis_receipt = ExecutionReceipt {
-                primary_number,
-                primary_hash,
-                secondary_hash: T::SecondaryHash::default(),
-                trace: Vec::new(),
-                trace_root: Default::default(),
-            };
-            let receipt_hash = genesis_receipt.hash();
-            BlockHash::<T>::insert(primary_number, primary_hash);
-            Receipts::<T>::insert(receipt_hash, genesis_receipt);
-            ReceiptHead::<T>::put((primary_hash, primary_number));
-            ReceiptVotes::<T>::insert(primary_hash, receipt_hash, 1);
         }
     }
 
@@ -504,6 +498,17 @@ impl<T: Config> Pallet<T> {
     pub fn finalized_receipt_number() -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get();
         best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
+    fn initialize_genesis_receipt(genesis_hash: T::Hash) {
+        let genesis_receipt = ExecutionReceipt {
+            primary_number: Zero::zero(),
+            primary_hash: genesis_hash,
+            secondary_hash: T::SecondaryHash::default(),
+            trace: Vec::new(),
+            trace_root: Default::default(),
+        };
+        Self::apply_execution_receipt(&genesis_receipt);
     }
 
     fn pre_dispatch_transaction_bundle(
