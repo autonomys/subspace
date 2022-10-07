@@ -2,9 +2,11 @@
 mod tests;
 
 use libp2p::multiaddr::Protocol;
+use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use subspace_core_primitives::PieceIndexHash;
 use tracing::warn;
 
 /// This test is successful only for global IP addresses and DNS names.
@@ -92,4 +94,14 @@ pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddre
             }
         })
         .collect()
+}
+
+pub trait ToMultihash {
+    fn to_multihash(&self) -> Multihash;
+}
+
+impl ToMultihash for PieceIndexHash {
+    fn to_multihash(&self) -> Multihash {
+        libp2p::multihash::MultihashDigest::digest(&Code::Identity, self.as_ref())
+    }
 }

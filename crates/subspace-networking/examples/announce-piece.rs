@@ -1,11 +1,10 @@
 use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::Multihash;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PieceIndexHash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, ToMultihash};
 
 #[tokio::main]
 async fn main() {
@@ -13,10 +12,6 @@ async fn main() {
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-        value_getter: Arc::new(|key| {
-            // Return the reversed digest as a value
-            Some(key.digest().iter().copied().rev().collect())
-        }),
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };
@@ -68,15 +63,21 @@ async fn main() {
     let key = {
         let piece_index = 1u64;
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
-        let multihash: Multihash = piece_index_hash.into();
-
-        multihash
+        piece_index_hash.to_multihash()
     };
 
-    node_2.announce(key).await.unwrap();
+    node_2.start_announcing(key).await.unwrap();
     println!("Node 2 announced key: {:?}", key);
 
     tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let providers_result = node_1.get_providers(key).await;
+
+    println!("Node 1 get_providers result: {:?}", providers_result);
+
+    node_2.stop_announcing(key).await.unwrap();
+
+    tokio::time::sleep(Duration::from_secs(31)).await;
 
     let providers_result = node_1.get_providers(key).await;
 

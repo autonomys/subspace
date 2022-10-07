@@ -10,9 +10,11 @@ use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
+use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
-    GetProvidersOk, GetRecordError, GetRecordOk, KademliaEvent, QueryId, QueryResult, Quorum,
+    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, QueryId,
+    QueryResult, Quorum,
 };
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -421,6 +423,22 @@ impl NodeRunner {
         trace!("Kademlia event: {:?}", event);
 
         match event {
+            KademliaEvent::InboundRequest {
+                request: InboundRequest::AddProvider { record },
+            } => {
+                trace!("Add provider request received: {:?}", record);
+                if let Some(record) = record {
+                    if let Err(err) = self
+                        .swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .store_mut()
+                        .add_provider(record.clone())
+                    {
+                        error!(?err, "Failed to add provider record: {:?}", record);
+                    }
+                }
+            }
             KademliaEvent::OutboundQueryCompleted {
                 id,
                 result: QueryResult::GetClosestPeers(results),
@@ -736,7 +754,7 @@ impl NodeRunner {
 
                 let _ = result_sender.send(kademlia_connection_initiated);
             }
-            Command::Announce { key, result_sender } => {
+            Command::StartAnnouncing { key, result_sender } => {
                 let res = self
                     .swarm
                     .behaviour_mut()
@@ -758,6 +776,14 @@ impl NodeRunner {
                         let _ = result_sender.send(false);
                     }
                 }
+            }
+            Command::StopAnnouncing { key, result_sender } => {
+                self.swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .stop_providing(&key.into());
+
+                let _ = result_sender.send(true);
             }
             Command::GetProviders { key, result_sender } => {
                 let query_id = self

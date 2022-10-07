@@ -4,7 +4,7 @@ use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
 use subspace_core_primitives::{PieceIndexHash, PIECES_IN_SEGMENT};
-use subspace_networking::CreationError;
+use subspace_networking::{CreationError, ToMultihash};
 use tracing::{error, info, trace};
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
@@ -54,10 +54,10 @@ where
                 let keys_iter = (first_piece_index..)
                     .take(archived_segment.pieces.count())
                     .map(PieceIndexHash::from_index)
-                    .map(|hash| hash.into());
+                    .map(|hash| hash.to_multihash());
 
                 let pieces_announcements = keys_iter
-                    .map(|key| node.announce(key).boxed())
+                    .map(|key| node.start_announcing(key).boxed())
                     .collect::<FuturesUnordered<_>>();
 
                 match pieces_announcements

@@ -7991,7 +7991,6 @@ dependencies = [
  "dusk-bytes",
  "dusk-plonk",
  "hex",
- "libp2p",
  "num-traits",
  "parity-scale-codec",
  "rand 0.8.5",

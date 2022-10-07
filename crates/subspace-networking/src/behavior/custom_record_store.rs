@@ -16,6 +16,7 @@ pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync
 #[derive(Clone)]
 pub(crate) struct CustomRecordStore {
     value_getter: ValueGetter,
+    // TODO: Optimize providers collection, introduce limits and TTL.
     providers: HashMap<Key, Vec<ProviderRecord>>,
 }
 
@@ -76,11 +77,19 @@ impl<'a> RecordStore<'a> for CustomRecordStore {
     }
 
     fn provided(&'a self) -> Self::ProvidedIter {
-        // No iteration support for now.
-        Vec::new().into_iter()
+        self.providers
+            .iter()
+            .flat_map(|(_, v)| v)
+            .map(|x| Cow::Owned(x.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
-    fn remove_provider(&'a mut self, _key: &Key, _provider: &PeerId) {
-        // TODO
+    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+        trace!(?key, ?provider, "Provider record removed.");
+
+        let entry = self.providers.entry(key.clone());
+
+        entry.and_modify(|e| e.retain(|rec| rec.provider != *provider));
     }
 }
