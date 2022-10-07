@@ -758,6 +758,9 @@ impl SingleDiskPlot {
                             .map_err(|error| FarmingError::FailedToGetFarmerProtocolInfo {
                                 error,
                             })?;
+                        let chunks_in_sector = u64::from(farmer_protocol_info.record_size.get())
+                            * u64::from(u8::BITS)
+                            / u64::from(space_l.get());
 
                         while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
                         {
@@ -799,8 +802,7 @@ impl SingleDiskPlot {
 
                                 let local_challenge =
                                     sector_id.derive_local_challenge(&slot_info.global_challenge);
-                                let audit_index: u64 =
-                                    local_challenge % (plot_sector_size * u64::from(u8::BITS));
+                                let audit_index: u64 = local_challenge % chunks_in_sector;
                                 // Offset of the piece in sector (in bytes)
                                 let audit_piece_offset = (audit_index / u64::from(u8::BITS))
                                     / PIECE_SIZE as u64
