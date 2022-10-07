@@ -9,9 +9,12 @@ use sc_service::Role;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
-use sp_executor::{ExecutionPhase, FraudProof};
+use sp_core::Pair;
+use sp_executor::{Bundle, BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, SignedBundle};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use std::collections::HashSet;
+use subspace_core_primitives::BlockNumber;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
@@ -276,7 +279,6 @@ async fn set_new_code_should_work() {
     assert_eq!(runtime_code, new_runtime_wasm_blob);
 }
 
-/* Fix the test when `bundle.receipt` is changed to `bundle.receipts`.
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn pallet_executor_unsigned_extrinsics_should_work() {
@@ -305,7 +307,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
     // able to be written to the database.
     alice.wait_for_blocks(1).await;
 
-    let create_and_send_submit_execution_receipt = |primary_number: BlockNumber| {
+    let create_and_send_submit_transaction_bundle = |primary_number: BlockNumber| {
         let execution_receipt = crate::aux_schema::load_execution_receipt(
             &*alice.backend,
             alice.client.hash(primary_number).unwrap().unwrap(),
@@ -315,19 +317,34 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
             panic!("The requested execution receipt for block {primary_number} does not exist")
         });
 
-        let pair = ExecutorPair::from_string("//Alice", None).unwrap();
-        let signature = pair.sign(execution_receipt.hash().as_ref());
-        let signer = pair.public();
-
-        let signed_execution_receipt = SignedExecutionReceipt {
-            execution_receipt,
-            signature,
-            signer,
+        let bundle = Bundle {
+            header: BundleHeader {
+                primary_hash: ferdie.client.hash(primary_number).unwrap().unwrap(),
+                slot_number: (std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .expect("Current time is always after unix epoch; qed")
+                    .as_millis()
+                    / 2000) as u64,
+                extrinsics_root: Default::default(),
+            },
+            receipts: vec![execution_receipt],
+            extrinsics: Vec::<UncheckedExtrinsic>::new(),
         };
 
+        let pair = ExecutorPair::from_string("//Alice", None).unwrap();
+        let signature = pair.sign(bundle.hash().as_ref());
+        let signer = pair.public();
+
+        let signed_opaque_bundle = SignedBundle {
+            bundle,
+            signature,
+            signer,
+        }
+        .into_signed_opaque_bundle();
+
         let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_executor::Call::submit_execution_receipt {
-                signed_execution_receipt,
+            pallet_executor::Call::submit_transaction_bundle {
+                signed_opaque_bundle,
             }
             .into(),
         );
@@ -356,8 +373,8 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
     };
 
     let (tx1, tx2) = futures::join!(
-        create_and_send_submit_execution_receipt(1),
-        create_and_send_submit_execution_receipt(2),
+        create_and_send_submit_transaction_bundle(1),
+        create_and_send_submit_transaction_bundle(2),
     );
     assert_eq!(vec![tx1.unwrap(), tx2.unwrap()], ready_txs());
 
@@ -383,14 +400,14 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
             .collect::<HashSet<_>>()
     };
     // best execution chain number is 2, receipt for #4 will be put into the futures queue.
-    let tx4 = create_and_send_submit_execution_receipt(4)
+    let tx4 = create_and_send_submit_transaction_bundle(4)
         .await
         .expect("Submit a future receipt successfully");
     assert_eq!(HashSet::from([tx4]), future_txs());
 
     // max drift is 2, hence the max allowed receipt number is 2 + 2, 5 will be rejected as being
     // too far.
-    match create_and_send_submit_execution_receipt(5)
+    match create_and_send_submit_transaction_bundle(5)
         .await
         .unwrap_err()
     {
@@ -403,7 +420,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
         e => panic!("Unexpected error while submitting execution receipt: {e}"),
     }
 
-    let tx3 = create_and_send_submit_execution_receipt(3)
+    let tx3 = create_and_send_submit_transaction_bundle(3)
         .await
         .expect("Submit receipt 3 successfully");
     // All future txs become ready once the required tx is ready.
@@ -419,4 +436,3 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
     }
     assert!(ready_txs().is_empty());
 }
-*/

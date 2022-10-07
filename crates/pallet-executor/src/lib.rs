@@ -392,7 +392,11 @@ mod pallet {
                             "Invalid signed opaque bundle: {:?}, error: {:?}",
                             signed_opaque_bundle, e
                         );
-                        return InvalidTransactionCode::Bundle.into();
+                        if let BundleError::Receipt(_) = e {
+                            return InvalidTransactionCode::ExecutionReceipt.into();
+                        } else {
+                            return InvalidTransactionCode::Bundle.into();
+                        }
                     }
 
                     let mut builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
