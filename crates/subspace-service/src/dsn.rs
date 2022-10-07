@@ -55,15 +55,18 @@ where
 
     let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
 
+    let span = sc_tracing::tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
+    let _enter = span.enter();
+
     info!(target: "dsn", "Subspace networking initialized: Node ID is {}", node.id());
 
-    spawner.spawn_essential(
-        "node-runner",
-        Some("subspace-networking"),
+    spawner.spawn_essential("node-runner", Some("subspace-networking"), {
+        let span = span.clone();
         Box::pin(async move {
-            node_runner.run().await;
-        }),
-    );
+            //   let _enter = span.enter();
+            node_runner.run().instrument(span).await;
+        })
+    });
 
     let mut archived_segment_notification_stream = subspace_link
         .archived_segment_notification_stream()
@@ -75,24 +78,32 @@ where
         Box::pin(async move {
             trace!(target: "dsn", "Subspace DSN archiver started.");
 
+            let mut last_published_segment_index: Option<u64> = None;
             while let Some(ArchivedSegmentNotification {
                 archived_segment, ..
             }) = archived_segment_notification_stream.next().await
             {
-                trace!(target: "dsn", "ArchivedSegmentNotification received");
-
                 let segment_index = archived_segment.root_block.segment_index();
                 let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
 
+                // skip repeating publication
+                if let Some(last_published_segment_index) = last_published_segment_index{
+                    if last_published_segment_index == segment_index{
+                        debug!(target: "dsn", ?segment_index, "Archived segment skipped.");
+                        continue;
+                    }
+                }
                 let keys_iter = (first_piece_index..)
                     .take(archived_segment.pieces.count())
                     .map(PieceIndexHash::from_index)
                     .map(|hash| hash.to_multihash());
 
+                //TODO: rewrite announcing to batches to limit simultaneous request number
                 let pieces_announcements = keys_iter
                     .map(|key| node.start_announcing(key).boxed())
                     .collect::<FuturesUnordered<_>>();
 
+                //TODO: ensure republication of failed announcements
                 match pieces_announcements
                     .collect::<Vec<_>>()
                     .await
@@ -100,12 +111,13 @@ where
                     .find(|res| res.is_err())
                 {
                     None => {
-                        trace!(target: "dsn", "Archived segment published.");
+                        trace!(target: "dsn", ?segment_index, "Archived segment published.");
                     }
                     Some(err) => {
-                        error!(target: "dsn", error = ?err, "Failed to publish archived segment");
+                        error!(target: "dsn", error = ?err, ?segment_index, "Failed to publish archived segment");
                     }
                 }
+                last_published_segment_index = Some(segment_index);
             }
         }),
     );
