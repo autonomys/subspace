@@ -832,7 +832,7 @@ impl SingleDiskPlot {
 
                                 // TODO: This just have 20 bits of entropy as input, should we add
                                 //  something else?
-                                let expanded_chunk = chunk.expand();
+                                let expanded_chunk = chunk.expand(local_challenge);
 
                                 if is_within_solution_range2(
                                     local_challenge,

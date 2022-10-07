@@ -28,8 +28,8 @@ pub mod objects;
 
 extern crate alloc;
 
-use crate::crypto::blake2b_256_hash_with_key;
 use crate::crypto::kzg::Commitment;
+use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitvec::prelude::*;
@@ -424,8 +424,8 @@ impl AsRef<[u8]> for Chunk {
 
 impl Chunk {
     /// Expand chunk to be the same size as solution range for further comparison
-    pub fn expand(&self) -> SolutionRange {
-        let hash = crypto::blake2b_256_hash(&self.0);
+    pub fn expand(&self, local_challenge: SolutionRange) -> SolutionRange {
+        let hash = blake2b_256_hash_with_key(&local_challenge.to_le_bytes(), &self.0);
 
         SolutionRange::from_le_bytes([
             hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
@@ -524,7 +524,7 @@ pub enum RootBlock {
 impl RootBlock {
     /// Hash of the whole root block
     pub fn hash(&self) -> Blake2b256Hash {
-        crypto::blake2b_256_hash(&self.encode())
+        blake2b_256_hash(&self.encode())
     }
 
     /// Segment index
@@ -601,7 +601,7 @@ impl AsRef<[u8]> for PieceIndexHash {
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(crypto::blake2b_256_hash(&index.to_le_bytes()))
+        Self(blake2b_256_hash(&index.to_le_bytes()))
     }
 }
 
@@ -881,10 +881,10 @@ impl AsRef<[u8]> for SectorId {
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
     pub fn new(public_key: &PublicKey, sector_index: u64) -> Self {
-        Self(crypto::blake2b_256_hash_list(&[
-            public_key.as_ref(),
+        Self(blake2b_256_hash_with_key(
             &sector_index.to_le_bytes(),
-        ]))
+            public_key.as_ref(),
+        ))
     }
 
     /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
@@ -894,10 +894,10 @@ impl SectorId {
         piece_offset: PieceIndex,
         total_pieces: PieceIndex,
     ) -> PieceIndex {
-        let piece_index = U256::from_le_bytes(crypto::blake2b_256_hash_list(&[
-            &self.0,
+        let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
             &piece_offset.to_le_bytes(),
-        ])) % U256::from(total_pieces);
+            &self.0,
+        )) % U256::from(total_pieces);
 
         piece_index
             .try_into()
