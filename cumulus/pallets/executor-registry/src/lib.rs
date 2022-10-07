@@ -22,15 +22,18 @@ mod tests;
 
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
+use sp_arithmetic::Percent;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 const EXECUTOR_LOCK_ID: LockIdentifier = *b"executor";
 
+const MIN_ACTIVE_EXECUTORS_FACTOR: Percent = Percent::from_percent(75);
+
 #[frame_support::pallet]
 mod pallet {
-    use super::BalanceOf;
+    use super::{BalanceOf, MIN_ACTIVE_EXECUTORS_FACTOR};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
@@ -51,7 +54,10 @@ mod pallet {
         #[pallet::constant]
         type MaxExecutorStake: Get<BalanceOf<Self>>;
 
-        /// Minimum number of executors
+        /// Minimum number of executors.
+        ///
+        /// The minimum number of active executors is also constrained by this parameter with
+        /// `MIN_ACTIVE_EXECUTORS_FACTOR`.
         #[pallet::constant]
         type MinExecutors: Get<u32>;
 
@@ -361,8 +367,11 @@ mod pallet {
                     .ok_or(Error::<T>::NotExecutor)?;
 
                 if executor_config.is_active {
-                    if TotalActiveExecutors::<T>::get() == 1u32 {
-                        return Err(Error::<T>::EmptyActiveExecutors.into());
+                    let min_active_executors =
+                        MIN_ACTIVE_EXECUTORS_FACTOR.mul_ceil(T::MinExecutors::get());
+
+                    if TotalActiveExecutors::<T>::get() == min_active_executors {
+                        return Err(Error::<T>::TooFewActiveExecutors.into());
                     }
 
                     executor_config.is_active = false;
@@ -543,8 +552,8 @@ mod pallet {
         /// The withdrawal entry is still undue.
         PrematureWithdrawal,
 
-        /// Active executors can not be empty.
-        EmptyActiveExecutors,
+        /// Foo few active executors.
+        TooFewActiveExecutors,
     }
 
     #[pallet::event]

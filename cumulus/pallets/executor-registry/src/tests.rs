@@ -327,7 +327,7 @@ fn pause_and_resume_execution_should_work() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             ExecutorRegistry::pause_execution(Origin::signed(1)),
-            Error::<Test>::EmptyActiveExecutors
+            Error::<Test>::TooFewActiveExecutors
         );
 
         let public_key = ExecutorPair::from_seed(&U256::from(2u32).into()).public();
