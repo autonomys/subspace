@@ -46,9 +46,10 @@ mod pallet {
         InvalidTransactionProof, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
-        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
+        BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
     use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -404,11 +405,16 @@ mod pallet {
                         builder = builder.and_provides(receipt.primary_number);
                     }
 
+                    let current_block_number = frame_system::Pallet::<T>::current_block_number();
+                    if current_block_number == One::one() {
+                        return builder.build();
+                    }
+
                     let first_primary_number = signed_opaque_bundle
                         .bundle
                         .receipts
                         .get(0)
-                        .expect("Receipts in a bundle must be non-empty as checked above; qed")
+                        .expect("Receipts in a bundle after Block #1 must be non-empty as checked above; qed")
                         .primary_number;
 
                     // primary_number is ensured to be larger than the best execution chain chain
@@ -552,7 +558,11 @@ impl<T: Config> Pallet<T> {
     fn validate_execution_receipts(
         execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), ExecutionReceiptError> {
-        if execution_receipts.is_empty() {
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        // Genesis block receipt is initialized on primary chain, the first block has no receipts,
+        // but any block after the first one requires at least one receipt.
+        if current_block_number > One::one() && execution_receipts.is_empty() {
             return Err(ExecutionReceiptError::Empty);
         }
 
@@ -563,8 +573,6 @@ impl<T: Config> Pallet<T> {
         {
             return Err(ExecutionReceiptError::Unsorted);
         }
-
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
         let (_, mut best_number) = <ReceiptHead<T>>::get();
 

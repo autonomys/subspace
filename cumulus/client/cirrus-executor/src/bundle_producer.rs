@@ -15,7 +15,7 @@ use sp_executor::{
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -64,7 +64,7 @@ where
     PBlock: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: SecondaryApi<Block, AccountId> + BlockBuilder<Block>,
-    PClient: ProvideRuntimeApi<PBlock>,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -143,7 +143,15 @@ where
             .expect_header(BlockId::Number(parent_number))?
             .state_root();
 
-        let receipts = self.expected_receipts_on_primary_chain(primary_hash, parent_number)?;
+        let receipts = if self
+            .primary_chain_client
+            .expect_block_number_from_id(&BlockId::Hash(primary_hash))?
+            .is_zero()
+        {
+            Vec::new()
+        } else {
+            self.expected_receipts_on_primary_chain(primary_hash, parent_number)?
+        };
 
         let bundle = Bundle {
             header: BundleHeader {
