@@ -7,15 +7,19 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    CreationError, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    BootstrappedNetworkingParameters, CreationError, PieceByHashRequestHandler,
+    PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace, Instrument};
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
 pub struct DsnConfig {
+    /// DSN 'bootstrap_node' multi-address
+    pub dsn_bootstrap_node: Vec<Multiaddr>,
+
     /// DSN 'listen-on' multi-address
     pub dsn_listen_on: Vec<Multiaddr>,
 
@@ -40,6 +44,11 @@ where
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.dsn_listen_on,
+        allow_non_globals_in_dht: true,
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(
+            dsn_config.dsn_bootstrap_node,
+        )
+        .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
             let result = if let PieceKey::PieceIndex(idx) = req.key {
                 piece_getter(&idx)

@@ -180,6 +180,10 @@ pub struct Cli {
     #[clap(long)]
     pub dsn_listen_on: Vec<Multiaddr>,
 
+    /// DSN configuration arguments: DSN 'bootstrap-node' multi-address
+    #[clap(long)]
+    pub dsn_bootstrap_node: Vec<Multiaddr>,
+
     /// Secondary chain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
