@@ -595,9 +595,7 @@ impl NodeRunner {
                     }
                 }
             }
-            kad_event => {
-                trace!("Kademlia event: {:?}", kad_event);
-            }
+            _ => {}
         }
     }
 
