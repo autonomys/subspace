@@ -50,7 +50,6 @@ mod pallet {
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::fmt::Debug;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

@@ -65,7 +65,9 @@ async fn test_executor_full_node_catching_up() {
     );
 }
 
-// TODO: Re-enable when it can pass at least in a great chance.
+// TODO: This test fails if running all the tests in this crate
+// with `cargo test -- --ignored`, but passes if running individually, `cargo nextest run` also
+// passes.
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
