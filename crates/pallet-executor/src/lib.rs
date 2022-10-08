@@ -30,9 +30,10 @@ use sp_executor::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
     InvalidTransactionProof, SignedOpaqueBundle,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::RuntimeAppPublic;
+use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
@@ -45,8 +46,9 @@ mod pallet {
         InvalidTransactionProof, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
-        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
+        BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
+    use sp_runtime::SaturatedConversion;
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -111,8 +113,8 @@ mod pallet {
     pub enum ExecutionReceiptError {
         /// The parent execution receipt is unknown.
         MissingParent,
-        /// The execution receipt is stale.
-        Stale,
+        /// The execution receipt has been pruned.
+        Pruned,
         /// The execution receipt points to a block unknown to the history.
         UnknownBlock,
         /// The execution receipt is too far in the future.
@@ -314,10 +316,17 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            <BlockHash<T>>::insert(
-                block_number - One::one(),
-                frame_system::Pallet::<T>::parent_hash(),
-            );
+            let parent_number = block_number - One::one();
+            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
+
+            <BlockHash<T>>::insert(parent_number, parent_hash);
+
+            // The genesis block hash is not finalized until the genesis block building is done,
+            // hence the genesis receipt is initialized after the genesis building.
+            if parent_number.is_zero() {
+                Self::initialize_genesis_receipt(parent_hash);
+            }
+
             T::DbWeight::get().writes(1)
         }
     }
@@ -342,20 +351,6 @@ mod pallet {
                     .clone()
                     .expect("Executor authority must be provided at genesis; qed"),
             );
-            let primary_number = T::BlockNumber::zero();
-            let primary_hash = frame_system::Pallet::<T>::block_hash(primary_number);
-            let genesis_receipt = ExecutionReceipt {
-                primary_number,
-                primary_hash,
-                secondary_hash: T::SecondaryHash::default(),
-                trace: Vec::new(),
-                trace_root: Default::default(),
-            };
-            let receipt_hash = genesis_receipt.hash();
-            BlockHash::<T>::insert(primary_number, primary_hash);
-            Receipts::<T>::insert(receipt_hash, genesis_receipt);
-            ReceiptHead::<T>::put((primary_hash, primary_number));
-            ReceiptVotes::<T>::insert(primary_hash, receipt_hash, 1);
         }
     }
 
@@ -396,7 +391,11 @@ mod pallet {
                             "Invalid signed opaque bundle: {:?}, error: {:?}",
                             signed_opaque_bundle, e
                         );
-                        return InvalidTransactionCode::Bundle.into();
+                        if let BundleError::Receipt(_) = e {
+                            return InvalidTransactionCode::ExecutionReceipt.into();
+                        } else {
+                            return InvalidTransactionCode::Bundle.into();
+                        }
                     }
 
                     let mut builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
@@ -410,11 +409,43 @@ mod pallet {
                         builder = builder.and_provides(receipt.primary_number);
                     }
 
+                    let current_block_number = frame_system::Pallet::<T>::current_block_number();
+                    if current_block_number == One::one() {
+                        return builder.build();
+                    }
+
+                    // The receipt for a certain block can only exist in one bundle each time.
+                    //
+                    // TODO: Proper priority for `submit_transaction_bundle`.
+                    //
+                    // Consider this scenario: when a primary node is at #2, its tx pool has an
+                    // unsigned extrinsic `submit_transaction_bundle` with receipts {1} in it.
+                    // When this primary node proceeds to #3, this unsigned extrinsic remains,
+                    // but a new one with receipts {1, 2} is received too, at this point, due to
+                    // these two extrinsics provides the same tag (`1`), the tx pool will check
+                    // if the latter one need to replace the previous one, if we don't set a higher
+                    // priority for the extrinsic with receipts {1, 2}, it will be simply rejected
+                    // as too low priority. However, it makes more sense to replace the previous
+                    // one in this case or to have a better way of handling these extrinsics.
+                    //
+                    // #2: `submit_transaction_bundle` with receipts {1}
+                    // #3: `submit_transaction_bundle` with receipts {1, 2}
+                    //
+                    // Now the unthoughtful priority is caculated based on the assumption that an extrinsic
+                    // providing more receipts has a higher priority.
+                    let additional_priority = signed_opaque_bundle
+                        .bundle
+                        .receipts
+                        .iter()
+                        .map(|r| r.primary_number.saturated_into::<TransactionPriority>())
+                        .sum::<TransactionPriority>();
+                    builder = builder.priority(TransactionPriority::MAX / 2 + additional_priority);
+
                     let first_primary_number = signed_opaque_bundle
                         .bundle
                         .receipts
                         .get(0)
-                        .expect("Receipts in a bundle must be non-empty as checked above; qed")
+                        .expect("Receipts in a bundle after Block #1 must be non-empty as checked above; qed")
                         .primary_number;
 
                     // primary_number is ensured to be larger than the best execution chain chain
@@ -506,6 +537,17 @@ impl<T: Config> Pallet<T> {
         best_number.saturating_sub(T::ReceiptsPruningDepth::get())
     }
 
+    fn initialize_genesis_receipt(genesis_hash: T::Hash) {
+        let genesis_receipt = ExecutionReceipt {
+            primary_number: Zero::zero(),
+            primary_hash: genesis_hash,
+            secondary_hash: T::SecondaryHash::default(),
+            trace: Vec::new(),
+            trace_root: Default::default(),
+        };
+        Self::apply_execution_receipt(&genesis_receipt);
+    }
+
     fn pre_dispatch_transaction_bundle(
         signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), TransactionValidityError> {
@@ -547,7 +589,11 @@ impl<T: Config> Pallet<T> {
     fn validate_execution_receipts(
         execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), ExecutionReceiptError> {
-        if execution_receipts.is_empty() {
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        // Genesis block receipt is initialized on primary chain, the first block has no receipts,
+        // but any block after the first one requires at least one receipt.
+        if current_block_number > One::one() && execution_receipts.is_empty() {
             return Err(ExecutionReceiptError::Empty);
         }
 
@@ -559,9 +605,13 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Unsorted);
         }
 
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
-
         let (_, mut best_number) = <ReceiptHead<T>>::get();
+
+        if let Some(first_primary_number) = execution_receipts.get(0).map(|r| r.primary_number) {
+            if first_primary_number < best_number {
+                return Err(ExecutionReceiptError::Pruned);
+            }
+        }
 
         for execution_receipt in execution_receipts {
             // Due to `initialize_block` is skipped while calling the runtime api, the block
@@ -580,10 +630,6 @@ impl<T: Config> Pallet<T> {
 
             // Ensure the receipt is neither old nor too new.
             let primary_number = execution_receipt.primary_number;
-
-            if primary_number <= best_number {
-                return Err(ExecutionReceiptError::Stale);
-            }
 
             if primary_number == current_block_number
                 || primary_number > best_number + T::MaximumReceiptDrift::get()
