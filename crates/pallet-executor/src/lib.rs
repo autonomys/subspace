@@ -48,6 +48,7 @@ mod pallet {
     use sp_runtime::traits::{
         BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
+    use sp_runtime::SaturatedConversion;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
@@ -409,6 +410,33 @@ mod pallet {
                     if current_block_number == One::one() {
                         return builder.build();
                     }
+
+                    // The receipt for a certain block can only exist in one bundle each time.
+                    //
+                    // TODO: Proper priority for `submit_transaction_bundle`.
+                    //
+                    // Consider this scenario: when a primary node is at #2, its tx pool has an
+                    // unsigned extrinsic `submit_transaction_bundle` with receipts {1} in it.
+                    // When this primary node proceeds to #3, this unsigned extrinsic remains,
+                    // but a new one with receipts {1, 2} is received too, at this point, due to
+                    // these two extrinsics provides the same tag (`1`), the tx pool will check
+                    // if the latter one need to replace the previous one, if we don't set a higher
+                    // priority for the extrinsic with receipts {1, 2}, it will be simply rejected
+                    // as too low priority. However, it makes more sense to replace the previous
+                    // one in this case or to have a better way of handling these extrinsics.
+                    //
+                    // #2: `submit_transaction_bundle` with receipts {1}
+                    // #3: `submit_transaction_bundle` with receipts {1, 2}
+                    //
+                    // Now the unthoughtful priority is caculated based on the assumption that an extrinsic
+                    // providing more receipts has a higher priority.
+                    let additional_priority = signed_opaque_bundle
+                        .bundle
+                        .receipts
+                        .iter()
+                        .map(|r| r.primary_number.saturated_into::<TransactionPriority>())
+                        .sum::<TransactionPriority>();
+                    builder = builder.priority(TransactionPriority::MAX / 2 + additional_priority);
 
                     let first_primary_number = signed_opaque_bundle
                         .bundle
