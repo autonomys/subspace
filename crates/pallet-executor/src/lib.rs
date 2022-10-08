@@ -114,8 +114,8 @@ mod pallet {
     pub enum ExecutionReceiptError {
         /// The parent execution receipt is unknown.
         MissingParent,
-        /// The execution receipt is stale.
-        Stale,
+        /// The execution receipt has been pruned.
+        Pruned,
         /// The execution receipt points to a block unknown to the history.
         UnknownBlock,
         /// The execution receipt is too far in the future.
@@ -608,6 +608,12 @@ impl<T: Config> Pallet<T> {
 
         let (_, mut best_number) = <ReceiptHead<T>>::get();
 
+        if let Some(first_primary_number) = execution_receipts.get(0).map(|r| r.primary_number) {
+            if first_primary_number < best_number {
+                return Err(ExecutionReceiptError::Pruned);
+            }
+        }
+
         for execution_receipt in execution_receipts {
             // Due to `initialize_block` is skipped while calling the runtime api, the block
             // hash mapping for last block is unknown to the transaction pool, but this info
@@ -625,10 +631,6 @@ impl<T: Config> Pallet<T> {
 
             // Ensure the receipt is neither old nor too new.
             let primary_number = execution_receipt.primary_number;
-
-            if primary_number <= best_number {
-                return Err(ExecutionReceiptError::Stale);
-            }
 
             if primary_number == current_block_number
                 || primary_number > best_number + T::MaximumReceiptDrift::get()
