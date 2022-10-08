@@ -6,7 +6,7 @@ members = [
     "cumulus/client/cirrus-executor",
     "cumulus/client/consensus/relay-chain",
     "cumulus/client/executor-gossip",
-    "cumulus/pallets/executive",
+    "cumulus/pallets/*",
     "cumulus/node",
     "cumulus/runtime",
     "cumulus/primitives",
