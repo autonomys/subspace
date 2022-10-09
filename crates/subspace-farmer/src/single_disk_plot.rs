@@ -274,7 +274,7 @@ pub enum SingleDiskPlotError {
     /// Wrong chain (genesis hash)
     #[error(
         "Genesis hash of plot {id} {wrong_chain} is different from {correct_chain} when plot was \
-        created, is is not possible to use plot on a different chain"
+        created, it is not possible to use plot on a different chain"
     )]
     WrongChain {
         /// Plot ID
@@ -324,8 +324,8 @@ pub enum PlottingError {
         /// Piece index
         piece_index: PieceIndex,
     },
-    /// Failed to retriever piece
-    #[error("Failed to retriever piece {piece_index}: {error}")]
+    /// Failed to retrieve piece
+    #[error("Failed to retrieve piece {piece_index}: {error}")]
     FailedToRetrievePiece {
         /// Piece index
         piece_index: PieceIndex,
