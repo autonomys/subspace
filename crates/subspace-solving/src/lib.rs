@@ -94,21 +94,6 @@ pub fn derive_local_challenge_and_target(
     (local_challenge, target)
 }
 
-/// Verify local challenge for farmer's public key that was derived from the global challenge.
-pub fn verify_local_challenge(
-    public_key: &PublicKey,
-    global_challenge: Blake2b256Hash,
-    local_challenge: &LocalChallenge,
-) -> SignatureResult<VRFInOut> {
-    public_key
-        .vrf_verify(
-            create_local_challenge_transcript(&global_challenge),
-            &VRFOutput(local_challenge.output),
-            &VRFProof::from_bytes(&local_challenge.proof)?,
-        )
-        .map(|(in_out, _)| in_out)
-}
-
 /// Derive challenge target from public key and local challenge.
 ///
 /// NOTE: If you are not the signer then you must verify the local challenge before calling this

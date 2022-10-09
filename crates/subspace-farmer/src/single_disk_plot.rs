@@ -35,7 +35,7 @@ use subspace_core_primitives::{
 };
 use subspace_rpc_primitives::SolutionResponse;
 use subspace_solving::{derive_chunk_otp, SubspaceCodec};
-use subspace_verification::is_within_solution_range2;
+use subspace_verification::is_within_solution_range;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, info_span, trace, Instrument, Span};
@@ -848,7 +848,7 @@ impl SingleDiskPlot {
                                 //  something else?
                                 let expanded_chunk = chunk.expand(local_challenge);
 
-                                if is_within_solution_range2(
+                                if is_within_solution_range(
                                     local_challenge,
                                     expanded_chunk,
                                     slot_info.voting_solution_range,

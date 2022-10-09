@@ -214,22 +214,22 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                             .next()
                             .expect("Due to if condition vector is not empty; qed");
 
-                        if is_within_solution_range(target, tag, slot_info.solution_range) {
-                            // Found a tag within solution range for blocks
-                            Some((tag, piece_offset))
-                        } else {
-                            // There might be something that is within solution range for blocks
-                            commitments
-                                .find_by_range(
-                                    target,
-                                    slot_info.solution_range,
-                                    slot_info.salt,
-                                    TAGS_SEARCH_LIMIT,
-                                )
-                                .into_iter()
-                                .next()
-                                .or(Some((tag, piece_offset)))
-                        }
+                        // if is_within_solution_range(target, tag, slot_info.solution_range) {
+                        //     // Found a tag within solution range for blocks
+                        //     Some((tag, piece_offset))
+                        // } else {
+                        // There might be something that is within solution range for blocks
+                        commitments
+                            .find_by_range(
+                                target,
+                                slot_info.solution_range,
+                                slot_info.salt,
+                                TAGS_SEARCH_LIMIT,
+                            )
+                            .into_iter()
+                            .next()
+                            .or(Some((tag, piece_offset)))
+                        // }
                     };
 
                     // match maybe_tag {
