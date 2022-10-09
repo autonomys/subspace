@@ -175,6 +175,10 @@ fn submit_execution_receipt_incrementally_should_work() {
     };
 
     new_test_ext().execute_with(|| {
+        let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
+        BlockHash::<Test>::insert(0, genesis_hash);
+        Executor::initialize_genesis_receipt(genesis_hash);
+
         (0..256).for_each(|index| {
             let block_hash = block_hashes[index];
             BlockHash::<Test>::insert((index + 1) as u64, block_hash);
