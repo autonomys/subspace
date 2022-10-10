@@ -18,7 +18,6 @@ use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_runtime::traits::ValidateUnsigned;
-use sp_runtime::transaction_validity::TransactionSource;
 
 fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
     let params = InitiateChannelParams {
@@ -450,10 +449,10 @@ fn channel_relay_request_and_response(
         domain_b::SystemDomainTracker::set_state_root(xdm.proof.state_root);
 
         // validate the message
-        let pre_check = crate::Pallet::<domain_b::Runtime>::validate_unsigned(
-            TransactionSource::Local,
-            &crate::Call::relay_message { msg: xdm.clone() },
-        );
+        let pre_check =
+            crate::Pallet::<domain_b::Runtime>::pre_dispatch(&crate::Call::relay_message {
+                msg: xdm.clone(),
+            });
         assert_ok!(pre_check);
 
         // process inbox message
@@ -511,8 +510,7 @@ fn channel_relay_request_and_response(
         domain_a::SystemDomainTracker::set_state_root(xdm.proof.state_root);
 
         // validate message response
-        let pre_check = crate::Pallet::<domain_a::Runtime>::validate_unsigned(
-            TransactionSource::Local,
+        let pre_check = crate::Pallet::<domain_a::Runtime>::pre_dispatch(
             &crate::Call::relay_message_response { msg: xdm.clone() },
         );
         assert_ok!(pre_check);
