@@ -9,22 +9,20 @@ use std::sync::Arc;
 use std::vec;
 use tracing::trace;
 
-pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync + 'static>;
-
-/// Hacky replacement for Kademlia's record store that doesn't store anything and instead proxies
-/// gets to externally provided implementation.
 #[derive(Clone)]
-pub(crate) struct CustomRecordStore {
-    value_getter: ValueGetter,
-    // TODO: Optimize providers collection, introduce limits and TTL.
-    providers: HashMap<Key, Vec<ProviderRecord>>,
+pub(crate) struct CustomRecordStore<
+    RecordStorage = GetOnlyRecordStorage,
+    ProviderStorage = MemoryProviderStorage,
+> {
+    record_storage: RecordStorage,
+    provider_storage: ProviderStorage,
 }
 
-impl CustomRecordStore {
-    pub(super) fn new(value_getter: ValueGetter) -> Self {
+impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderStorage> {
+    pub(super) fn new(record_storage: RecordStorage, provider_storage: ProviderStorage) -> Self {
         Self {
-            value_getter,
-            providers: Default::default(),
+            record_storage,
+            provider_storage,
         }
     }
 }
@@ -34,30 +32,67 @@ impl<'a> RecordStore<'a> for CustomRecordStore {
     type ProvidedIter = vec::IntoIter<Cow<'a, ProviderRecord>>;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
-        let multihash_key = Multihash::from_bytes(key.as_ref()).ok()?;
-        (self.value_getter)(&multihash_key)
-            .map(|value| Record {
-                key: key.clone(),
-                value,
-                publisher: None,
-                expires: None,
-            })
-            .map(Cow::Owned)
+        self.record_storage.get(key)
     }
 
-    fn put(&'a mut self, _record: Record) -> store::Result<()> {
-        // Don't allow to store values.
-        Err(Error::MaxRecords)
+    fn put(&'a mut self, record: Record) -> store::Result<()> {
+        self.record_storage.put(record)
     }
 
-    fn remove(&'a mut self, _key: &Key) {
-        // Nothing to remove
+    fn remove(&'a mut self, key: &Key) {
+        self.record_storage.remove(key)
     }
 
     fn records(&'a self) -> Self::RecordsIter {
-        // No iteration support for now.
-        Vec::new().into_iter()
+        self.record_storage.records()
     }
+
+    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+        self.provider_storage.add_provider(record)
+    }
+
+    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+        self.provider_storage.providers(key)
+    }
+
+    fn provided(&'a self) -> Self::ProvidedIter {
+        self.provider_storage.provided()
+    }
+
+    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+        self.provider_storage.remove_provider(key, provider)
+    }
+}
+
+pub trait ProviderStorage<'a> {
+    type ProvidedIter: Iterator<Item = Cow<'a, ProviderRecord>>;
+
+    /// Adds a provider record to the store.
+    ///
+    /// A record store only needs to store a number of provider records
+    /// for a key corresponding to the replication factor and should
+    /// store those records whose providers are closest to the key.
+    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()>;
+
+    /// Gets a copy of the stored provider records for the given key.
+    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord>;
+
+    /// Gets an iterator over all stored provider records for which the
+    /// node owning the store is itself the provider.
+    fn provided(&'a self) -> Self::ProvidedIter;
+
+    /// Removes a provider record from the store.
+    fn remove_provider(&'a mut self, k: &Key, p: &PeerId);
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct MemoryProviderStorage {
+    // TODO: Optimize providers collection, introduce limits and TTL.
+    providers: HashMap<Key, Vec<ProviderRecord>>,
+}
+
+impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
+    type ProvidedIter = vec::IntoIter<Cow<'a, ProviderRecord>>;
 
     fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
         trace!("New provider record added: {:?}", record);
@@ -91,5 +126,66 @@ impl<'a> RecordStore<'a> for CustomRecordStore {
         let entry = self.providers.entry(key.clone());
 
         entry.and_modify(|e| e.retain(|rec| rec.provider != *provider));
+    }
+}
+
+pub trait RecordStorage<'a> {
+    type RecordsIter: Iterator<Item = Cow<'a, Record>>;
+
+    /// Gets a record from the store, given its key.
+    fn get(&'a self, k: &Key) -> Option<Cow<'_, Record>>;
+
+    /// Puts a record into the store.
+    fn put(&'a mut self, r: Record) -> store::Result<()>;
+
+    /// Removes the record with the given key from the store.
+    fn remove(&'a mut self, k: &Key);
+
+    /// Gets an iterator over all (value-) records currently stored.
+    fn records(&'a self) -> Self::RecordsIter;
+}
+
+pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync + 'static>;
+
+/// Hacky replacement for Kademlia's record store that doesn't store anything and instead proxies
+/// gets to externally provided implementation.
+#[derive(Clone)]
+pub(crate) struct GetOnlyRecordStorage {
+    value_getter: ValueGetter,
+}
+
+impl GetOnlyRecordStorage {
+    pub(super) fn new(value_getter: ValueGetter) -> Self {
+        Self { value_getter }
+    }
+}
+
+impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
+    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
+
+    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+        let multihash_key = Multihash::from_bytes(key.as_ref()).ok()?;
+        (self.value_getter)(&multihash_key)
+            .map(|value| Record {
+                key: key.clone(),
+                value,
+                publisher: None,
+                expires: None,
+            })
+            .map(Cow::Owned)
+    }
+
+    fn put(&'a mut self, _record: Record) -> store::Result<()> {
+        // Don't allow to store values.
+        Err(Error::MaxRecords)
+    }
+
+    fn remove(&'a mut self, _key: &Key) {
+        // Nothing to remove
+    }
+
+    fn records(&'a self) -> Self::RecordsIter {
+        // No iteration support for now.
+        Vec::new().into_iter()
     }
 }

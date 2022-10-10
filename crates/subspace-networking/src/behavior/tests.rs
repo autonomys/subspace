@@ -1,5 +1,5 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
-use crate::behavior::custom_record_store::CustomRecordStore;
+use crate::behavior::custom_record_store::{CustomRecordStore, GetOnlyRecordStorage};
 use chrono::Duration;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
@@ -65,7 +65,10 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 #[allow(clippy::mutable_key_type)] // we use hash set for sorting to compare collections
 #[test]
 fn check_custom_store_api() {
-    let mut store = CustomRecordStore::new(Arc::new(|_| None));
+    let mut store = CustomRecordStore::new(
+        GetOnlyRecordStorage::new(Arc::new(|_| None)),
+        Default::default(),
+    );
 
     let key1: Key = b"key1".to_vec().into();
     let provider1 = PeerId::random();

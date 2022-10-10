@@ -3,6 +3,7 @@ pub(crate) mod persistent_parameters;
 #[cfg(test)]
 mod tests;
 
+use crate::behavior::custom_record_store::GetOnlyRecordStorage;
 use crate::create::ValueGetter;
 use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
@@ -45,7 +46,10 @@ impl Behavior {
     pub(crate) fn new(config: BehaviorConfig) -> Self {
         let kademlia = Kademlia::with_config(
             config.peer_id,
-            CustomRecordStore::new(config.value_getter),
+            CustomRecordStore::new(
+                GetOnlyRecordStorage::new(config.value_getter),
+                Default::default(),
+            ),
             config.kademlia,
         );
 
