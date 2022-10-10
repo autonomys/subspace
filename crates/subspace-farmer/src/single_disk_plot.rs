@@ -178,16 +178,8 @@ impl SingleDiskPlotInfo {
 pub enum SingleDiskPlotSummary {
     /// Plot was found and read successfully
     Found {
-        // ID of the plot
-        id: SingleDiskPlotId,
-        // Genesis hash of the chain used for plot creation
-        genesis_hash: [u8; 32],
-        // Public key of identity used for plot creation
-        public_key: PublicKey,
-        /// First sector index in this plot
-        first_sector_index: u64,
-        // How much space in bytes can plot use for plot (metadata space is not included)
-        allocated_space: u64,
+        /// Plot info
+        info: SingleDiskPlotInfo,
         /// Path to directory where plot is stored.
         directory: PathBuf,
     },
@@ -672,8 +664,8 @@ impl SingleDiskPlot {
                                         &piece[farmer_protocol_info.record_size.get() as usize..],
                                     )
                                     .expect(
-                                        "Witness must have correct size unless unless \
-                                        implementation is broken in a big way; qed",
+                                        "Witness must have correct size unless implementation \
+                                        is broken in a big way; qed",
                                     ),
                                 ) {
                                     Ok(piece_witness) => piece_witness,
@@ -688,7 +680,7 @@ impl SingleDiskPlot {
                                 };
                                 // TODO: We are skipping witness part of the piece or else it is not
                                 //  decodable
-                                // TODO: Last bits may not be encoded is record size is not multiple
+                                // TODO: Last bits may not be encoded if record size is not multiple
                                 //  of `space_l`
                                 // Encode piece
                                 piece[..farmer_protocol_info.record_size.get() as usize]
@@ -850,8 +842,8 @@ impl SingleDiskPlot {
 
                                     let piece_witness = match Witness::try_from_bytes(
                                         &<[u8; 48]>::try_from(&piece[record_size..]).expect(
-                                            "Witness must have correct size unless unless \
-                                            implementation is broken in a big way; qed",
+                                            "Witness must have correct size unless implementation \
+                                            is broken in a big way; qed",
                                         ),
                                     ) {
                                         Ok(piece_witness) => piece_witness,
@@ -948,14 +940,10 @@ impl SingleDiskPlot {
             }
         };
 
-        return SingleDiskPlotSummary::Found {
-            id: *single_disk_plot_info.id(),
-            genesis_hash: *single_disk_plot_info.genesis_hash(),
-            public_key: *single_disk_plot_info.public_key(),
-            first_sector_index: single_disk_plot_info.first_sector_index(),
-            allocated_space: single_disk_plot_info.allocated_space(),
+        SingleDiskPlotSummary::Found {
+            info: single_disk_plot_info,
             directory,
-        };
+        }
     }
 
     /// ID of this farm
