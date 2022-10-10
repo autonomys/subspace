@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
-use tracing::trace;
+use tracing::{debug, trace};
 
 #[derive(Clone)]
 pub(crate) struct CustomRecordStore<
@@ -187,5 +187,72 @@ impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
     fn records(&'a self) -> Self::RecordsIter {
         // No iteration support for now.
         Vec::new().into_iter()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct MemoryRecordStorage {
+    // TODO: Optimize collection, introduce limits and TTL.
+    records: HashMap<Key, Record>,
+}
+
+impl<'a> RecordStorage<'a> for MemoryRecordStorage {
+    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
+
+    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+        self.records.get(key).map(|rec| Cow::Owned(rec.clone()))
+    }
+
+    fn put(&'a mut self, record: Record) -> store::Result<()> {
+        trace!("New record added: {:?}", record);
+
+        self.records.insert(record.key.clone(), record);
+
+        Ok(())
+    }
+
+    fn remove(&'a mut self, key: &Key) {
+        trace!(?key, "Record removed.");
+
+        self.records.remove(key);
+    }
+
+    fn records(&'a self) -> Self::RecordsIter {
+        self.records
+            .values()
+            .map(|rec| Cow::Owned(rec.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+#[derive(Clone)]
+pub struct NoRecordStorage;
+
+impl<'a> RecordStorage<'a> for MemoryRecordStorage {
+    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
+
+    fn get(&'a self, _: &Key) -> Option<Cow<'_, Record>> {
+        None
+    }
+
+    fn put(&'a mut self, _: Record) -> store::Result<()> {
+        debug!("Detected an attempt to add a new record: {:?}", record);
+
+        Ok(())
+    }
+
+    fn remove(&'a mut self, key: &Key) {
+        trace!(?key, "Record removed.");
+
+        debug!(?key, "Detected an attempt to remove a record.");
+    }
+
+    fn records(&'a self) -> Self::RecordsIter {
+        self.records
+            .values()
+            .map(|rec| Cow::Owned(rec.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
