@@ -1,7 +1,7 @@
 use crate::verification::Proof;
 use crate::{
     ChannelId, Channels, Config, Error, Event, Inbox, InboxResponses, InitiateChannelParams, Nonce,
-    Outbox, OutboxMessageStatus, OutboxResponses, Pallet,
+    Outbox, OutboxMessageResult, OutboxResponses, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::ensure;
@@ -321,17 +321,17 @@ impl<T: Config> Pallet<T> {
 
             // deposit event notifying the message status.
             match resp {
-                Ok(_) => Self::deposit_event(Event::OutboxMessageStatus {
+                Ok(_) => Self::deposit_event(Event::OutboxMessageResult {
                     domain_id: dst_domain_id,
                     channel_id,
                     nonce: next_message_response_nonce,
-                    status: OutboxMessageStatus::Ok,
+                    result: OutboxMessageResult::Ok,
                 }),
-                Err(err) => Self::deposit_event(Event::OutboxMessageStatus {
+                Err(err) => Self::deposit_event(Event::OutboxMessageResult {
                     domain_id: dst_domain_id,
                     channel_id,
                     nonce: next_message_response_nonce,
-                    status: OutboxMessageStatus::Err(err),
+                    result: OutboxMessageResult::Err(err),
                 }),
             }
 

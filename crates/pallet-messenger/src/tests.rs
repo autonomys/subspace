@@ -11,7 +11,7 @@ use crate::mock::{
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
 use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
-    InitiateChannelParams, Nonce, Outbox, OutboxMessageStatus, OutboxResponses, U256,
+    InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
 use frame_support::{assert_err, assert_ok};
 use sp_core::storage::StorageKey;
@@ -533,11 +533,11 @@ fn channel_relay_request_and_response(
 
         domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
             domain_a::Runtime,
-        >::OutboxMessageStatus {
+        >::OutboxMessageResult {
             domain_id: domain_b_id,
             channel_id,
             nonce,
-            status: OutboxMessageStatus::Ok,
+            result: OutboxMessageResult::Ok,
         }));
     })
 }

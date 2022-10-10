@@ -76,7 +76,7 @@ pub struct InitiateChannelParams {
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub enum OutboxMessageStatus {
+pub enum OutboxMessageResult {
     /// Message response handler returned Ok.
     Ok,
     /// Message response handler failed with Err.
@@ -93,7 +93,7 @@ mod pallet {
     };
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, OutboxMessageStatus,
+        Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, OutboxMessageResult,
         StateRootOf, U256,
     };
     use frame_support::pallet_prelude::*;
@@ -218,12 +218,12 @@ mod pallet {
             nonce: Nonce,
         },
 
-        /// Emits handler response to the message response delivery.
-        OutboxMessageStatus {
+        /// Emits outbox message event.
+        OutboxMessageResult {
             domain_id: T::DomainId,
             channel_id: ChannelId,
             nonce: Nonce,
-            status: OutboxMessageStatus,
+            result: OutboxMessageResult,
         },
 
         /// Emits when a new inbox message is validated and added to Inbox.
