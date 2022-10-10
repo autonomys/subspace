@@ -18,8 +18,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
-// TODO(ved): remove once all the types and traits are connected
-#![allow(dead_code)]
 
 #[cfg(test)]
 mod mock;
@@ -34,6 +32,7 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_runtime::traits::Hash;
+use sp_runtime::DispatchError;
 
 /// State of a channel.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -76,6 +75,14 @@ pub struct InitiateChannelParams {
     max_outgoing_messages: u32,
 }
 
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
+pub enum OutboxMessageResult {
+    /// Message response handler returned Ok.
+    Ok,
+    /// Message response handler failed with Err.
+    Err(DispatchError),
+}
+
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 
 #[frame_support::pallet]
@@ -86,12 +93,14 @@ mod pallet {
     };
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, StateRootOf, U256,
+        Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, OutboxMessageResult,
+        StateRootOf, U256,
     };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
-    use sp_messenger::SystemDomainTracker;
+    use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::SystemDomainTracker as SystemDomainTrackerT;
     use sp_runtime::ArithmeticError;
 
     #[pallet::config]
@@ -102,7 +111,11 @@ mod pallet {
         /// Gets the domain_id that is treated as src_domain for outgoing messages.
         type SelfDomainId: Get<Self::DomainId>;
         /// System domain tracker.
-        type SystemDomainTracker: SystemDomainTracker<StateRootOf<Self>>;
+        type SystemDomainTracker: SystemDomainTrackerT<StateRootOf<Self>>;
+        /// function to fetch endpoint response handler by Endpoint.
+        fn get_endpoint_response_handler(
+            endpoint: &Endpoint,
+        ) -> Option<Box<dyn EndpointHandler<Self::DomainId>>>;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -139,8 +152,8 @@ mod pallet {
     /// Stores the message responses of the incoming processed responses.
     /// Used by the dst_domain to verify the message response.
     #[pallet::storage]
-    #[pallet::getter(fn inbox_message_responses)]
-    pub(super) type InboxMessageResponses<T: Config> = CountedStorageMap<
+    #[pallet::getter(fn inbox_responses)]
+    pub(super) type InboxResponses<T: Config> = CountedStorageMap<
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
@@ -161,8 +174,8 @@ mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn outbox_message_responses)]
-    pub(super) type OutboxMessageResponses<T: Config> = CountedStorageMap<
+    #[pallet::getter(fn outbox_responses)]
+    pub(super) type OutboxResponses<T: Config> = CountedStorageMap<
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
@@ -204,6 +217,39 @@ mod pallet {
             channel_id: ChannelId,
             nonce: Nonce,
         },
+
+        /// Emits when a message response is available for Outbox message.
+        OutboxMessageResponse {
+            /// Destination domain ID.
+            domain_id: T::DomainId,
+            /// Channel Is
+            channel_id: ChannelId,
+            nonce: Nonce,
+        },
+
+        /// Emits outbox message event.
+        OutboxMessageResult {
+            domain_id: T::DomainId,
+            channel_id: ChannelId,
+            nonce: Nonce,
+            result: OutboxMessageResult,
+        },
+
+        /// Emits when a new inbox message is validated and added to Inbox.
+        InboxMessage {
+            domain_id: T::DomainId,
+            channel_id: ChannelId,
+            nonce: Nonce,
+        },
+
+        /// Emits when a message response is available for Inbox message.
+        InboxMessageResponse {
+            /// Destination domain ID.
+            domain_id: T::DomainId,
+            /// Channel Is
+            channel_id: ChannelId,
+            nonce: Nonce,
+        },
     }
 
     type Tag<DomainId> = (DomainId, ChannelId, Nonce);
@@ -224,79 +270,34 @@ mod pallet {
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
 
+        fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
+            match call {
+                Call::relay_message { msg: xdm } => {
+                    let (msg, should_init_chanel) = Self::do_validate_relay_message(xdm)?;
+                    Self::pre_dispatch_relay_message(msg, should_init_chanel)
+                }
+                Call::relay_message_response { msg: xdm } => {
+                    let msg = Self::do_validate_relay_message_response(xdm)?;
+                    Self::pre_dispatch_relay_message_response(msg)
+                }
+                _ => Err(InvalidTransaction::Call.into()),
+            }
+        }
+
         /// Validate unsigned call to this module.
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-            // Firstly let's check that we call the right function.
-            if let Call::relay_message { msg: bundled_msg } = call {
-                // fetch state roots from System domain tracker
-                let state_roots = T::SystemDomainTracker::latest_state_roots();
-                if !state_roots.contains(&bundled_msg.proof.state_root) {
-                    return InvalidTransaction::BadProof.into();
+            match call {
+                Call::relay_message { msg: xdm } => {
+                    let (msg, _should_init_chanel) = Self::do_validate_relay_message(xdm)?;
+                    let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
+                    unsigned_validity::<T>("MessengerInbox", provides_tag)
                 }
-
-                // channel should be either already be created or match the next channelId for domain.
-                let next_channel_id = NextChannelId::<T>::get(bundled_msg.dst_domain_id);
-                ensure!(
-                    bundled_msg.channel_id <= next_channel_id,
-                    InvalidTransaction::Call
-                );
-
-                // verify nonce
-                let mut should_init_channel = false;
-                let next_nonce =
-                    match Channels::<T>::get(bundled_msg.src_domain_id, bundled_msg.channel_id) {
-                        None => {
-                            // if there is no channel config, this must the Channel open request.
-                            // ensure nonce is 0
-                            should_init_channel = true;
-                            Nonce::zero()
-                        }
-                        Some(channel) => channel.next_inbox_nonce,
-                    };
-                // nonce should be either be next or in future.
-                ensure!(
-                    bundled_msg.nonce >= next_nonce,
-                    InvalidTransaction::BadProof
-                );
-
-                // derive the key as stored on the src_domain.
-                let key = Outbox::<T>::hashed_key_for((
-                    T::SelfDomainId::get(),
-                    bundled_msg.channel_id,
-                    next_nonce,
-                ));
-
-                // verify, decode, and store the message
-                let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
-                    Message<T::DomainId>,
-                >(bundled_msg.proof.clone(), StorageKey(key))
-                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
-
-                if should_init_channel {
-                    if let VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
-                        ProtocolMessageRequest::ChannelOpen(params),
-                    ))) = msg.payload
-                    {
-                        Self::do_init_channel(msg.src_domain_id, params)
-                            .map_err(|_| InvalidTransaction::Call)?;
-                    } else {
-                        return InvalidTransaction::Call.into();
-                    }
+                Call::relay_message_response { msg: xdm } => {
+                    let msg = Self::do_validate_relay_message_response(xdm)?;
+                    let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
+                    unsigned_validity::<T>("MessengerOutboxResponse", provides_tag)
                 }
-
-                let provides_tag = (msg.dst_domain_id, msg.channel_id, next_nonce);
-                Inbox::<T>::insert(
-                    (
-                        bundled_msg.src_domain_id,
-                        bundled_msg.channel_id,
-                        next_nonce,
-                    ),
-                    msg,
-                );
-
-                unsigned_validity::<T>("MessengerInbox", provides_tag)
-            } else {
-                InvalidTransaction::Call.into()
+                _ => InvalidTransaction::Call.into(),
             }
         }
     }
@@ -310,6 +311,12 @@ mod pallet {
         /// Emits when the said channel is not in an open state.
         InvalidChannelState,
 
+        /// Emits when there are no open channels for a domain
+        NoOpenChannel,
+
+        /// Emits when there are not message handler with given endpoint ID.
+        NoMessageHandler,
+
         /// Emits when the outbox is full for a channel.
         OutboxFull,
 
@@ -318,6 +325,9 @@ mod pallet {
 
         /// Emits when the message verification failed.
         MessageVerification(VerificationError),
+
+        /// Emits when there is no message available for the given nonce.
+        MissingMessage,
     }
 
     #[pallet::call]
@@ -381,12 +391,56 @@ mod pallet {
             msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::process_inbox_messages(msg.src_domain_id, msg.nonce)?;
+            Self::process_inbox_messages(msg.src_domain_id, msg.channel_id)?;
+            Ok(())
+        }
+
+        /// Receives a response from the dst_domain for a message in Outbox.
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn relay_message_response(
+            origin: OriginFor<T>,
+            msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            Self::process_outbox_message_responses(msg.src_domain_id, msg.channel_id)?;
+            Ok(())
+        }
+    }
+
+    impl<T: Config> Sender<T::DomainId> for Pallet<T> {
+        fn send_message(dst_domain_id: T::DomainId, req: EndpointRequest) -> DispatchResult {
+            let channel_id = Self::get_open_channel_for_domain(dst_domain_id)
+                .ok_or(Error::<T>::NoOpenChannel)?;
+            Self::new_outbox_message(
+                T::SelfDomainId::get(),
+                dst_domain_id,
+                channel_id,
+                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
+            )?;
             Ok(())
         }
     }
 
     impl<T: Config> Pallet<T> {
+        /// Returns the last open channel for a given domain.
+        fn get_open_channel_for_domain(dst_domain_id: T::DomainId) -> Option<ChannelId> {
+            let mut next_channel_id = NextChannelId::<T>::get(dst_domain_id);
+
+            // loop through channels in descending order until open channel is found.
+            // we always prefer latest opened channel.
+            while let Some(channel_id) = next_channel_id.checked_sub(ChannelId::one()) {
+                if let Some(channel) = Channels::<T>::get(dst_domain_id, channel_id) {
+                    if channel.state == ChannelState::Open {
+                        return Some(channel_id);
+                    }
+                }
+
+                next_channel_id = channel_id
+            }
+
+            None
+        }
+
         /// Opens an initiated channel.
         pub(crate) fn do_open_channel(
             domain_id: T::DomainId,
@@ -464,6 +518,143 @@ mod pallet {
                 channel_id,
             });
             Ok(channel_id)
+        }
+
+        pub(crate) fn do_validate_relay_message(
+            xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+        ) -> Result<(Message<T::DomainId>, bool), TransactionValidityError> {
+            let mut should_init_channel = false;
+            let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
+                None => {
+                    // if there is no channel config, this must the Channel open request.
+                    // so nonce is 0
+                    should_init_channel = true;
+                    Nonce::zero()
+                }
+                Some(channel) => {
+                    // Ensure channel is ready to receive messages
+                    ensure!(
+                        channel.state == ChannelState::Open,
+                        InvalidTransaction::Call
+                    );
+                    channel.next_inbox_nonce
+                }
+            };
+
+            // derive the key as stored on the src_domain.
+            let key = StorageKey(Outbox::<T>::hashed_key_for((
+                T::SelfDomainId::get(),
+                xdm.channel_id,
+                xdm.nonce,
+            )));
+
+            // verify and decode message
+            let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+            Ok((msg, should_init_channel))
+        }
+
+        pub(crate) fn pre_dispatch_relay_message(
+            msg: Message<T::DomainId>,
+            should_init_channel: bool,
+        ) -> Result<(), TransactionValidityError> {
+            if should_init_channel {
+                if let VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                    ProtocolMessageRequest::ChannelOpen(params),
+                ))) = msg.payload
+                {
+                    Self::do_init_channel(msg.src_domain_id, params)
+                        .map_err(|_| InvalidTransaction::Call)?;
+                } else {
+                    return Err(InvalidTransaction::Call.into());
+                }
+            }
+
+            Self::deposit_event(Event::InboxMessage {
+                domain_id: msg.src_domain_id,
+                channel_id: msg.channel_id,
+                nonce: msg.nonce,
+            });
+            Inbox::<T>::insert((msg.src_domain_id, msg.channel_id, msg.nonce), msg);
+            Ok(())
+        }
+
+        pub(crate) fn do_validate_relay_message_response(
+            xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+        ) -> Result<Message<T::DomainId>, TransactionValidityError> {
+            // channel should be open and message should be present in outbox
+            let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
+                // unknown channel. return
+                None => return Err(InvalidTransaction::Call.into()),
+                // verify if channel can receive messages
+                Some(channel) => {
+                    match channel.latest_response_received_message_nonce {
+                        None => {
+                            // this is the first message response.
+                            // ensure channel is in init state
+                            ensure!(
+                                channel.state == ChannelState::Initiated,
+                                InvalidTransaction::Call
+                            );
+                            Some(Nonce::zero())
+                        }
+                        Some(last_nonce) => last_nonce.checked_add(Nonce::one()),
+                    }
+                }
+            }
+            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))?;
+
+            // derive the key as stored on the src_domain.
+            let key = StorageKey(InboxResponses::<T>::hashed_key_for((
+                T::SelfDomainId::get(),
+                xdm.channel_id,
+                xdm.nonce,
+            )));
+
+            // verify, decode, and store the message
+            Self::do_verify_xdm(next_nonce, key, xdm)
+        }
+
+        pub(crate) fn pre_dispatch_relay_message_response(
+            msg: Message<T::DomainId>,
+        ) -> Result<(), TransactionValidityError> {
+            Self::deposit_event(Event::OutboxMessageResponse {
+                domain_id: msg.src_domain_id,
+                channel_id: msg.channel_id,
+                nonce: msg.nonce,
+            });
+
+            OutboxResponses::<T>::insert((msg.src_domain_id, msg.channel_id, msg.nonce), msg);
+            Ok(())
+        }
+
+        pub(crate) fn do_verify_xdm(
+            next_nonce: Nonce,
+            storage_key: StorageKey,
+            xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+        ) -> Result<Message<T::DomainId>, TransactionValidityError> {
+            // fetch state roots from System domain tracker
+            let state_roots = T::SystemDomainTracker::latest_state_roots();
+            if !state_roots.contains(&xdm.proof.state_root) {
+                return Err(TransactionValidityError::Invalid(
+                    InvalidTransaction::BadProof,
+                ));
+            }
+
+            // channel should be either already be created or match the next channelId for domain.
+            let next_channel_id = NextChannelId::<T>::get(xdm.dst_domain_id);
+            ensure!(xdm.channel_id <= next_channel_id, InvalidTransaction::Call);
+
+            // verify nonce
+            // nonce should be either be next or in future.
+            ensure!(xdm.nonce >= next_nonce, InvalidTransaction::BadProof);
+
+            // verify and decode the message
+            let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
+                Message<T::DomainId>,
+            >(xdm.proof.clone(), storage_key)
+            .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
+
+            Ok(msg)
         }
     }
 }
