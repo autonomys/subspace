@@ -219,7 +219,7 @@ mod pallet {
             nonce: Nonce,
         },
 
-        /// Emits when a handler returns an error after handling the message response.
+        /// Emits handler response to the message response delivery.
         OutboxMessageStatus {
             domain_id: T::DomainId,
             channel_id: ChannelId,
