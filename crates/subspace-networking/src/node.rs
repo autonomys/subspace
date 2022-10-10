@@ -183,6 +183,25 @@ impl From<oneshot::Canceled> for AnnounceError {
 }
 
 #[derive(Debug, Error)]
+pub enum StopAnnouncingError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to stop announcing an item.
+    #[error("Failed to stop announcing an item.")]
+    StopAnnouncing,
+}
+
+impl From<oneshot::Canceled> for StopAnnouncingError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum SendRequestError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
@@ -406,22 +425,40 @@ impl Node {
         }
     }
 
-    /// Announce iterm by its key. Initiate 'start_providing' Kademlia operation.
-    pub async fn announce(&self, key: Multihash) -> Result<(), AnnounceError> {
+    /// Start announcing item by its key. Initiate 'start_providing' Kademlia operation.
+    pub async fn start_announcing(&self, key: Multihash) -> Result<(), AnnounceError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
-        trace!(?key, "Starting 'announce' request.");
+        trace!(?key, "Starting 'start_announcing' request.");
 
         self.shared
             .command_sender
             .clone()
-            .send(Command::Announce { key, result_sender })
+            .send(Command::StartAnnouncing { key, result_sender })
             .await?;
 
         result_receiver
             .await?
             .then_some(())
             .ok_or(AnnounceError::Announce)
+    }
+
+    /// Stop announcing item by its key. Initiate 'stop_providing' Kademlia operation.
+    pub async fn stop_announcing(&self, key: Multihash) -> Result<(), StopAnnouncingError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!(?key, "Starting 'stop_announcing' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::StopAnnouncing { key, result_sender })
+            .await?;
+
+        result_receiver
+            .await?
+            .then_some(())
+            .ok_or(StopAnnouncingError::StopAnnouncing)
     }
 
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.

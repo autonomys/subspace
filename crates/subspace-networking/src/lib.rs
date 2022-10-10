@@ -49,6 +49,7 @@ pub use request_handlers::peer_info::{
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
+pub use utils::ToMultihash;
 
 // TODO: Move this out of the networking crate into separate crate.
 pub static PUB_SUB_ARCHIVING_TOPIC: Lazy<Sha256Topic> =
