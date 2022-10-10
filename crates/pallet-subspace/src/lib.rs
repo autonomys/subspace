@@ -54,8 +54,8 @@ use sp_std::prelude::*;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, PIECES_IN_SEGMENT,
-    PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SectorId, SegmentIndex, SolutionRange,
+    PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -129,10 +129,7 @@ struct VoteVerificationData {
     global_randomness: Randomness,
     solution_range: SolutionRange,
     salt: Salt,
-    record_size: u32,
-    recorded_history_segment_size: u32,
-    max_plot_size: u64,
-    total_pieces: u64,
+    pieces_in_segment: u32,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -1291,10 +1288,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .next
                 .expect("Next salt must always be available if `switch_next_block` is true; qed")
         },
-        record_size: RECORD_SIZE,
-        recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-        max_plot_size: Pallet::<T>::max_plot_size(),
-        total_pieces: Pallet::<T>::total_pieces(),
+        pieces_in_segment: RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2,
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
             .map(|parent_vote_verification_data| {
@@ -1318,6 +1312,7 @@ enum CheckVoteError {
     SlotInTheFuture,
     SlotInThePast,
     BadRewardSignature(SignatureError),
+    TotalNumberOfPiecesCantBeZero,
     UnknownRecordsRoot,
     InvalidSolution(VerificationError),
     DuplicateVote,
@@ -1335,6 +1330,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
             CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
+            CheckVoteError::TotalNumberOfPiecesCantBeZero => InvalidTransaction::Call,
             CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
@@ -1347,235 +1343,233 @@ fn check_vote<T: Config>(
     signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
     pre_dispatch: bool,
 ) -> Result<(), CheckVoteError> {
-    // TODO: Update implementation for V2 consensus
-    // let Vote::V0 {
-    //     height,
-    //     parent_hash,
-    //     slot,
-    //     solution,
-    // } = &signed_vote.vote;
-    // let height = *height;
-    // let slot = *slot;
+    let Vote::V0 {
+        height,
+        parent_hash,
+        slot,
+        solution,
+    } = &signed_vote.vote;
+    let height = *height;
+    let slot = *slot;
+
+    if BlockList::<T>::contains_key(&solution.public_key) {
+        return Err(CheckVoteError::BlockListed);
+    }
+
+    let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+    if current_block_number <= One::one() || height <= One::one() {
+        debug!(
+            target: "runtime::subspace",
+            "Votes are not expected at height below 2"
+        );
+
+        return Err(CheckVoteError::UnexpectedBeforeHeightTwo);
+    }
+
+    // Height must be either the same as in current block or smaller by one.
     //
-    // if BlockList::<T>::contains_key(&solution.public_key) {
-    //     return Err(CheckVoteError::BlockListed);
-    // }
+    // Subtraction will not panic due to check above.
+    if !(height == current_block_number || height == current_block_number - One::one()) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: bad height {height:?}, current block number is \
+            {current_block_number:?}"
+        );
+        return Err(if height > current_block_number {
+            CheckVoteError::HeightInTheFuture
+        } else {
+            CheckVoteError::HeightInThePast
+        });
+    }
+
+    // Should have parent hash from -1 (parent hash of current block) or -2 (block before that)
     //
-    // let current_block_number = frame_system::Pallet::<T>::current_block_number();
-    //
-    // if current_block_number <= One::one() || height <= One::one() {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Votes are not expected at height below 2"
-    //     );
-    //
-    //     return Err(CheckVoteError::UnexpectedBeforeHeightTwo);
-    // }
-    //
-    // // Height must be either the same as in current block or smaller by one.
-    // //
-    // // Subtraction will not panic due to check above.
-    // if !(height == current_block_number || height == current_block_number - One::one()) {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Vote verification error: bad height {height:?}, current block number is \
-    //         {current_block_number:?}"
-    //     );
-    //     return Err(if height > current_block_number {
-    //         CheckVoteError::HeightInTheFuture
-    //     } else {
-    //         CheckVoteError::HeightInThePast
-    //     });
-    // }
-    //
-    // // Should have parent hash from -1 (parent hash of current block) or -2 (block before that)
-    // //
-    // // Subtraction will not panic due to check above.
-    // if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Vote verification error: parent hash {parent_hash:?}",
-    //     );
-    //     return Err(CheckVoteError::IncorrectParentHash);
-    // }
-    //
-    // let current_vote_verification_data = current_vote_verification_data::<T>(pre_dispatch);
-    // let parent_vote_verification_data = ParentVoteVerificationData::<T>::get()
-    //     .expect("Above check for block number ensures that this value is always present");
-    //
-    // if pre_dispatch {
-    //     // New time slot is already set, whatever time slot is in the vote it must be smaller or the
-    //     // same (for votes produced locally)
-    //     let current_slot = current_vote_verification_data.current_slot;
-    //     if slot > current_slot || (slot == current_slot && height != current_block_number) {
-    //         debug!(
-    //             target: "runtime::subspace",
-    //             "Vote slot {slot:?} must be before current slot {current_slot:?}",
-    //         );
-    //         return Err(CheckVoteError::SlotInTheFuture);
-    //     }
-    // }
-    //
-    // let parent_slot = if pre_dispatch {
-    //     // For pre-dispatch parent slot is `current_slot` if the parent vote verification data (it
-    //     // was updated in current block because initialization hook was already called) if vote is
-    //     // at the same height as the current block, otherwise it is one level older and
-    //     // `parent_slot` from parent vote verification data needs to be taken instead
-    //     if height == current_block_number {
-    //         parent_vote_verification_data.current_slot
-    //     } else {
-    //         parent_vote_verification_data.parent_slot
-    //     }
-    // } else {
-    //     // Otherwise parent slot is `current_slot` if the current vote verification data (that
-    //     // wan't updated from parent block because initialization hook wasn't called yet) if vote
-    //     // is at the same height as the current block, otherwise it is one level older and
-    //     // `parent_slot` from current vote verification data needs to be taken instead
-    //     if height == current_block_number {
-    //         current_vote_verification_data.current_slot
-    //     } else {
-    //         current_vote_verification_data.parent_slot
-    //     }
-    // };
-    //
-    // if slot <= parent_slot {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
-    //     );
-    //     return Err(CheckVoteError::SlotInThePast);
-    // }
-    //
-    // if let Err(error) = check_reward_signature(
-    //     signed_vote.vote.hash().as_bytes(),
-    //     &RewardSignature::from(&signed_vote.signature),
-    //     &PublicKey::from(&solution.public_key),
-    //     &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
-    // ) {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Vote verification error: {error:?}"
-    //     );
-    //     return Err(CheckVoteError::BadRewardSignature(error));
-    // }
-    //
-    // let vote_verification_data = if height == current_block_number {
-    //     current_vote_verification_data
-    // } else {
-    //     parent_vote_verification_data
-    // };
-    //
-    // let pieces_in_segment = vote_verification_data.recorded_history_segment_size
-    //     / vote_verification_data.record_size
-    //     * 2;
-    // let segment_index = solution.piece_index / u64::from(pieces_in_segment);
-    // let position = u32::try_from(solution.piece_index % u64::from(pieces_in_segment))
-    //     .expect("Position within segment always fits into u32; qed");
-    //
-    // let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
-    //     records_root
-    // } else {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Vote verification error: no records root for segment index {segment_index}"
-    //     );
-    //     return Err(CheckVoteError::UnknownRecordsRoot);
-    // };
-    //
-    // let kzg = Kzg::new(kzg::test_public_parameters());
-    //
-    // if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
-    //     solution,
-    //     slot.into(),
-    //     VerifySolutionParams {
-    //         global_randomness: &vote_verification_data.global_randomness,
-    //         solution_range: vote_verification_data.solution_range,
-    //         salt: vote_verification_data.salt,
-    //         piece_check_params: Some(PieceCheckParams {
-    //             records_root,
-    //             position,
-    //             kzg: &kzg,
-    //             pieces_in_segment,
-    //             record_size: vote_verification_data.record_size,
-    //             max_plot_size: vote_verification_data.max_plot_size,
-    //             total_pieces: vote_verification_data.total_pieces,
-    //         }),
-    //     },
-    // ) {
-    //     debug!(
-    //         target: "runtime::subspace",
-    //         "Vote verification error: {error:?}"
-    //     );
-    //     return Err(CheckVoteError::InvalidSolution(error));
-    // }
-    //
-    // let key = (solution.public_key.clone(), slot);
-    // // Check that farmer didn't use solution from this vote yet in:
-    // // * parent block
-    // // * current block
-    // // * parent block vote
-    // // * current block vote
-    // let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
-    //     || CurrentBlockAuthorInfo::<T>::get()
-    //         .map(|(public_key, slot, _reward_address)| (public_key, slot))
-    //         .as_ref()
-    //         == Some(&key);
-    //
-    // if !is_equivocating {
-    //     if let Some((_reward_address, signature)) = ParentBlockVoters::<T>::get().get(&key) {
-    //         if signature != &signed_vote.signature {
-    //             is_equivocating = true;
-    //         } else {
-    //             // The same vote should never be included more than once
-    //             return Err(CheckVoteError::DuplicateVote);
-    //         }
-    //     }
-    // }
-    //
-    // if !is_equivocating {
-    //     if let Some((_reward_address, signature)) =
-    //         CurrentBlockVoters::<T>::get().unwrap_or_default().get(&key)
-    //     {
-    //         if signature != &signed_vote.signature {
-    //             is_equivocating = true;
-    //         } else {
-    //             // The same vote should never be included more than once
-    //             return Err(CheckVoteError::DuplicateVote);
-    //         }
-    //     }
-    // }
-    //
-    // if is_equivocating {
-    //     // Revoke reward if assigned in current block.
-    //     CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
-    //         if let Some(current_reward_receivers) = current_reward_receivers {
-    //             current_reward_receivers.remove(&key);
-    //         }
-    //     });
-    //
-    //     let (public_key, _slot) = key;
-    //
-    //     return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
-    //         slot,
-    //         offender: public_key,
-    //     }));
-    // }
-    //
-    // if pre_dispatch {
-    //     // During `pre_dispatch` call put farmer into the list of reward receivers.
-    //     CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
-    //         current_reward_receivers
-    //             .as_mut()
-    //             .expect("Always set during block initialization")
-    //             .insert(
-    //                 key,
-    //                 (
-    //                     solution.reward_address.clone(),
-    //                     signed_vote.signature.clone(),
-    //                 ),
-    //             );
-    //     });
-    // }
+    // Subtraction will not panic due to check above.
+    if *parent_hash != frame_system::Pallet::<T>::block_hash(height - One::one()) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: parent hash {parent_hash:?}",
+        );
+        return Err(CheckVoteError::IncorrectParentHash);
+    }
+
+    let current_vote_verification_data = current_vote_verification_data::<T>(pre_dispatch);
+    let parent_vote_verification_data = ParentVoteVerificationData::<T>::get()
+        .expect("Above check for block number ensures that this value is always present");
+
+    if pre_dispatch {
+        // New time slot is already set, whatever time slot is in the vote it must be smaller or the
+        // same (for votes produced locally)
+        let current_slot = current_vote_verification_data.current_slot;
+        if slot > current_slot || (slot == current_slot && height != current_block_number) {
+            debug!(
+                target: "runtime::subspace",
+                "Vote slot {slot:?} must be before current slot {current_slot:?}",
+            );
+            return Err(CheckVoteError::SlotInTheFuture);
+        }
+    }
+
+    let parent_slot = if pre_dispatch {
+        // For pre-dispatch parent slot is `current_slot` if the parent vote verification data (it
+        // was updated in current block because initialization hook was already called) if vote is
+        // at the same height as the current block, otherwise it is one level older and
+        // `parent_slot` from parent vote verification data needs to be taken instead
+        if height == current_block_number {
+            parent_vote_verification_data.current_slot
+        } else {
+            parent_vote_verification_data.parent_slot
+        }
+    } else {
+        // Otherwise parent slot is `current_slot` if the current vote verification data (that
+        // wan't updated from parent block because initialization hook wasn't called yet) if vote
+        // is at the same height as the current block, otherwise it is one level older and
+        // `parent_slot` from current vote verification data needs to be taken instead
+        if height == current_block_number {
+            current_vote_verification_data.current_slot
+        } else {
+            current_vote_verification_data.parent_slot
+        }
+    };
+
+    if slot <= parent_slot {
+        debug!(
+            target: "runtime::subspace",
+            "Vote slot {slot:?} must be after parent slot {parent_slot:?}",
+        );
+        return Err(CheckVoteError::SlotInThePast);
+    }
+
+    if let Err(error) = check_reward_signature(
+        signed_vote.vote.hash().as_bytes(),
+        &RewardSignature::from(&signed_vote.signature),
+        &PublicKey::from(&solution.public_key),
+        &schnorrkel::signing_context(REWARD_SIGNING_CONTEXT),
+    ) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: {error:?}"
+        );
+        return Err(CheckVoteError::BadRewardSignature(error));
+    }
+
+    let vote_verification_data = if height == current_block_number {
+        current_vote_verification_data
+    } else {
+        parent_vote_verification_data
+    };
+
+    let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
+
+    let piece_index = sector_id
+        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .map_err(|()| CheckVoteError::TotalNumberOfPiecesCantBeZero)?;
+    let pieces_in_segment = vote_verification_data.pieces_in_segment;
+    let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
+        .expect("Position within segment always fits into u32; qed");
+    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(pieces_in_segment);
+
+    let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
+        records_root
+    } else {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: no records root for segment index {segment_index}"
+        );
+        return Err(CheckVoteError::UnknownRecordsRoot);
+    };
+
+    let kzg = Kzg::new(kzg::test_public_parameters());
+
+    if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
+        solution,
+        slot.into(),
+        VerifySolutionParams {
+            global_randomness: &vote_verification_data.global_randomness,
+            solution_range: vote_verification_data.solution_range,
+            piece_check_params: Some(PieceCheckParams {
+                records_root: &records_root,
+                position,
+                kzg: &kzg,
+                pieces_in_segment,
+            }),
+        },
+    ) {
+        debug!(
+            target: "runtime::subspace",
+            "Vote verification error: {error:?}"
+        );
+        return Err(CheckVoteError::InvalidSolution(error));
+    }
+
+    let key = (solution.public_key.clone(), slot);
+    // Check that farmer didn't use solution from this vote yet in:
+    // * parent block
+    // * current block
+    // * parent block vote
+    // * current block vote
+    let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
+        || CurrentBlockAuthorInfo::<T>::get()
+            .map(|(public_key, slot, _reward_address)| (public_key, slot))
+            .as_ref()
+            == Some(&key);
+
+    if !is_equivocating {
+        if let Some((_reward_address, signature)) = ParentBlockVoters::<T>::get().get(&key) {
+            if signature != &signed_vote.signature {
+                is_equivocating = true;
+            } else {
+                // The same vote should never be included more than once
+                return Err(CheckVoteError::DuplicateVote);
+            }
+        }
+    }
+
+    if !is_equivocating {
+        if let Some((_reward_address, signature)) =
+            CurrentBlockVoters::<T>::get().unwrap_or_default().get(&key)
+        {
+            if signature != &signed_vote.signature {
+                is_equivocating = true;
+            } else {
+                // The same vote should never be included more than once
+                return Err(CheckVoteError::DuplicateVote);
+            }
+        }
+    }
+
+    if is_equivocating {
+        // Revoke reward if assigned in current block.
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            if let Some(current_reward_receivers) = current_reward_receivers {
+                current_reward_receivers.remove(&key);
+            }
+        });
+
+        let (public_key, _slot) = key;
+
+        return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
+            slot,
+            offender: public_key,
+        }));
+    }
+
+    if pre_dispatch {
+        // During `pre_dispatch` call put farmer into the list of reward receivers.
+        CurrentBlockVoters::<T>::mutate(|current_reward_receivers| {
+            current_reward_receivers
+                .as_mut()
+                .expect("Always set during block initialization")
+                .insert(
+                    key,
+                    (
+                        solution.reward_address.clone(),
+                        signed_vote.signature.clone(),
+                    ),
+                );
+        });
+    }
 
     Ok(())
 }
