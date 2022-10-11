@@ -35,10 +35,11 @@ pub use crate::node::{
     TopicSubscription,
 };
 pub use crate::node_runner::NodeRunner;
+pub use behavior::custom_record_store::{
+    CustomRecordStore, GetOnlyRecordStorage, MemoryProviderStorage, MemoryRecordStorage,
+};
 pub use create::{create, Config, CreationError, RelayMode};
 pub use libp2p;
-use libp2p::gossipsub::Sha256Topic;
-use once_cell::sync::Lazy;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{
     ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
@@ -53,7 +54,3 @@ pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 pub use utils::ToMultihash;
-
-// TODO: Move this out of the networking crate into separate crate.
-pub static PUB_SUB_ARCHIVING_TOPIC: Lazy<Sha256Topic> =
-    Lazy::new(|| Sha256Topic::new("PUB_SUB_ARCHIVING_TOPIC"));

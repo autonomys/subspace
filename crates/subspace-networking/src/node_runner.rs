@@ -1,3 +1,4 @@
+use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
@@ -10,7 +11,6 @@ use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
-use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, QueryId,
@@ -45,11 +45,14 @@ enum QueryResultSender {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner {
+pub struct NodeRunner<RecordStore = CustomRecordStore>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior>,
+    swarm: Swarm<Behavior<RecordStore>>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -74,10 +77,13 @@ pub struct NodeRunner {
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig {
+pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     pub allow_non_globals_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
-    pub swarm: Swarm<Behavior>,
+    pub swarm: Swarm<Behavior<RecordStore>>,
     pub shared_weak: Weak<Shared>,
     pub next_random_query_interval: Duration,
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
@@ -86,9 +92,12 @@ pub(crate) struct NodeRunnerConfig {
     pub max_established_outgoing_connections: u32,
 }
 
-impl NodeRunner {
+impl<RecordStore> NodeRunner<RecordStore>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     pub(crate) fn new(
-        NodeRunnerConfig {
+        NodeRunnerConfig::<RecordStore> {
             allow_non_globals_in_dht,
             command_receiver,
             swarm,
@@ -98,7 +107,7 @@ impl NodeRunner {
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
-        }: NodeRunnerConfig,
+        }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,

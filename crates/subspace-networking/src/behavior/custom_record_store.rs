@@ -10,8 +10,8 @@ use std::vec;
 use tracing::{debug, trace};
 
 #[derive(Clone)]
-pub(crate) struct CustomRecordStore<
-    RecordStorage = GetOnlyRecordStorage,
+pub struct CustomRecordStore<
+    RecordStorage = NoRecordStorage,
     ProviderStorage = MemoryProviderStorage,
 > {
     record_storage: RecordStorage,
@@ -19,7 +19,7 @@ pub(crate) struct CustomRecordStore<
 }
 
 impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderStorage> {
-    pub(super) fn new(record_storage: RecordStorage, provider_storage: ProviderStorage) -> Self {
+    pub fn new(record_storage: RecordStorage, provider_storage: ProviderStorage) -> Self {
         Self {
             record_storage,
             provider_storage,
@@ -27,9 +27,11 @@ impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderSt
     }
 }
 
-impl<'a> RecordStore<'a> for CustomRecordStore {
-    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
-    type ProvidedIter = vec::IntoIter<Cow<'a, ProviderRecord>>;
+impl<'a, Rs: RecordStorage<'a>, Ps: ProviderStorage<'a>> RecordStore<'a>
+    for CustomRecordStore<Rs, Ps>
+{
+    type RecordsIter = Rs::RecordsIter;
+    type ProvidedIter = Ps::ProvidedIter;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         self.record_storage.get(key)
@@ -86,7 +88,7 @@ pub trait ProviderStorage<'a> {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct MemoryProviderStorage {
+pub struct MemoryProviderStorage {
     // TODO: Optimize providers collection, introduce limits and TTL.
     providers: HashMap<Key, Vec<ProviderRecord>>,
 }
@@ -150,12 +152,12 @@ pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync
 /// Hacky replacement for Kademlia's record store that doesn't store anything and instead proxies
 /// gets to externally provided implementation.
 #[derive(Clone)]
-pub(crate) struct GetOnlyRecordStorage {
+pub struct GetOnlyRecordStorage {
     value_getter: ValueGetter,
 }
 
 impl GetOnlyRecordStorage {
-    pub(super) fn new(value_getter: ValueGetter) -> Self {
+    pub fn new(value_getter: ValueGetter) -> Self {
         Self { value_getter }
     }
 }
@@ -191,7 +193,7 @@ impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
 }
 
 #[derive(Clone)]
-pub(crate) struct MemoryRecordStorage {
+pub struct MemoryRecordStorage {
     // TODO: Optimize collection, introduce limits and TTL.
     records: HashMap<Key, Record>,
 }
@@ -229,14 +231,14 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
 #[derive(Clone)]
 pub struct NoRecordStorage;
 
-impl<'a> RecordStorage<'a> for MemoryRecordStorage {
+impl<'a> RecordStorage<'a> for NoRecordStorage {
     type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
 
     fn get(&'a self, _: &Key) -> Option<Cow<'_, Record>> {
         None
     }
 
-    fn put(&'a mut self, _: Record) -> store::Result<()> {
+    fn put(&'a mut self, record: Record) -> store::Result<()> {
         debug!("Detected an attempt to add a new record: {:?}", record);
 
         Ok(())
@@ -249,10 +251,6 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 
     fn records(&'a self) -> Self::RecordsIter {
-        self.records
-            .values()
-            .map(|rec| Cow::Owned(rec.clone()))
-            .collect::<Vec<_>>()
-            .into_iter()
+        Vec::new().into_iter()
     }
 }

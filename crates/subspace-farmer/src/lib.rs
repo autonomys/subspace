@@ -6,7 +6,8 @@
     io_error_other,
     map_first_last,
     trait_alias,
-    try_blocks
+    try_blocks,
+    type_changing_struct_update
 )]
 
 //! # `subspace-farmer` library implementation overview

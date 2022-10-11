@@ -1,4 +1,7 @@
 pub use crate::behavior::custom_record_store::ValueGetter;
+use crate::behavior::custom_record_store::{
+    CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+};
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
@@ -68,7 +71,7 @@ impl RelayMode {
 
 /// [`Node`] configuration.
 #[derive(Clone)]
-pub struct Config {
+pub struct Config<RecordStore = CustomRecordStore> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -84,8 +87,8 @@ pub struct Config {
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
     pub gossipsub: GossipsubConfig,
-    /// Externally provided implementation of value getter for Kademlia DHT,
-    pub value_getter: ValueGetter,
+    /// Externally provided implementation of the custom record store for Kademlia DHT,
+    pub record_store: RecordStore,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Mplex multiplexing configuration.
@@ -152,7 +155,6 @@ impl Config {
         let keypair = identity::Keypair::Sr25519(keypair);
 
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
-
         Self {
             keypair,
             listen_on: vec![],
@@ -161,7 +163,7 @@ impl Config {
             identify,
             kademlia,
             gossipsub,
-            value_getter: Arc::new(|_key| None),
+            record_store: CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::default()),
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
@@ -193,7 +195,11 @@ pub enum CreationError {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError> {
+pub async fn create<
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+>(
+    config: Config<RecordStore>,
+) -> Result<(Node, NodeRunner<RecordStore>), CreationError> {
     let Config {
         keypair,
         listen_on,
@@ -202,7 +208,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         identify,
         kademlia,
         gossipsub,
-        value_getter,
+        record_store,
         yamux_config,
         mplex_config,
         allow_non_globals_in_dht,
@@ -224,7 +230,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
             identify,
             kademlia,
             gossipsub,
-            value_getter,
+            record_store,
             request_response_protocols,
         });
 
@@ -261,7 +267,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         let shared_weak = Arc::downgrade(&shared);
 
         let node = Node::new(shared);
-        let node_runner = NodeRunner::new(NodeRunnerConfig {
+        let node_runner = NodeRunner::<RecordStore>::new(NodeRunnerConfig::<RecordStore> {
             allow_non_globals_in_dht,
             command_receiver,
             swarm,

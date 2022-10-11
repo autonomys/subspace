@@ -8098,7 +8098,6 @@ dependencies = [
  "libp2p",
  "lru",
  "nohash-hasher",
- "once_cell",
  "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",

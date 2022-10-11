@@ -25,10 +25,10 @@ use subspace_networking::libp2p::identity::sr25519;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::multimess::MultihashCode;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, Node, ObjectMappingsRequest,
-    ObjectMappingsRequestHandler, ObjectMappingsResponse, PeerInfo, PeerInfoRequestHandler,
-    PeerInfoResponse, PeerSyncStatus, PiecesByRangeRequest, PiecesByRangeRequestHandler,
-    PiecesByRangeResponse, PiecesToPlot,
+    BootstrappedNetworkingParameters, Config, CustomRecordStore, GetOnlyRecordStorage,
+    MemoryProviderStorage, Node, ObjectMappingsRequest, ObjectMappingsRequestHandler,
+    ObjectMappingsResponse, PeerInfo, PeerInfoRequestHandler, PeerInfoResponse, PeerSyncStatus,
+    PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{BatchEncodeError, SubspaceCodec};
@@ -427,32 +427,35 @@ impl SinglePlotFarm {
             networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
                 .boxed(),
             listen_on,
-            // TODO: Do we still need it?
-            value_getter: Arc::new({
-                let plot = plot.clone();
-                let codec = codec.clone();
-                move |key| {
-                    let code = key.code();
+            record_store: CustomRecordStore::new(
+                GetOnlyRecordStorage::new(Arc::new({
+                    let plot = plot.clone();
+                    let codec = codec.clone();
+                    move |key| {
+                        let code = key.code();
 
-                    if code != u64::from(MultihashCode::Piece)
-                        && code != u64::from(MultihashCode::PieceIndex)
-                    {
-                        return None;
+                        if code != u64::from(MultihashCode::Piece)
+                            && code != u64::from(MultihashCode::PieceIndex)
+                        {
+                            return None;
+                        }
+
+                        let piece_index = u64::from_le_bytes(
+                            key.digest()[..mem::size_of::<u64>()].try_into().ok()?,
+                        );
+                        plot.read_piece(PieceIndexHash::from_index(piece_index))
+                            .ok()
+                            .and_then(|mut piece| {
+                                codec
+                                    .decode(&mut piece, piece_index)
+                                    .ok()
+                                    .map(move |()| piece)
+                            })
+                            .map(|piece| piece.to_vec())
                     }
-
-                    let piece_index =
-                        u64::from_le_bytes(key.digest()[..mem::size_of::<u64>()].try_into().ok()?);
-                    plot.read_piece(PieceIndexHash::from_index(piece_index))
-                        .ok()
-                        .and_then(|mut piece| {
-                            codec
-                                .decode(&mut piece, piece_index)
-                                .ok()
-                                .map(move |()| piece)
-                        })
-                        .map(|piece| piece.to_vec())
-                }
-            }),
+                })),
+                MemoryProviderStorage::default(),
+            ),
             request_response_protocols: vec![
                 PiecesByRangeRequestHandler::create({
                     let plot = plot.clone();
