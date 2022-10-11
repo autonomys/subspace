@@ -4789,6 +4789,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-transporter"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-utility"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=1a7c28721fa77ecce9632ad9ce473f2d3cf1a598#1a7c28721fa77ecce9632ad9ce473f2d3cf1a598"
