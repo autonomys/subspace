@@ -675,13 +675,12 @@ impl SingleDiskPlot {
                                     .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
                                 let piece_witness = match Witness::try_from_bytes(
-                                    &<[u8; 48]>::try_from(
-                                        &piece[farmer_protocol_info.record_size.get() as usize..],
-                                    )
-                                    .expect(
-                                        "Witness must have correct size unless implementation \
-                                        is broken in a big way; qed",
-                                    ),
+                                    &piece[farmer_protocol_info.record_size.get() as usize..]
+                                        .try_into()
+                                        .expect(
+                                            "Witness must have correct size unless implementation \
+                                            is broken in a big way; qed",
+                                        ),
                                 ) {
                                     Ok(piece_witness) => piece_witness,
                                     Err(error) => {
@@ -861,7 +860,7 @@ impl SingleDiskPlot {
                                     debug!("Solution found");
 
                                     let piece_witness = match Witness::try_from_bytes(
-                                        &<[u8; 48]>::try_from(&piece[record_size..]).expect(
+                                        &piece[record_size..].try_into().expect(
                                             "Witness must have correct size unless implementation \
                                             is broken in a big way; qed",
                                         ),
