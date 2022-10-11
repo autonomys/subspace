@@ -1,3 +1,6 @@
+// TODO: Remove after code cleanup
+#![allow(unused_imports, unused_variables, dead_code, unused_mut)]
+
 mod commands;
 mod ss58;
 mod utils;

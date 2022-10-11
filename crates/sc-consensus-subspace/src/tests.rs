@@ -17,6 +17,9 @@
 
 //! PoC testsuite
 
+// TODO: Tests need to be fixed, then this can be removed
+#![allow(unused_imports, unused_variables, unused_mut)]
+
 use crate::{
     extract_pre_digest, start_subspace, Config, NewSlotNotification, SubspaceLink, SubspaceParams,
     SubspaceVerifier,

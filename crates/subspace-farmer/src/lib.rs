@@ -8,6 +8,8 @@
     trait_alias,
     try_blocks
 )]
+// TODO: Remove after code cleanup
+#![allow(unused_imports, unused_variables, dead_code, unused_mut)]
 
 //! # `subspace-farmer` library implementation overview
 //!
