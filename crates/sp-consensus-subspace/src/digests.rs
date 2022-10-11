@@ -774,16 +774,8 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     pub era_duration: NumberOf<Header>,
     /// Slot probability.
     pub slot_probability: (u64, u64),
-    /// Eon Duration at which next derived salt is used.
-    pub eon_duration: u64,
-    /// Genesis slot of the chain.
-    pub genesis_slot: Slot,
     /// Current Era start slot.
     pub era_start_slot: Slot,
-    /// Current eon index.
-    pub current_eon_index: EonIndex,
-    /// Randomness used to derive next salt.
-    pub maybe_randomness: Option<Randomness>,
     /// Should the solution range be adjusted on era change.
     /// If the digest logs indicate that solution range adjustment has been enabled, value is updated.
     pub should_adjust_solution_range: &'a mut bool,
@@ -805,11 +797,7 @@ pub fn verify_next_digests<Header: HeaderT>(
         global_randomness_interval,
         era_duration,
         slot_probability,
-        eon_duration,
-        genesis_slot,
         era_start_slot,
-        current_eon_index,
-        maybe_randomness,
         should_adjust_solution_range,
         maybe_next_solution_range_override,
         maybe_root_plot_public_key: root_plot_public_key,
@@ -888,20 +876,6 @@ pub fn verify_next_digests<Header: HeaderT>(
                 root_plot_public_key.take();
             }
         }
-    }
-
-    // verify if the next derived salt should be present in the block header
-    let expected_next_salt = derive_next_salt::<Header>(
-        eon_duration,
-        current_eon_index,
-        genesis_slot,
-        header_digests.pre_digest.slot,
-        maybe_randomness,
-    )?;
-    if expected_next_salt != header_digests.next_salt {
-        return Err(Error::NextDigestVerificationError(
-            ErrorDigestType::NextSalt,
-        ));
     }
 
     Ok(())

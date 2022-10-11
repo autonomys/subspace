@@ -1,7 +1,7 @@
 use crate::mock::{Header, MockStorage};
 use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
-    NumberOf, SaltDerivationInfo, Storage, StorageBound,
+    NumberOf, Storage, StorageBound,
 };
 use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
@@ -9,9 +9,9 @@ use rand::{Rng, SeedableRng};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    derive_next_global_randomness, derive_next_salt, derive_next_solution_range,
-    extract_pre_digest, extract_subspace_digest_items, CompatibleDigestItem,
-    DeriveNextSolutionRangeParams, ErrorDigestType, PreDigest, SubspaceDigestItems,
+    derive_next_global_randomness, derive_next_solution_range, extract_pre_digest,
+    extract_subspace_digest_items, CompatibleDigestItem, DeriveNextSolutionRangeParams,
+    ErrorDigestType, PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::app_crypto::UncheckedFrom;
@@ -22,8 +22,8 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Piece, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange, Tag,
-    PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PublicKey, Randomness, RecordsRoot, Salt, SectorId, SegmentIndex, Solution,
+    SolutionRange, Tag, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
     create_chunk_signature, create_tag, derive_global_challenge, derive_local_challenge,
@@ -44,15 +44,11 @@ fn default_test_constants() -> ChainConstants<Header> {
         genesis_digest_items: NextDigestItems {
             next_global_randomness: randomness,
             next_solution_range: Default::default(),
-            next_salt: salt,
         },
-        max_plot_size: 100 * 1024 * 1024 * 1024,
         genesis_records_roots: Default::default(),
         global_randomness_interval: 20,
         era_duration: 20,
         slot_probability: (1, 6),
-        eon_duration: 20,
-        next_salt_reveal_interval: 6,
         storage_bound: Default::default(),
     }
 }
@@ -220,13 +216,11 @@ fn initialize_store(
     let header = HeaderExt {
         header: genesis_header,
         total_weight: 0,
-        salt_derivation_info: Default::default(),
         era_start_slot: Default::default(),
         should_adjust_solution_range,
         maybe_current_solution_range_override: None,
         maybe_next_solution_range_override: None,
         maybe_root_plot_public_key,
-        genesis_slot: Default::default(),
         test_overrides: Default::default(),
     };
 
@@ -268,35 +262,6 @@ fn add_next_digests(store: &MockStorage, number: NumberOf<Header>, header: &mut 
         .unwrap()
     {
         digest_logs.push(DigestItem::next_solution_range(next_solution_range));
-    }
-
-    // re-check if the salt was revealed and eon also changes with this header, then derive randomness
-    let parent_salt_derivation_info = SaltDerivationInfo {
-        eon_index: parent_header.salt_derivation_info.eon_index,
-        maybe_randomness: parent_header
-            .salt_derivation_info
-            .maybe_randomness
-            .or_else(|| {
-                HeaderImporter::<Header, MockStorage>::randomness_for_next_salt(
-                    &store.chain_constants(),
-                    parent_header.salt_derivation_info.eon_index,
-                    parent_header.genesis_slot,
-                    &digests.pre_digest,
-                )
-                .unwrap()
-            }),
-    };
-
-    if let Some(next_salt) = derive_next_salt::<Header>(
-        constants.eon_duration,
-        parent_salt_derivation_info.eon_index,
-        parent_header.genesis_slot,
-        digests.pre_digest.slot,
-        parent_salt_derivation_info.maybe_randomness,
-    )
-    .unwrap()
-    {
-        digest_logs.push(DigestItem::next_salt(next_salt));
     }
 }
 
@@ -367,10 +332,12 @@ fn add_headers_to_chain(
             });
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
-        let new_weight = HeaderImporter::<Header, MockStorage>::calculate_block_weight(
-            &digests.global_randomness,
-            &digests.pre_digest,
+        let sector_id = SectorId::new(
+            &(&digests.pre_digest.solution.public_key).into(),
+            digests.pre_digest.solution.sector_index,
         );
+        let new_weight =
+            HeaderImporter::<Header, MockStorage>::calculate_block_weight(&sector_id, &digests);
         importer.store.override_cumulative_weight(parent_hash, 0);
         if number == 1 {
             // adjust Chain constants for Block #1
@@ -717,10 +684,12 @@ fn test_reorg_to_heavier_smaller_chain() {
     seal_header(&keypair, &mut header);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
         extract_subspace_digest_items(&header).unwrap();
-    let new_weight = HeaderImporter::<Header, MockStorage>::calculate_block_weight(
-        &digests.global_randomness,
-        &digests.pre_digest,
+    let sector_id = SectorId::new(
+        &(&digests.pre_digest.solution.public_key).into(),
+        digests.pre_digest.solution.sector_index,
     );
+    let new_weight =
+        HeaderImporter::<Header, MockStorage>::calculate_block_weight(&sector_id, &digests);
     importer
         .store
         .override_solution_range(header_at_2.header.hash(), solution_range);
@@ -1192,261 +1161,6 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
             ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride
         ))
     );
-}
-
-#[test]
-fn test_next_salt_digest() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    let mut constants = default_test_constants();
-    constants.eon_duration = 10;
-    constants.next_salt_reveal_interval = 3;
-    // slot probability to 1 block a second so that we can predict eon change
-    constants.slot_probability = (1, 1);
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
-
-    let hash_of_10 = add_headers_to_chain(&mut importer, &keypair, 10, None, &kzg);
-    let header_at_10 = importer.store.best_header();
-    assert_eq!(header_at_10.header.hash(), hash_of_10);
-    assert_eq!(header_at_10.salt_derivation_info.eon_index, 0);
-
-    // salt must been revealed at header_4 so randomness should be empty until 3
-    let header_at_3 = importer
-        .store
-        .headers_at_number(3)
-        .first()
-        .cloned()
-        .unwrap();
-    assert_eq!(header_at_3.salt_derivation_info.eon_index, 0);
-    assert_eq!(header_at_3.salt_derivation_info.maybe_randomness, None);
-
-    // randomness is stored starting from header 4
-    let header_at_4 = importer
-        .store
-        .headers_at_number(4)
-        .first()
-        .cloned()
-        .unwrap();
-    assert_eq!(header_at_4.salt_derivation_info.eon_index, 0);
-    let digests_at_4 = extract_pre_digest(&header_at_4.header).unwrap();
-    let randomness_at_4 = derive_randomness(
-        &PublicKey::from(&digests_at_4.solution.public_key),
-        &digests_at_4.solution.chunk,
-        &digests_at_4.solution.chunk_signature,
-    )
-    .unwrap();
-    assert_eq!(
-        header_at_4.salt_derivation_info.maybe_randomness,
-        Some(randomness_at_4)
-    );
-
-    // try to import header at 11 without next salt
-    let digests_at_10 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_10.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_10.header.hash(),
-            number: 11,
-            slot: digests_at_10.pre_digest.slot.saturating_add(1u64).into(),
-            keypair: &keypair,
-            randomness: digests_at_10.global_randomness,
-            salt: digests_at_10.salt,
-            kzg: &kzg,
-        });
-    seal_header(&keypair, &mut header);
-    importer
-        .store
-        .override_solution_range(header_at_10.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_10.header.hash(), 0);
-    let res = importer.import_header(header.clone());
-    assert_err!(
-        res,
-        ImportError::DigestError(DigestError::NextDigestVerificationError(
-            ErrorDigestType::NextSalt
-        ))
-    );
-
-    // add next salt and eon index will change
-    remove_seal(&mut header);
-    let next_salt = subspace_verification::derive_next_salt_from_randomness(0, &randomness_at_4);
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_salt(next_salt));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    let header_at_11 = importer.store.best_header();
-    assert_eq!(header_at_11.header.hash(), header.hash());
-    assert_eq!(header_at_11.salt_derivation_info.eon_index, 1);
-    assert_eq!(header_at_11.salt_derivation_info.maybe_randomness, None);
-}
-
-#[test]
-fn test_next_salt_reveal_in_same_block_as_eon_change() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    let mut constants = default_test_constants();
-    constants.eon_duration = 10;
-    constants.next_salt_reveal_interval = 3;
-    // slot probability to 1 block a second so that we can predict eon change
-    constants.slot_probability = (1, 1);
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
-
-    let hash_of_10 = add_headers_to_chain(&mut importer, &keypair, 10, None, &kzg);
-    let header_at_10 = importer.store.best_header();
-    assert_eq!(header_at_10.header.hash(), hash_of_10);
-    assert_eq!(header_at_10.salt_derivation_info.eon_index, 0);
-
-    // header 11 slot is long enough that it missed the salt reveal
-    // hence, next salt for next eon is revealed at block 11 itself
-    let digests_at_10 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_10.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_10.header.hash(),
-            number: 11,
-            slot: digests_at_10.pre_digest.slot.saturating_add(5u64).into(),
-            keypair: &keypair,
-            randomness: digests_at_10.global_randomness,
-            salt: digests_at_10.salt,
-            kzg: &kzg,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_10.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_10.header.hash(), 0);
-    let header_at_4 = importer
-        .store
-        .headers_at_number(4)
-        .first()
-        .cloned()
-        .unwrap();
-    assert_eq!(header_at_4.salt_derivation_info.eon_index, 0);
-    let digests_at_4 = extract_pre_digest(&header_at_4.header).unwrap();
-    let randomness_at_4 = derive_randomness(
-        &PublicKey::from(&digests_at_4.solution.public_key),
-        &digests_at_4.solution.chunk,
-        &digests_at_4.solution.chunk_signature,
-    )
-    .unwrap();
-    let next_salt = subspace_verification::derive_next_salt_from_randomness(0, &randomness_at_4);
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_salt(next_salt));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    let header_at_11 = importer.store.best_header();
-    assert_eq!(header_at_11.header.hash(), header.hash());
-    assert_eq!(header_at_11.salt_derivation_info.eon_index, 1);
-    let digests_at_11 = extract_pre_digest(&header_at_11.header).unwrap();
-    let randomness_at_11 = derive_randomness(
-        &PublicKey::from(&digests_at_11.solution.public_key),
-        &digests_at_11.solution.chunk,
-        &digests_at_11.solution.chunk_signature,
-    )
-    .unwrap();
-    assert_eq!(
-        header_at_11.salt_derivation_info.maybe_randomness,
-        Some(randomness_at_11)
-    );
-}
-
-#[test]
-fn test_current_salt_reveal_and_eon_change_in_same_block() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    let mut constants = default_test_constants();
-    constants.eon_duration = 10;
-    constants.next_salt_reveal_interval = 3;
-    // slot probability to 1 block a second so that we can predict eon change
-    constants.slot_probability = (1, 1);
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
-
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &kzg);
-    let header_at_3 = importer.store.best_header();
-    assert_eq!(header_at_3.header.hash(), hash_of_3);
-    assert_eq!(header_at_3.salt_derivation_info.eon_index, 0);
-    assert_eq!(header_at_3.salt_derivation_info.maybe_randomness, None);
-
-    // Block #4 slot is so far that following happens in the same block
-    // Salt is revealed
-    // eon will be changed
-    // next salt is also revealed
-    let digests_at_3 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_3.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_3.header.hash(),
-            number: 4,
-            slot: digests_at_3.pre_digest.slot.saturating_add(8u64).into(),
-            keypair: &keypair,
-            randomness: digests_at_3.global_randomness,
-            salt: digests_at_3.salt,
-            kzg: &kzg,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_3.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_3.header.hash(), 0);
-    let digests_at_4 = extract_pre_digest(&header).unwrap();
-    let randomness_at_4 = derive_randomness(
-        &PublicKey::from(&digests_at_4.solution.public_key),
-        &digests_at_4.solution.chunk,
-        &digests_at_4.solution.chunk_signature,
-    )
-    .unwrap();
-    let next_salt = subspace_verification::derive_next_salt_from_randomness(0, &randomness_at_4);
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_salt(next_salt));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-
-    let header_at_4 = importer.store.best_header();
-    assert_eq!(header_at_4.header.hash(), header.hash());
-    assert_eq!(header_at_4.salt_derivation_info.eon_index, 1);
-    assert_eq!(header_at_4.salt_derivation_info.maybe_randomness, None);
 }
 
 fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>, kzg: &Kzg) {

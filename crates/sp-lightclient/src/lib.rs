@@ -37,13 +37,12 @@ use std::marker::PhantomData;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockWeight, EonIndex, PublicKey, Randomness, RecordsRoot, RewardSignature, Salt, SegmentIndex,
-    SolutionRange, PIECES_IN_SEGMENT, RECORD_SIZE,
+    BlockWeight, PublicKey, Randomness, RecordsRoot, RewardSignature, SectorId, SegmentIndex,
+    SolutionRange, PIECES_IN_SEGMENT,
 };
-use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
+use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
-    check_reward_signature, derive_randomness, verify_solution, PieceCheckParams,
-    VerifySolutionParams,
+    check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 
 #[cfg(test)]
@@ -62,9 +61,6 @@ pub struct ChainConstants<Header: HeaderT> {
     /// to verify the Block #1 digests.
     pub genesis_digest_items: NextDigestItems,
 
-    /// Maximum plot size in bytes.
-    pub max_plot_size: u64,
-
     /// Genesis block records roots to verify the Block #1 and other block solutions until Block #1 is finalized.
     /// When Block #1 is finalized, these records roots are present in Block #1 are stored in the storage.
     pub genesis_records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
@@ -77,12 +73,6 @@ pub struct ChainConstants<Header: HeaderT> {
 
     /// Slot probability.
     pub slot_probability: (u64, u64),
-
-    /// Eon duration at which next derived Salt is used.
-    pub eon_duration: u64,
-
-    /// Interval after the eon change when next eon salt is revealed
-    pub next_salt_reveal_interval: u64,
 
     /// Storage bound for the light client store.
     pub storage_bound: StorageBound<NumberOf<Header>>,
@@ -98,15 +88,6 @@ pub enum StorageBound<Number> {
     NumberOfHeaderToKeepBeyondKDepth(Number),
 }
 
-/// Data that is useful to derive the next salt.
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct SaltDerivationInfo {
-    /// Current eon index.
-    pub eon_index: EonIndex,
-    /// Randomness used to derive next salt
-    pub maybe_randomness: Option<Randomness>,
-}
-
 /// HeaderExt describes an extended block chain header at a specific height along with some computed values.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct HeaderExt<Header> {
@@ -114,8 +95,6 @@ pub struct HeaderExt<Header> {
     pub header: Header,
     /// Cumulative weight of chain until this header.
     pub total_weight: BlockWeight,
-    /// Salt Derivation info.
-    pub salt_derivation_info: SaltDerivationInfo,
     /// Slot at which current era started.
     pub era_start_slot: Slot,
     /// Should adjust solution range on era change.
@@ -126,8 +105,6 @@ pub struct HeaderExt<Header> {
     pub maybe_next_solution_range_override: Option<SolutionRange>,
     /// Restrict block authoring to this public key.
     pub maybe_root_plot_public_key: Option<FarmerPublicKey>,
-    /// Genesis slot of the chain.
-    pub genesis_slot: Slot,
 
     #[cfg(test)]
     test_overrides: mock::TestOverrides,
@@ -138,20 +115,14 @@ pub struct HeaderExt<Header> {
 pub struct NextDigestItems {
     next_global_randomness: Randomness,
     next_solution_range: SolutionRange,
-    next_salt: Salt,
 }
 
 impl NextDigestItems {
     /// Constructs self with provided next digest items.
-    pub fn new(
-        next_global_randomness: Randomness,
-        next_solution_range: SolutionRange,
-        next_salt: Salt,
-    ) -> Self {
+    pub fn new(next_global_randomness: Randomness, next_solution_range: SolutionRange) -> Self {
         Self {
             next_global_randomness,
             next_solution_range,
-            next_salt,
         }
     }
 }
@@ -163,10 +134,8 @@ impl<Header: HeaderT> HeaderExt<Header> {
         let SubspaceDigestItems {
             global_randomness,
             solution_range,
-            salt,
             next_global_randomness,
             next_solution_range,
-            next_salt,
             ..
         } = extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
             &self.header,
@@ -198,7 +167,6 @@ impl<Header: HeaderT> HeaderExt<Header> {
         Ok(NextDigestItems {
             next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
             next_solution_range: next_solution_range.unwrap_or(solution_range),
-            next_salt: next_salt.unwrap_or(salt),
         })
     }
 }
@@ -269,6 +237,8 @@ pub enum ImportError<Header: HeaderT> {
     InvalidSlot,
     /// Block signature is invalid.
     InvalidBlockSignature,
+    /// Total number of pieces can't be zero
+    TotalNumberOfPiecesCantBeZero,
     /// Solution present in the header is invalid.
     InvalidSolution(subspace_verification::Error),
     /// Arithmetic error.
@@ -307,284 +277,170 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Verifies header, computes consensus values for block progress and stores the HeaderExt.
     pub fn import_header(&mut self, mut header: Header) -> Result<(), ImportError<Header>> {
-        // TODO: Update implementation for V2 consensus
-        // // check if the header is already imported
-        // match self.store.header(header.hash()) {
-        //     Some(_) => Err(ImportError::HeaderAlreadyImported),
-        //     None => Ok(()),
-        // }?;
-        //
-        // // only try and import headers above the finalized number
-        // let current_finalized_number = *self.store.finalized_header().header.number();
-        // if *header.number() <= current_finalized_number {
-        //     return Err(ImportError::HeaderIsBelowArchivingDepth(
-        //         HeaderBelowArchivingDepthError {
-        //             current_finalized_number,
-        //             header_number: *header.number(),
-        //         },
-        //     ));
-        // }
-        //
-        // // fetch parent header
-        // let parent_header = self
-        //     .store
-        //     .header(*header.parent_hash())
-        //     .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
-        //
-        // // verify global randomness, solution range, and salt from the parent header
-        // let header_digests = self.verify_header_digest_with_parent(&parent_header, &header)?;
-        //
-        // // verify next digest items
-        // let constants = self.store.chain_constants();
-        // let genesis_slot = if header.number().is_one() {
-        //     header_digests.pre_digest.slot
-        // } else {
-        //     parent_header.genesis_slot
-        // };
-        // // re-check if the salt was revealed and eon also changes with this header, then derive randomness
-        // let parent_salt_derivation_info = SaltDerivationInfo {
-        //     eon_index: parent_header.salt_derivation_info.eon_index,
-        //     maybe_randomness: parent_header.salt_derivation_info.maybe_randomness.or(
-        //         Self::randomness_for_next_salt(
-        //             &constants,
-        //             parent_header.salt_derivation_info.eon_index,
-        //             genesis_slot,
-        //             &header_digests.pre_digest,
-        //         )?,
-        //     ),
-        // };
-        //
-        // let mut maybe_root_plot_public_key = parent_header.maybe_root_plot_public_key;
-        // if let Some(root_plot_public_key) = &maybe_root_plot_public_key {
-        //     if root_plot_public_key != &header_digests.pre_digest.solution.public_key {
-        //         return Err(ImportError::IncorrectBlockAuthor(
-        //             header_digests.pre_digest.solution.public_key,
-        //         ));
-        //     }
-        // }
-        //
-        // let mut should_adjust_solution_range = parent_header.should_adjust_solution_range;
-        // let mut maybe_next_solution_range_override =
-        //     parent_header.maybe_next_solution_range_override;
-        // verify_next_digests::<Header>(NextDigestsVerificationParams {
-        //     number: *header.number(),
-        //     header_digests: &header_digests,
-        //     global_randomness_interval: constants.global_randomness_interval,
-        //     era_duration: constants.era_duration,
-        //     slot_probability: constants.slot_probability,
-        //     eon_duration: constants.eon_duration,
-        //     genesis_slot,
-        //     era_start_slot: parent_header.era_start_slot,
-        //     current_eon_index: parent_salt_derivation_info.eon_index,
-        //     maybe_randomness: parent_salt_derivation_info.maybe_randomness,
-        //     should_adjust_solution_range: &mut should_adjust_solution_range,
-        //     maybe_next_solution_range_override: &mut maybe_next_solution_range_override,
-        //     maybe_root_plot_public_key: &mut maybe_root_plot_public_key,
-        // })?;
-        //
-        // // slot must be strictly increasing from the parent header
-        // Self::verify_slot(&parent_header.header, &header_digests.pre_digest)?;
-        //
-        // // verify block signature
-        // Self::verify_block_signature(&mut header, &header_digests.pre_digest.solution.public_key)?;
-        //
-        // // verify solution
-        // let max_plot_size = self.store.chain_constants().max_plot_size;
-        // let segment_index =
-        //     header_digests.pre_digest.solution.piece_index / u64::from(PIECES_IN_SEGMENT);
-        // let position = u32::try_from(
-        //     header_digests.pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT),
-        // )
-        // .expect("Position within segment always fits into u32; qed");
-        // let records_root =
-        //     self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
-        // let total_pieces = self.total_pieces(parent_header.header.hash())?;
-        //
-        // // TODO: Probably should have public parameters in chain constants instead
-        // let kzg = Kzg::new(kzg::test_public_parameters());
-        //
-        // verify_solution(
-        //     &header_digests.pre_digest.solution,
-        //     header_digests.pre_digest.slot.into(),
-        //     VerifySolutionParams {
-        //         global_randomness: &header_digests.global_randomness,
-        //         solution_range: header_digests.solution_range,
-        //         salt: header_digests.salt,
-        //         piece_check_params: Some(PieceCheckParams {
-        //             records_root,
-        //             position,
-        //             kzg: &kzg,
-        //             pieces_in_segment: PIECES_IN_SEGMENT,
-        //             record_size: RECORD_SIZE,
-        //             max_plot_size,
-        //             total_pieces,
-        //         }),
-        //     },
-        // )
-        // .map_err(ImportError::InvalidSolution)?;
-        //
-        // let block_weight = Self::calculate_block_weight(
-        //     &header_digests.global_randomness,
-        //     &header_digests.pre_digest,
-        // );
-        // let total_weight = parent_header.total_weight + block_weight;
-        //
-        // // last best header should ideally be parent header. if not check for forks and pick the best chain
-        // let last_best_header = self.store.best_header();
-        // let is_best_header = if last_best_header.header.hash() == parent_header.header.hash() {
-        //     // header is extending the current best header. consider this best header
-        //     true
-        // } else {
-        //     let last_best_weight = last_best_header.total_weight;
-        //     match total_weight.cmp(&last_best_weight) {
-        //         // current weight is greater than last best. pick this header as best
-        //         Ordering::Greater => true,
-        //         // if weights are equal, pick the longest chain
-        //         Ordering::Equal => header.number() > last_best_header.header.number(),
-        //         // we already are on the best chain
-        //         Ordering::Less => false,
-        //     }
-        // };
-        //
-        // let salt_derivation_info =
-        //     self.next_salt_derivation_info(&header, genesis_slot, &parent_salt_derivation_info)?;
-        //
-        // // check if era has changed
-        // let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
-        //     header_digests.pre_digest.slot
-        // } else {
-        //     parent_header.era_start_slot
-        // };
-        //
-        // // check if we should update current solution range override
-        // let mut maybe_current_solution_range_override =
-        //     parent_header.maybe_current_solution_range_override;
-        //
-        // // if there is override of solution range in this header, use it
-        // if let Some(current_solution_range_override) =
-        //     header_digests.enable_solution_range_adjustment_and_override
-        // {
-        //     maybe_current_solution_range_override = current_solution_range_override;
-        // }
-        //
-        // // check if the era has changed and there is a current solution range override, reset it
-        // if maybe_current_solution_range_override.is_some()
-        //     && Self::has_era_changed(&header, constants.era_duration)
-        // {
-        //     maybe_current_solution_range_override = None
-        // }
-        //
-        // // store header
-        // let header_ext = HeaderExt {
-        //     header,
-        //     total_weight,
-        //     salt_derivation_info,
-        //     era_start_slot,
-        //     should_adjust_solution_range,
-        //     maybe_current_solution_range_override,
-        //     maybe_next_solution_range_override,
-        //     maybe_root_plot_public_key,
-        //     genesis_slot,
-        //
-        //     #[cfg(test)]
-        //     test_overrides: Default::default(),
-        // };
-        //
-        // self.store.store_header(header_ext, is_best_header);
-        //
-        // // finalize, prune forks, and ensure storage is bounded if the chain has progressed
-        // if is_best_header {
-        //     self.finalize_header_at_k_depth()?;
-        //     self.ensure_storage_bound();
-        // }
+        // check if the header is already imported
+        match self.store.header(header.hash()) {
+            Some(_) => Err(ImportError::HeaderAlreadyImported),
+            None => Ok(()),
+        }?;
 
-        Ok(())
-    }
+        // only try and import headers above the finalized number
+        let current_finalized_number = *self.store.finalized_header().header.number();
+        if *header.number() <= current_finalized_number {
+            return Err(ImportError::HeaderIsBelowArchivingDepth(
+                HeaderBelowArchivingDepthError {
+                    current_finalized_number,
+                    header_number: *header.number(),
+                },
+            ));
+        }
 
-    /// Derives next salt derivation info with respect to parent salt derivation info.
-    fn next_salt_derivation_info(
-        &self,
-        header: &Header,
-        genesis_slot: Slot,
-        parent_salt_derivation_info: &SaltDerivationInfo,
-    ) -> Result<SaltDerivationInfo, ImportError<Header>> {
+        // fetch parent header
+        let parent_header = self
+            .store
+            .header(*header.parent_hash())
+            .ok_or_else(|| ImportError::MissingParent(header.hash()))?;
+
+        // verify global randomness and solution range from the parent header
+        let header_digests = self.verify_header_digest_with_parent(&parent_header, &header)?;
+
+        // verify next digest items
         let constants = self.store.chain_constants();
-        let eon_duration = constants.eon_duration;
-        let pre_digest = extract_pre_digest(header)?;
+        let mut maybe_root_plot_public_key = parent_header.maybe_root_plot_public_key;
+        if let Some(root_plot_public_key) = &maybe_root_plot_public_key {
+            if root_plot_public_key != &header_digests.pre_digest.solution.public_key {
+                return Err(ImportError::IncorrectBlockAuthor(
+                    header_digests.pre_digest.solution.public_key,
+                ));
+            }
+        }
 
-        // check if the eon is about to be changed
-        let maybe_next_index = subspace_verification::derive_next_eon_index(
-            parent_salt_derivation_info.eon_index,
-            eon_duration,
-            u64::from(genesis_slot),
-            u64::from(pre_digest.slot),
+        let mut should_adjust_solution_range = parent_header.should_adjust_solution_range;
+        let mut maybe_next_solution_range_override =
+            parent_header.maybe_next_solution_range_override;
+        verify_next_digests::<Header>(NextDigestsVerificationParams {
+            number: *header.number(),
+            header_digests: &header_digests,
+            global_randomness_interval: constants.global_randomness_interval,
+            era_duration: constants.era_duration,
+            slot_probability: constants.slot_probability,
+            era_start_slot: parent_header.era_start_slot,
+            should_adjust_solution_range: &mut should_adjust_solution_range,
+            maybe_next_solution_range_override: &mut maybe_next_solution_range_override,
+            maybe_root_plot_public_key: &mut maybe_root_plot_public_key,
+        })?;
+
+        // slot must be strictly increasing from the parent header
+        Self::verify_slot(&parent_header.header, &header_digests.pre_digest)?;
+
+        // verify block signature
+        Self::verify_block_signature(&mut header, &header_digests.pre_digest.solution.public_key)?;
+
+        // verify solution
+        let sector_id = SectorId::new(
+            &(&header_digests.pre_digest.solution.public_key).into(),
+            header_digests.pre_digest.solution.sector_index,
         );
 
-        // eon has changed
-        if let Some(next_eon_index) = maybe_next_index {
-            Ok(SaltDerivationInfo {
-                eon_index: next_eon_index,
-                // check if the salt will be revealed with new eon index
-                maybe_randomness: Self::randomness_for_next_salt(
-                    &constants,
-                    next_eon_index,
-                    genesis_slot,
-                    &pre_digest,
-                )?,
-            })
-        } else {
-            // eon has not changed
-            Ok(SaltDerivationInfo {
-                eon_index: parent_salt_derivation_info.eon_index,
-                // if the salt is not revealed yet, check if salt will be revealed at this header for the current eon index
-                maybe_randomness: parent_salt_derivation_info.maybe_randomness.or(
-                    Self::randomness_for_next_salt(
-                        &constants,
-                        parent_salt_derivation_info.eon_index,
-                        genesis_slot,
-                        &pre_digest,
-                    )?,
-                ),
-            })
-        }
-    }
-
-    /// Returns randomness used to derive the next salt if the next salt is revealed after importing header.
-    fn randomness_for_next_salt(
-        constants: &ChainConstants<Header>,
-        eon_index: EonIndex,
-        genesis_slot: Slot,
-        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-    ) -> Result<Option<Randomness>, ImportError<Header>> {
-        let next_salt_reveal_slot = constants
-            .next_salt_reveal_interval
-            .checked_add(
-                eon_index
-                    .checked_mul(constants.eon_duration)
-                    .and_then(|res| res.checked_add(u64::from(genesis_slot)))
-                    .expect("eon start slot should fit into u64"),
+        let piece_index = sector_id
+            .derive_piece_index(
+                header_digests.pre_digest.solution.piece_offset,
+                header_digests.pre_digest.solution.total_pieces,
             )
-            .ok_or(ImportError::ArithmeticError(ArithmeticError::Overflow))?;
+            .map_err(|()| ImportError::TotalNumberOfPiecesCantBeZero)?;
+        let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
+            .expect("Position within segment always fits into u32; qed");
+        let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
 
-        // salt will be revealed after importing this header.
-        // derive randomness at this header and store it for later verification
-        let maybe_randomness = if pre_digest.slot >= next_salt_reveal_slot {
-            let randomness = derive_randomness(
-                &PublicKey::from(&pre_digest.solution.public_key),
-                &pre_digest.solution.chunk,
-                &pre_digest.solution.chunk_signature,
-            )
-            .map_err(|_err| {
-                ImportError::DigestError(DigestError::NextDigestDerivationError(
-                    ErrorDigestType::NextSalt,
-                ))
-            })?;
-            Some(randomness)
+        let records_root =
+            self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
+
+        // TODO: Probably should have public parameters in chain constants instead
+        let kzg = Kzg::new(kzg::test_public_parameters());
+
+        verify_solution(
+            &header_digests.pre_digest.solution,
+            header_digests.pre_digest.slot.into(),
+            VerifySolutionParams {
+                global_randomness: &header_digests.global_randomness,
+                solution_range: header_digests.solution_range,
+                piece_check_params: Some(PieceCheckParams {
+                    records_root: &records_root,
+                    position,
+                    kzg: &kzg,
+                    pieces_in_segment: PIECES_IN_SEGMENT,
+                }),
+            },
+        )
+        .map_err(ImportError::InvalidSolution)?;
+
+        let block_weight = Self::calculate_block_weight(&sector_id, &header_digests);
+        let total_weight = parent_header.total_weight + block_weight;
+
+        // last best header should ideally be parent header. if not check for forks and pick the best chain
+        let last_best_header = self.store.best_header();
+        let is_best_header = if last_best_header.header.hash() == parent_header.header.hash() {
+            // header is extending the current best header. consider this best header
+            true
         } else {
-            None
+            let last_best_weight = last_best_header.total_weight;
+            match total_weight.cmp(&last_best_weight) {
+                // current weight is greater than last best. pick this header as best
+                Ordering::Greater => true,
+                // if weights are equal, pick the longest chain
+                Ordering::Equal => header.number() > last_best_header.header.number(),
+                // we already are on the best chain
+                Ordering::Less => false,
+            }
         };
 
-        Ok(maybe_randomness)
+        // check if era has changed
+        let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
+            header_digests.pre_digest.slot
+        } else {
+            parent_header.era_start_slot
+        };
+
+        // check if we should update current solution range override
+        let mut maybe_current_solution_range_override =
+            parent_header.maybe_current_solution_range_override;
+
+        // if there is override of solution range in this header, use it
+        if let Some(current_solution_range_override) =
+            header_digests.enable_solution_range_adjustment_and_override
+        {
+            maybe_current_solution_range_override = current_solution_range_override;
+        }
+
+        // check if the era has changed and there is a current solution range override, reset it
+        if maybe_current_solution_range_override.is_some()
+            && Self::has_era_changed(&header, constants.era_duration)
+        {
+            maybe_current_solution_range_override = None
+        }
+
+        // store header
+        let header_ext = HeaderExt {
+            header,
+            total_weight,
+            era_start_slot,
+            should_adjust_solution_range,
+            maybe_current_solution_range_override,
+            maybe_next_solution_range_override,
+            maybe_root_plot_public_key,
+
+            #[cfg(test)]
+            test_overrides: Default::default(),
+        };
+
+        self.store.store_header(header_ext, is_best_header);
+
+        // finalize, prune forks, and ensure storage is bounded if the chain has progressed
+        if is_best_header {
+            self.finalize_header_at_k_depth()?;
+            self.ensure_storage_bound();
+        }
+
+        Ok(())
     }
 
     fn has_era_changed(header: &Header, era_duration: NumberOf<Header>) -> bool {
@@ -625,10 +481,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         if pre_digest_items.solution_range != next_digest_items.next_solution_range {
             return Err(ImportError::InvalidDigest(ErrorDigestType::SolutionRange));
-        }
-
-        if pre_digest_items.salt != next_digest_items.next_salt {
-            return Err(ImportError::InvalidDigest(ErrorDigestType::Salt));
         }
 
         Ok(pre_digest_items)
@@ -684,24 +536,29 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Calculates block weight from randomness and predigest.
     fn calculate_block_weight(
-        global_randomness: &Randomness,
-        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        sector_id: &SectorId,
+        header_digests: &SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
     ) -> BlockWeight {
-        // TODO: Update implementation for V2 consensus
-        // let global_challenge = derive_global_challenge(global_randomness, pre_digest.slot.into());
-        //
-        // let target = u64::from_be_bytes(
-        //     derive_target(
-        //         &schnorrkel::PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
-        //             .expect("Always correct length; qed"),
-        //         global_challenge,
-        //         &pre_digest.solution.local_challenge,
-        //     )
-        //     .expect("Verification of the local challenge was done before this; qed"),
-        // );
-        // let tag = u64::from_be_bytes(pre_digest.solution.tag);
-        // u128::from(u64::MAX - subspace_core_primitives::bidirectional_distance(&target, &tag))
-        todo!()
+        let global_challenge = derive_global_challenge(
+            &header_digests.global_randomness,
+            header_digests.pre_digest.slot.into(),
+        );
+
+        let local_challenge = sector_id.derive_local_challenge(&global_challenge);
+
+        let expanded_chunk = header_digests
+            .pre_digest
+            .solution
+            .chunk
+            .expand(local_challenge);
+
+        BlockWeight::from(
+            SolutionRange::MAX
+                - subspace_core_primitives::bidirectional_distance(
+                    &local_challenge,
+                    &expanded_chunk,
+                ),
+        )
     }
 
     /// Returns the ancestor of the header at number.
@@ -781,6 +638,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     /// We count the total segments to calculate total pieces as follows,
     /// - Fetch the segment count from the store.
     /// - Count the segments from each header that is not finalized.
+    // TODO: This function will become useful in the future for verifying sector expiration
+    #[allow(dead_code)]
     fn total_pieces(&self, chain_tip: HashOf<Header>) -> Result<u64, ImportError<Header>> {
         // fetch the segment count from the store
         let records_roots_count_till_finalized_header = self.store.number_of_segments();
