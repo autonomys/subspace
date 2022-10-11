@@ -4801,7 +4801,6 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-runtime",
- "sp-state-machine",
  "sp-std",
 ]
 

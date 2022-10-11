@@ -2,12 +2,15 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::{DispatchError, DispatchResult};
 
+/// Represents a particular endpoint in a given Execution environment.
+pub type EndpointId = u64;
+
 /// Endpoint as defined in the formal spec.
 /// Endpoint is an application that can send and receive messages from other domains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum Endpoint {
     /// Id of the endpoint on a specific domain.
-    Id(u64),
+    Id(EndpointId),
 }
 
 /// Endpoint request or response payload.

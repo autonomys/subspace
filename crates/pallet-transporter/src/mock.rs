@@ -4,8 +4,10 @@ use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use pallet_balances::AccountData;
 use sp_core::H256;
+use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
+use sp_runtime::DispatchResult;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<MockRuntime>;
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
@@ -70,13 +72,24 @@ impl pallet_balances::Config for MockRuntime {
 
 parameter_types! {
     pub const SelfDomainId: DomainId = 1;
+    pub const SelfEndpointId: EndpointId = 100;
+}
+
+#[derive(Debug)]
+pub struct MockMessenger {}
+impl Sender<DomainId> for MockMessenger {
+    fn send_message(_dst_domain_id: DomainId, _req: EndpointRequest) -> DispatchResult {
+        Ok(())
+    }
 }
 
 impl Config for MockRuntime {
     type Event = Event;
     type DomainId = DomainId;
     type SelfDomainId = SelfDomainId;
+    type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;
+    type Sender = MockMessenger;
 }
 
 pub const USER_ACCOUNT: AccountId = 1;
