@@ -423,6 +423,12 @@ impl AsRef<[u8]> for Chunk {
     }
 }
 
+impl AsMut<[u8]> for Chunk {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
 impl Chunk {
     /// Expand chunk to be the same size as solution range for further comparison
     pub fn expand(&self, local_challenge: SolutionRange) -> SolutionRange {

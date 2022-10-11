@@ -18,7 +18,7 @@
 
 use crate::mock::{
     create_archived_segment, create_root_block, create_signed_vote, extract_piece,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, EonDuration, Event,
+    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, Event,
     GlobalRandomnessUpdateInterval, Origin, ReportLongevity, Subspace, System, Test,
     INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
@@ -692,7 +692,6 @@ fn vote_block_listed() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -718,7 +717,6 @@ fn vote_after_genesis() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -748,7 +746,6 @@ fn vote_too_low_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece.clone(),
                 1,
             );
@@ -778,7 +775,6 @@ fn vote_past_future_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece.clone(),
                 1,
             );
@@ -797,7 +793,6 @@ fn vote_past_future_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -826,7 +821,6 @@ fn vote_wrong_parent() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -865,7 +859,6 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 2.into(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece.clone(),
                 1,
             );
@@ -888,7 +881,6 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 4.into(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -911,7 +903,6 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(1),
                 2.into(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -951,7 +942,6 @@ fn vote_same_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -970,7 +960,6 @@ fn vote_same_slot() {
                 frame_system::Pallet::<Test>::block_hash(1),
                 Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -999,7 +988,6 @@ fn vote_bad_reward_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1029,7 +1017,6 @@ fn vote_unknown_records_root() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1062,7 +1049,6 @@ fn vote_outside_of_solution_range() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1102,7 +1088,6 @@ fn vote_invalid_solution_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1155,7 +1140,6 @@ fn vote_correct_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1183,6 +1167,8 @@ fn vote_randomness_update() {
             solution_ranges.voting_current = u64::MAX;
         });
 
+        // TODO: This must fail, but currently doesn't. Once fixed must include  both success and
+        //  failure cases
         // On the edge of change of global randomness, salt or solution range vote must be validated
         // with correct data (in this test case randomness just updated)
         let signed_vote = create_signed_vote(
@@ -1191,66 +1177,6 @@ fn vote_randomness_update() {
             frame_system::Pallet::<Test>::block_hash(GlobalRandomnessUpdateInterval::get() - 1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().next.unwrap(),
-            {
-                let salts = Subspace::salts();
-                if salts.switch_next_block {
-                    salts.next.unwrap()
-                } else {
-                    salts.current
-                }
-            },
-            piece,
-            1,
-        );
-
-        assert_ok!(super::check_vote::<Test>(&signed_vote, false));
-    });
-}
-
-#[test]
-fn vote_salt_update() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
-
-        RecordsRoot::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
-        );
-
-        // Reset so that any solution works for votes
-        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
-            solution_ranges.voting_current = u64::MAX;
-        });
-
-        // Jump to the edge of the eon where salt update happens
-        go_to_block(
-            &keypair,
-            u64::from(EonDuration::get() - 1),
-            u64::from(
-                (u64::from(Subspace::current_slot()) as u32 / EonDuration::get() + 1)
-                    * EonDuration::get(),
-            ),
-            1,
-        );
-
-        // On the edge of change of global randomness, salt or solution range vote must be validated
-        // with correct data (in this test case salt just updated)
-        let signed_vote = create_signed_vote(
-            &keypair,
-            u64::from(EonDuration::get() - 1),
-            frame_system::Pallet::<Test>::block_hash(u64::from(EonDuration::get() - 2)),
-            Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
-            {
-                let salts = Subspace::salts();
-                if salts.switch_next_block {
-                    salts.next.unwrap()
-                } else {
-                    salts.current
-                }
-            },
             piece,
             1,
         );
@@ -1294,7 +1220,6 @@ fn vote_equivocation_current_block_plus_vote() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1343,7 +1268,6 @@ fn vote_equivocation_parent_block_plus_vote() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1397,7 +1321,6 @@ fn vote_equivocation_current_voters_duplicate() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1473,7 +1396,6 @@ fn vote_equivocation_parent_voters_duplicate() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
