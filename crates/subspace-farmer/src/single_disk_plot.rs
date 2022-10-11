@@ -814,15 +814,16 @@ impl SingleDiskPlot {
                                 let local_challenge =
                                     sector_id.derive_local_challenge(&slot_info.global_challenge);
                                 let audit_index: u64 = local_challenge % chunks_in_sector;
+                                let audit_piece_offset =
+                                    (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
                                 // Offset of the piece in sector (in bytes)
-                                let audit_piece_offset = (audit_index / u64::from(u8::BITS))
-                                    / PIECE_SIZE as u64
-                                    * PIECE_SIZE as u64;
+                                let audit_piece_bytes_offset =
+                                    audit_piece_offset * PIECE_SIZE as u64;
                                 // Audit index (chunk) within corresponding piece
                                 let audit_index_within_piece =
-                                    audit_index - audit_piece_offset * u64::from(u8::BITS);
+                                    audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
                                 let mut piece = Piece::try_from(
-                                    &sector[audit_piece_offset as usize..][..PIECE_SIZE],
+                                    &sector[audit_piece_bytes_offset as usize..][..PIECE_SIZE],
                                 )
                                 .expect("Slice is guaranteed to have correct length; qed");
 
@@ -868,13 +869,13 @@ impl SingleDiskPlot {
                                         Ok(piece_witness) => piece_witness,
                                         Err(error) => {
                                             if let Ok(piece_index) = sector_id.derive_piece_index(
-                                                audit_piece_offset / PIECE_SIZE as u64,
+                                                audit_piece_bytes_offset / PIECE_SIZE as u64,
                                                 sector_metadata.total_pieces,
                                             ) {
                                                 error!(
                                                     ?error,
                                                     ?sector_id,
-                                                    %audit_piece_offset,
+                                                    %audit_piece_bytes_offset,
                                                     %piece_index,
                                                     "Failed to decode witness for piece, likely \
                                                     caused by on-disk data corruption"
@@ -882,13 +883,13 @@ impl SingleDiskPlot {
                                             } else {
                                                 error!(
                                                     ?sector_id,
-                                                    %audit_piece_offset,
+                                                    %audit_piece_bytes_offset,
                                                     "Failed to decode witness for piece, likely \
                                                     caused by on-disk data corruption"
                                                 );
                                                 error!(
                                                     ?sector_id,
-                                                    %audit_piece_offset,
+                                                    %audit_piece_bytes_offset,
                                                     "Total number of pieces in sector metadata is \
                                                     0, this means on-disk data were corrupted or \
                                                     severe implementation bug!"
