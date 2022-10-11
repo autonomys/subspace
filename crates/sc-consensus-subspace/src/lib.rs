@@ -882,9 +882,7 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let (correct_global_randomness, correct_solution_range, correct_salt) = if block_number
-            .is_one()
-        {
+        let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
             // instead
             let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
@@ -895,14 +893,8 @@ where
                 self.client.as_ref(),
                 &parent_block_id,
             )?;
-            let (correct_salt, _) =
-                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?;
 
-            (
-                correct_global_randomness,
-                correct_solution_range,
-                correct_salt,
-            )
+            (correct_global_randomness, correct_solution_range)
         } else {
             let parent_subspace_digest_items = extract_subspace_digest_items::<
                 _,
@@ -922,16 +914,7 @@ where
                 None => parent_subspace_digest_items.solution_range,
             };
 
-            let correct_salt = match parent_subspace_digest_items.next_salt {
-                Some(salt) => salt,
-                None => parent_subspace_digest_items.salt,
-            };
-
-            (
-                correct_global_randomness,
-                correct_solution_range,
-                correct_salt,
-            )
+            (correct_global_randomness, correct_solution_range)
         };
 
         if subspace_digest_items.global_randomness != correct_global_randomness {
@@ -940,10 +923,6 @@ where
 
         if subspace_digest_items.solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
-        }
-
-        if subspace_digest_items.salt != correct_salt {
-            return Err(Error::InvalidSalt(block_hash));
         }
 
         let sector_id = SectorId::new(

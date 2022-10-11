@@ -3,6 +3,7 @@ use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
     NumberOf, Storage, StorageBound,
 };
+use bitvec::prelude::*;
 use frame_support::{assert_err, assert_ok};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -18,27 +19,25 @@ use sp_runtime::app_crypto::UncheckedFrom;
 use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
-use subspace_archiving::archiver::Archiver;
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use std::num::NonZeroU16;
+use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
 use subspace_core_primitives::{
-    Piece, PublicKey, Randomness, RecordsRoot, Salt, SectorId, SegmentIndex, Solution,
-    SolutionRange, Tag, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Chunk, Piece, PieceIndex, PublicKey, Randomness, RecordsRoot, SectorId, SegmentIndex, Solution,
+    SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
-    create_chunk_signature, create_tag, derive_global_challenge, derive_local_challenge,
-    derive_target, SubspaceCodec, REWARD_SIGNING_CONTEXT,
+    create_chunk_signature, derive_chunk_otp, derive_global_challenge, REWARD_SIGNING_CONTEXT,
 };
 use subspace_verification::derive_randomness;
 
-fn default_randomness_and_salt() -> (Randomness, Salt) {
-    let randomness = [1u8; 32];
-    let salt = [2u8; 8];
-    (randomness, salt)
+fn default_randomness() -> Randomness {
+    [1u8; 32]
 }
 
 fn default_test_constants() -> ChainConstants<Header> {
-    let (randomness, salt) = default_randomness_and_salt();
+    let randomness = default_randomness();
     ChainConstants {
         k_depth: 7,
         genesis_digest_items: NextDigestItems {
@@ -50,62 +49,30 @@ fn default_test_constants() -> ChainConstants<Header> {
         era_duration: 20,
         slot_probability: (1, 6),
         storage_bound: Default::default(),
+        space_l: NonZeroU16::new(20).unwrap(),
     }
 }
 
-fn derive_solution_range(target: Tag, tag: Tag) -> SolutionRange {
-    let target = u64::from_be_bytes(target);
-    let tag = u64::from_be_bytes(tag);
-
-    subspace_core_primitives::bidirectional_distance(&target, &tag) * 2
+fn derive_solution_range(
+    local_challenge: &SolutionRange,
+    expanded_chunk: &SolutionRange,
+) -> SolutionRange {
+    subspace_core_primitives::bidirectional_distance(local_challenge, expanded_chunk) * 2
 }
 
-fn valid_piece(
-    pub_key: schnorrkel::PublicKey,
-    kzg: &Kzg,
-) -> (Piece, u64, SegmentIndex, RecordsRoot) {
+fn archived_segment(kzg: Kzg) -> ArchivedSegment {
     // we don't care about the block data
     let mut rng = StdRng::seed_from_u64(0);
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver =
-        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
-    let archived_segment = archiver
+    archiver
         .add_block(block, Default::default())
-        .first()
-        .cloned()
-        .unwrap();
-
-    let (position, piece) = archived_segment
-        .pieces
-        .as_pieces()
-        .enumerate()
-        .collect::<Vec<(usize, &[u8])>>()
-        .first()
-        .cloned()
-        .unwrap();
-
-    assert!(subspace_archiving::archiver::is_piece_valid(
-        kzg,
-        PIECES_IN_SEGMENT,
-        piece,
-        archived_segment.root_block.records_root(),
-        position as u32,
-        RECORD_SIZE,
-    ));
-
-    let codec = SubspaceCodec::new(pub_key.as_ref());
-    let mut piece = piece.to_vec();
-    codec.encode(&mut piece, position as u64).unwrap();
-
-    (
-        Piece::try_from(piece.as_slice()).unwrap(),
-        position as u64,
-        archived_segment.root_block.segment_index(),
-        archived_segment.root_block.records_root(),
-    )
+        .into_iter()
+        .next()
+        .unwrap()
 }
 
 struct ValidHeaderParams<'a> {
@@ -114,8 +81,8 @@ struct ValidHeaderParams<'a> {
     slot: u64,
     keypair: &'a Keypair,
     randomness: Randomness,
-    salt: Salt,
     kzg: &'a Kzg,
+    space_l: NonZeroU16,
 }
 
 fn valid_header(
@@ -127,51 +94,113 @@ fn valid_header(
         slot,
         keypair,
         randomness,
-        salt,
         kzg,
+        space_l,
     } = params;
-    let (encoding, piece_index, segment_index, records_root) = valid_piece(keypair.public, kzg);
-    let tag: Tag = create_tag(encoding.as_ref(), salt);
+    let chunks_in_sector = u64::from(RECORD_SIZE) * u64::from(u8::BITS) / u64::from(space_l.get());
     let global_challenge = derive_global_challenge(&randomness, slot);
-    let local_challenge = derive_local_challenge(keypair, global_challenge);
-    let target = derive_target(
-        &schnorrkel::PublicKey::from_bytes(keypair.public.as_ref()).unwrap(),
-        global_challenge,
-        &local_challenge,
-    )
-    .unwrap();
-    let solution_range = derive_solution_range(target, tag);
-    // TODO: Update implementation for V2 consensus
-    // let tag_signature = create_chunk_signature(keypair, tag);
-    // let pre_digest = PreDigest {
-    //     slot: slot.into(),
-    //     solution: Solution {
-    //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-    //         reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-    //         piece_index,
-    //         encoding,
-    //         tag_signature,
-    //         local_challenge,
-    //         tag,
-    //     },
-    // };
-    // let digests = vec![
-    //     DigestItem::global_randomness(randomness),
-    //     DigestItem::solution_range(solution_range),
-    //     DigestItem::salt(salt),
-    //     DigestItem::subspace_pre_digest(&pre_digest),
-    // ];
-    //
-    // let header = Header {
-    //     parent_hash,
-    //     number,
-    //     state_root: Default::default(),
-    //     extrinsics_root: Default::default(),
-    //     digest: Digest { logs: digests },
-    // };
-    //
-    // (header, solution_range, segment_index, records_root)
-    todo!()
+    let archived_segment = archived_segment(kzg.clone());
+    let segment_index = archived_segment.root_block.segment_index();
+    let records_root = archived_segment.root_block.records_root();
+    let total_pieces = archived_segment.pieces.count() as PieceIndex;
+
+    // There may be no solution in the first sector, iterate until we get a solution
+    for sector_index in 0.. {
+        let sector_id = SectorId::new(&PublicKey::from(keypair.public.to_bytes()), sector_index);
+        let local_challenge = sector_id.derive_local_challenge(&global_challenge);
+        let audit_index: u64 = local_challenge % chunks_in_sector;
+        let audit_piece_offset = (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
+        // Offset of the piece in sector (in bytes)
+        let audit_piece_bytes_offset = audit_piece_offset * PIECE_SIZE as u64;
+        // Audit index (chunk) within corresponding piece
+        let audit_index_within_piece = audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
+        let piece_index = sector_id
+            .derive_piece_index(audit_piece_offset, total_pieces)
+            .unwrap();
+        let mut piece = Piece::try_from(
+            archived_segment
+                .pieces
+                .as_pieces()
+                .nth(piece_index as usize)
+                .unwrap(),
+        )
+        .unwrap();
+        let piece_witness =
+            Witness::try_from_bytes(&piece[RECORD_SIZE as usize..].try_into().unwrap()).unwrap();
+        let piece_record_hash = blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]);
+
+        // Encode piece
+        // TODO: Extract encoding into separate function reusable in
+        //  farmer and otherwise
+        piece[..RECORD_SIZE as usize]
+            .view_bits_mut::<Lsb0>()
+            .chunks_mut(space_l.get() as usize)
+            .enumerate()
+            .for_each(|(chunk_index, bits)| {
+                // Derive one-time pad
+                let mut otp = derive_chunk_otp(&sector_id, &piece_witness, chunk_index as u32);
+                // XOR chunk bit by bit with one-time pad
+                bits.iter_mut()
+                    .zip(otp.view_bits_mut::<Lsb0>().iter())
+                    .for_each(|(mut a, b)| {
+                        *a ^= *b;
+                    });
+            });
+
+        // TODO: We are skipping witness part of the piece or else it is not
+        //  decodable
+        let maybe_chunk = piece[..RECORD_SIZE as usize]
+            .view_bits()
+            .chunks_exact(space_l.get() as usize)
+            .nth(audit_index_within_piece as usize);
+
+        let chunk = match maybe_chunk {
+            Some(chunk) => Chunk::from(chunk),
+            None => {
+                // TODO: Record size is not multiple of `space_l`, last bits
+                //  were not encoded and should not be used for solving
+                continue;
+            }
+        };
+
+        // TODO: This just have 20 bits of entropy as input, should we add
+        //  something else?
+        let expanded_chunk = chunk.expand(local_challenge);
+
+        let solution_range = derive_solution_range(&local_challenge, &expanded_chunk);
+        let chunk_signature = create_chunk_signature(keypair, &chunk);
+        let pre_digest = PreDigest {
+            slot: slot.into(),
+            solution: Solution {
+                public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                sector_index,
+                total_pieces,
+                piece_offset: audit_piece_offset,
+                piece_record_hash,
+                piece_witness,
+                chunk,
+                chunk_signature,
+            },
+        };
+        let digests = vec![
+            DigestItem::global_randomness(randomness),
+            DigestItem::solution_range(solution_range),
+            DigestItem::subspace_pre_digest(&pre_digest),
+        ];
+
+        let header = Header {
+            parent_hash,
+            number,
+            state_root: Default::default(),
+            extrinsics_root: Default::default(),
+            digest: Digest { logs: digests },
+        };
+
+        return (header, solution_range, segment_index, records_root);
+    }
+
+    unreachable!()
 }
 
 fn seal_header(keypair: &Keypair, header: &mut Header) {
@@ -300,9 +329,9 @@ fn add_headers_to_chain(
     let mut slot = next_slot(constants.slot_probability, slot);
     let mut best_header_hash = best_header_ext.header.hash();
     while number <= until_number {
-        let (randomness, salt, override_next_solution) = if number == 1 {
-            let (randomness, salt) = default_randomness_and_salt();
-            (randomness, salt, false)
+        let (randomness, override_next_solution) = if number == 1 {
+            let randomness = default_randomness();
+            (randomness, false)
         } else {
             let header = importer.store.header(parent_hash).unwrap();
             let digests = extract_subspace_digest_items::<
@@ -316,8 +345,7 @@ fn add_headers_to_chain(
             let randomness = digests
                 .next_global_randomness
                 .unwrap_or(digests.global_randomness);
-            let salt = digests.next_salt.unwrap_or(digests.salt);
-            (randomness, salt, digests.next_global_randomness.is_some())
+            (randomness, digests.next_global_randomness.is_some())
         };
 
         let (mut header, solution_range, segment_index, records_root) =
@@ -327,8 +355,8 @@ fn add_headers_to_chain(
                 slot: slot.into(),
                 keypair,
                 randomness,
-                salt,
                 kzg,
+                space_l: constants.space_l,
             });
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
@@ -434,8 +462,9 @@ fn test_header_import_missing_parent() {
     let kzg = Kzg::new(kzg::test_public_parameters());
 
     let constants = default_test_constants();
+    let space_l = constants.space_l;
     let (mut store, _genesis_hash) = initialize_store(constants, true, None);
-    let (randomness, salt) = default_randomness_and_salt();
+    let randomness = default_randomness();
     let keypair = Keypair::generate();
     let (header, _, segment_index, records_root) = valid_header(ValidHeaderParams {
         parent_hash: Default::default(),
@@ -443,8 +472,8 @@ fn test_header_import_missing_parent() {
         slot: 1,
         keypair: &keypair,
         randomness,
-        salt,
         kzg: &kzg,
+        space_l,
     });
     store.store_records_root(segment_index, records_root);
     let mut importer = HeaderImporter::new(store);
@@ -678,8 +707,8 @@ fn test_reorg_to_heavier_smaller_chain() {
             slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_2.global_randomness,
-            salt: digests_at_2.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     seal_header(&keypair, &mut header);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
@@ -739,8 +768,8 @@ fn test_next_global_randomness_digest() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            salt: digests_at_4.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -810,8 +839,8 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            salt: digests_at_4.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -882,8 +911,8 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            salt: digests_at_4.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     importer
         .store
@@ -941,8 +970,8 @@ fn test_enable_solution_range_adjustment_without_override() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            salt: digests_at_4.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     importer
         .store
@@ -1009,8 +1038,8 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
             slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_3.global_randomness,
-            salt: digests_at_3.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     importer
         .store
@@ -1077,8 +1106,8 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            salt: digests_at_4.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     importer
         .store
@@ -1137,8 +1166,8 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            salt: digests_at_4.salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     importer
         .store
@@ -1222,7 +1251,7 @@ fn test_block_author_different_farmer() {
 
     // try to import header authored by different farmer
     let keypair_disallowed = Keypair::generate();
-    let (randomness, salt) = default_randomness_and_salt();
+    let randomness = default_randomness();
     let (mut header, solution_range, segment_index, records_root) =
         valid_header(ValidHeaderParams {
             parent_hash: genesis_hash,
@@ -1230,8 +1259,8 @@ fn test_block_author_different_farmer() {
             slot: 1,
             keypair: &keypair_disallowed,
             randomness,
-            salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     seal_header(&keypair_disallowed, &mut header);
     constants.genesis_digest_items.next_solution_range = solution_range;
@@ -1260,7 +1289,7 @@ fn test_block_author_first_farmer() {
     let mut importer = HeaderImporter::new(store);
 
     // try import header with first farmer
-    let (randomness, salt) = default_randomness_and_salt();
+    let randomness = default_randomness();
     let (mut header, solution_range, segment_index, records_root) =
         valid_header(ValidHeaderParams {
             parent_hash: genesis_hash,
@@ -1268,8 +1297,8 @@ fn test_block_author_first_farmer() {
             slot: 1,
             keypair: &keypair,
             randomness,
-            salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     header
         .digest
@@ -1302,7 +1331,7 @@ fn test_block_author_allow_any_farmer() {
     let mut importer = HeaderImporter::new(store);
 
     // try to import header authored by different farmer
-    let (randomness, salt) = default_randomness_and_salt();
+    let randomness = default_randomness();
     let (mut header, solution_range, segment_index, records_root) =
         valid_header(ValidHeaderParams {
             parent_hash: genesis_hash,
@@ -1310,8 +1339,8 @@ fn test_block_author_allow_any_farmer() {
             slot: 1,
             keypair: &keypair,
             randomness,
-            salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     header
         .digest
@@ -1342,7 +1371,7 @@ fn test_disallow_root_plot_public_key_override() {
     let mut importer = HeaderImporter::new(store);
 
     // try to import header that contains root plot public key override
-    let (randomness, salt) = default_randomness_and_salt();
+    let randomness = default_randomness();
     let (mut header, solution_range, segment_index, records_root) =
         valid_header(ValidHeaderParams {
             parent_hash: genesis_hash,
@@ -1350,8 +1379,8 @@ fn test_disallow_root_plot_public_key_override() {
             slot: 1,
             keypair: &keypair_allowed,
             randomness,
-            salt,
             kzg: &kzg,
+            space_l: constants.space_l,
         });
     let keypair_disallowed = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair_disallowed.public.to_bytes());

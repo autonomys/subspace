@@ -418,14 +418,10 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub global_randomness: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
-    /// Salt
-    pub salt: Salt,
     /// Next global randomness
     pub next_global_randomness: Option<Randomness>,
     /// Next solution range
     pub next_solution_range: Option<SolutionRange>,
-    /// Next salt
-    pub next_salt: Option<Salt>,
     /// Records roots
     pub records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
     /// Enable solution range adjustment and Override solution range
@@ -448,10 +444,8 @@ where
     let mut maybe_seal = None;
     let mut maybe_global_randomness = None;
     let mut maybe_solution_range = None;
-    let mut maybe_salt = None;
     let mut maybe_next_global_randomness = None;
     let mut maybe_next_solution_range = None;
-    let mut maybe_next_salt = None;
     let mut records_roots = BTreeMap::new();
     let mut maybe_enable_and_override_solution_range = None;
     let mut maybe_root_plot_public_key_update = None;
@@ -504,14 +498,9 @@ where
                             maybe_solution_range.replace(solution_range);
                         }
                     },
-                    ConsensusLog::Salt(salt) => match maybe_salt {
-                        Some(_) => {
-                            return Err(Error::Duplicate(ErrorDigestType::Salt));
-                        }
-                        None => {
-                            maybe_salt.replace(salt);
-                        }
-                    },
+                    ConsensusLog::Salt(_salt) => {
+                        // Ignore for now
+                    }
                     ConsensusLog::NextGlobalRandomness(global_randomness) => {
                         match maybe_next_global_randomness {
                             Some(_) => {
@@ -534,14 +523,9 @@ where
                             }
                         }
                     }
-                    ConsensusLog::NextSalt(salt) => match maybe_next_salt {
-                        Some(_) => {
-                            return Err(Error::Duplicate(ErrorDigestType::NextSalt));
-                        }
-                        None => {
-                            maybe_next_salt.replace(salt);
-                        }
-                    },
+                    ConsensusLog::NextSalt(_salt) => {
+                        // Ignore for now
+                    }
                     ConsensusLog::RecordsRoot((segment_index, records_root)) => {
                         if let Entry::Vacant(entry) = records_roots.entry(segment_index) {
                             entry.insert(records_root);
@@ -610,10 +594,8 @@ where
             .ok_or(Error::Missing(ErrorDigestType::GlobalRandomness))?,
         solution_range: maybe_solution_range
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
-        salt: maybe_salt.ok_or(Error::Missing(ErrorDigestType::Salt))?,
         next_global_randomness: maybe_next_global_randomness,
         next_solution_range: maybe_next_solution_range,
-        next_salt: maybe_next_salt,
         records_roots,
         enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
         root_plot_public_key_update: maybe_root_plot_public_key_update,

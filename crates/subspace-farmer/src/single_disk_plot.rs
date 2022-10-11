@@ -697,6 +697,8 @@ impl SingleDiskPlot {
                                 // TODO: Last bits may not be encoded if record size is not multiple
                                 //  of `space_l`
                                 // Encode piece
+                                // TODO: Extract encoding into separate function reusable in
+                                //  farmer and otherwise
                                 piece[..farmer_protocol_info.record_size.get() as usize]
                                     .view_bits_mut::<Lsb0>()
                                     .chunks_mut(space_l.get() as usize)
@@ -898,6 +900,8 @@ impl SingleDiskPlot {
                                         }
                                     };
                                     // Decode piece
+                                    // TODO: Extract encoding into separate function reusable in
+                                    //  farmer and otherwise
                                     piece[..record_size]
                                         .view_bits_mut::<Lsb0>()
                                         .chunks_mut(space_l.get() as usize)

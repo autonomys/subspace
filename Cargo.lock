@@ -7573,6 +7573,7 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "frame-support",
  "parity-scale-codec",
  "rand 0.8.5",

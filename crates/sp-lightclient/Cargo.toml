@@ -29,6 +29,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-fe
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 
 [dev-dependencies]
+bitvec = "1.0.1"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}

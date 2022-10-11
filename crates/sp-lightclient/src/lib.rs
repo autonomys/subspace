@@ -33,7 +33,8 @@ use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
-use std::marker::PhantomData;
+use sp_std::marker::PhantomData;
+use sp_std::num::NonZeroU16;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
@@ -76,6 +77,9 @@ pub struct ChainConstants<Header: HeaderT> {
 
     /// Storage bound for the light client store.
     pub storage_bound: StorageBound<NumberOf<Header>>,
+
+    /// Space parameter for proof-of-replication in bits.
+    pub space_l: NonZeroU16,
 }
 
 /// Defines the storage bound for the light client store.
