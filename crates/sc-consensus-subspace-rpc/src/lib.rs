@@ -46,7 +46,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -222,6 +222,10 @@ where
                 total_pieces: runtime_api
                     .total_pieces(&best_block_id)?
                     .max(PIECES_IN_SEGMENT as u64),
+                // TODO: Fetch this from the runtime
+                space_l: NonZeroU16::new(20).expect("Not zero; qed"),
+                // TODO: Fetch this from the runtime
+                sector_expiration: 100,
             }
         };
 
