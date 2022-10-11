@@ -48,9 +48,6 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, Error>;
 
-    /// Acknowledge receiving of archived segments
-    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> Result<(), Error>;
-
     /// Get records roots for the segments
     async fn records_roots(
         &self,

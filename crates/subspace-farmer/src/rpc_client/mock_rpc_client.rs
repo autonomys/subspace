@@ -35,8 +35,6 @@ pub struct Inner {
     reward_signature_receiver: Arc<Mutex<mpsc::Receiver<RewardSignatureResponse>>>,
     archived_segments_sender: Mutex<Option<mpsc::Sender<ArchivedSegment>>>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
-    acknowledge_archived_segment_sender: mpsc::Sender<SegmentIndex>,
-    acknowledge_archived_segment_receiver: Arc<Mutex<mpsc::Receiver<SegmentIndex>>>,
 }
 
 impl MockRpcClient {
@@ -49,8 +47,6 @@ impl MockRpcClient {
         let (reward_signing_info_sender, reward_signing_info_receiver) = mpsc::channel(10);
         let (reward_signature_sender, reward_signature_receiver) = mpsc::channel(1);
         let (archived_segments_sender, archived_segments_receiver) = mpsc::channel(10);
-        let (acknowledge_archived_segment_sender, acknowledge_archived_segment_receiver) =
-            mpsc::channel(1);
 
         Self {
             inner: Arc::new(Inner {
@@ -66,10 +62,6 @@ impl MockRpcClient {
                 reward_signature_receiver: Arc::new(Mutex::new(reward_signature_receiver)),
                 archived_segments_sender: Mutex::new(Some(archived_segments_sender)),
                 archived_segments_receiver: Arc::new(Mutex::new(archived_segments_receiver)),
-                acknowledge_archived_segment_sender,
-                acknowledge_archived_segment_receiver: Arc::new(Mutex::new(
-                    acknowledge_archived_segment_receiver,
-                )),
             }),
         }
     }
@@ -113,17 +105,6 @@ impl MockRpcClient {
             .send(archived_segment)
             .await
             .unwrap();
-
-        // Receive one acknowledgement in the background
-        let acknowledge_archived_segment_receiver =
-            self.inner.acknowledge_archived_segment_receiver.clone();
-        tokio::spawn(async move {
-            acknowledge_archived_segment_receiver
-                .lock()
-                .await
-                .next()
-                .await;
-        });
     }
 
     pub(crate) async fn drop_archived_segment_sender(&self) {
@@ -222,19 +203,6 @@ impl RpcClient for MockRpcClient {
         });
 
         Ok(Box::pin(receiver))
-    }
-
-    async fn acknowledge_archived_segment(
-        &self,
-        segment_index: SegmentIndex,
-    ) -> Result<(), MockError> {
-        self.inner
-            .acknowledge_archived_segment_sender
-            .clone()
-            .send(segment_index)
-            .await
-            .unwrap();
-        Ok(())
     }
 
     async fn records_roots(

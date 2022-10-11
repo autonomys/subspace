@@ -110,13 +110,10 @@ pub(crate) async fn bench(
 
     let (mut slot_info_sender, slot_info_receiver) = mpsc::channel(1);
     let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(1);
-    let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
-        mpsc::channel(1);
     let client = BenchRpcClient::new(
         BENCH_FARMER_PROTOCOL_INFO,
         slot_info_receiver,
         archived_segments_receiver,
-        acknowledge_archived_segment_sender,
     );
 
     let mut farmer_protocol_info = client
@@ -247,11 +244,6 @@ pub(crate) async fn bench(
 
                 if let Err(error) = archived_segments_sender.send(archived_segment).await {
                     eprintln!("Failed to send archived segment: {}", error);
-                    break;
-                }
-
-                if acknowledge_archived_segment_receiver.next().await.is_none() {
-                    eprintln!("Failed to receive archiving acknowledgement");
                     break;
                 }
             }
