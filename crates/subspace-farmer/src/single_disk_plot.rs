@@ -30,8 +30,8 @@ use std::{fs, io, thread};
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
-    plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution,
-    PIECE_SIZE,
+    plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, SegmentIndex,
+    Solution, PIECE_SIZE,
 };
 use subspace_rpc_primitives::SolutionResponse;
 use subspace_solving::{derive_chunk_otp, SubspaceCodec};
@@ -85,7 +85,7 @@ pub enum SingleDiskPlotInfo {
         /// Multiple plots can reuse the same identity, but they have to use different ranges for
         /// sector indexes or else they'll essentially plot the same data and will not result in
         /// increased probability of winning the reward.
-        first_sector_index: u64,
+        first_sector_index: SectorIndex,
         /// How much space in bytes is allocated for this plot
         allocated_space: u64,
     },
@@ -98,7 +98,7 @@ impl SingleDiskPlotInfo {
         id: SingleDiskPlotId,
         genesis_hash: [u8; 32],
         public_key: PublicKey,
-        first_sector_index: u64,
+        first_sector_index: SectorIndex,
         allocated_space: u64,
     ) -> Self {
         Self::V0 {
@@ -160,7 +160,7 @@ impl SingleDiskPlotInfo {
     /// Multiple plots can reuse the same identity, but they have to use different ranges for
     /// sector indexes or else they'll essentially plot the same data and will not result in
     /// increased probability of winning the reward.
-    pub fn first_sector_index(&self) -> u64 {
+    pub fn first_sector_index(&self) -> SectorIndex {
         let Self::V0 {
             first_sector_index, ..
         } = self;

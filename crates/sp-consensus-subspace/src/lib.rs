@@ -144,10 +144,10 @@ where
     Hash: Encode,
     RewardAddress: Encode,
 {
-    /// Farmer public key in the solution.
-    pub fn public_key(&self) -> &FarmerPublicKey {
+    /// Solution contained within.
+    pub fn solution(&self) -> &Solution<FarmerPublicKey, RewardAddress> {
         let Self::V0 { solution, .. } = self;
-        &solution.public_key
+        solution
     }
 
     /// Hash of the vote, used for signing and verifying signature.
@@ -235,6 +235,11 @@ where
     // both headers must be targeting the same slot and it must
     // be the same as the one in the proof.
     if !(proof.slot == first_pre_digest.slot && proof.slot == second_pre_digest.slot) {
+        return false;
+    }
+
+    // both headers must have the same sector index
+    if first_pre_digest.solution.sector_index != second_pre_digest.solution.sector_index {
         return false;
     }
 

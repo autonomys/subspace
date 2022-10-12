@@ -572,6 +572,9 @@ impl RootBlock {
 /// Piece index in consensus
 pub type PieceIndex = u64;
 
+/// Sector index in consensus
+pub type SectorIndex = u64;
+
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -613,7 +616,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Address for receiving block reward
     pub reward_address: RewardAddress,
     /// Index of the sector where solution was found
-    pub sector_index: u64,
+    pub sector_index: SectorIndex,
     /// Number of pieces in archived history at time of sector creation
     pub total_pieces: PieceIndex,
     /// Pieces offset within sector
@@ -884,7 +887,7 @@ impl AsRef<[u8]> for SectorId {
 
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key: &PublicKey, sector_index: u64) -> Self {
+    pub fn new(public_key: &PublicKey, sector_index: SectorIndex) -> Self {
         Self(blake2b_256_hash_with_key(
             &sector_index.to_le_bytes(),
             public_key.as_ref(),

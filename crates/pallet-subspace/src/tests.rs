@@ -1210,6 +1210,7 @@ fn vote_equivocation_current_block_plus_vote() {
 
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            0,
             slot,
             reward_address,
         ));
@@ -1253,12 +1254,14 @@ fn vote_equivocation_parent_block_plus_vote() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Parent block author + slot matches that of the vote
+        // Parent block author + sector index + slot matches that of the vote
 
         let slot = Subspace::current_slot();
+        let sector_index = 0;
         let reward_address = 1;
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            sector_index,
             slot,
         ));
 
@@ -1330,6 +1333,7 @@ fn vote_equivocation_current_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1348,6 +1352,7 @@ fn vote_equivocation_current_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1355,7 +1360,7 @@ fn vote_equivocation_current_voters_duplicate() {
             map
         });
 
-        // Different vote for the same time slot leads to equivocation
+        // Different vote for the same sector index and time slot leads to equivocation
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
         assert_err!(
             Subspace::vote(Origin::none(), Box::new(signed_vote)),
@@ -1386,7 +1391,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Current block author + slot matches that of the vote
+        // Current block author + sector index + slot matches that of the vote
         let slot = Subspace::current_slot() + 1;
         let reward_address = 1;
 
@@ -1405,6 +1410,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1423,6 +1429,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1449,6 +1456,7 @@ fn enabling_block_rewards_works() {
     fn set_block_rewards() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+            0,
             Subspace::current_slot(),
             1,
         ));
@@ -1457,6 +1465,7 @@ fn enabling_block_rewards_works() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+                    0,
                     Subspace::current_slot(),
                 ),
                 (2, FarmerSignature::unchecked_from([0; 64])),
