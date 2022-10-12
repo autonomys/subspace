@@ -63,7 +63,7 @@ pub struct ReconstructedContents {
 }
 
 /// Reconstructor helps to retrieve blocks from archived pieces.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Reconstructor {
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)

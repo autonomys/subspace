@@ -12,6 +12,10 @@ include = [
     "/README.md",
 ]
 
+[lib]
+# Necessary for CLI options to work on benches
+bench = false
+
 [dependencies]
 # Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
 blake2-rfc = { version = "0.2.18", default-features = false }
