@@ -17,13 +17,13 @@ include = [
 blake2-rfc = { version = "0.2.18", default-features = false }
 merkle_light = { version = "0.4.0", default-features = false }
 parity-scale-codec = { version = "3.1.5", default-features = false, features = ["derive"] }
-reed-solomon-erasure = { version = "5.0.3", default-features = false }
+reed-solomon-erasure = { version = "6.0.0", default-features = false }
 serde = { version = "1.0.143", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 thiserror = { version = "1.0.32", optional = true }
 
 [dev-dependencies]
-criterion = "0.3.5"
+criterion = "0.4.0"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 
 [features]
