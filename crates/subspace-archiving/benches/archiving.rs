@@ -1,24 +1,24 @@
 #![feature(int_log)]
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use rand::{thread_rng, Rng};
 use subspace_archiving::archiver::Archiver;
+use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::RECORD_SIZE;
+use subspace_core_primitives::{PIECES_IN_SEGMENT, RECORD_SIZE};
 
-const PIECES_IN_SEGMENT: u32 = 256;
+// This is helpful for overriding locally for benching different parameters
 pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let input = vec![1u8; RECORDED_HISTORY_SEGMENT_SIZE.try_into().unwrap()];
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+    thread_rng().fill(input.as_mut_slice());
+    let kzg = Kzg::new(kzg::test_public_parameters());
+    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
-    c.bench_function("archiving-2-blocks", |b| {
+    c.bench_function("segment-archiving", |b| {
         b.iter(|| {
-            let mut archiver =
-                Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
-            for _ in 0..2 {
-                archiver.add_block(input.clone(), Default::default());
-            }
+            archiver.add_block(input.clone(), Default::default());
         })
     });
 }
