@@ -13,8 +13,8 @@ use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
-    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, QueryId,
-    QueryResult, Quorum,
+    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, PutRecordOk,
+    QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -39,6 +39,9 @@ enum QueryResultSender {
         sender: oneshot::Sender<Option<Vec<PeerId>>>,
     },
     Announce {
+        sender: oneshot::Sender<bool>,
+    },
+    PutValue {
         sender: oneshot::Sender<bool>,
     },
 }
@@ -586,6 +589,30 @@ where
                     }
                 }
             }
+            KademliaEvent::OutboundQueryCompleted {
+                id,
+                result: QueryResult::PutRecord(result),
+                ..
+            } => {
+                if let Some(QueryResultSender::PutValue { sender }) =
+                    self.query_id_receivers.remove(&id)
+                {
+                    match result {
+                        Ok(PutRecordOk { key, .. }) => {
+                            trace!("Put record query for {} succeeded", hex::encode(&key),);
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(true);
+                        }
+                        Err(error) => {
+                            debug!(?error, "Put record query failed.",);
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(false);
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -623,6 +650,39 @@ where
                         sender: result_sender,
                     },
                 );
+            }
+            Command::PutValue {
+                key,
+                value,
+                result_sender,
+            } => {
+                let local_peer_id = *self.swarm.local_peer_id();
+
+                let record = Record {
+                    key: key.into(),
+                    value,
+                    publisher: Some(local_peer_id),
+                    expires: None, //TODO: set expiration time
+                };
+                let query_result = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .put_record(record, Quorum::One); //TODO: add replication factor
+
+                match query_result {
+                    Ok(query_id) => {
+                        self.query_id_receivers.insert(
+                            query_id,
+                            QueryResultSender::PutValue {
+                                sender: result_sender,
+                            },
+                        );
+                    }
+                    Err(err) => {
+                        warn!(?err, "Failed to put value.");
+                    }
+                }
             }
             Command::Subscribe {
                 topic,
