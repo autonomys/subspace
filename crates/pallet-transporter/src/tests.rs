@@ -2,7 +2,7 @@ use crate::mock::{
     new_test_ext, AccountId, Balance, Balances, DomainId, Event, MockRuntime, Origin, SelfDomainId,
     SelfEndpointId, System, Transporter, USER_ACCOUNT,
 };
-use crate::{EndpointHandler, Error, Location, Nonce, Transfer, U256};
+use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::traits::Currency;
@@ -54,17 +54,12 @@ fn test_initiate_transfer() {
         System::assert_has_event(Event::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferInitiated {
                 domain_id: dst_domain_id,
-                nonce: U256::zero(),
+                message_id: 0,
             },
         ));
         assert_eq!(
-            Transporter::next_outgoing_transfer_nonce(dst_domain_id),
-            U256::one()
-        );
-        assert_eq!(
-            Transporter::outgoing_transfers(dst_domain_id, Nonce::zero()).unwrap(),
+            Transporter::outgoing_transfers(dst_domain_id, 0).unwrap(),
             Transfer {
-                nonce: Nonce::zero(),
                 amount: 500,
                 sender: Location {
                     domain_id: SelfDomainId::get(),
@@ -80,22 +75,12 @@ fn test_initiate_transfer() {
 }
 
 #[test]
-fn test_transfer_response_failed_to_decode() {
-    new_test_ext().execute_with(|| {
-        let dst_domain_id = 1;
-        let res = submit_response(dst_domain_id, vec![1, 3, 2, 5], Ok(vec![]));
-        assert_err!(res, Error::<MockRuntime>::InvalidPayload)
-    })
-}
-
-#[test]
 fn test_transfer_response_missing_request() {
     new_test_ext().execute_with(|| {
         let dst_domain_id: DomainId = 1;
         let amount: Balance = 500;
         let account: AccountId = 100;
         let encoded_payload = Transfer {
-            nonce: Nonce::zero(),
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
@@ -123,7 +108,7 @@ fn initiate_transfer(dst_domain_id: DomainId, account: AccountId, amount: Balanc
     System::assert_has_event(Event::Transporter(
         crate::Event::<MockRuntime>::OutgoingTransferInitiated {
             domain_id: dst_domain_id,
-            nonce: Nonce::zero(),
+            message_id: 0,
         },
     ));
 }
@@ -136,12 +121,26 @@ fn submit_response(
     let handler = EndpointHandler(PhantomData::<MockRuntime>::default());
     handler.message_response(
         dst_domain_id,
+        0,
         EndpointRequest {
             src_endpoint: Endpoint::Id(SelfEndpointId::get()),
             dst_endpoint: Endpoint::Id(SelfEndpointId::get()),
             payload: req_payload,
         },
         resp,
+    )
+}
+
+fn submit_transfer(src_domain_id: DomainId, req_payload: Vec<u8>) -> EndpointResponse {
+    let handler = EndpointHandler(PhantomData::<MockRuntime>::default());
+    handler.message(
+        src_domain_id,
+        0,
+        EndpointRequest {
+            src_endpoint: Endpoint::Id(SelfEndpointId::get()),
+            dst_endpoint: Endpoint::Id(SelfEndpointId::get()),
+            payload: req_payload,
+        },
     )
 }
 
@@ -153,9 +152,7 @@ fn test_transfer_response_invalid_request() {
         // transfer 500 to dst_domain id 100
         let dst_domain_id: DomainId = 1;
         initiate_transfer(dst_domain_id, account, amount);
-
         let encoded_payload = Transfer {
-            nonce: Nonce::zero(),
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
@@ -198,7 +195,6 @@ fn test_transfer_response_revert() {
 
         // submit response
         let encoded_payload = Transfer {
-            nonce: Nonce::zero(),
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
@@ -225,7 +221,7 @@ fn test_transfer_response_revert() {
         System::assert_has_event(Event::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferFailed {
                 domain_id: dst_domain_id,
-                nonce: Nonce::zero(),
+                message_id: 0,
                 err: Error::<MockRuntime>::InvalidPayload.into(),
             },
         ));
@@ -257,7 +253,6 @@ fn test_transfer_response_successful() {
 
         // submit response
         let encoded_payload = Transfer {
-            nonce: Nonce::zero(),
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
@@ -280,8 +275,45 @@ fn test_transfer_response_successful() {
         System::assert_has_event(Event::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferSuccessful {
                 domain_id: dst_domain_id,
-                nonce: Nonce::zero(),
+                message_id: 0,
             },
         ));
+    })
+}
+
+#[test]
+fn test_receive_incoming_transfer() {
+    new_test_ext().execute_with(|| {
+        let receiver = 2;
+        // transfer 500
+        let amount: Balance = 500;
+        let src_domain_id: DomainId = 1;
+
+        // check pre dispatch balances
+        let balance = <Balances as Currency<AccountId>>::free_balance(&receiver);
+        assert_eq!(balance, 0);
+        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        assert_eq!(total_balance, 1000);
+
+        let resp = submit_transfer(
+            1,
+            Transfer {
+                amount,
+                sender: Location {
+                    domain_id: src_domain_id,
+                    account_id: 0,
+                },
+                receiver: Location {
+                    domain_id: src_domain_id,
+                    account_id: receiver,
+                },
+            }
+            .encode(),
+        );
+        assert_ok!(resp);
+        let balance = <Balances as Currency<AccountId>>::free_balance(&receiver);
+        assert_eq!(balance, 500);
+        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        assert_eq!(total_balance, 1500);
     })
 }

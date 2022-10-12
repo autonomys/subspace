@@ -1,5 +1,7 @@
 use codec::{Decode, Encode};
+use frame_support::Parameter;
 use scale_info::TypeInfo;
+use sp_runtime::traits::Member;
 use sp_runtime::{DispatchError, DispatchResult};
 
 /// Represents a particular endpoint in a given Execution environment.
@@ -29,21 +31,32 @@ pub type EndpointResponse = Result<EndpointPayload, DispatchError>;
 
 /// Sender provides abstraction on sending messages to other domains.
 pub trait Sender<DomainId> {
-    /// sends a message to dst_domain_id.
-    fn send_message(dst_domain_id: DomainId, req: EndpointRequest) -> DispatchResult;
+    /// Unique Id of the message between dst_domain and src_domain.
+    type MessageId: Parameter + Member + Copy;
+    /// Sends a message to dst_domain_id.
+    fn send_message(
+        dst_domain_id: DomainId,
+        req: EndpointRequest,
+    ) -> Result<Self::MessageId, DispatchError>;
 }
 
 /// Handler to
 ///  - handle message request from other domains.
 ///  - handle requested message responses from other domains.
-pub trait EndpointHandler<DomainId> {
+pub trait EndpointHandler<DomainId, MessageId> {
     /// Triggered by pallet-messenger when a new inbox message is received and bound for this handler.
-    fn message(&self, src_domain_id: DomainId, req: EndpointRequest) -> EndpointResponse;
+    fn message(
+        &self,
+        src_domain_id: DomainId,
+        message_id: MessageId,
+        req: EndpointRequest,
+    ) -> EndpointResponse;
 
     /// Triggered by pallet-messenger when a response for a request is received from dst_domain_id.
     fn message_response(
         &self,
         dst_domain_id: DomainId,
+        message_id: MessageId,
         req: EndpointRequest,
         resp: EndpointResponse,
     ) -> DispatchResult;

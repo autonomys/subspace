@@ -7,7 +7,7 @@ use sp_core::H256;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
-use sp_runtime::DispatchResult;
+use sp_runtime::DispatchError;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<MockRuntime>;
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
@@ -78,8 +78,13 @@ parameter_types! {
 #[derive(Debug)]
 pub struct MockMessenger {}
 impl Sender<DomainId> for MockMessenger {
-    fn send_message(_dst_domain_id: DomainId, _req: EndpointRequest) -> DispatchResult {
-        Ok(())
+    type MessageId = u64;
+
+    fn send_message(
+        _dst_domain_id: DomainId,
+        _req: EndpointRequest,
+    ) -> Result<Self::MessageId, DispatchError> {
+        Ok(0)
     }
 }
 

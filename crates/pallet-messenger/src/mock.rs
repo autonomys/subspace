@@ -14,7 +14,7 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{mock_system_domain_tracker, DomainId, TestExternalities, MockEndpoint};
+        use crate::mock::{mock_system_domain_tracker, DomainId, TestExternalities, MockEndpoint, MessageId};
         use frame_support::parameter_types;
         use sp_core::H256;
         use sp_runtime::testing::Header;
@@ -83,7 +83,7 @@ macro_rules! impl_runtime {
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
                 _endpoint: &Endpoint,
-            ) -> Option<Box<dyn EndpointHandler<Self::DomainId>>>{
+            ) -> Option<Box<dyn EndpointHandler<Self::DomainId, MessageId>>>{
                 Some(Box::new(MockEndpoint{}))
             }
         }
@@ -100,9 +100,16 @@ macro_rules! impl_runtime {
     };
 }
 
+pub(crate) type MessageId = (ChannelId, Nonce);
+
 pub struct MockEndpoint {}
-impl EndpointHandler<DomainId> for MockEndpoint {
-    fn message(&self, _src_domain_id: DomainId, req: EndpointRequest) -> EndpointResponse {
+impl EndpointHandler<DomainId, MessageId> for MockEndpoint {
+    fn message(
+        &self,
+        _src_domain_id: DomainId,
+        _message_id: MessageId,
+        req: EndpointRequest,
+    ) -> EndpointResponse {
         let req = req.payload;
         assert_eq!(req, vec![1, 2, 3, 4]);
         Ok(vec![5, 6, 7, 8])
@@ -111,6 +118,7 @@ impl EndpointHandler<DomainId> for MockEndpoint {
     fn message_response(
         &self,
         _dst_domain_id: DomainId,
+        _message_id: MessageId,
         _req: EndpointRequest,
         resp: EndpointResponse,
     ) -> DispatchResult {

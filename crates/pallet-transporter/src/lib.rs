@@ -23,15 +23,11 @@ use codec::{Decode, Encode};
 use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
-use sp_core::U256;
 
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
-
-/// Nonce used as strictly increasing unique id for a transfer between two domains.
-pub type Nonce = U256;
 
 /// Location that either sends or receives transfers between domains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -45,8 +41,6 @@ pub struct Location<DomainId, AccountId> {
 /// Transfer of funds from one domain to another.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Transfer<DomainId, AccountId, Balance> {
-    /// Unique nonce of this transfer between sender and receiver.
-    pub nonce: Nonce,
     /// Amount being transferred between entities.
     pub amount: Balance,
     /// Sender location of the transfer.
@@ -59,9 +53,12 @@ pub struct Transfer<DomainId, AccountId, Balance> {
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+type MessageIdOf<T> =
+    <<T as Config>::Sender as sp_messenger::endpoint::Sender<<T as Config>::DomainId>>::MessageId;
+
 #[frame_support::pallet]
 mod pallet {
-    use crate::{BalanceOf, Location, Nonce, Transfer};
+    use crate::{BalanceOf, Location, MessageIdOf, Transfer};
     use codec::{Decode, Encode};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
@@ -70,7 +67,6 @@ mod pallet {
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
     };
-    use sp_runtime::ArithmeticError;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -99,12 +95,6 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Stores the next outgoing transfer nonce.
-    #[pallet::storage]
-    #[pallet::getter(fn next_outgoing_transfer_nonce)]
-    pub(super) type NextOutgoingTransferNonce<T: Config> =
-        StorageMap<_, Identity, T::DomainId, Nonce, ValueQuery>;
-
     /// All the outgoing transfers on this execution environment.
     #[pallet::storage]
     #[pallet::getter(fn outgoing_transfers)]
@@ -113,26 +103,7 @@ mod pallet {
         Identity,
         T::DomainId,
         Identity,
-        Nonce,
-        Transfer<T::DomainId, T::AccountId, BalanceOf<T>>,
-        OptionQuery,
-    >;
-
-    /// Stores the next incoming transfer nonce.
-    #[pallet::storage]
-    #[pallet::getter(fn next_incoming_transfer_nonce)]
-    pub(super) type NextIncomingTransferNonce<T: Config> =
-        StorageMap<_, Identity, T::DomainId, Nonce, ValueQuery>;
-
-    /// All the incoming transfers on this execution environment.
-    #[pallet::storage]
-    #[pallet::getter(fn incoming_transfers)]
-    pub(super) type IncomingTransfers<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        T::DomainId,
-        Identity,
-        Nonce,
+        MessageIdOf<T>,
         Transfer<T::DomainId, T::AccountId, BalanceOf<T>>,
         OptionQuery,
     >;
@@ -145,16 +116,16 @@ mod pallet {
         OutgoingTransferInitiated {
             /// Destination domain the transfer is bound to.
             domain_id: T::DomainId,
-            /// Nonce of the transfer.
-            nonce: Nonce,
+            /// Id of the transfer.
+            message_id: MessageIdOf<T>,
         },
 
         /// Emits when a given outgoing transfer was failed on dst_domain.
         OutgoingTransferFailed {
             /// Destination domain the transfer is bound to.
             domain_id: T::DomainId,
-            /// Nonce of the transfer.
-            nonce: Nonce,
+            /// Id of the transfer.
+            message_id: MessageIdOf<T>,
             /// Error from dst_domain endpoint.
             err: DispatchError,
         },
@@ -163,8 +134,16 @@ mod pallet {
         OutgoingTransferSuccessful {
             /// Destination domain the transfer is bound to.
             domain_id: T::DomainId,
-            /// Nonce of the transfer.
-            nonce: Nonce,
+            /// Id of the transfer.
+            message_id: MessageIdOf<T>,
+        },
+
+        /// Emits when a given outgoing transfer was successful.
+        IncomingTransferSuccessful {
+            /// Source domain the transfer is coming from.
+            domain_id: T::DomainId,
+            /// Id of the transfer.
+            message_id: MessageIdOf<T>,
         },
     }
 
@@ -179,6 +158,8 @@ mod pallet {
         MissingTransferRequest,
         /// Emits when the request doesn't match the expected one..
         InvalidTransferRequest,
+        /// Emits when the incoming message is not bound to this domain.
+        UnexpectedMessage,
     }
 
     #[pallet::call]
@@ -204,13 +185,7 @@ mod pallet {
 
             // initiate transfer
             let dst_domain_id = dst_location.domain_id;
-            let nonce = NextOutgoingTransferNonce::<T>::get(dst_domain_id);
-            let next_nonce = nonce
-                .checked_add(Nonce::one())
-                .ok_or(ArithmeticError::Overflow)?;
-
             let transfer = Transfer {
-                nonce,
                 amount,
                 sender: Location {
                     domain_id: T::SelfDomainId::get(),
@@ -220,20 +195,20 @@ mod pallet {
             };
 
             // send message
-            T::Sender::send_message(
+            let message_id = T::Sender::send_message(
                 dst_domain_id,
                 EndpointRequest {
-                    src_endpoint: Endpoint::Id(0),
-                    dst_endpoint: Endpoint::Id(0),
+                    src_endpoint: Endpoint::Id(T::SelfEndpointId::get()),
+                    // destination endpoint must be transporter with same id
+                    dst_endpoint: Endpoint::Id(T::SelfEndpointId::get()),
                     payload: transfer.encode(),
                 },
             )?;
 
-            OutgoingTransfers::<T>::insert(dst_domain_id, nonce, transfer);
-            NextOutgoingTransferNonce::<T>::insert(dst_domain_id, next_nonce);
+            OutgoingTransfers::<T>::insert(dst_domain_id, message_id, transfer);
             Self::deposit_event(Event::<T>::OutgoingTransferInitiated {
                 domain_id: dst_domain_id,
-                nonce,
+                message_id,
             });
             Ok(())
         }
@@ -243,26 +218,52 @@ mod pallet {
     #[derive(Debug)]
     pub struct EndpointHandler<T>(pub PhantomData<T>);
 
-    impl<T: Config> EndpointHandlerT<T::DomainId> for EndpointHandler<T> {
-        fn message(&self, _src_domain_id: T::DomainId, _req: EndpointRequest) -> EndpointResponse {
-            todo!()
+    impl<T: Config> EndpointHandlerT<T::DomainId, MessageIdOf<T>> for EndpointHandler<T> {
+        fn message(
+            &self,
+            src_domain_id: T::DomainId,
+            message_id: MessageIdOf<T>,
+            req: EndpointRequest,
+        ) -> EndpointResponse {
+            //TODO(ved): check if we allow messages from src_domain
+
+            // check the endpoint id
+            ensure!(
+                req.dst_endpoint == Endpoint::Id(T::SelfEndpointId::get()),
+                Error::<T>::UnexpectedMessage
+            );
+
+            // decode payload and process message
+            let req = match Transfer::<T::DomainId, _, _>::decode(&mut req.payload.as_slice()) {
+                Ok(req) => req,
+                Err(_) => return Err(Error::<T>::InvalidPayload.into()),
+            };
+
+            // mint the funds to dst_account
+            T::Currency::deposit_creating(&req.receiver.account_id, req.amount);
+            frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::Event>::into(
+                Event::<T>::IncomingTransferSuccessful {
+                    domain_id: src_domain_id,
+                    message_id,
+                },
+            ));
+            Ok(vec![])
         }
 
         fn message_response(
             &self,
             dst_domain_id: T::DomainId,
+            message_id: MessageIdOf<T>,
             req: EndpointRequest,
             resp: EndpointResponse,
         ) -> DispatchResult {
             // ensure request is valid
-            let encoded_transfer = req.payload;
-            let req_transfer = Transfer::<T::DomainId, T::AccountId, BalanceOf<T>>::decode(
-                &mut encoded_transfer.as_slice(),
-            )
-            .map_err(|_| Error::<T>::InvalidPayload)?;
-            let transfer = OutgoingTransfers::<T>::take(dst_domain_id, req_transfer.nonce)
+            let transfer = OutgoingTransfers::<T>::take(dst_domain_id, message_id)
                 .ok_or(Error::<T>::MissingTransferRequest)?;
-            ensure!(req_transfer == transfer, Error::<T>::InvalidTransferRequest);
+            ensure!(
+                req.payload == transfer.encode(),
+                Error::<T>::InvalidTransferRequest
+            );
 
             // process response
             match resp {
@@ -271,7 +272,7 @@ mod pallet {
                     frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::Event>::into(
                         Event::<T>::OutgoingTransferSuccessful {
                             domain_id: dst_domain_id,
-                            nonce: transfer.nonce,
+                            message_id,
                         },
                     ));
                 }
@@ -282,7 +283,7 @@ mod pallet {
                     frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::Event>::into(
                         Event::<T>::OutgoingTransferFailed {
                             domain_id: dst_domain_id,
-                            nonce: transfer.nonce,
+                            message_id,
                             err,
                         },
                     ));
