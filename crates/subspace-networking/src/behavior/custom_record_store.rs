@@ -3,8 +3,11 @@ use libp2p::kad::store::{Error, RecordStore};
 use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::multihash::Multihash;
 use libp2p::PeerId;
-use std::borrow::Cow;
+use parity_db::{Db, Options};
+use serde::{Deserialize, Serialize};
+use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::vec;
 use tracing::{debug, trace};
@@ -182,7 +185,7 @@ impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
         Err(Error::MaxRecords)
     }
 
-    fn remove(&'a mut self, _key: &Key) {
+    fn remove(&'a mut self, _: &Key) {
         // Nothing to remove
     }
 
@@ -245,11 +248,140 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     }
 
     fn remove(&'a mut self, key: &Key) {
-        trace!(?key, "Record removed.");
-
         debug!(?key, "Detected an attempt to remove a record.");
     }
 
+    fn records(&'a self) -> Self::RecordsIter {
+        Vec::new().into_iter()
+    }
+}
+
+#[derive(Clone)]
+pub struct ParityDbRecordStorage {
+    // Parity DB instance
+    db: Arc<Db>,
+    // Column ID to persist parameters
+    column_id: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ParityDbRecord {
+    /// Key of the record.
+    pub key: Key,
+    /// Value of the record.
+    pub value: Vec<u8>,
+    /// The (original) publisher of the record.
+    pub publisher: Option<PeerId>,
+    // TODO: add expiration field and convert Instant to serializable time-type
+    // /// The expiration time as measured by a local, monotonic clock.
+    // pub expires: Option<Instant>,
+}
+
+impl From<Record> for ParityDbRecord {
+    fn from(rec: Record) -> Self {
+        Self {
+            key: rec.key,
+            value: rec.value,
+            publisher: rec.publisher,
+        }
+    }
+}
+
+impl From<ParityDbRecord> for Record {
+    fn from(rec: ParityDbRecord) -> Self {
+        Self {
+            key: rec.key,
+            value: rec.value,
+            publisher: rec.publisher,
+            expires: None,
+        }
+    }
+}
+
+impl ParityDbRecordStorage {
+    pub fn new(path: &Path) -> Result<Self, parity_db::Error> {
+        let mut options = Options::with_columns(path, 1);
+        // We don't use stats
+        options.stats = false;
+
+        let db = Db::open_or_create(&options)?;
+        let column_id = 0u8;
+
+        Ok(Self {
+            db: Arc::new(db),
+            column_id,
+        })
+    }
+}
+
+impl ParityDbRecordStorage {
+    fn save_data(&mut self, key: &Key, data: Option<Vec<u8>>) -> bool {
+        let key: &[u8] = key.borrow();
+
+        let tx = vec![(self.column_id, key, data)];
+
+        let result = self.db.commit(tx);
+        if let Err(ref err) = result {
+            debug!(?key, ?err, "DB saving error.");
+        }
+
+        result.is_ok()
+    }
+}
+
+impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
+    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
+
+    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+        let result = self.db.get(self.column_id, key.borrow());
+
+        match result {
+            Ok(data) => {
+                if let Some(data) = data {
+                    let db_rec_result = serde_json::from_slice::<ParityDbRecord>(&data);
+
+                    match db_rec_result {
+                        Ok(db_rec) => {
+                            trace!(?key, "Record loaded successfully from DB");
+
+                            Some(Cow::Owned(db_rec.into()))
+                        }
+                        Err(err) => {
+                            debug!(?key, ?err, "Parity DB record deserialization error");
+
+                            None
+                        }
+                    }
+                } else {
+                    trace!(?key, "No Parity DB record for given key");
+
+                    None
+                }
+            }
+            Err(err) => {
+                debug!(?key, ?err, "Parity DB record storage error");
+
+                None
+            }
+        }
+    }
+
+    fn put(&'a mut self, record: Record) -> store::Result<()> {
+        debug!("Saving a new record to DB: {:?}", record);
+
+        let db_rec: ParityDbRecord = record.clone().into();
+        let data = serde_json::to_vec(&db_rec).expect("We don't expect an error here.");
+
+        self.save_data(&record.key, Some(data));
+
+        Ok(())
+    }
+
+    fn remove(&'a mut self, key: &Key) {
+        self.save_data(key, None);
+    }
+
+    // TODO: add BTree iterator
     fn records(&'a self) -> Self::RecordsIter {
         Vec::new().into_iter()
     }
