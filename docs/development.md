@@ -33,9 +33,6 @@ This is a monorepo with multiple binaries and the workflow is typical for Rust p
 - `cargo run --release --bin subspace-node -- --dev --tmp` to run [a node](/crates/subspace-node)
 - `cargo run --release --bin subspace-farmer farm --reward-address REWARD-ADDRESS --plot-size PLOT-SIZE` to [start farming](/crates/subspace-farmer)
 
-If you want to enable GPU support, replace the farmer command above with the below
-- `cargo run --features=opencl --release --bin subspace-farmer farm --reward-address REWARD-ADDRESS --plot-size PLOT-SIZE`
-
 NOTE 1: You need to have `nightly` version of Rust toolchain with `wasm32-unknown-unknown` target available or else you'll get a compilation error.
 NOTE 2: Following the commands above, you will be farming in an offline setting (by yourself).
 NOTE 3: To farm in online setting, you can modify the command accordingly.

@@ -3,7 +3,6 @@ use crate::identity::Identity;
 use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
-use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::utils::JoinOnDrop;
 use bitvec::prelude::*;
 use bytesize::ByteSize;
@@ -26,7 +25,8 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
-use std::{fs, io, thread};
+use std::{fmt, fs, io, thread};
+use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
@@ -34,7 +34,7 @@ use subspace_core_primitives::{
     Solution, PIECE_SIZE,
 };
 use subspace_rpc_primitives::SolutionResponse;
-use subspace_solving::{derive_chunk_otp, SubspaceCodec};
+use subspace_solving::derive_chunk_otp;
 use subspace_verification::is_within_solution_range;
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -47,6 +47,35 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
+
+/// Semaphore that limits disk access concurrency in strategic places to the number specified during
+/// initialization
+#[derive(Clone)]
+pub struct SingleDiskSemaphore {
+    inner: Arc<Semaphore>,
+}
+
+impl fmt::Debug for SingleDiskSemaphore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SingleDiskSemaphore").finish()
+    }
+}
+
+impl SingleDiskSemaphore {
+    /// Create new semaphore for limiting concurrency of the major processes working with the same
+    /// disk
+    pub fn new(concurrency: NonZeroU16) -> Self {
+        Self {
+            inner: Arc::new(Semaphore::new(concurrency.get() as isize)),
+        }
+    }
+
+    /// Acquire access, will block current thread until previously acquired guards are dropped and
+    /// access is released
+    pub fn acquire(&self) -> SemaphoreGuard<'_> {
+        self.inner.access()
+    }
+}
 
 /// An identifier for single disk plot, can be used for in logs, thread names, etc.
 #[derive(
@@ -566,9 +595,6 @@ impl SingleDiskPlot {
 
         let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
 
-        // TODO: Use this or remove
-        let _codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
-
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
@@ -1012,5 +1038,45 @@ impl SingleDiskPlot {
         }
 
         Ok(())
+    }
+
+    /// Wipe everything that belongs to this single disk plot
+    pub fn wipe(directory: &Path) -> io::Result<()> {
+        let single_disk_plot_info_path = directory.join(SingleDiskPlotInfo::FILE_NAME);
+        let single_disk_plot_info = SingleDiskPlotInfo::load_from(directory)?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "Single disk plot info not found at {}",
+                    single_disk_plot_info_path.display()
+                ),
+            )
+        })?;
+
+        info!("Found single disk plot {}", single_disk_plot_info.id());
+
+        {
+            let plot = directory.join(Self::PLOT_FILE);
+            info!("Deleting plot file at {}", plot.display());
+            fs::remove_file(plot)?;
+        }
+        {
+            let metadata = directory.join(Self::METADATA_FILE);
+            info!("Deleting metadata file at {}", metadata.display());
+            fs::remove_file(metadata)?;
+        }
+        // TODO: Identity should be able to wipe itself instead of assuming a specific file name
+        //  here
+        {
+            let identity = directory.join("identity.bin");
+            info!("Deleting identity file at {}", identity.display());
+            fs::remove_file(identity)?;
+        }
+
+        info!(
+            "Deleting info file at {}",
+            single_disk_plot_info_path.display()
+        );
+        fs::remove_file(single_disk_plot_info_path)
     }
 }

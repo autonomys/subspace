@@ -53,39 +53,3 @@ impl Deref for JoinOnDrop {
         self.0.as_ref().expect("Only dropped in Drop impl; qed")
     }
 }
-
-pub(crate) struct CallOnDrop<F>(Option<F>)
-where
-    F: FnOnce() + Send + 'static;
-
-impl<F> Drop for CallOnDrop<F>
-where
-    F: FnOnce() + Send + 'static,
-{
-    fn drop(&mut self) {
-        let callback = self.0.take().expect("Only removed on drop; qed");
-        callback();
-    }
-}
-
-impl<F> CallOnDrop<F>
-where
-    F: FnOnce() + Send + 'static,
-{
-    pub(crate) fn new(callback: F) -> Self {
-        Self(Some(callback))
-    }
-}
-
-pub(crate) fn get_plot_sizes(usable_space: u64, max_plot_size: u64) -> Vec<u64> {
-    let plot_sizes = std::iter::repeat(max_plot_size).take((usable_space / max_plot_size) as usize);
-    // TODO: Remove restriction for >50% of max plot size for last plot once it no longer causes
-    //  performance issues
-    if usable_space / max_plot_size == 0 || usable_space % max_plot_size > max_plot_size / 2 {
-        plot_sizes
-            .chain(std::iter::once(usable_space % max_plot_size))
-            .collect::<Vec<_>>()
-    } else {
-        plot_sizes.collect()
-    }
-}

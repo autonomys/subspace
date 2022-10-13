@@ -1,6 +1,4 @@
 pub mod bench_rpc_client;
-#[cfg(test)]
-pub mod mock_rpc_client;
 pub(crate) mod node_rpc_client;
 
 use async_trait::async_trait;
