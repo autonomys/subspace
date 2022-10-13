@@ -26,8 +26,10 @@ pub use codec::{BatchEncodeError, SubspaceCodec};
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
+use subspace_core_primitives::crypto::kzg::Witness;
+use subspace_core_primitives::crypto::{blake2b_256_hash_list, blake2b_256_hash_with_key};
 use subspace_core_primitives::{
-    crypto, Blake2b256Hash, LocalChallenge, Piece, Randomness, Salt, Tag, TagSignature, TAG_SIZE,
+    Blake2b256Hash, LocalChallenge, Piece, Randomness, Salt, SectorId, Tag, TagSignature, TAG_SIZE,
 };
 
 const LOCAL_CHALLENGE_LABEL: &[u8] = b"subspace_local_challenge";
@@ -45,7 +47,7 @@ pub fn is_tag_valid(piece: &Piece, salt: Salt, tag: Tag) -> bool {
 
 /// Create a commitment tag of a piece for a particular salt.
 pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
-    crypto::blake2b_256_hash_with_key(piece, &salt)[..TAG_SIZE]
+    blake2b_256_hash_with_key(piece, &salt)[..TAG_SIZE]
         .try_into()
         .expect("Slice is always of correct size; qed")
 }
@@ -53,7 +55,7 @@ pub fn create_tag(piece: &[u8], salt: Salt) -> Tag {
 // TODO: Separate type for global challenge
 /// Derive global slot challenge from global randomness.
 pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Blake2b256Hash {
-    crypto::blake2b_256_hash_pair(global_randomness, &slot.to_le_bytes())
+    blake2b_256_hash_list(&[global_randomness, &slot.to_le_bytes()])
 }
 
 fn create_local_challenge_transcript(global_challenge: &Blake2b256Hash) -> Transcript {
@@ -153,4 +155,23 @@ pub fn verify_tag_signature(
             &VRFProof::from_bytes(&tag_signature.proof)?,
         )
         .map(|(in_out, _)| in_out)
+}
+
+// TODO: This is temporary and correct V2 spec will use Chia PoS primitive instead
+/// Derive one-time pad for piece chunk encoding/decoding. One-time pad is big enough for any
+/// reasonable size of `space_l`, but doesn't have to be used fully.
+pub fn derive_chunk_otp(
+    sector_id: &SectorId,
+    piece_witness: &Witness,
+    chunk_index: u32,
+) -> [u8; 8] {
+    let hash = blake2b_256_hash_list(&[
+        sector_id.as_ref(),
+        &piece_witness.to_bytes(),
+        &chunk_index.to_le_bytes(),
+    ]);
+
+    [
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+    ]
 }

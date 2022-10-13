@@ -45,11 +45,12 @@ pub fn blake2b_256_hash_with_key(data: &[u8], key: &[u8]) -> Blake2b256Hash {
         .expect("Initialized with correct length; qed")
 }
 
-/// BLAKE2b-256 hashing of a pair of values.
-pub fn blake2b_256_hash_pair(a: &[u8], b: &[u8]) -> Blake2b256Hash {
+/// BLAKE2b-256 hashing of a list of values.
+pub fn blake2b_256_hash_list(data: &[&[u8]]) -> Blake2b256Hash {
     let mut state = Blake2b::new(BLAKE2B_256_HASH_SIZE);
-    state.update(a);
-    state.update(b);
+    for d in data {
+        state.update(d);
+    }
     state
         .finalize()
         .as_bytes()

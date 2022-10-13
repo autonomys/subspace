@@ -64,6 +64,8 @@ async fn plotting_happy_path() {
         recorded_history_segment_size: SEGMENT_SIZE,
         max_plot_size: u64::MAX,
         total_pieces: 0,
+        space_l: NonZeroU16::new(20).unwrap(),
+        sector_expiration: 100,
     };
 
     client.send_farmer_protocol_info(farmer_protocol_info).await;
@@ -170,6 +172,8 @@ async fn plotting_piece_eviction() {
         recorded_history_segment_size: SEGMENT_SIZE as u32,
         max_plot_size: u64::MAX,
         total_pieces: 0,
+        space_l: NonZeroU16::new(20).unwrap(),
+        sector_expiration: 100,
     };
 
     client.send_farmer_protocol_info(farmer_protocol_info).await;

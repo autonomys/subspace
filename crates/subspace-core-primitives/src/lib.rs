@@ -29,11 +29,15 @@ pub mod objects;
 extern crate alloc;
 
 use crate::crypto::kzg::Commitment;
+use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
+use bitvec::prelude::*;
 use core::convert::AsRef;
+use core::fmt;
+use core::num::NonZeroU16;
 use core::ops::{Deref, DerefMut};
-use derive_more::{Add, Display, Div, Mul, Sub};
+use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -136,6 +140,12 @@ const VRF_PROOF_LENGTH: usize = 64;
 pub struct PublicKey(
     #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; PUBLIC_KEY_LENGTH],
 );
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(&self.0))
+    }
+}
 
 impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
     fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
@@ -378,6 +388,49 @@ impl AsMut<[u8]> for FlatPieces {
     }
 }
 
+/// Chunk within farmer's sector
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Chunk(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 8]);
+
+impl From<&BitSlice<u8, Lsb0>> for Chunk {
+    /// PANICS: Panics if bitslice provided is bigger than 64-bits long
+    fn from(bitslice: &BitSlice<u8, Lsb0>) -> Self {
+        if bitslice.len() as u64 > u64::from(u64::BITS) {
+            panic!("Can't create chunk from more than {} bits", u64::BITS);
+        }
+
+        let mut bytes = 0u64.to_le_bytes();
+
+        bytes
+            .view_bits_mut::<Lsb0>()
+            .iter_mut()
+            .zip(bitslice)
+            .for_each(|(mut expanded, source)| {
+                *expanded = *source;
+            });
+
+        Self(bytes)
+    }
+}
+
+impl AsRef<[u8]> for Chunk {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Chunk {
+    /// Expand chunk to be the same size as solution range for further comparison
+    pub fn expand(&self, local_challenge: SolutionRange) -> SolutionRange {
+        let hash = blake2b_256_hash_with_key(&local_challenge.to_le_bytes(), &self.0);
+
+        SolutionRange::from_le_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ])
+    }
+}
+
 /// Progress of an archived block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -469,7 +522,7 @@ pub enum RootBlock {
 impl RootBlock {
     /// Hash of the whole root block
     pub fn hash(&self) -> Blake2b256Hash {
-        crypto::blake2b_256_hash(&self.encode())
+        blake2b_256_hash(&self.encode())
     }
 
     /// Segment index
@@ -536,7 +589,7 @@ impl AsRef<[u8]> for PieceIndexHash {
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(crypto::blake2b_256_hash(&index.to_le_bytes()))
+        Self(blake2b_256_hash(&index.to_le_bytes()))
     }
 }
 
@@ -636,7 +689,9 @@ mod private_u256 {
 }
 
 /// 256-bit unsigned integer
-#[derive(Debug, Display, Add, Sub, Mul, Div, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(
+    Debug, Display, Add, Sub, Mul, Div, Rem, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash,
+)]
 pub struct U256(private_u256::U256);
 
 impl U256 {
@@ -790,4 +845,76 @@ impl From<U256> for PieceIndexHash {
     fn from(number: U256) -> Self {
         Self(number.to_be_bytes())
     }
+}
+
+impl TryFrom<U256> for u64 {
+    type Error = &'static str;
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        Self::try_from(value.0)
+    }
+}
+
+/// Data structure representing sector ID in farmer's plot
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
+
+impl AsRef<[u8]> for SectorId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl SectorId {
+    /// Create new sector ID by deriving it from public key and sector index
+    pub fn new(public_key: &PublicKey, sector_index: u64) -> Self {
+        Self(blake2b_256_hash_with_key(
+            &sector_index.to_le_bytes(),
+            public_key.as_ref(),
+        ))
+    }
+
+    /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
+    /// of blockchain_history is `total_pieces`
+    pub fn derive_piece_index(
+        &self,
+        piece_offset: PieceIndex,
+        total_pieces: PieceIndex,
+    ) -> PieceIndex {
+        let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
+            &piece_offset.to_le_bytes(),
+            &self.0,
+        )) % U256::from(total_pieces);
+
+        piece_index
+            .try_into()
+            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+    }
+
+    /// Derive local challenge for this sector from provided global challenge
+    pub fn derive_local_challenge(&self, global_challenge: &Blake2b256Hash) -> SolutionRange {
+        let hash = blake2b_256_hash_with_key(global_challenge, &self.0);
+
+        SolutionRange::from_be_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ])
+    }
+}
+
+/// Size of a plotted sector on disk
+///
+/// Depends on `space_l` (specified in bits).
+///
+/// PANICS: Panics if `space_l` is smaller than `3`
+pub fn plot_sector_size(space_l: NonZeroU16) -> u64 {
+    let plot_sector_size_bits = u64::from(space_l.get())
+        .checked_mul(2u64.pow(u32::from(space_l.get())))
+        .expect("u16 is not big enough to cause overflow here; qed");
+
+    // When `space_l` is at least `3` it is guaranteed that we can divide above by `8` (2^3) without
+    // remainder
+    plot_sector_size_bits
+        .checked_div(u64::from(u8::BITS))
+        .expect("`space_l` must be 3 or more")
 }

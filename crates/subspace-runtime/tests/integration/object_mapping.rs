@@ -183,7 +183,7 @@ fn get_successful_calls(block: Block) -> Vec<Hash> {
 }
 
 fn key(feed_id: u64, data: &[u8]) -> Blake2b256Hash {
-    crypto::blake2b_256_hash_pair(&feed_id.encode(), data)
+    crypto::blake2b_256_hash_list(&[&feed_id.encode(), data])
 }
 
 #[test]

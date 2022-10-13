@@ -132,12 +132,23 @@ where
     Ok(())
 }
 
+// TODO: Delete this when dropping v1 consensus code
 /// Returns true if `solution.tag` is within the solution range.
 pub fn is_within_solution_range(target: Tag, tag: Tag, solution_range: SolutionRange) -> bool {
     let target = SolutionRange::from_be_bytes(target);
     let tag = SolutionRange::from_be_bytes(tag);
 
     subspace_core_primitives::bidirectional_distance(&target, &tag) <= solution_range / 2
+}
+
+/// Returns true if `solution.tag` is within the solution range.
+pub fn is_within_solution_range2(
+    local_challenge: SolutionRange,
+    expanded_chunk: SolutionRange,
+    solution_range: SolutionRange,
+) -> bool {
+    subspace_core_primitives::bidirectional_distance(&local_challenge, &expanded_chunk)
+        <= solution_range / 2
 }
 
 /// Returns true if piece index is within farmer sector

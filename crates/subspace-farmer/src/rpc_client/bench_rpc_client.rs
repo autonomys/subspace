@@ -3,11 +3,11 @@ use crate::utils::AbortingJoinHandle;
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
-use std::num::NonZeroU32;
+use std::num::{NonZeroU16, NonZeroU32};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -37,6 +37,8 @@ pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,
+    space_l: NonZeroU16::new(20).unwrap(),
+    sector_expiration: 100,
 };
 
 impl BenchRpcClient {
@@ -143,5 +145,9 @@ impl RpcClient for BenchRpcClient {
 
     async fn records_roots(&self, _: Vec<SegmentIndex>) -> Result<Vec<Option<RecordsRoot>>, Error> {
         Ok(Default::default())
+    }
+
+    async fn get_piece(&self, _piece_index: PieceIndex) -> Result<Option<Piece>, Error> {
+        unimplemented!()
     }
 }
