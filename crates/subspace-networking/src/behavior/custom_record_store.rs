@@ -3,14 +3,15 @@ use libp2p::kad::store::{Error, RecordStore};
 use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::multihash::Multihash;
 use libp2p::PeerId;
-use parity_db::{Db, Options};
+use parity_db::{ColumnOptions, Db, Options};
 use serde::{Deserialize, Serialize};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
+use std::iter::IntoIterator;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 
 #[derive(Clone)]
 pub struct CustomRecordStore<
@@ -90,6 +91,7 @@ pub trait ProviderStorage<'a> {
     fn remove_provider(&'a mut self, k: &Key, p: &PeerId);
 }
 
+/// Memory based provider records storage.
 #[derive(Clone, Default)]
 pub struct MemoryProviderStorage {
     // TODO: Optimize providers collection, introduce limits and TTL.
@@ -195,6 +197,7 @@ impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
     }
 }
 
+/// Memory based record storage.
 #[derive(Clone)]
 pub struct MemoryRecordStorage {
     // TODO: Optimize collection, introduce limits and TTL.
@@ -231,6 +234,7 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 }
 
+/// Defines a stub for record storage with all operations defaulted.
 #[derive(Clone)]
 pub struct NoRecordStorage;
 
@@ -254,14 +258,6 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     fn records(&'a self) -> Self::RecordsIter {
         Vec::new().into_iter()
     }
-}
-
-#[derive(Clone)]
-pub struct ParityDbRecordStorage {
-    // Parity DB instance
-    db: Arc<Db>,
-    // Column ID to persist parameters
-    column_id: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -298,9 +294,22 @@ impl From<ParityDbRecord> for Record {
     }
 }
 
+/// Defines record storage with DB persistence
+#[derive(Clone)]
+pub struct ParityDbRecordStorage {
+    // Parity DB instance
+    db: Arc<Db>,
+    // Column ID to persist parameters
+    column_id: u8,
+}
+
 impl ParityDbRecordStorage {
     pub fn new(path: &Path) -> Result<Self, parity_db::Error> {
         let mut options = Options::with_columns(path, 1);
+        options.columns = vec![ColumnOptions {
+            btree_index: true,
+            ..Default::default()
+        }];
         // We don't use stats
         options.stats = false;
 
@@ -312,9 +321,7 @@ impl ParityDbRecordStorage {
             column_id,
         })
     }
-}
 
-impl ParityDbRecordStorage {
     fn save_data(&mut self, key: &Key, data: Option<Vec<u8>>) -> bool {
         let key: &[u8] = key.borrow();
 
@@ -327,10 +334,14 @@ impl ParityDbRecordStorage {
 
         result.is_ok()
     }
+
+    fn convert_to_record(data: Vec<u8>) -> Result<Record, serde_json::Error> {
+        serde_json::from_slice::<ParityDbRecord>(&data).map(Into::into)
+    }
 }
 
 impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
-    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
+    type RecordsIter = ParityDbRecordIterator<'a>;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         let result = self.db.get(self.column_id, key.borrow());
@@ -338,13 +349,13 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
         match result {
             Ok(data) => {
                 if let Some(data) = data {
-                    let db_rec_result = serde_json::from_slice::<ParityDbRecord>(&data);
+                    let db_rec_result = ParityDbRecordStorage::convert_to_record(data);
 
                     match db_rec_result {
                         Ok(db_rec) => {
                             trace!(?key, "Record loaded successfully from DB");
 
-                            Some(Cow::Owned(db_rec.into()))
+                            Some(Cow::Owned(db_rec))
                         }
                         Err(err) => {
                             debug!(?key, ?err, "Parity DB record deserialization error");
@@ -381,8 +392,64 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
         self.save_data(key, None);
     }
 
-    // TODO: add BTree iterator
     fn records(&'a self) -> Self::RecordsIter {
-        Vec::new().into_iter()
+        let rec_iter_result: Result<ParityDbRecordIterator, parity_db::Error> = try {
+            let btree_iter = self.db.iter(self.column_id)?;
+            ParityDbRecordIterator::new(btree_iter)?
+        };
+
+        match rec_iter_result {
+            Ok(rec_iter) => rec_iter,
+            Err(err) => {
+                error!(?err, "Can't create Parity DB record storage iterator.");
+
+                ParityDbRecordIterator::empty()
+            }
+        }
+    }
+}
+
+/// Parity DB BTree iterator wrapper.
+pub struct ParityDbRecordIterator<'a> {
+    iter: Option<parity_db::BTreeIterator<'a>>,
+}
+
+impl<'a> ParityDbRecordIterator<'a> {
+    /// Defines empty iterator, a stub when new() fails.
+    pub fn empty() -> Self {
+        Self { iter: None }
+    }
+    /// Fallible iterator constructor. It requires inner DB BTreeIterator as a parameter.
+    pub fn new(mut iter: parity_db::BTreeIterator<'a>) -> parity_db::Result<Self> {
+        iter.seek_to_first()?;
+
+        Ok(Self { iter: Some(iter) })
+    }
+
+    fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
+        if let Some(ref mut iter) = self.iter {
+            iter.next().ok().flatten()
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> Iterator for ParityDbRecordIterator<'a> {
+    type Item = Cow<'a, Record>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_entry().and_then(|(key, value)| {
+            let db_rec_result = ParityDbRecordStorage::convert_to_record(value);
+
+            match db_rec_result {
+                Ok(db_rec) => Some(Cow::Owned(db_rec)),
+                Err(err) => {
+                    debug!(?key, ?err, "Parity DB record deserialization error");
+
+                    None
+                }
+            }
+        })
     }
 }
