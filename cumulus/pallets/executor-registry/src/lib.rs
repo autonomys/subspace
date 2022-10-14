@@ -37,7 +37,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
-    use sp_executor::ExecutorId;
+    use sp_executor::{ExecutorId, StakeWeight};
     use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, Zero};
 
     #[pallet::config]
@@ -621,9 +621,48 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
+            // Enact the epoch change:
+            // 1. Snapshot the latest state of active executors.
+            // 2. Activate the new executor public key if any.
             if (block_number % T::EpochDuration::get()).is_zero() {
-                // TODO: Enact the epoch change.
+                let mut total_stake_weight = 0;
+                let authorities = Executors::<T>::iter()
+                    .filter(|(_who, executor_config)| executor_config.is_active)
+                    .map(|(who, executor_config)| {
+                        let public_key = match NextKey::<T>::take(&who) {
+                            Some(new_key) => {
+                                // It's okay to update a field while iterating the storage map.
+                                //
+                                // TODO: Add a test that the public_key can be updated as expected.
+                                Executors::<T>::mutate(who, |maybe_executor_config| {
+                                    let executor_config = maybe_executor_config
+                                        .as_mut()
+                                        .expect("Executor config must exist; qed");
+                                    executor_config.public_key = new_key.clone();
+                                });
+                                new_key
+                            }
+                            None => executor_config.public_key,
+                        };
+                        let stake_weight: StakeWeight = executor_config
+                            .stake
+                            .try_into()
+                            .unwrap_or_else(|_| panic!("Balance must fit into StakeWeight; qed"));
+                        total_stake_weight += stake_weight;
+                        (public_key, stake_weight)
+                    })
+                    .collect::<Vec<_>>();
+
+                let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
+                    .expect(
+                        "T::MaxExecutors bound is ensured while registering a new executor; qed",
+                    );
+                Authorities::<T>::put(bounded_authorities);
+
+                TotalStakeWeight::<T>::put(total_stake_weight);
             }
+
+            // TODO: proper weight
             Weight::zero()
         }
 
@@ -658,6 +697,17 @@ mod pallet {
     #[pallet::storage]
     pub(super) type KeyOwner<T: Config> =
         StorageMap<_, Twox64Concat, ExecutorId, T::AccountId, OptionQuery>;
+
+    /// Current epoch executor authorities.
+    #[pallet::storage]
+    #[pallet::getter(fn authorities)]
+    pub(super) type Authorities<T: Config> =
+        StorageValue<_, BoundedVec<(ExecutorId, StakeWeight), T::MaxExecutors>, ValueQuery>;
+
+    /// Total stake weight of authorities.
+    #[pallet::storage]
+    #[pallet::getter(fn total_stake_weight)]
+    pub(super) type TotalStakeWeight<T> = StorageValue<_, StakeWeight, ValueQuery>;
 }
 
 impl<T: Config> Pallet<T> {

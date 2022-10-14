@@ -59,6 +59,9 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
     type Public = ExecutorId;
 }
 
+/// Stake weight in the bundle election.
+pub type StakeWeight = u128;
+
 /// Custom invalid validity code for the extrinsics in pallet-executor.
 #[repr(u8)]
 pub enum InvalidTransactionCode {
