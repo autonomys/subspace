@@ -477,6 +477,7 @@ mod pallet {
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub executors: Vec<GenesisExecutorInfo<T>>,
+        pub slot_probability: (u64, u64),
     }
 
     #[cfg(feature = "std")]
@@ -484,6 +485,7 @@ mod pallet {
         fn default() -> Self {
             Self {
                 executors: Vec::new(),
+                slot_probability: (1u64, 1u64),
             }
         }
     }
@@ -500,6 +502,7 @@ mod pallet {
                 "Too many genesis executors"
             );
 
+            let mut authorities = Vec::new();
             for (executor, initial_stake, reward_address, executor_id) in self.executors.clone() {
                 assert!(
                     initial_stake >= T::MinExecutorStake::get()
@@ -514,7 +517,7 @@ mod pallet {
                 Executors::<T>::insert(
                     executor,
                     ExecutorConfig {
-                        public_key: executor_id,
+                        public_key: executor_id.clone(),
                         reward_address,
                         is_active: true,
                         stake: initial_stake,
@@ -527,7 +530,22 @@ mod pallet {
                 TotalActiveExecutors::<T>::mutate(|total| {
                     *total += 1;
                 });
+                let stake_weight: StakeWeight = initial_stake
+                    .try_into()
+                    .unwrap_or_else(|_| panic!("Balance must fit into StakeWeight; qed"));
+                authorities.push((executor_id, stake_weight));
             }
+
+            let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
+                .expect("T::MaxExecutors bound is checked above; qed");
+            Authorities::<T>::put(bounded_authorities);
+
+            let total_stake_weight: StakeWeight = TotalActiveStake::<T>::get()
+                .try_into()
+                .unwrap_or_else(|_| panic!("Balance must fit into StakeWeight; qed"));
+            TotalStakeWeight::<T>::put(total_stake_weight);
+
+            SlotProbability::<T>::put(self.slot_probability);
         }
     }
 
