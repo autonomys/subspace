@@ -963,6 +963,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -998,6 +999,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -1044,6 +1046,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
+ "sp-executor",
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
@@ -4553,6 +4556,7 @@ dependencies = [
  "sp-executor",
  "sp-io",
  "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

@@ -16,11 +16,17 @@
 
 //! Secondary chain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
-use cirrus_runtime::{AccountId, BalancesConfig, GenesisConfig, SystemConfig, WASM_BINARY};
+use crate::chain_spec_utils::{
+    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
+};
+use cirrus_runtime::{
+    AccountId, Balance, BalancesConfig, ExecutorRegistryConfig, GenesisConfig, SystemConfig,
+    WASM_BINARY,
+};
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
+use sp_executor::ExecutorId;
 use subspace_runtime_primitives::SSC;
 
 pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
@@ -31,12 +37,20 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         "execution_dev",
         ChainType::Development,
         move || {
-            testnet_genesis(vec![
-                get_account_id_from_seed("Alice"),
-                get_account_id_from_seed("Bob"),
-                get_account_id_from_seed("Alice//stash"),
-                get_account_id_from_seed("Bob//stash"),
-            ])
+            testnet_genesis(
+                vec![
+                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed("Bob"),
+                    get_account_id_from_seed("Alice//stash"),
+                    get_account_id_from_seed("Bob//stash"),
+                ],
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    1_000 * SSC,
+                    get_account_id_from_seed("Alice"),
+                    get_public_key_from_seed::<ExecutorId>("Alice"),
+                )],
+            )
         },
         vec![],
         None,
@@ -55,20 +69,28 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         "execution_local_testnet",
         ChainType::Local,
         move || {
-            testnet_genesis(vec![
-                get_account_id_from_seed("Alice"),
-                get_account_id_from_seed("Bob"),
-                get_account_id_from_seed("Charlie"),
-                get_account_id_from_seed("Dave"),
-                get_account_id_from_seed("Eve"),
-                get_account_id_from_seed("Ferdie"),
-                get_account_id_from_seed("Alice//stash"),
-                get_account_id_from_seed("Bob//stash"),
-                get_account_id_from_seed("Charlie//stash"),
-                get_account_id_from_seed("Dave//stash"),
-                get_account_id_from_seed("Eve//stash"),
-                get_account_id_from_seed("Ferdie//stash"),
-            ])
+            testnet_genesis(
+                vec![
+                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed("Bob"),
+                    get_account_id_from_seed("Charlie"),
+                    get_account_id_from_seed("Dave"),
+                    get_account_id_from_seed("Eve"),
+                    get_account_id_from_seed("Ferdie"),
+                    get_account_id_from_seed("Alice//stash"),
+                    get_account_id_from_seed("Bob//stash"),
+                    get_account_id_from_seed("Charlie//stash"),
+                    get_account_id_from_seed("Dave//stash"),
+                    get_account_id_from_seed("Eve//stash"),
+                    get_account_id_from_seed("Ferdie//stash"),
+                ],
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    1_000 * SSC,
+                    get_account_id_from_seed("Alice"),
+                    get_public_key_from_seed::<ExecutorId>("Alice"),
+                )],
+            )
         },
         // Bootnodes
         vec![],
@@ -92,11 +114,19 @@ pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
         "subspace_x_net_1a_execution",
         ChainType::Local,
         move || {
-            testnet_genesis(vec![
-                // Same with the Sudo account on primary chain.
-                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
-                    .expect("Wrong root account address"),
-            ])
+            testnet_genesis(
+                vec![
+                    // Same with the Sudo account on primary chain.
+                    AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                        .expect("Wrong root account address"),
+                ],
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    1_000 * SSC,
+                    get_account_id_from_seed("Alice"),
+                    get_public_key_from_seed::<ExecutorId>("Alice"),
+                )],
+            )
         },
         // Bootnodes
         vec![],
@@ -112,7 +142,10 @@ pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> GenesisConfig {
+fn testnet_genesis(
+    endowed_accounts: Vec<AccountId>,
+    executors: Vec<(AccountId, Balance, AccountId, ExecutorId)>,
+) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
             code: WASM_BINARY
@@ -126,6 +159,10 @@ fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> GenesisConfig {
                 .cloned()
                 .map(|k| (k, 1_000 * SSC))
                 .collect(),
+        },
+        executor_registry: ExecutorRegistryConfig {
+            executors,
+            slot_probability: (1, 1),
         },
     }
 }

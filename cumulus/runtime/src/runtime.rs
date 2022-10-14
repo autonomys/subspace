@@ -17,7 +17,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::SHANNON;
+use subspace_runtime_primitives::{SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -243,6 +243,31 @@ impl cirrus_pallet_executive::Config for Runtime {
     type Call = Call;
 }
 
+parameter_types! {
+    // TODO: proper parameters
+    pub const MinExecutorStake: Balance = 10 * SSC;
+    pub const MaxExecutorStake: Balance = 1000 * SSC;
+    pub const MinExecutors: u32 = 1;
+    pub const MaxExecutors: u32 = 10;
+    // One hour.
+    pub const EpochDuration: BlockNumber = 600;
+    pub const MaxWithdrawals: u32 = 1;
+    // One day.
+    pub const WithdrawalDuration: BlockNumber = 14400;
+}
+
+impl pallet_executor_registry::Config for Runtime {
+    type Event = Event;
+    type Currency = Balances;
+    type MinExecutorStake = MinExecutorStake;
+    type MaxExecutorStake = MaxExecutorStake;
+    type MinExecutors = MinExecutors;
+    type MaxExecutors = MaxExecutors;
+    type MaxWithdrawals = MaxWithdrawals;
+    type WithdrawalDuration = WithdrawalDuration;
+    type EpochDuration = EpochDuration;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently cirrus runtime does not naturally support the pallets with inherent extrinsics.
@@ -255,6 +280,9 @@ construct_runtime!(
         // System support stuff.
         System: frame_system = 0,
         ExecutivePallet: cirrus_pallet_executive = 1,
+
+        // System domain.
+        ExecutorRegistry: pallet_executor_registry = 4,
 
         // Monetary stuff.
         Balances: pallet_balances = 2,

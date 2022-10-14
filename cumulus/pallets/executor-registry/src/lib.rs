@@ -39,6 +39,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_executor::{ExecutorId, StakeWeight};
     use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, Zero};
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {

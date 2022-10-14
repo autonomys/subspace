@@ -1,9 +1,11 @@
 //! Chain specification for the cirrus test runtime.
 
-use cirrus_test_runtime::{AccountId, Signature};
+use cirrus_test_runtime::{AccountId, Balance, Signature};
 use sc_service::ChainType;
 use sp_core::{sr25519, Pair, Public};
+use sp_executor::ExecutorId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
+use subspace_runtime_primitives::SSC;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type ChainSpec = sc_service::GenericChainSpec<cirrus_test_runtime::GenesisConfig>;
@@ -59,12 +61,19 @@ pub fn local_testnet_genesis() -> cirrus_test_runtime::GenesisConfig {
             get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
             get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
         ],
+        vec![(
+            get_account_id_from_seed::<sr25519::Public>("Alice"),
+            1_000 * SSC,
+            get_account_id_from_seed::<sr25519::Public>("Alice"),
+            get_from_seed::<ExecutorId>("Alice"),
+        )],
     )
 }
 
 fn testnet_genesis(
     _root_key: AccountId,
     endowed_accounts: Vec<AccountId>,
+    executors: Vec<(AccountId, Balance, AccountId, ExecutorId)>,
 ) -> cirrus_test_runtime::GenesisConfig {
     cirrus_test_runtime::GenesisConfig {
         system: cirrus_test_runtime::SystemConfig {
@@ -77,8 +86,12 @@ fn testnet_genesis(
             balances: endowed_accounts
                 .iter()
                 .cloned()
-                .map(|k| (k, 1 << 60))
+                .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
+        },
+        executor_registry: cirrus_test_runtime::ExecutorRegistryConfig {
+            executors,
+            slot_probability: (1, 1),
         },
     }
 }
