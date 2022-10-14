@@ -163,20 +163,7 @@ where
             extrinsics,
         };
 
-        let executor_id = self
-            .primary_chain_client
-            .runtime_api()
-            .executor_id(&BlockId::Hash(
-                PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
-                    .expect("Primary block hash must be the correct type; qed"),
-            ))?;
-
-        if self.is_authority
-            && SyncCryptoStore::has_keys(
-                &*self.keystore,
-                &[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
-            )
-        {
+        if let Some(executor_id) = self.solve_bundle_election_challenge(primary_hash)? {
             let to_sign = bundle.hash();
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
@@ -214,6 +201,31 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    // TODO: upgrade to new bundle election.
+    fn solve_bundle_election_challenge(
+        &self,
+        primary_hash: PBlock::Hash,
+    ) -> sp_blockchain::Result<Option<ExecutorId>> {
+        let executor_id = self
+            .primary_chain_client
+            .runtime_api()
+            .executor_id(&BlockId::Hash(
+                PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
+                    .expect("Primary block hash must be the correct type; qed"),
+            ))?;
+
+        if self.is_authority
+            && SyncCryptoStore::has_keys(
+                &*self.keystore,
+                &[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
+            )
+        {
+            return Ok(Some(executor_id));
+        }
+
+        Ok(None)
     }
 
     fn expected_receipts_on_primary_chain(
