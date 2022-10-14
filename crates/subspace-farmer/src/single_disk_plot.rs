@@ -358,6 +358,9 @@ pub enum PlottingError {
         /// Lower-level error
         error: rpc_client::Error,
     },
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
 }
 
 /// Errors that happen during farming
@@ -657,14 +660,19 @@ impl SingleDiskPlot {
                                 return;
                             }
 
+                            let farmer_protocol_info =
+                                handle.block_on(rpc_client.farmer_protocol_info()).map_err(
+                                    |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
+                                )?;
+
                             match plot_sector(
                                 &public_key,
                                 sector_index,
                                 &rpc_client,
                                 &shutting_down,
-                                space_l,
-                                sector,
-                                sector_metadata,
+                                &farmer_protocol_info,
+                                io::Cursor::new(sector),
+                                io::Cursor::new(sector_metadata),
                             )? {
                                 PlottingStatus::PlottedSuccessfully => {
                                     let mut metadata_header = metadata_header.lock();

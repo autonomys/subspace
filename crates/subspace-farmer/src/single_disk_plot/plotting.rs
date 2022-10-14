@@ -4,10 +4,13 @@ use bitvec::order::Lsb0;
 use bitvec::prelude::*;
 use parity_scale_codec::Encode;
 use rayon::prelude::*;
-use std::num::NonZeroU16;
+use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::crypto::kzg::Witness;
-use subspace_core_primitives::{Piece, PieceIndex, PublicKey, SectorId, PIECE_SIZE};
+use subspace_core_primitives::{
+    plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, PIECE_SIZE,
+};
+use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
 use tokio::runtime::Handle;
 use tracing::{debug, error};
@@ -22,24 +25,25 @@ pub enum PlottingStatus {
     Aborted,
 }
 
-/// Plot single sector, where `sector` and `sector_metadata` are memory-mapped file regions
-pub fn plot_sector<RC>(
+/// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
+/// desired offset before calling this function if necessary)
+pub fn plot_sector<RC, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
     rpc_client: &RC,
     shutting_down: &AtomicBool,
-    space_l: NonZeroU16,
-    sector: &mut [u8],
-    sector_metadata: &mut [u8],
+    farmer_protocol_info: &FarmerProtocolInfo,
+    mut sector: S,
+    mut sector_metadata: SM,
 ) -> Result<PlottingStatus, PlottingError>
 where
     RC: RpcClient,
+    S: io::Write,
+    SM: io::Write,
 {
     let handle = Handle::current();
     let sector_id = SectorId::new(public_key, sector_index);
-    let farmer_protocol_info = handle
-        .block_on(rpc_client.farmer_protocol_info())
-        .map_err(|error| PlottingError::FailedToGetFarmerProtocolInfo { error })?;
+    let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
     let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
     // TODO: Consider adding number of pieces in a sector to protocol info
     //  explicitly and, ideally, we need to remove 2x replication
@@ -50,7 +54,7 @@ where
         * 2;
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
-    for (piece_offset, sector_piece) in sector.chunks_exact_mut(PIECE_SIZE).enumerate() {
+    for piece_offset in (0..).take(plot_sector_size as usize / PIECE_SIZE) {
         if shutting_down.load(Ordering::Acquire) {
             debug!(
                 %sector_index,
@@ -104,7 +108,7 @@ where
         //  farmer and otherwise
         piece[..farmer_protocol_info.record_size.get() as usize]
             .view_bits_mut::<Lsb0>()
-            .chunks_mut(space_l.get() as usize)
+            .chunks_mut(farmer_protocol_info.space_l.get() as usize)
             .enumerate()
             .par_bridge()
             .for_each(|(chunk_index, bits)| {
@@ -118,16 +122,16 @@ where
                     });
             });
 
-        sector_piece.copy_from_slice(&piece);
+        sector.write_all(&piece)?;
     }
 
-    sector_metadata.copy_from_slice(
+    sector_metadata.write_all(
         &SectorMetadata {
             total_pieces,
             expires_at,
         }
         .encode(),
-    );
+    )?;
 
     Ok(PlottingStatus::PlottedSuccessfully)
 }
