@@ -17,10 +17,9 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_archived_segment, create_root_block, create_signed_vote, extract_piece,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, Event,
-    GlobalRandomnessUpdateInterval, Origin, ReportLongevity, Subspace, System, Test,
-    INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    create_archived_segment, create_root_block, create_signed_vote, generate_equivocation_proof,
+    go_to_block, new_test_ext, progress_to_block, Event, GlobalRandomnessUpdateInterval, Origin,
+    ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
@@ -44,6 +43,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use subspace_core_primitives::Piece;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::Error as VerificationError;
@@ -624,7 +624,7 @@ fn vote_block_listed() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         BlockList::<Test>::insert(
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
@@ -654,7 +654,7 @@ fn vote_after_genesis() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         // Can't submit vote right after genesis block
         let signed_vote = create_signed_vote(
@@ -679,7 +679,7 @@ fn vote_too_low_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 1, 1);
 
@@ -709,7 +709,7 @@ fn vote_past_future_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 4, 1);
 
@@ -756,7 +756,7 @@ fn vote_wrong_parent() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -783,7 +783,7 @@ fn vote_past_future_slot() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -841,7 +841,8 @@ fn vote_past_future_slot() {
         // in that context it is valid
         {
             let keypair = Keypair::generate();
-            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let piece =
+                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
             let signed_vote = create_signed_vote(
                 &keypair,
@@ -881,7 +882,8 @@ fn vote_same_slot() {
         // Same time slot in the vote as in the block is fine if height is the same (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let piece =
+                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
             let signed_vote = create_signed_vote(
                 &keypair,
                 3,
@@ -899,7 +901,8 @@ fn vote_same_slot() {
         // (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let piece =
+                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
             let signed_vote = create_signed_vote(
                 &keypair,
                 2,
@@ -923,7 +926,7 @@ fn vote_bad_reward_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -952,7 +955,7 @@ fn vote_unknown_records_root() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -979,7 +982,7 @@ fn vote_outside_of_solution_range() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1013,7 +1016,7 @@ fn vote_invalid_solution_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1065,7 +1068,7 @@ fn vote_correct_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1099,7 +1102,7 @@ fn vote_randomness_update() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -1136,7 +1139,7 @@ fn vote_equivocation_current_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1186,7 +1189,7 @@ fn vote_equivocation_parent_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1245,6 +1248,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 fn vote_equivocation_current_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let archived_segment = create_archived_segment();
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
@@ -1260,7 +1264,6 @@ fn vote_equivocation_current_voters_duplicate() {
 
         // Current block author + slot matches that of the vote
         let voter_keypair = Keypair::generate();
-        let piece = extract_piece(&voter_keypair, &archived_segment, 0);
         let slot = Subspace::current_slot();
         let reward_address = 0;
 
@@ -1323,7 +1326,7 @@ fn vote_equivocation_parent_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 

@@ -42,9 +42,7 @@ use subspace_core_primitives::{
     RecordsRoot, RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
     RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{
-    create_chunk_signature, derive_global_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -343,26 +341,6 @@ pub fn create_archived_segment() -> ArchivedSegment {
         .into_iter()
         .next()
         .unwrap()
-}
-
-pub fn extract_piece(
-    keypair: &Keypair,
-    archived_segment: &ArchivedSegment,
-    piece_index: u64,
-) -> Piece {
-    let codec = SubspaceCodec::new(keypair.public.as_ref());
-
-    let mut piece: [u8; PIECE_SIZE] = archived_segment
-        .pieces
-        .as_pieces()
-        .nth(piece_index as usize)
-        .unwrap()
-        .try_into()
-        .unwrap();
-
-    codec.encode(&mut piece, piece_index).unwrap();
-
-    piece.into()
 }
 
 #[allow(clippy::too_many_arguments)]

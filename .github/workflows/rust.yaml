@@ -26,12 +26,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # For sloth256-189 Wasm support we need `llvm-ar`, which is not available by default
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -69,12 +63,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # For sloth256-189 Wasm support we need `llvm-ar`, which is not available by default
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -108,12 +96,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-
-      # For sloth256-189 Wasm support we need `llvm-ar`, which is not available by default
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -149,12 +131,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-
-      # For sloth256-189 Wasm support we need `llvm-ar`, which is not available by default
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1

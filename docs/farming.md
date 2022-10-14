@@ -83,14 +83,6 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ## 🐧 Ubuntu Instructions
 
-### Required dependencies
-There are some packages that are typically already installed, but might be missing on your machine.
-
-If you see this error:
-> error while loading shared libraries: libgomp.so.1: cannot open shared object file: No such file or directory
-
-Make sure to install `libgomp1` library with `sudo apt-get install libgomp1`.
-
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
 3. Make the farmer & node executable  `chmod +x farmer-name` & `chmod +X node-name`

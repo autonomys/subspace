@@ -75,7 +75,7 @@ use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     ChunkSignature, FlatPieces, Piece, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{create_chunk_signature, SubspaceCodec, REWARD_SIGNING_CONTEXT};
+use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -552,7 +552,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
                 .unwrap()
@@ -562,7 +561,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
                 .unwrap();
-            subspace_codec.encode(&mut encoding, piece_index).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
