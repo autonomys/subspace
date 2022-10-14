@@ -5,7 +5,6 @@ use crate::mock::{
 use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
-use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,
@@ -16,7 +15,7 @@ use std::marker::PhantomData;
 fn test_initiate_transfer_failed() {
     new_test_ext().execute_with(|| {
         let account = 100;
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 0);
 
         // transfer 500 to dst_domain id 100
@@ -34,9 +33,9 @@ fn test_initiate_transfer_failed() {
 fn test_initiate_transfer() {
     new_test_ext().execute_with(|| {
         let account = USER_ACCOUNT;
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 1000);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
 
         // transfer 500 to dst_domain id 100
@@ -47,9 +46,9 @@ fn test_initiate_transfer() {
         };
         let res = Transporter::transfer(Origin::signed(account), dst_location, 500);
         assert_ok!(res);
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 500);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
         System::assert_has_event(Event::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferInitiated {
@@ -179,18 +178,18 @@ fn test_transfer_response_revert() {
         let dst_domain_id: DomainId = 1;
 
         // check pre dispatch balances
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 1000);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
 
         // init transfer
         initiate_transfer(dst_domain_id, account, amount);
 
         // check post init
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 500);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
 
         // submit response
@@ -214,9 +213,9 @@ fn test_transfer_response_revert() {
         assert_ok!(res);
 
         // balance changes should be reverted.
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 1000);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
         System::assert_has_event(Event::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferFailed {
@@ -237,18 +236,18 @@ fn test_transfer_response_successful() {
         let dst_domain_id: DomainId = 1;
 
         // check pre dispatch balances
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 1000);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
 
         // init transfer
         initiate_transfer(dst_domain_id, account, amount);
 
         // check post init
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 500);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
 
         // submit response
@@ -268,9 +267,9 @@ fn test_transfer_response_successful() {
         assert_ok!(res);
 
         // balance changes should be as is.
-        let balance = <Balances as Currency<AccountId>>::free_balance(&account);
+        let balance = Balances::free_balance(&account);
         assert_eq!(balance, 500);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
         System::assert_has_event(Event::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferSuccessful {
@@ -287,16 +286,17 @@ fn test_receive_incoming_transfer() {
         let receiver = 2;
         // transfer 500
         let amount: Balance = 500;
-        let src_domain_id: DomainId = 1;
+        let src_domain_id: DomainId = 100;
+        let dst_domain_id: DomainId = 1;
 
         // check pre dispatch balances
-        let balance = <Balances as Currency<AccountId>>::free_balance(&receiver);
+        let balance = Balances::free_balance(&receiver);
         assert_eq!(balance, 0);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
 
         let resp = submit_transfer(
-            1,
+            src_domain_id,
             Transfer {
                 amount,
                 sender: Location {
@@ -304,16 +304,16 @@ fn test_receive_incoming_transfer() {
                     account_id: 0,
                 },
                 receiver: Location {
-                    domain_id: src_domain_id,
+                    domain_id: dst_domain_id,
                     account_id: receiver,
                 },
             }
             .encode(),
         );
         assert_ok!(resp);
-        let balance = <Balances as Currency<AccountId>>::free_balance(&receiver);
+        let balance = Balances::free_balance(&receiver);
         assert_eq!(balance, 500);
-        let total_balance = <Balances as Currency<AccountId>>::total_issuance();
+        let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1500);
     })
 }

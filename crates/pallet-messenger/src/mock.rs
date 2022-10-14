@@ -9,18 +9,22 @@ use sp_state_machine::{prove_read, InMemoryBackend};
 use sp_trie::StorageProof;
 
 pub(crate) type DomainId = u64;
+pub(crate) type Balance = u64;
+pub(crate) type AccountId = u64;
 
 pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{mock_system_domain_tracker, DomainId, TestExternalities, MockEndpoint, MessageId};
+        use crate::mock::{mock_system_domain_tracker, DomainId, TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
         use frame_support::parameter_types;
+        use frame_support::pallet_prelude::PhantomData;
         use sp_core::H256;
         use sp_runtime::testing::Header;
         use sp_runtime::traits::{BlakeTwo256, ConstU16, ConstU32, ConstU64, IdentityLookup};
         use sp_std::vec::Vec;
-        use sp_messenger::endpoint::{EndpointHandler, Endpoint};
+        use sp_messenger::endpoint::{EndpointHandler, Endpoint, EndpointId};
+        use pallet_balances::AccountData;
 
         type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
         type Block = frame_system::mocking::MockBlock<Runtime>;
@@ -33,7 +37,9 @@ macro_rules! impl_runtime {
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
                 SystemDomainTracker: mock_system_domain_tracker::{Pallet, Storage},
-                Messenger: crate::{Pallet, Call, Event<T>}
+                Messenger: crate::{Pallet, Call, Event<T>},
+                Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
+                Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
             }
         );
 
@@ -56,7 +62,7 @@ macro_rules! impl_runtime {
             type BlockHashCount = ConstU64<250>;
             type Version = ();
             type PalletInfo = PalletInfo;
-            type AccountData = ();
+            type AccountData = AccountData<Balance>;
             type OnNewAccount = ();
             type OnKilledAccount = ();
             type SystemWeightInfo = ();
@@ -82,16 +88,56 @@ macro_rules! impl_runtime {
             type SystemDomainTracker = SystemDomainTracker;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
-                _endpoint: &Endpoint,
+                endpoint: &Endpoint,
             ) -> Option<Box<dyn EndpointHandler<Self::DomainId, MessageId>>>{
-                Some(Box::new(MockEndpoint{}))
+                match endpoint {
+                    Endpoint::Id(id) => match id {
+                        100 => Some(Box::new(pallet_transporter::EndpointHandler(PhantomData::<$runtime>))),
+                        _=> Some(Box::new(MockEndpoint{}))
+                    }
+                }
+
             }
         }
 
+        impl pallet_balances::Config for $runtime {
+            type AccountStore = System;
+            type Balance = Balance;
+            type DustRemoval = ();
+            type Event = Event;
+            type ExistentialDeposit = ExistentialDeposit;
+            type MaxLocks = ();
+            type MaxReserves = ();
+            type ReserveIdentifier = ();
+            type WeightInfo = ();
+        }
+
+        parameter_types! {
+            pub const TransporterEndpointId: EndpointId = 100;
+        }
+
+        impl pallet_transporter::Config for $runtime {
+            type Event = Event;
+            type DomainId = DomainId;
+            type SelfDomainId = SelfDomainId;
+            type SelfEndpointId = TransporterEndpointId;
+            type Currency = Balances;
+            type Sender = Messenger;
+        }
+
+        pub const USER_ACCOUNT: AccountId = 1;
+        pub const USER_INITIAL_BALANCE: Balance = 1000;
+
         pub fn new_test_ext() -> TestExternalities {
-           let t = frame_system::GenesisConfig::default()
+           let mut t = frame_system::GenesisConfig::default()
                     .build_storage::<Runtime>()
                     .unwrap();
+
+           pallet_balances::GenesisConfig::<$runtime> {
+                balances: vec![(USER_ACCOUNT, USER_INITIAL_BALANCE)],
+           }
+            .assimilate_storage(&mut t)
+            .unwrap();
 
            let mut t: TestExternalities = t.into();
            t.execute_with(|| System::set_block_number(1));

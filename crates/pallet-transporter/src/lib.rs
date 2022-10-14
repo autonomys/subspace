@@ -138,7 +138,7 @@ mod pallet {
             message_id: MessageIdOf<T>,
         },
 
-        /// Emits when a given outgoing transfer was successful.
+        /// Emits when a given incoming transfer was successfully processed.
         IncomingTransferSuccessful {
             /// Source domain the transfer is coming from.
             domain_id: T::DomainId,
@@ -226,6 +226,12 @@ mod pallet {
             req: EndpointRequest,
         ) -> EndpointResponse {
             //TODO(ved): check if we allow messages from src_domain
+
+            // ensure message is not from the self
+            ensure!(
+                T::SelfDomainId::get() != src_domain_id,
+                Error::<T>::InvalidTransferRequest
+            );
 
             // check the endpoint id
             ensure!(
