@@ -24,6 +24,7 @@ pub use crate::pool::FullPool;
 use cirrus_primitives::Hash as SecondaryHash;
 use derive_more::{Deref, DerefMut, Into};
 use dsn::start_dsn_node;
+pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::StreamExt;
 use jsonrpsee::RpcModule;
@@ -124,7 +125,7 @@ pub struct SubspaceConfiguration {
     /// authoring.
     pub force_new_slot_notifications: bool,
     /// Subspace networking configuration (for DSN). Will not be started if set to `None`.
-    pub dsn_config: Option<subspace_networking::Config>,
+    pub dsn_config: Option<DsnConfig>,
 }
 
 impl From<Configuration> for SubspaceConfiguration {
@@ -417,10 +418,12 @@ where
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
     if let Some(dsn_config) = config.dsn_config.clone() {
+        let piece_cache = piece_cache.clone();
         start_dsn_node(
             &subspace_link,
             dsn_config,
             task_manager.spawn_essential_handle(),
+            Arc::new(move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()),
         )
         .await?;
     }

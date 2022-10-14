@@ -94,11 +94,6 @@ pub struct Config {
     pub allow_non_globals_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// Parent node instance (if any) to keep alive.
-    ///
-    /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
-    /// receive incoming connections.
-    pub parent_node: Option<Node>,
     /// A reference to the `NetworkingParametersRegistry` implementation.
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
@@ -169,7 +164,6 @@ impl Config {
             value_getter: Arc::new(|_key| None),
             allow_non_globals_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            parent_node: None,
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
             yamux_config,
@@ -213,7 +207,6 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         mplex_config,
         allow_non_globals_in_dht,
         initial_random_query_interval,
-        parent_node,
         networking_parameters_registry,
         request_response_protocols,
         reserved_peers,
@@ -264,7 +257,7 @@ pub async fn create(config: Config) -> Result<(Node, NodeRunner), CreationError>
         // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
-        let shared = Arc::new(Shared::new(local_peer_id, parent_node, command_sender));
+        let shared = Arc::new(Shared::new(local_peer_id, command_sender));
         let shared_weak = Arc::downgrade(&shared);
 
         let node = Node::new(shared);

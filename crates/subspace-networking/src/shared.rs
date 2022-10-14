@@ -1,7 +1,6 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
-use crate::node::Node;
 use crate::request_responses::RequestFailure;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
@@ -81,25 +80,15 @@ pub(crate) struct Shared {
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
-    /// Parent node instance (if any) to keep alive.
-    ///
-    /// This is needed to ensure relay server doesn't stop, cutting this node from ability to
-    /// receive incoming connections.
-    pub(crate) _parent_node: Option<Node>,
 }
 
 impl Shared {
-    pub(crate) fn new(
-        id: PeerId,
-        parent_node: Option<Node>,
-        command_sender: mpsc::Sender<Command>,
-    ) -> Self {
+    pub(crate) fn new(id: PeerId, command_sender: mpsc::Sender<Command>) -> Self {
         Self {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
             command_sender,
-            _parent_node: parent_node,
         }
     }
 }
