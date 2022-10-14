@@ -267,7 +267,7 @@ fn create_custom_content_feed(
             // key should match the feed name spaced key
             assert_eq!(
                 mappings[i].key,
-                crypto::blake2b_256_hash_pair(&FEED_ID.encode(), key.as_slice())
+                crypto::blake2b_256_hash_list(&[&FEED_ID.encode(), key.as_slice()])
             );
         });
 

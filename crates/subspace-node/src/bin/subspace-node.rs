@@ -29,7 +29,7 @@ use sp_core::crypto::Ss58AddressFormat;
 use std::any::TypeId;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::SubspaceConfiguration;
+use subspace_service::{DsnConfig, SubspaceConfiguration};
 
 /// Secondary executor instance.
 pub struct SecondaryExecutorDispatch;
@@ -362,10 +362,10 @@ fn main() -> Result<(), Error> {
                                 ))
                             })?;
 
-                        (!cli.dsn_listen_on.is_empty()).then(|| subspace_networking::Config {
+                        (!cli.dsn_listen_on.is_empty()).then_some(DsnConfig {
                             keypair: network_keypair,
-                            listen_on: cli.dsn_listen_on,
-                            ..subspace_networking::Config::with_generated_keypair()
+                            dsn_listen_on: cli.dsn_listen_on,
+                            dsn_bootstrap_node: cli.dsn_bootstrap_node,
                         })
                     };
 

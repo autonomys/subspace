@@ -98,6 +98,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anes"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
+
+[[package]]
 name = "ansi_term"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -564,10 +570,7 @@ version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba3569f383e8f1598449f1a423e72e99569137b47740b1da11ef19af3d5c3223"
 dependencies = [
- "lazy_static",
  "memchr",
- "regex-automata",
- "serde",
 ]
 
 [[package]]
@@ -722,6 +725,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ciborium"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0c137568cc60b904a7724001b35ce2630fd00d5d84805fbb608ab89509d788f"
+dependencies = [
+ "ciborium-io",
+ "ciborium-ll",
+ "serde",
+]
+
+[[package]]
+name = "ciborium-io"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346de753af073cc87b52b2083a506b38ac176a44cfb05497b622e27be899b369"
+
+[[package]]
+name = "ciborium-ll"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "213030a2b5a4e0c0892b6652260cf6ccac84827b83a85a534e178e3906c4cf1b"
+dependencies = [
+ "ciborium-io",
+ "half",
+]
+
+[[package]]
 name = "cid"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -845,7 +875,7 @@ dependencies = [
  "cirrus-client-executor-gossip",
  "cirrus-primitives",
  "cirrus-runtime",
- "clap 3.2.16",
+ "clap",
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -1030,17 +1060,6 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "2.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0610544180c38b88101fecf2dd634b174a62eef6946f84dfc6a7127512b381c"
-dependencies = [
- "bitflags",
- "textwrap 0.11.0",
- "unicode-width",
-]
-
-[[package]]
-name = "clap"
 version = "3.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3dbbb6653e7c55cc8595ad3e1f7be8f32aba4eb7ff7f0fd1163d4f3d137c0a9"
@@ -1053,7 +1072,7 @@ dependencies = [
  "once_cell",
  "strsim",
  "termcolor",
- "textwrap 0.15.0",
+ "textwrap",
 ]
 
 [[package]]
@@ -1275,15 +1294,16 @@ dependencies = [
 
 [[package]]
 name = "criterion"
-version = "0.3.6"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b01d6de93b2b6c65e17c634a26653a29d107b3c98c607c765bf38d041531cd8f"
+checksum = "e7c76e09c1aae2bc52b3d2f29e13c6572553b30c4aa1b8a49fd70de6412654cb"
 dependencies = [
+ "anes",
  "atty",
  "cast",
- "clap 2.34.0",
+ "ciborium",
+ "clap",
  "criterion-plot",
- "csv",
  "itertools 0.10.3",
  "lazy_static",
  "num-traits",
@@ -1292,7 +1312,6 @@ dependencies = [
  "rayon",
  "regex",
  "serde",
- "serde_cbor",
  "serde_derive",
  "serde_json",
  "tinytemplate",
@@ -1301,9 +1320,9 @@ dependencies = [
 
 [[package]]
 name = "criterion-plot"
-version = "0.4.5"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2673cc8207403546f45f5fd319a974b1e6983ad1a3ee7e6041650013be041876"
+checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.3",
@@ -1424,28 +1443,6 @@ checksum = "b1d1a86f49236c215f271d40892d5fc950490551400b02ef360692c29815c714"
 dependencies = [
  "generic-array 0.14.6",
  "subtle",
-]
-
-[[package]]
-name = "csv"
-version = "1.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22813a6dc45b335f9bade10bf7271dc477e81113e89eb251a0bc2a8a81c536e1"
-dependencies = [
- "bstr",
- "csv-core",
- "itoa 0.4.8",
- "ryu",
- "serde",
-]
-
-[[package]]
-name = "csv-core"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b2466559f260f48ad25fe6317b3c8dac77b5bdb5763ac7d9d6103530663bc90"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -2064,7 +2061,7 @@ source = "git+https://github.com/subspace/substrate?rev=1a7c28721fa77ecce9632ad9
 dependencies = [
  "Inflector",
  "chrono",
- "clap 3.2.16",
+ "clap",
  "comfy-table",
  "frame-benchmarking",
  "frame-support",
@@ -4019,9 +4016,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.5.5"
+version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a79b39c93a7a5a27eeaf9a23b5ff43f1b9e0ad6b1cdd441140ae53c35613fc7"
+checksum = "95af15f345b17af2efc8ead6080fb8bc376f8cec1b35277b935637595fe77498"
 dependencies = [
  "libc",
 ]
@@ -5574,13 +5571,14 @@ dependencies = [
 
 [[package]]
 name = "reed-solomon-erasure"
-version = "5.0.3"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2fe31452b684b8b33f65f8730c8b8812c3f5a0bb8a096934717edb1ac488641"
+checksum = "7263373d500d4d4f505d43a2a662d475a894aa94503a1ee28e9188b5f3960d4f"
 dependencies = [
  "cc",
  "libc",
  "libm",
+ "lru",
  "parking_lot 0.11.2",
  "smallvec",
  "spin 0.9.4",
@@ -5938,7 +5936,7 @@ version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=1a7c28721fa77ecce9632ad9ce473f2d3cf1a598#1a7c28721fa77ecce9632ad9ce473f2d3cf1a598"
 dependencies = [
  "chrono",
- "clap 3.2.16",
+ "clap",
  "fdlimit",
  "futures 0.3.21",
  "hex",
@@ -6974,16 +6972,6 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
 dependencies = [
- "serde",
-]
-
-[[package]]
-name = "serde_cbor"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
-dependencies = [
- "half",
  "serde",
 ]
 
@@ -8025,6 +8013,7 @@ dependencies = [
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "blake2-rfc",
  "derive_more",
  "dusk-bls12_381",
@@ -8052,9 +8041,10 @@ dependencies = [
  "async-trait",
  "backoff",
  "base58",
+ "bitvec",
  "blake2-rfc",
  "bytesize",
- "clap 3.2.16",
+ "clap",
  "derive_more",
  "dirs",
  "event-listener-primitives",
@@ -8066,6 +8056,7 @@ dependencies = [
  "jsonrpsee",
  "libc",
  "lru",
+ "memmap2",
  "num-traits",
  "parity-db",
  "parity-scale-codec",
@@ -8077,6 +8068,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ss58-registry",
+ "static_assertions",
  "std-semaphore",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -8130,7 +8122,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
- "clap 3.2.16",
+ "clap",
  "derive_more",
  "event-listener-primitives",
  "futures 0.3.21",
@@ -8160,7 +8152,7 @@ version = "0.1.0"
 dependencies = [
  "cirrus-node",
  "cirrus-runtime",
- "clap 3.2.16",
+ "clap",
  "dirs",
  "frame-benchmarking-cli",
  "frame-support",
@@ -8296,6 +8288,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-service",
  "sc-telemetry",
+ "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sp-api",
@@ -8752,15 +8745,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "textwrap"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
-dependencies = [
- "unicode-width",
 ]
 
 [[package]]
