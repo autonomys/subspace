@@ -20,6 +20,7 @@
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use schnorrkel::vrf::{VRFOutput, VRFProof};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
@@ -31,7 +32,7 @@ use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
 use sp_std::vec;
 use sp_std::vec::Vec;
-use sp_trie::StorageProof;
+use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
@@ -200,6 +201,81 @@ pub struct BundleElectionParams {
     pub authorities: Vec<(ExecutorId, StakeWeight)>,
     pub total_stake_weight: StakeWeight,
     pub slot_probability: (u64, u64),
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum VrfProofError {
+    /// Can not construct the vrf public_key/output/proof from the raw bytes.
+    VrfSignatureConstructionError,
+    /// Invalid vrf proof.
+    BadProof,
+}
+
+/// Verify the vrf proof generated in the bundle election.
+pub fn verify_vrf_proof(
+    public_key: &[u8],
+    vrf_output: &[u8],
+    vrf_proof: &[u8],
+    slot_randomness: &Blake2b256Hash,
+) -> Result<(), VrfProofError> {
+    let public_key = schnorrkel::PublicKey::from_bytes(public_key)
+        .map_err(|_| VrfProofError::VrfSignatureConstructionError)?;
+
+    public_key
+        .vrf_verify(
+            make_local_randomness_transcript(slot_randomness),
+            &VRFOutput::from_bytes(vrf_output)
+                .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
+            &VRFProof::from_bytes(vrf_proof)
+                .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
+        )
+        .map_err(|_| VrfProofError::BadProof)?;
+
+    Ok(())
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum ReadBundleElectionParamsError {
+    /// Trie error.
+    TrieError,
+    /// The value does not exist in the trie.
+    MissingValue,
+    /// Failed to decode the value read from the trie.
+    DecodeError,
+}
+
+/// Returns the bundle election parameters read from the given storage proof.
+pub fn read_bundle_election_params(
+    storage_proof: StorageProof,
+    state_root: &H256,
+) -> Result<BundleElectionParams, ReadBundleElectionParamsError> {
+    use well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
+    use ReadBundleElectionParamsError::{DecodeError, MissingValue, TrieError};
+
+    let db = storage_proof.into_memory_db::<BlakeTwo256>();
+
+    let read_value = |storage_key| {
+        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key)
+            .map_err(|_| TrieError)
+    };
+
+    let authorities = read_value(&AUTHORITIES)?.ok_or(MissingValue)?;
+    let authorities: Vec<(ExecutorId, StakeWeight)> =
+        Decode::decode(&mut authorities.as_slice()).map_err(|_| DecodeError)?;
+
+    let total_stake_weight_value = read_value(&TOTAL_STAKE_WEIGHT)?.ok_or(MissingValue)?;
+    let total_stake_weight: StakeWeight =
+        Decode::decode(&mut total_stake_weight_value.as_slice()).map_err(|_| DecodeError)?;
+
+    let slot_probability_value = read_value(&SLOT_PROBABILITY)?.ok_or(MissingValue)?;
+    let slot_probability: (u64, u64) =
+        Decode::decode(&mut slot_probability_value.as_slice()).map_err(|_| DecodeError)?;
+
+    Ok(BundleElectionParams {
+        authorities,
+        total_stake_weight,
+        slot_probability,
+    })
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
