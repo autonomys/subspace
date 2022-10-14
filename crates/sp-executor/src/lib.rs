@@ -17,19 +17,26 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
+#[cfg(feature = "std")]
+use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
+use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
+
+const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
 
 /// Key type for Executor.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
@@ -61,6 +68,10 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
 
 /// Stake weight in the bundle election.
 pub type StakeWeight = u128;
+
+/// Unique identifier for each domain.
+// TODO: unify the DomainId usage across the codebase.
+pub type DomainId = u64;
 
 /// Custom invalid validity code for the extrinsics in pallet-executor.
 #[repr(u8)]
@@ -100,6 +111,62 @@ impl<Hash: Encode> BundleHeader<Hash> {
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
+}
+
+// TODO: unify the type between the solution and threshold better.
+pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u64 {
+    let mut data = domain_id.to_le_bytes().to_vec();
+    data.extend_from_slice(vrf_output);
+
+    let local_domain_randomness = blake2b_256_hash(&data);
+
+    let election_solution = u64::from_le_bytes(
+        local_domain_randomness
+            .split_at(core::mem::size_of::<u64>())
+            .0
+            .try_into()
+            .expect("Local domain randomness must fit into u64; qed"),
+    );
+
+    election_solution
+}
+
+pub fn calculate_bundle_election_threshold(
+    stake_weight: StakeWeight,
+    total_stake_weight: StakeWeight,
+    slot_probability: (u64, u64),
+) -> u128 {
+    stake_weight / total_stake_weight * u128::MAX * u128::from(slot_probability.0)
+        / u128::from(slot_probability.1)
+}
+
+/// Make a VRF transcript.
+pub fn make_local_randomness_transcript(slot_randomness: &Blake2b256Hash) -> Transcript {
+    let mut transcript = Transcript::new(VRF_TRANSCRIPT_LABEL);
+    transcript.append_message(b"slot randomness", slot_randomness);
+    transcript
+}
+
+/// Make a VRF transcript data.
+#[cfg(feature = "std")]
+pub fn make_local_randomness_transcript_data(
+    slot_randomness: &Blake2b256Hash,
+) -> VRFTranscriptData {
+    VRFTranscriptData {
+        label: VRF_TRANSCRIPT_LABEL,
+        items: vec![(
+            "slot randomness",
+            VRFTranscriptValue::Bytes(slot_randomness.to_vec()),
+        )],
+    }
+}
+
+/// Parameters for the bundle election.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleElectionParams {
+    pub authorities: Vec<(ExecutorId, StakeWeight)>,
+    pub total_stake_weight: StakeWeight,
+    pub slot_probability: (u64, u64),
 }
 
 /// Transaction bundle

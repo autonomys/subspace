@@ -414,6 +414,14 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+
+        fn bundle_elections_params() -> sp_executor::BundleElectionParams {
+            sp_executor::BundleElectionParams {
+                authorities: ExecutorRegistry::authorities().into(),
+                total_stake_weight: ExecutorRegistry::total_stake_weight(),
+                slot_probability: ExecutorRegistry::slot_probability(),
+            }
+        }
     }
 
     #[cfg(feature = "runtime-benchmarks")]

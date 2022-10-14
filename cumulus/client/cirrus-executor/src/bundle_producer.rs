@@ -10,8 +10,9 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_core::ByteArray;
 use sp_executor::{
-    Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
-    SignedOpaqueBundle,
+    calculate_bundle_election_threshold, derive_bundle_election_solution,
+    make_local_randomness_transcript_data, Bundle, BundleElectionParams, BundleHeader, ExecutorApi,
+    ExecutorId, ExecutorSignature, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -219,6 +220,57 @@ where
         slot_randomness: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<ExecutorId>> {
         // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
+        let best_block_id = BlockId::Hash(best_hash);
+
+        let BundleElectionParams {
+            authorities,
+            total_stake_weight,
+            slot_probability,
+        } = self
+            .client
+            .runtime_api()
+            .bundle_elections_params(&best_block_id)?;
+
+        assert!(
+            total_stake_weight
+                == authorities
+                    .iter()
+                    .map(|(_, weight)| weight)
+                    .sum::<StakeWeight>(),
+            "Total stake weight mismatches, which must be a bug in the runtime"
+        );
+
+        let transcript_data = make_local_randomness_transcript_data(&slot_randomness);
+
+        for (authority_id, stake_weight) in authorities {
+            if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
+                &*self.keystore,
+                ExecutorId::ID,
+                authority_id.as_ref(),
+                transcript_data.clone(),
+            ) {
+                // TODO: specify domain_id properly.
+                const SYSTEM_DOMAIN_ID: u64 = 0;
+
+                let election_solution = derive_bundle_election_solution(
+                    SYSTEM_DOMAIN_ID,
+                    vrf_signature.output.as_bytes(),
+                );
+
+                let threshold = calculate_bundle_election_threshold(
+                    stake_weight,
+                    total_stake_weight,
+                    slot_probability,
+                );
+
+                if u128::from(election_solution) <= threshold {
+                    // TODO: Add ProofOfElection into bundle so that farmer can verify the bundle
+                    // election.
+
+                    return Ok(Some(authority_id));
+                }
+            }
+        }
 
         Ok(None)
     }

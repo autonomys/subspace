@@ -945,6 +945,7 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "sp-std",
 ]
@@ -7449,12 +7450,15 @@ dependencies = [
 name = "sp-executor"
 version = "0.1.0"
 dependencies = [
+ "merlin 2.0.1",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "sp-api",
  "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
  "sp-std",
