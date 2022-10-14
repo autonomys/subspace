@@ -83,11 +83,11 @@ impl<T: Config> Pallet<T> {
         dst_domain_id: T::DomainId,
         channel_id: ChannelId,
         payload: VersionedPayload,
-    ) -> DispatchResult {
+    ) -> Result<Nonce, DispatchError> {
         Channels::<T>::try_mutate(
             dst_domain_id,
             channel_id,
-            |maybe_channel| -> DispatchResult {
+            |maybe_channel| -> Result<Nonce, DispatchError> {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
                 // TODO(ved): ensure channel is ready to send messages.
                 // check if the outbox is full
@@ -121,7 +121,7 @@ impl<T: Config> Pallet<T> {
                     channel_id,
                     nonce: next_outbox_nonce,
                 });
-                Ok(())
+                Ok(next_outbox_nonce)
             },
         )
     }
@@ -169,7 +169,7 @@ impl<T: Config> Pallet<T> {
                     let response = if let Some(endpoint_handler) =
                         T::get_endpoint_response_handler(&req.dst_endpoint)
                     {
-                        endpoint_handler.message(dst_domain_id, req)
+                        endpoint_handler.message(dst_domain_id, (channel_id, next_inbox_nonce), req)
                     } else {
                         Err(Error::<T>::NoMessageHandler.into())
                     };
@@ -310,7 +310,12 @@ impl<T: Config> Pallet<T> {
                     if let Some(endpoint_handler) =
                         T::get_endpoint_response_handler(&req.dst_endpoint)
                     {
-                        endpoint_handler.message_response(dst_domain_id, req, resp)
+                        endpoint_handler.message_response(
+                            dst_domain_id,
+                            (channel_id, next_message_response_nonce),
+                            req,
+                            resp,
+                        )
                     } else {
                         Err(Error::<T>::NoMessageHandler.into())
                     }

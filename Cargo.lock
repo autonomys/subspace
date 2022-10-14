@@ -4603,6 +4603,8 @@ dependencies = [
  "hash-db",
  "hex",
  "log",
+ "pallet-balances",
+ "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -4783,6 +4785,22 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-transporter"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7590,6 +7608,7 @@ dependencies = [
 name = "sp-messenger"
 version = "0.1.0"
 dependencies = [
+ "frame-support",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",

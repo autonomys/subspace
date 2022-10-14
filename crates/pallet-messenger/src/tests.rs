@@ -14,6 +14,7 @@ use crate::{
     InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
 use frame_support::{assert_err, assert_ok};
+use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
@@ -576,4 +577,160 @@ fn test_send_message_between_domains() {
         vec![1, 2, 3, 4],
         channel_id,
     )
+}
+
+fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
+    // this account should have 1000 balance on each domain
+    let account_id = 1;
+    domain_a_ext.execute_with(|| {
+        let res = domain_a::Transporter::transfer(
+            domain_a::Origin::signed(account_id),
+            Location {
+                domain_id: domain_b::SelfDomainId::get(),
+                account_id,
+            },
+            500,
+        );
+        assert_ok!(res);
+        domain_a::System::assert_has_event(domain_a::Event::Transporter(
+            pallet_transporter::Event::<domain_a::Runtime>::OutgoingTransferInitiated {
+                domain_id: domain_b::SelfDomainId::get(),
+                message_id: (U256::zero(), U256::one()),
+            },
+        ));
+        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
+            domain_a::Runtime,
+        >::OutboxMessage {
+            domain_id: domain_b::SelfDomainId::get(),
+            channel_id: U256::zero(),
+            nonce: U256::one(),
+        }));
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+        assert!(domain_a::Transporter::outgoing_transfers(
+            domain_b::SelfDomainId::get(),
+            (U256::zero(), U256::one())
+        )
+        .is_some())
+    })
+}
+
+fn verify_transfer_on_domain(
+    domain_a_ext: &mut TestExternalities,
+    domain_b_ext: &mut TestExternalities,
+) {
+    // this account should have 500 balance
+    // domain a should have
+    //   a successful event
+    //   reduced balance
+    //   empty state
+    let account_id = 1;
+    domain_a_ext.execute_with(|| {
+        domain_a::System::assert_has_event(domain_a::Event::Transporter(
+            pallet_transporter::Event::<domain_a::Runtime>::OutgoingTransferSuccessful {
+                domain_id: domain_b::SelfDomainId::get(),
+                message_id: (U256::zero(), U256::one()),
+            },
+        ));
+        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
+            domain_a::Runtime,
+        >::OutboxMessageResponse {
+            domain_id: domain_b::SelfDomainId::get(),
+            channel_id: U256::zero(),
+            nonce: U256::one(),
+        }));
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+        assert!(domain_a::Transporter::outgoing_transfers(
+            domain_b::SelfDomainId::get(),
+            (U256::zero(), U256::one())
+        )
+        .is_none())
+    });
+
+    // domain a should have
+    //   a successful event incoming event
+    //   increased balance
+    domain_b_ext.execute_with(|| {
+        domain_b::System::assert_has_event(domain_b::Event::Transporter(
+            pallet_transporter::Event::<domain_b::Runtime>::IncomingTransferSuccessful {
+                domain_id: domain_a::SelfDomainId::get(),
+                message_id: (U256::zero(), U256::one()),
+            },
+        ));
+        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
+            domain_b::Runtime,
+        >::InboxMessageResponse {
+            domain_id: domain_a::SelfDomainId::get(),
+            channel_id: U256::zero(),
+            nonce: U256::one(),
+        }));
+        assert_eq!(domain_b::Balances::free_balance(&account_id), 1500);
+    })
+}
+
+#[test]
+fn test_transport_funds_between_domains() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    let mut domain_b_test_ext = domain_b::new_test_ext();
+    // open channel between domain_a and domain_b
+    // domain_a initiates the channel open
+    let channel_id = open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+
+    // initiate transfer
+    initiate_transfer_on_domain(&mut domain_a_test_ext);
+
+    // relay message
+    channel_relay_request_and_response(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        channel_id,
+        Nonce::one(),
+    );
+
+    // post check
+    verify_transfer_on_domain(&mut domain_a_test_ext, &mut domain_b_test_ext)
+}
+
+#[test]
+fn test_transport_funds_between_domains_failed_low_balance() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    let mut domain_b_test_ext = domain_b::new_test_ext();
+    // open channel between domain_a and domain_b
+    // domain_a initiates the channel open
+    open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+
+    // initiate transfer
+    let account_id = 100;
+    domain_a_test_ext.execute_with(|| {
+        let res = domain_a::Transporter::transfer(
+            domain_a::Origin::signed(account_id),
+            Location {
+                domain_id: domain_b::SelfDomainId::get(),
+                account_id,
+            },
+            500,
+        );
+        assert_err!(
+            res,
+            pallet_transporter::Error::<domain_a::Runtime>::LowBalance
+        );
+    });
+}
+
+#[test]
+fn test_transport_funds_between_domains_failed_no_open_channel() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+
+    // initiate transfer
+    let account_id = 1;
+    domain_a_test_ext.execute_with(|| {
+        let res = domain_a::Transporter::transfer(
+            domain_a::Origin::signed(account_id),
+            Location {
+                domain_id: domain_b::SelfDomainId::get(),
+                account_id,
+            },
+            500,
+        );
+        assert_err!(res, crate::Error::<domain_a::Runtime>::NoOpenChannel);
+    });
 }
