@@ -159,7 +159,10 @@ mod pallet {
                 T::Currency::free_balance(&who) >= stake,
                 Error::<T>::InsufficientBalance
             );
-            // TODO: public_key sanity check.
+            ensure!(
+                KeyOwner::<T>::get(&public_key).is_none(),
+                Error::<T>::DuplicatedKey
+            );
 
             Self::lock_fund(&who, stake);
 
@@ -423,8 +426,18 @@ mod pallet {
         /// It won't take effect until next epoch.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn update_public_key(origin: OriginFor<T>, _new: ExecutorId) -> DispatchResult {
-            let _who = ensure_signed(origin)?;
+        pub fn update_public_key(origin: OriginFor<T>, next_key: ExecutorId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                KeyOwner::<T>::get(&next_key).is_none(),
+                Error::<T>::DuplicatedKey
+            );
+
+            NextKey::<T>::insert(&who, &next_key);
+            KeyOwner::<T>::insert(&next_key, &who);
+
+            Self::deposit_event(Event::<T>::PublicKeyUpdated { who, next_key });
 
             Ok(())
         }
@@ -554,6 +567,9 @@ mod pallet {
 
         /// Foo few active executors.
         TooFewActiveExecutors,
+
+        /// Executor public key is already occupied.
+        DuplicatedKey,
     }
 
     #[pallet::event]
@@ -590,7 +606,10 @@ mod pallet {
         Resumed { who: T::AccountId },
 
         /// An executor updated its public key.
-        PublicKeyUpdated { who: T::AccountId, new: ExecutorId },
+        PublicKeyUpdated {
+            who: T::AccountId,
+            next_key: ExecutorId,
+        },
 
         /// An executor updated its reward address.
         RewardAddressUpdated {
@@ -629,6 +648,16 @@ mod pallet {
     /// Total number of active executors.
     #[pallet::storage]
     pub(super) type TotalActiveExecutors<T> = StorageValue<_, u32, ValueQuery>;
+
+    /// Pending executor public key for the next epoch.
+    #[pallet::storage]
+    pub(super) type NextKey<T: Config> =
+        StorageMap<_, Twox64Concat, T::AccountId, ExecutorId, OptionQuery>;
+
+    /// A map tracking the owner of current and next key of each executor.
+    #[pallet::storage]
+    pub(super) type KeyOwner<T: Config> =
+        StorageMap<_, Twox64Concat, ExecutorId, T::AccountId, OptionQuery>;
 }
 
 impl<T: Config> Pallet<T> {
