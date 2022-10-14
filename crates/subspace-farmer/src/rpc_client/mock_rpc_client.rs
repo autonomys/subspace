@@ -5,7 +5,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -242,5 +242,9 @@ impl RpcClient for MockRpcClient {
         _: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<RecordsRoot>>, MockError> {
         Ok(Default::default())
+    }
+
+    async fn get_piece(&self, _piece_index: PieceIndex) -> Result<Option<Piece>, MockError> {
+        unimplemented!()
     }
 }

@@ -6,7 +6,7 @@ use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use subspace_core_primitives::{PieceIndexHash, U256};
+use subspace_core_primitives::PieceIndexHash;
 use tracing::warn;
 
 /// This test is successful only for global IP addresses and DNS names.
@@ -102,9 +102,6 @@ pub trait ToMultihash {
 
 impl ToMultihash for PieceIndexHash {
     fn to_multihash(&self) -> Multihash {
-        libp2p::multihash::MultihashDigest::digest(
-            &Code::Identity,
-            &U256::from(*self).to_be_bytes(),
-        )
+        libp2p::multihash::MultihashDigest::digest(&Code::Identity, self.as_ref())
     }
 }

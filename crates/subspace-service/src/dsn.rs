@@ -17,11 +17,11 @@ pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
 pub struct DsnConfig {
-    /// DSN 'bootstrap_node' multi-address
-    pub dsn_bootstrap_node: Vec<Multiaddr>,
-
     /// DSN 'listen-on' multi-address
     pub dsn_listen_on: Vec<Multiaddr>,
+
+    /// DSN 'bootstrap_node' multi-address
+    pub dsn_bootstrap_node: Vec<Multiaddr>,
 
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -39,7 +39,10 @@ where
     Block: BlockT,
     Spawner: SpawnEssentialNamed,
 {
-    trace!(target: "dsn", "Subspace networking starting.");
+    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
+    let _enter = span.enter();
+
+    trace!("Subspace networking starting.");
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
@@ -64,17 +67,18 @@ where
 
     let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
 
-    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
-    let _enter = span.enter();
+    info!("Subspace networking initialized: Node ID is {}", node.id());
 
-    info!(target: "dsn", "Subspace networking initialized: Node ID is {}", node.id());
-
-    spawner.spawn_essential("node-runner", Some("subspace-networking"), {
-        let span = span.clone();
-        Box::pin(async move {
-            node_runner.run().instrument(span).await;
-        })
-    });
+    spawner.spawn_essential(
+        "node-runner",
+        Some("subspace-networking"),
+        Box::pin(
+            async move {
+                node_runner.run().await;
+            }
+            .in_current_span(),
+        ),
+    );
 
     let mut archived_segment_notification_stream = subspace_link
         .archived_segment_notification_stream()
@@ -84,7 +88,7 @@ where
         "archiver",
         Some("subspace-networking"),
         Box::pin(async move {
-            trace!(target: "dsn", "Subspace DSN archiver started.");
+            trace!("Subspace DSN archiver started.");
 
             let mut last_published_segment_index: Option<u64> = None;
             while let Some(ArchivedSegmentNotification {
@@ -95,9 +99,9 @@ where
                 let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
 
                 // skip repeating publication
-                if let Some(last_published_segment_index) = last_published_segment_index{
-                    if last_published_segment_index == segment_index{
-                        debug!(target: "dsn", ?segment_index, "Archived segment skipped.");
+                if let Some(last_published_segment_index) = last_published_segment_index {
+                    if last_published_segment_index == segment_index {
+                        debug!(?segment_index, "Archived segment skipped.");
                         continue;
                     }
                 }
@@ -112,6 +116,7 @@ where
                     .collect::<FuturesUnordered<_>>();
 
                 //TODO: ensure republication of failed announcements
+                //TODO: consider using a stream for the FuturesUnordered
                 match pieces_announcements
                     .collect::<Vec<_>>()
                     .await
@@ -119,15 +124,15 @@ where
                     .find(|res| res.is_err())
                 {
                     None => {
-                        trace!(target: "dsn", ?segment_index, "Archived segment published.");
+                        trace!(?segment_index, "Archived segment published.");
                     }
                     Some(err) => {
-                        error!(target: "dsn", error = ?err, ?segment_index, "Failed to publish archived segment");
+                        error!(error = ?err, ?segment_index, "Failed to publish archived segment");
                     }
                 }
                 last_published_segment_index = Some(segment_index);
             }
-        }),
+        }.in_current_span(),),
     );
 
     Ok(())
