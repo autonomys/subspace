@@ -698,10 +698,6 @@ impl_runtime_apis! {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
-        fn max_plot_size() -> u64 {
-            Subspace::max_plot_size()
-        }
-
         fn slot_duration() -> Duration {
             Duration::from_millis(Subspace::slot_duration())
         }

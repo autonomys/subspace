@@ -826,10 +826,6 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn max_plot_size() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::max_plot_size()
-                }
-
                 fn total_pieces() -> u64 {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }
@@ -1078,10 +1074,6 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn max_plot_size() -> u64 {
-                    <pallet_subspace::Pallet<Runtime>>::max_plot_size()
-                }
-
                 fn total_pieces() -> u64 {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }

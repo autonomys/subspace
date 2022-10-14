@@ -200,7 +200,6 @@ where
                     ApiError::Application("Incorrect record_size set".to_string().into())
                 })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-                max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
                 // Total pieces should never be zero. blockchain is always initialized with one segment.
                 total_pieces: runtime_api
                     .total_pieces(&best_block_id)?

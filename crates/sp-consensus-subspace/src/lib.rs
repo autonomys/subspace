@@ -336,9 +336,6 @@ impl ChainConstants {
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
-        /// Maximum plot size in bytes
-        fn max_plot_size() -> u64;
-
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> Duration;
 

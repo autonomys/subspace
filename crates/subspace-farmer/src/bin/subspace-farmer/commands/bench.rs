@@ -89,7 +89,6 @@
 //
 // pub(crate) async fn bench(
 //     disk_farms: Vec<DiskFarm>,
-//     max_plot_size: Option<u64>,
 //     disk_concurrency: NonZeroU16,
 //     write_to_disk: WriteToDisk,
 //     write_pieces_size: u64,
@@ -120,28 +119,18 @@
 //         .await
 //         .map_err(|error| anyhow!(error))?;
 //
-//     if let Some(max_plot_size) = max_plot_size {
-//         if max_plot_size > farmer_protocol_info.max_plot_size {
-//             warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
-//         } else {
-//             farmer_protocol_info.max_plot_size = max_plot_size;
-//         }
-//     }
-//
 //     let plot_factory = move |options: PlotFactoryOptions<'_>| match write_to_disk {
 //         WriteToDisk::Nothing => Plot::with_plot_file(
 //             options.single_plot_farm_id,
 //             BenchPlotMock::default(),
 //             options.metadata_directory,
 //             options.public_key,
-//             options.max_plot_size,
 //         ),
 //         WriteToDisk::Everything => Plot::open_or_create(
 //             options.single_plot_farm_id,
 //             options.plot_directory,
 //             options.metadata_directory,
 //             options.public_key,
-//             options.max_plot_size,
 //         ),
 //     };
 //

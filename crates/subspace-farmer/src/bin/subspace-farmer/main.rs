@@ -49,11 +49,6 @@ struct FarmingArgs {
     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[clap(long, default_value_t)]
     plot_size: ByteSize,
-    /// Maximum single plot size in bytes human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    ///
-    /// Only a developer testing flag, not helpful for normal users.
-    #[clap(long)]
-    max_plot_size: Option<ByteSize>,
     /// Number of major concurrent operations to allow for disk
     #[clap(long, default_value = "2")]
     disk_concurrency: NonZeroU16,
@@ -88,11 +83,6 @@ enum Subcommand {
     //     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     //     #[clap(long)]
     //     plot_size: ByteSize,
-    //     /// Maximum single plot size in bytes human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    //     ///
-    //     /// Only a developer testing flag, as it might be needed for testing.
-    //     #[clap(long)]
-    //     max_plot_size: Option<ByteSize>,
     //     /// Number of major concurrent operations to allow for disk
     //     #[clap(long, default_value = "2")]
     //     disk_concurrency: NonZeroU16,
@@ -313,7 +303,6 @@ async fn main() -> Result<()> {
         } // TODO: Update or remove
           // Subcommand::Bench {
           //     plot_size,
-          //     max_plot_size,
           //     disk_concurrency,
           //     write_to_disk,
           //     write_pieces_size,
@@ -361,7 +350,6 @@ async fn main() -> Result<()> {
           //
           //     commands::bench(
           //         disk_farms,
-          //         max_plot_size.map(|max_plot_size| max_plot_size.as_u64()),
           //         disk_concurrency,
           //         write_to_disk,
           //         write_pieces_size.as_u64(),
