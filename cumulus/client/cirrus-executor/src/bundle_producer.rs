@@ -20,7 +20,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 
 const LOG_TARGET: &str = "bundle-producer";
 
@@ -95,6 +95,11 @@ where
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
     > {
+        let ExecutorSlotInfo {
+            slot,
+            global_challenge,
+        } = slot_info;
+
         let parent_number = self.client.info().best_number;
 
         let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -156,14 +161,19 @@ where
         let bundle = Bundle {
             header: BundleHeader {
                 primary_hash,
-                slot_number: slot_info.slot.into(),
+                slot_number: slot.into(),
                 extrinsics_root,
             },
             receipts,
             extrinsics,
         };
 
-        if let Some(executor_id) = self.solve_bundle_election_challenge(primary_hash)? {
+        let best_hash = self.client.info().best_hash;
+        let slot_randomness = global_challenge;
+
+        if let Some(executor_id) =
+            self.solve_bundle_election_challenge(best_hash, slot_randomness)?
+        {
             let to_sign = bundle.hash();
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
@@ -203,27 +213,12 @@ where
         }
     }
 
-    // TODO: upgrade to new bundle election.
     fn solve_bundle_election_challenge(
         &self,
-        primary_hash: PBlock::Hash,
+        best_hash: Block::Hash,
+        slot_randomness: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<ExecutorId>> {
-        let executor_id = self
-            .primary_chain_client
-            .runtime_api()
-            .executor_id(&BlockId::Hash(
-                PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
-                    .expect("Primary block hash must be the correct type; qed"),
-            ))?;
-
-        if self.is_authority
-            && SyncCryptoStore::has_keys(
-                &*self.keystore,
-                &[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
-            )
-        {
-            return Ok(Some(executor_id));
-        }
+        // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
 
         Ok(None)
     }
