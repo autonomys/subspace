@@ -161,12 +161,77 @@ pub fn make_local_randomness_transcript_data(
     }
 }
 
+pub mod well_known_keys {
+    use sp_std::vec;
+    use sp_std::vec::Vec;
+
+    /// Storage key of `pallet_executor_registry::Authorities`.
+    ///
+    /// Authorities::<T>::hashed_key().
+    pub(crate) const AUTHORITIES: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 94, 6, 33, 196,
+        134, 154, 166, 12, 2, 190, 154, 220, 201, 138, 13, 29,
+    ];
+
+    /// Storage key of `pallet_executor_registry::TotalStakeWeight`.
+    ///
+    /// TotalStakeWeight::<T>::hashed_key().
+    pub(crate) const TOTAL_STAKE_WEIGHT: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 173, 245, 4, 89,
+        128, 92, 85, 189, 74, 160, 138, 209, 188, 18, 62, 94,
+    ];
+
+    /// Storage key of `pallet_executor_registry::SlotProbability`.
+    ///
+    /// SlotProbability::<T>::hashed_key().
+    pub(crate) const SLOT_PROBABILITY: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 60, 16, 174, 72,
+        214, 175, 220, 254, 34, 167, 168, 222, 147, 18, 4, 168,
+    ];
+
+    pub fn bundle_election_storage_keys() -> Vec<[u8; 32]> {
+        vec![AUTHORITIES, TOTAL_STAKE_WEIGHT, SLOT_PROBABILITY]
+    }
+}
+
 /// Parameters for the bundle election.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleElectionParams {
     pub authorities: Vec<(ExecutorId, StakeWeight)>,
     pub total_stake_weight: StakeWeight,
     pub slot_probability: (u64, u64),
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct ProofOfElection {
+    /// Domain id.
+    pub domain_id: DomainId,
+    /// VRF output.
+    pub vrf_output: Vec<u8>,
+    /// VRF proof.
+    pub vrf_proof: Vec<u8>,
+    /// VRF public key.
+    pub vrf_public_key: Vec<u8>,
+    /// Slot randomness.
+    pub slot_randomness: Blake2b256Hash,
+    /// State root corresponding to the storage proof above.
+    pub state_root: H256,
+    /// Storage proof for the bundle election state.
+    pub storage_proof: StorageProof,
+}
+
+impl ProofOfElection {
+    pub fn dummy() -> Self {
+        Self {
+            domain_id: DomainId::default(),
+            vrf_output: Vec::new(),
+            vrf_proof: Vec::new(),
+            vrf_public_key: Vec::new(),
+            slot_randomness: Blake2b256Hash::default(),
+            state_root: H256::default(),
+            storage_proof: StorageProof::empty(),
+        }
+    }
 }
 
 /// Transaction bundle
@@ -223,6 +288,8 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
 pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     /// The bundle header.
     pub bundle: Bundle<Extrinsic, Number, Hash, SecondaryHash>,
+    /// Proof of bundle election.
+    pub proof_of_election: ProofOfElection,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
     /// Signer of the signature.
@@ -249,6 +316,7 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
     pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, SecondaryHash> {
         SignedOpaqueBundle {
             bundle: self.bundle.into_opaque_bundle(),
+            proof_of_election: self.proof_of_election,
             signature: self.signature,
             signer: self.signer,
         }

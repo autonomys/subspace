@@ -646,6 +646,7 @@ impl<T: Config> Pallet<T> {
     fn validate_bundle(
         SignedOpaqueBundle {
             bundle,
+            proof_of_election,
             signature,
             signer,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
@@ -654,13 +655,7 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        // TODO: upgrade once the trusted executor system is upgraded.
-        let expected_executor = Self::executor()
-            .map(|(_, authority_id)| authority_id)
-            .expect("Executor must be initialized before launching the executor chain; qed");
-        if *signer != expected_executor {
-            return Err(BundleError::UnexpectedSigner);
-        }
+        // TODO: validate proof_of_election
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 

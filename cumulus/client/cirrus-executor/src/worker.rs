@@ -19,7 +19,7 @@ use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -94,8 +94,12 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     PBlock: BlockT,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
     Client::Api: SecondaryApi<Block, AccountId>
         + BlockBuilder<Block>
         + sp_api::ApiExt<

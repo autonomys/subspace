@@ -827,6 +827,7 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
+ "schnorrkel",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",

@@ -3,16 +3,17 @@ use crate::{BundleSender, ExecutionReceiptFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_core::ByteArray;
+use sp_core::{ByteArray, H256};
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
-    make_local_randomness_transcript_data, Bundle, BundleElectionParams, BundleHeader, ExecutorApi,
-    ExecutorId, ExecutorSignature, SignedBundle, SignedOpaqueBundle, StakeWeight,
+    make_local_randomness_transcript_data, well_known_keys, Bundle, BundleElectionParams,
+    BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, ProofOfElection, SignedBundle,
+    SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -63,7 +64,11 @@ impl<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>,
     Client::Api: SecondaryApi<Block, AccountId> + BlockBuilder<Block>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
@@ -172,7 +177,7 @@ where
         let best_hash = self.client.info().best_hash;
         let slot_randomness = global_challenge;
 
-        if let Some(executor_id) =
+        if let Some((executor_id, proof_of_election)) =
             self.solve_bundle_election_challenge(best_hash, slot_randomness)?
         {
             let to_sign = bundle.hash();
@@ -185,6 +190,7 @@ where
                 Ok(Some(signature)) => {
                     let signed_bundle = SignedBundle {
                         bundle,
+                        proof_of_election,
                         signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
                             |err| {
                                 sp_blockchain::Error::Application(Box::from(format!(
@@ -218,7 +224,7 @@ where
         &self,
         best_hash: Block::Hash,
         slot_randomness: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ExecutorId>> {
+    ) -> sp_blockchain::Result<Option<(ExecutorId, ProofOfElection)>> {
         // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
         let best_block_id = BlockId::Hash(best_hash);
 
@@ -264,10 +270,44 @@ where
                 );
 
                 if u128::from(election_solution) <= threshold {
-                    // TODO: Add ProofOfElection into bundle so that farmer can verify the bundle
-                    // election.
+                    let storage_keys = well_known_keys::bundle_election_storage_keys();
+                    let storage_proof = self.client.read_proof(
+                        &best_block_id,
+                        &mut storage_keys.iter().map(|s| s.as_slice()),
+                    )?;
 
-                    return Ok(Some(authority_id));
+                    let state_root = *self
+                        .client
+                        .header(best_block_id)?
+                        .expect("Best block header must exist; qed")
+                        .state_root();
+                    let state_root =
+                        H256::decode(&mut state_root.encode().as_slice()).map_err(|err| {
+                            sp_blockchain::Error::Application(Box::from(format!(
+                                "Failed to decode state root({state_root:?}) into H256: {err}",
+                            )))
+                        })?;
+
+                    // TODO: vrf_public_key and authority_id are essentially the same, merge them?
+                    let vrf_public_key =
+                        schnorrkel::PublicKey::from_bytes(&ByteArray::to_raw_vec(&authority_id))
+                            .map_err(|err| {
+                                sp_blockchain::Error::Application(Box::from(format!(
+                                    "Failed to convert ExecutorId to schnorrkel::PublicKey: {err}",
+                                )))
+                            })?;
+
+                    let proof_of_election = ProofOfElection {
+                        domain_id: SYSTEM_DOMAIN_ID,
+                        vrf_output: vrf_signature.output.to_bytes().to_vec(),
+                        vrf_proof: vrf_signature.proof.to_bytes().to_vec(),
+                        vrf_public_key: vrf_public_key.to_bytes().to_vec(),
+                        slot_randomness,
+                        state_root,
+                        storage_proof,
+                    };
+
+                    return Ok(Some((authority_id, proof_of_election)));
                 }
             }
         }

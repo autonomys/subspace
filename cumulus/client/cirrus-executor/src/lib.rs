@@ -78,7 +78,7 @@ use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_consensus::ForkChoiceStrategy;
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -162,8 +162,12 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
     Client::Api: SecondaryApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
@@ -529,6 +533,7 @@ where
         + BlockBackend<Block>
         + ProvideRuntimeApi<Block>
         + AuxStore
+        + ProofProvider<Block>
         + Send
         + Sync
         + 'static,
@@ -570,6 +575,7 @@ where
 
         let SignedBundle {
             bundle,
+            proof_of_election: _,
             signature,
             signer,
         } = signed_bundle;
