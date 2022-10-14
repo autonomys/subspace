@@ -1,9 +1,9 @@
-use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::{PlottingError, SectorMetadata};
 use bitvec::order::Lsb0;
 use bitvec::prelude::*;
 use parity_scale_codec::Encode;
 use rayon::prelude::*;
+use std::future::Future;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::crypto::kzg::Witness;
@@ -12,7 +12,6 @@ use subspace_core_primitives::{
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
-use tokio::runtime::Handle;
 use tracing::debug;
 
 /// Plotting status
@@ -25,21 +24,24 @@ pub enum PlottingStatus {
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
 /// desired offset before calling this function if necessary)
-pub fn plot_sector<RC, S, SM>(
+///
+/// NOTE: Even though this function is async, it has blocking code inside and must be running in a
+/// separate thread in order to prevent blocking an executor.
+pub async fn plot_sector<GP, GPF, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
-    rpc_client: &RC,
+    get_piece: GP,
     shutting_down: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
     mut sector: S,
     mut sector_metadata: SM,
 ) -> Result<PlottingStatus, PlottingError>
 where
-    RC: RpcClient,
+    GP: Fn(PieceIndex) -> GPF,
+    GPF: Future<Output = Result<Option<Piece>, Box<dyn std::error::Error + Send + Sync + 'static>>>,
     S: io::Write,
     SM: io::Write,
 {
-    let handle = Handle::current();
     let sector_id = SectorId::new(public_key, sector_index);
     let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
     // TODO: Consider adding number of pieces in a sector to protocol info
@@ -64,8 +66,8 @@ where
             farmer_protocol_info.total_pieces,
         );
 
-        let mut piece: Piece = handle
-            .block_on(rpc_client.get_piece(piece_index))
+        let mut piece = get_piece(piece_index)
+            .await
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
 

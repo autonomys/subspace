@@ -356,7 +356,7 @@ pub enum PlottingError {
         /// Piece index
         piece_index: PieceIndex,
         /// Lower-level error
-        error: rpc_client::Error,
+        error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
     /// I/O error occurred
     #[error("I/O error: {0}")]
@@ -664,15 +664,15 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
-                            match plot_sector(
+                            match handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
-                                &rpc_client,
+                                |piece_index| rpc_client.get_piece(piece_index),
                                 &shutting_down,
                                 &farmer_protocol_info,
                                 io::Cursor::new(sector),
                                 io::Cursor::new(sector_metadata),
-                            )? {
+                            ))? {
                                 PlottingStatus::PlottedSuccessfully => {
                                     let mut metadata_header = metadata_header.lock();
                                     metadata_header.sector_count += 1;
