@@ -115,6 +115,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
             1 + 10000,
             ExecutorPair::from_seed(&U256::from(1u32).into()).public(),
         )],
+        slot_probability: (1u64, 1u64),
     }
     .assimilate_storage(&mut t)
     .unwrap();

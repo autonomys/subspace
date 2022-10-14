@@ -281,12 +281,15 @@ construct_runtime!(
         System: frame_system = 0,
         ExecutivePallet: cirrus_pallet_executive = 1,
 
-        // System domain.
-        ExecutorRegistry: pallet_executor_registry = 4,
-
         // Monetary stuff.
         Balances: pallet_balances = 2,
         TransactionPayment: pallet_transaction_payment = 3,
+
+        // System domain.
+        //
+        // Must be after Balances pallet so that its genesis is built after the Balances genesis is
+        // built.
+        ExecutorRegistry: pallet_executor_registry = 4,
     }
 );
 

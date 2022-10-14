@@ -180,6 +180,8 @@ where
         if let Some((executor_id, proof_of_election)) =
             self.solve_bundle_election_challenge(best_hash, slot_randomness)?
         {
+            tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
+
             let to_sign = bundle.hash();
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
