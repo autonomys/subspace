@@ -16,7 +16,7 @@
 //! Primitives for Subspace RPC.
 
 use serde::{Deserialize, Serialize};
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
 use subspace_core_primitives::{
     Blake2b256Hash, PublicKey, RewardSignature, SegmentIndex, SlotNumber, Solution, SolutionRange,
 };
@@ -36,7 +36,7 @@ pub struct FarmerProtocolInfo {
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
     pub recorded_history_segment_size: u32,
     /// Total number of pieces stored on the network
-    pub total_pieces: u64,
+    pub total_pieces: NonZeroU64,
     /// Space parameter for proof-of-replication in bits
     pub space_l: NonZeroU16,
     /// Number of segments after which sector expires

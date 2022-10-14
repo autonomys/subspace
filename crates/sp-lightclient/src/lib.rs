@@ -241,8 +241,6 @@ pub enum ImportError<Header: HeaderT> {
     InvalidSlot,
     /// Block signature is invalid.
     InvalidBlockSignature,
-    /// Total number of pieces can't be zero
-    TotalNumberOfPiecesCantBeZero,
     /// Solution present in the header is invalid.
     InvalidSolution(subspace_verification::Error),
     /// Arithmetic error.
@@ -345,12 +343,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             header_digests.pre_digest.solution.sector_index,
         );
 
-        let piece_index = sector_id
-            .derive_piece_index(
-                header_digests.pre_digest.solution.piece_offset,
-                header_digests.pre_digest.solution.total_pieces,
-            )
-            .map_err(|()| ImportError::TotalNumberOfPiecesCantBeZero)?;
+        let piece_index = sector_id.derive_piece_index(
+            header_digests.pre_digest.solution.piece_offset,
+            header_digests.pre_digest.solution.total_pieces,
+        );
         let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
             .expect("Position within segment always fits into u32; qed");
         let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);

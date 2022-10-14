@@ -29,7 +29,7 @@ use sp_api::{BlockId, ProvideRuntimeApi};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::{Decode, Encode};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU64};
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
@@ -136,7 +136,7 @@ async fn start_farming<Client>(
     let space_l = NonZeroU16::new(20).unwrap();
     let chunks_in_sector = u64::from(RECORD_SIZE) * u64::from(u8::BITS) / u64::from(space_l.get());
     let archived_segment = archived_segment_receiver.await.unwrap();
-    let total_pieces = archived_segment.pieces.count() as PieceIndex;
+    let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as PieceIndex).unwrap();
     let sector_index = 0;
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
@@ -157,9 +157,7 @@ async fn start_farming<Client>(
             // Audit index (chunk) within corresponding piece
             let audit_index_within_piece =
                 audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
-            let piece_index = sector_id
-                .derive_piece_index(audit_piece_offset, total_pieces)
-                .unwrap();
+            let piece_index = sector_id.derive_piece_index(audit_piece_offset, total_pieces);
             let mut piece = Piece::try_from(
                 archived_segment
                     .pieces

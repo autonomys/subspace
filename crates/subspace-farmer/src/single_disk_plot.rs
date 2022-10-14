@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU64};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -250,14 +250,14 @@ impl PlotMetadataHeader {
 
 #[derive(Debug, Encode, Decode)]
 struct SectorMetadata {
-    total_pieces: PieceIndex,
+    total_pieces: NonZeroU64,
     expires_at: SegmentIndex,
 }
 
 impl SectorMetadata {
     fn encoded_size() -> usize {
         let default = SectorMetadata {
-            total_pieces: 0,
+            total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             expires_at: 0,
         };
 
@@ -650,8 +650,7 @@ impl SingleDiskPlot {
                             });
 
                         // TODO: Concurrency
-                        'sector: for (sector_index, sector, sector_metadata) in plot_initial_sector
-                        {
+                        for (sector_index, sector, sector_metadata) in plot_initial_sector {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
@@ -682,9 +681,6 @@ impl SingleDiskPlot {
                                 }
                                 PlottingStatus::Interrupted => {
                                     return;
-                                }
-                                PlottingStatus::Aborted => {
-                                    break 'sector;
                                 }
                             }
                         }
@@ -821,33 +817,18 @@ impl SingleDiskPlot {
                                     ) {
                                         Ok(piece_witness) => piece_witness,
                                         Err(error) => {
-                                            if let Ok(piece_index) = sector_id.derive_piece_index(
+                                            let piece_index = sector_id.derive_piece_index(
                                                 audit_piece_bytes_offset / PIECE_SIZE as u64,
                                                 sector_metadata.total_pieces,
-                                            ) {
-                                                error!(
-                                                    ?error,
-                                                    ?sector_id,
-                                                    %audit_piece_bytes_offset,
-                                                    %piece_index,
-                                                    "Failed to decode witness for piece, likely \
-                                                    caused by on-disk data corruption"
-                                                );
-                                            } else {
-                                                error!(
-                                                    ?sector_id,
-                                                    %audit_piece_bytes_offset,
-                                                    "Failed to decode witness for piece, likely \
-                                                    caused by on-disk data corruption"
-                                                );
-                                                error!(
-                                                    ?sector_id,
-                                                    %audit_piece_bytes_offset,
-                                                    "Total number of pieces in sector metadata is \
-                                                    0, this means on-disk data were corrupted or \
-                                                    severe implementation bug!"
-                                                );
-                                            }
+                                            );
+                                            error!(
+                                                ?error,
+                                                ?sector_id,
+                                                %audit_piece_bytes_offset,
+                                                %piece_index,
+                                                "Failed to decode witness for piece, likely \
+                                                caused by on-disk data corruption"
+                                            );
                                             continue;
                                         }
                                     };

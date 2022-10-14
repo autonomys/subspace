@@ -3,7 +3,7 @@ use crate::utils::AbortingJoinHandle;
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::{stream, SinkExt, Stream, StreamExt};
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -34,7 +34,7 @@ pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     record_size: NonZeroU32::new(3840).expect("We must set non-zero integer here."),
     recorded_history_segment_size: 491520, // RECORD_SIZE * PIECES_IN_SEGMENT / 2
     // Doesn't matter, as we don't start sync
-    total_pieces: 0,
+    total_pieces: NonZeroU64::new(1).unwrap(),
     space_l: NonZeroU16::new(20).unwrap(),
     sector_expiration: 100,
 };

@@ -36,6 +36,7 @@ pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+use core::num::NonZeroU64;
 use core::time::Duration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
@@ -694,7 +695,7 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn total_pieces() -> u64 {
+        fn total_pieces() -> NonZeroU64 {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 

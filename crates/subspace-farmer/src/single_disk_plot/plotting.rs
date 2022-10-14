@@ -13,7 +13,7 @@ use subspace_core_primitives::{
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
 use tokio::runtime::Handle;
-use tracing::{debug, error};
+use tracing::debug;
 
 /// Plotting status
 pub enum PlottingStatus {
@@ -21,8 +21,6 @@ pub enum PlottingStatus {
     PlottedSuccessfully,
     /// Plotting was interrupted due to shutdown
     Interrupted,
-    /// Plotting was aborted due to unrecoverable error
-    Aborted,
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
@@ -44,11 +42,10 @@ where
     let handle = Handle::current();
     let sector_id = SectorId::new(public_key, sector_index);
     let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
-    let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
     // TODO: Consider adding number of pieces in a sector to protocol info
     //  explicitly and, ideally, we need to remove 2x replication
     //  expectation from other places too
-    let current_segment_index = farmer_protocol_info.total_pieces
+    let current_segment_index = farmer_protocol_info.total_pieces.get()
         / u64::from(farmer_protocol_info.recorded_history_segment_size)
         / u64::from(farmer_protocol_info.record_size.get())
         * 2;
@@ -62,19 +59,10 @@ where
             );
             return Ok(PlottingStatus::Interrupted);
         }
-        let piece_index =
-            match sector_id.derive_piece_index(piece_offset as PieceIndex, total_pieces) {
-                Ok(piece_index) => piece_index,
-                Err(()) => {
-                    error!(
-                        "Total number of pieces received from node is 0, this \
-                        should never happen! Aborting sector plotting."
-                    );
-                    // TODO: Make `total_pieces` non-zero so `derive_piece_index` never returns an
-                    //  error
-                    return Ok(PlottingStatus::Aborted);
-                }
-            };
+        let piece_index = sector_id.derive_piece_index(
+            piece_offset as PieceIndex,
+            farmer_protocol_info.total_pieces,
+        );
 
         let mut piece: Piece = handle
             .block_on(rpc_client.get_piece(piece_index))
@@ -127,7 +115,7 @@ where
 
     sector_metadata.write_all(
         &SectorMetadata {
-            total_pieces,
+            total_pieces: farmer_protocol_info.total_pieces,
             expires_at,
         }
         .encode(),

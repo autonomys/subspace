@@ -35,7 +35,7 @@ use alloc::vec::Vec;
 use bitvec::prelude::*;
 use core::convert::AsRef;
 use core::fmt;
-use core::num::NonZeroU16;
+use core::num::{NonZeroU16, NonZeroU64};
 use core::ops::{Deref, DerefMut};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -568,7 +568,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Index of the sector where solution was found
     pub sector_index: SectorIndex,
     /// Number of pieces in archived history at time of sector creation
-    pub total_pieces: PieceIndex,
+    pub total_pieces: NonZeroU64,
     /// Pieces offset within sector
     pub piece_offset: PieceIndex,
     /// Piece commitment that can use used to verify that piece was included in blockchain history
@@ -627,7 +627,7 @@ where
             public_key,
             reward_address,
             sector_index: 0,
-            total_pieces: 1,
+            total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             piece_offset: 0,
             piece_record_hash: Blake2b256Hash::default(),
             piece_witness: Witness::default(),
@@ -846,26 +846,19 @@ impl SectorId {
 
     /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
     /// of blockchain_history is `total_pieces`
-    ///
-    /// Returns `Err(())` if `total_pieces` is zero, which is invalid.
-    #[allow(clippy::result_unit_err)]
     pub fn derive_piece_index(
         &self,
         piece_offset: PieceIndex,
-        total_pieces: PieceIndex,
-    ) -> Result<PieceIndex, ()> {
-        if total_pieces == 0 {
-            return Err(());
-        }
-
+        total_pieces: NonZeroU64,
+    ) -> PieceIndex {
         let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
             &piece_offset.to_le_bytes(),
             &self.0,
-        )) % U256::from(total_pieces);
+        )) % U256::from(total_pieces.get());
 
-        Ok(piece_index.try_into().expect(
-            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
-        ))
+        piece_index
+            .try_into()
+            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
     }
 
     /// Derive local challenge for this sector from provided global challenge

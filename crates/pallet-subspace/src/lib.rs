@@ -27,6 +27,7 @@ mod mock;
 mod tests;
 
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::traits::{Get, OnTimestampSet};
@@ -632,8 +633,11 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Total number of pieces in the blockchain
-    pub fn total_pieces() -> u64 {
-        u64::from(RecordsRoot::<T>::count()) * u64::from(PIECES_IN_SEGMENT)
+    pub fn total_pieces() -> NonZeroU64 {
+        // Chain starts with one segment plotted, even if it is not recorded in the runtime yet
+        let number_of_segments = u64::from(RecordsRoot::<T>::count()).max(1);
+        NonZeroU64::new(number_of_segments * u64::from(PIECES_IN_SEGMENT))
+            .expect("Neither of multiplied values is zero; qed")
     }
 
     /// Determine whether a randomness update should take place at this block.
@@ -1158,7 +1162,6 @@ enum CheckVoteError {
     SlotInTheFuture,
     SlotInThePast,
     BadRewardSignature(SignatureError),
-    TotalNumberOfPiecesCantBeZero,
     UnknownRecordsRoot,
     InvalidSolution(VerificationError),
     DuplicateVote,
@@ -1176,7 +1179,6 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
             CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
-            CheckVoteError::TotalNumberOfPiecesCantBeZero => InvalidTransaction::Call,
             CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
@@ -1308,9 +1310,7 @@ fn check_vote<T: Config>(
 
     let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
-    let piece_index = sector_id
-        .derive_piece_index(solution.piece_offset, solution.total_pieces)
-        .map_err(|()| CheckVoteError::TotalNumberOfPiecesCantBeZero)?;
+    let piece_index = sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
     let pieces_in_segment = vote_verification_data.pieces_in_segment;
     let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
         .expect("Position within segment always fits into u32; qed");
