@@ -708,6 +708,13 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn total_stake_weight)]
     pub(super) type TotalStakeWeight<T> = StorageValue<_, StakeWeight, ValueQuery>;
+
+    /// How many bundles on average in a number of slots.
+    ///
+    /// TODO: Add a root call to update the slot probability.
+    #[pallet::storage]
+    #[pallet::getter(fn slot_probability)]
+    pub(super) type SlotProbability<T> = StorageValue<_, (u64, u64), ValueQuery>;
 }
 
 impl<T: Config> Pallet<T> {
