@@ -40,8 +40,8 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
 use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, Salt,
-    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    BlockNumber, PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, SegmentIndex,
+    Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
@@ -92,31 +92,25 @@ pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Heade
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
 enum ConsensusLog {
     /// Global randomness for this block/interval.
-    #[codec(index = 1)]
+    #[codec(index = 0)]
     GlobalRandomness(Randomness),
     /// Solution range for this block/era.
-    #[codec(index = 2)]
+    #[codec(index = 1)]
     SolutionRange(SolutionRange),
-    /// Salt for this block/eon.
-    #[codec(index = 3)]
-    Salt(Salt),
     /// Global randomness for next block/interval.
-    #[codec(index = 4)]
+    #[codec(index = 2)]
     NextGlobalRandomness(Randomness),
     /// Solution range for next block/era.
-    #[codec(index = 5)]
+    #[codec(index = 3)]
     NextSolutionRange(SolutionRange),
-    /// Salt for next block/eon.
-    #[codec(index = 6)]
-    NextSalt(Salt),
     /// Records roots.
-    #[codec(index = 7)]
+    #[codec(index = 4)]
     RecordsRoot((SegmentIndex, RecordsRoot)),
     /// Enable Solution range adjustment and Override Solution Range.
-    #[codec(index = 8)]
+    #[codec(index = 5)]
     EnableSolutionRangeAdjustmentAndOverride(Option<SolutionRange>),
     /// Root plot public key was updated.
-    #[codec(index = 9)]
+    #[codec(index = 6)]
     RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
 }
 
@@ -288,18 +282,6 @@ impl Default for SolutionRanges {
     }
 }
 
-/// Subspace salts used for challenges.
-#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
-pub struct Salts {
-    /// Salt used for challenges in current block/eon.
-    pub current: Salt,
-    /// Salt used for challenges after `salt` in the next eon.
-    pub next: Option<Salt>,
-    /// Whether salt should be updated in the next block (next salt is known upfront for some time
-    /// and is not necessarily switching in the very next block).
-    pub switch_next_block: bool,
-}
-
 // TODO: Likely add more stuff here
 /// Subspace blockchain constants.
 #[derive(Debug, Encode, Decode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, TypeInfo)]
@@ -314,10 +296,6 @@ pub enum ChainConstants {
         era_duration: BlockNumber,
         /// Slot probability.
         slot_probability: (u64, u64),
-        /// Eon duration in slots.
-        eon_duration: u64,
-        /// Interval after the eon change when next eon salt is revealed
-        eon_next_salt_reveal: u64,
     },
 }
 
@@ -353,21 +331,6 @@ impl ChainConstants {
         } = self;
         *slot_probability
     }
-
-    /// Eon duration in slots.
-    pub fn eon_duration(&self) -> u64 {
-        let Self::V0 { eon_duration, .. } = self;
-        *eon_duration
-    }
-
-    /// Interval after the eon change when next eon salt is revealed
-    pub fn eon_next_salt_reveal(&self) -> u64 {
-        let Self::V0 {
-            eon_next_salt_reveal,
-            ..
-        } = self;
-        *eon_next_salt_reveal
-    }
 }
 
 sp_api::decl_runtime_apis! {
@@ -384,9 +347,6 @@ sp_api::decl_runtime_apis! {
 
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;
-
-        /// Subspace salts used for challenges.
-        fn salts() -> Salts;
 
         /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
         /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local

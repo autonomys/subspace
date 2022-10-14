@@ -73,13 +73,9 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ChunkSignature, FlatPieces, LocalChallenge, Piece, Solution, Tag,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    ChunkSignature, FlatPieces, Piece, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{
-    create_chunk_signature, create_tag, derive_local_challenge, SubspaceCodec,
-    REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::{create_chunk_signature, SubspaceCodec, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -180,10 +176,6 @@ impl DummyProposer {
 
         {
             let digest = DigestItem::solution_range(u64::MAX);
-            block.header.digest_mut().push(digest);
-        }
-        {
-            let digest = DigestItem::salt(0u64.to_le_bytes());
             block.header.digest_mut().push(digest);
         }
 
@@ -578,9 +570,9 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = create_tag(&encoding, new_slot_info.salt);
-
                     // TODO: Update implementation for V2 consensus
+                    // let tag: Tag = create_tag(&encoding, new_slot_info.salt);
+                    //
                     // let _ = solution_sender
                     //     .send(Solution {
                     //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),

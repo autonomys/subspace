@@ -9,7 +9,6 @@ Pallet maintains crucial state required for Subspace Proof-of-Archival-Storage c
 * solution range, which is a range of valid solution for Proof-of-Archival-Storage puzzle
   * conceptually similar to work difficulty in Proof-of-Work consensus
   * is updated every Era
-* salt, which is used for creating plot commitments and is updated every Eon
 * inherents for:
   * storing root blocks and maintaining mapping from segment index to corresponding records root such that validity of
     piece from solution can be checked later

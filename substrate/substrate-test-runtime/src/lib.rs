@@ -606,8 +606,6 @@ impl pallet_subspace::Config for Runtime {
     type Event = Event;
     type GlobalRandomnessUpdateInterval = ConstU64<10>;
     type EraDuration = ConstU64<5>;
-    type EonDuration = ConstU64<11>;
-    type EonNextSaltReveal = ConstU64<2>;
     type InitialSolutionRange = ConstU64<{ u64::MAX }>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
@@ -616,7 +614,6 @@ impl pallet_subspace::Config for Runtime {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
-    type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
     type HandleEquivocation = ();
 
@@ -849,10 +846,6 @@ cfg_if! {
 
                 fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
                     <pallet_subspace::Pallet<Runtime>>::solution_ranges()
-                }
-
-                fn salts() -> sp_consensus_subspace::Salts {
-                    <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
                 fn submit_report_equivocation_extrinsic(
@@ -1105,10 +1098,6 @@ cfg_if! {
 
                 fn solution_ranges() -> sp_consensus_subspace::SolutionRanges {
                     <pallet_subspace::Pallet<Runtime>>::solution_ranges()
-                }
-
-                fn salts() -> sp_consensus_subspace::Salts {
-                    <pallet_subspace::Pallet<Runtime>>::salts()
                 }
 
                 fn submit_report_equivocation_extrinsic(

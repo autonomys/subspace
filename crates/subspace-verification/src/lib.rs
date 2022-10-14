@@ -19,7 +19,6 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use core::mem;
 use schnorrkel::context::SigningContext;
 use schnorrkel::vrf::VRFOutput;
 use schnorrkel::{SignatureError, SignatureResult};
@@ -27,15 +26,12 @@ use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    crypto, BlockNumber, Chunk, ChunkSignature, EonIndex, PublicKey, Randomness, RecordsRoot,
-    RewardSignature, Salt, SectorId, SlotNumber, Solution, SolutionRange, RANDOMNESS_CONTEXT,
-    RANDOMNESS_LENGTH, SALT_HASHING_PREFIX, SALT_SIZE,
+    BlockNumber, Chunk, ChunkSignature, PublicKey, Randomness, RecordsRoot, RewardSignature,
+    SectorId, SlotNumber, Solution, SolutionRange, RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
 };
-
-const SALT_HASHING_PREFIX_LEN: usize = SALT_HASHING_PREFIX.len();
 
 /// Errors encountered by the Subspace consensus primitives.
 #[derive(Debug, Eq, PartialEq)]
@@ -247,40 +243,4 @@ pub fn derive_next_solution_range(
         current_solution_range / 4,
         current_solution_range.saturating_mul(4),
     )
-}
-
-/// Derives next salt value from the randomness provided.
-pub fn derive_next_salt_from_randomness(eon_index: u64, randomness: &Randomness) -> Salt {
-    let mut input = [0u8; SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH + mem::size_of::<u64>()];
-    input[..SALT_HASHING_PREFIX_LEN].copy_from_slice(SALT_HASHING_PREFIX);
-    input[SALT_HASHING_PREFIX_LEN..SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH]
-        .copy_from_slice(randomness);
-    input[SALT_HASHING_PREFIX_LEN + RANDOMNESS_LENGTH..].copy_from_slice(&eon_index.to_le_bytes());
-
-    crypto::blake2b_256_hash(&input)[..SALT_SIZE]
-        .try_into()
-        .expect("Slice has exactly the size needed; qed")
-}
-
-/// Derives next eon index if eon index should change based on the current slot.
-pub fn derive_next_eon_index(
-    parent_eon_index: EonIndex,
-    eon_duration: u64,
-    genesis_slot: SlotNumber,
-    current_slot: SlotNumber,
-) -> Option<EonIndex> {
-    // calculate current eon start slot from (eon_index * eon_duration) + genesis_slot
-    let current_eon_start_slot: EonIndex = parent_eon_index
-        .checked_mul(eon_duration)
-        .and_then(|res| res.checked_add(genesis_slot))
-        .expect("eon start slot should fit into u64");
-
-    let should_eon_change = current_slot.saturating_sub(current_eon_start_slot) >= eon_duration;
-    if should_eon_change {
-        current_slot
-            .checked_sub(genesis_slot)
-            .and_then(|slot_diff| slot_diff.checked_div(eon_duration))
-    } else {
-        None
-    }
 }

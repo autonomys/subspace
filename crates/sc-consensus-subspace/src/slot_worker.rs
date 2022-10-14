@@ -41,7 +41,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{
-    Randomness, RewardSignature, Salt, SectorId, SegmentIndex, Solution, PIECES_IN_SEGMENT,
+    Randomness, RewardSignature, SectorId, SegmentIndex, Solution, PIECES_IN_SEGMENT,
 };
 use subspace_solving::derive_global_challenge;
 use subspace_verification::{
@@ -154,8 +154,6 @@ where
             extract_global_randomness_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id).ok()?;
-        let (salt, next_salt) =
-            extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let global_challenge = derive_global_challenge(&global_randomness, slot.into());
 
         let maybe_root_plot_public_key = self
@@ -167,8 +165,6 @@ where
         let new_slot_info = NewSlotInfo {
             slot,
             global_challenge,
-            salt,
-            next_salt,
             solution_range,
             voting_solution_range,
         };
@@ -531,29 +527,4 @@ where
                     .unwrap_or(solution_ranges.voting_current),
             )
         })
-}
-
-// TODO: Replace with querying parent block header when breaking protocol
-/// Extract salt and next salt for block, given ID of the parent block.
-pub(crate) fn extract_salt_for_block<Block, Client>(
-    client: &Client,
-    parent_block_id: &BlockId<Block>,
-) -> Result<(Salt, Option<Salt>), ApiError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-{
-    client.runtime_api().salts(parent_block_id).map(|salts| {
-        if salts.switch_next_block {
-            (
-                salts.next.expect(
-                    "Next salt must always be present if `switch_next_block` is `true`; qed",
-                ),
-                None,
-            )
-        } else {
-            (salts.current, salts.next)
-        }
-    })
 }

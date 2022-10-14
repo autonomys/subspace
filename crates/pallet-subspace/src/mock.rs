@@ -18,8 +18,8 @@
 
 use crate::equivocation::EquivocationHandler;
 use crate::{
-    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
-    NormalEraChange, NormalGlobalRandomnessInterval,
+    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEraChange,
+    NormalGlobalRandomnessInterval,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, GenesisBuild, OnInitialize};
@@ -138,8 +138,6 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
 parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
-    pub const EonDuration: u32 = 6;
-    pub const EonNextSaltReveal: u64 = 3;
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
@@ -156,8 +154,6 @@ impl Config for Test {
     type Event = Event;
     type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type EraDuration = EraDuration;
-    type EonDuration = EonDuration;
-    type EonNextSaltReveal = EonNextSaltReveal;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ConstU64<1>;
@@ -165,7 +161,6 @@ impl Config for Test {
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
-    type EonChangeTrigger = NormalEonChange;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
