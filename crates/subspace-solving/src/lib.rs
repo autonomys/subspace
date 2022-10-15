@@ -24,7 +24,6 @@ use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
 use subspace_core_primitives::crypto::blake2b_256_hash_list;
-use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{Blake2b256Hash, Chunk, ChunkSignature, Randomness, SectorId};
 
 const CHUNK_SIGNATURE_LABEL: &[u8] = b"subspace_chunk_signature";
@@ -75,12 +74,12 @@ pub fn verify_chunk_signature(
 /// reasonable size of `space_l`, but doesn't have to be used fully.
 pub fn derive_chunk_otp(
     sector_id: &SectorId,
-    piece_witness: &Witness,
+    piece_witness_bytes: &[u8],
     chunk_index: u32,
 ) -> [u8; 8] {
     let hash = blake2b_256_hash_list(&[
         sector_id.as_ref(),
-        &piece_witness.to_bytes(),
+        piece_witness_bytes,
         &chunk_index.to_le_bytes(),
     ]);
 

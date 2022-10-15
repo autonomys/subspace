@@ -128,15 +128,16 @@ fn valid_header(
         let piece_record_hash = blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]);
 
         // Encode piece
+        let (record, witness_bytes) = piece.split_at_mut(RECORD_SIZE as usize);
         // TODO: Extract encoding into separate function reusable in
         //  farmer and otherwise
-        piece[..RECORD_SIZE as usize]
+        record
             .view_bits_mut::<Lsb0>()
             .chunks_mut(space_l.get() as usize)
             .enumerate()
             .for_each(|(chunk_index, bits)| {
                 // Derive one-time pad
-                let mut otp = derive_chunk_otp(&sector_id, &piece_witness, chunk_index as u32);
+                let mut otp = derive_chunk_otp(&sector_id, witness_bytes, chunk_index as u32);
                 // XOR chunk bit by bit with one-time pad
                 bits.iter_mut()
                     .zip(otp.view_bits_mut::<Lsb0>().iter())

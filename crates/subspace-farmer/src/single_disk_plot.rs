@@ -17,7 +17,6 @@ use memmap2::{MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -833,18 +832,18 @@ impl SingleDiskPlot {
                                         }
                                     };
                                     // Decode piece
+                                    let (record, witness_bytes) = piece.split_at_mut(record_size);
                                     // TODO: Extract encoding into separate function reusable in
                                     //  farmer and otherwise
-                                    piece[..record_size]
+                                    record
                                         .view_bits_mut::<Lsb0>()
                                         .chunks_mut(space_l.get() as usize)
                                         .enumerate()
-                                        .par_bridge()
                                         .for_each(|(chunk_index, bits)| {
                                             // Derive one-time pad
                                             let mut otp = derive_chunk_otp(
                                                 &sector_id,
-                                                &piece_witness,
+                                                witness_bytes,
                                                 chunk_index as u32,
                                             );
                                             // XOR chunk bit by bit with one-time pad
@@ -861,9 +860,7 @@ impl SingleDiskPlot {
                                         sector_index,
                                         total_pieces: sector_metadata.total_pieces,
                                         piece_offset: audit_piece_offset,
-                                        piece_record_hash: blake2b_256_254_hash(
-                                            &piece[..record_size],
-                                        ),
+                                        piece_record_hash: blake2b_256_254_hash(record),
                                         piece_witness,
                                         chunk,
                                         chunk_signature: identity.create_chunk_signature(&chunk),
