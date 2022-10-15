@@ -678,7 +678,7 @@ impl SingleDiskPlot {
                                     metadata_header_mmap
                                         .copy_from_slice(metadata_header.encode().as_slice());
                                 }
-                                PlottingStatus::Interrupted => {
+                                PlottingStatus::Cancelled => {
                                     return;
                                 }
                             }

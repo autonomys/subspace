@@ -40,7 +40,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     .unwrap();
 
     let get_piece = |_piece_index| async { Ok(Some(piece.clone())) };
-    let shutting_down = AtomicBool::new(false);
+    let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: Default::default(),
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
@@ -61,7 +61,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     &public_key,
                     sector_index,
                     &get_piece,
-                    &shutting_down,
+                    &cancelled,
                     &farmer_protocol_info,
                     io::sink(),
                     io::sink(),
@@ -86,7 +86,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                             &public_key,
                             sector_index,
                             &get_piece,
-                            &shutting_down,
+                            &cancelled,
                             &farmer_protocol_info,
                             io::sink(),
                             io::sink(),

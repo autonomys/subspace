@@ -16,8 +16,8 @@ use tracing::debug;
 pub enum PlottingStatus {
     /// Sector was plotted successfully
     PlottedSuccessfully,
-    /// Plotting was interrupted due to shutdown
-    Interrupted,
+    /// Plotting was cancelled
+    Cancelled,
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
@@ -29,7 +29,7 @@ pub async fn plot_sector<GP, GPF, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
     get_piece: GP,
-    shutting_down: &AtomicBool,
+    cancelled: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
     mut sector: S,
     mut sector_metadata: SM,
@@ -51,13 +51,13 @@ where
         * 2;
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
-    for piece_offset in (0..).take(plot_sector_size as usize / PIECE_SIZE) {
-        if shutting_down.load(Ordering::Acquire) {
+    for piece_offset in (0u64..).take(plot_sector_size as usize / PIECE_SIZE) {
+        if cancelled.load(Ordering::Acquire) {
             debug!(
                 %sector_index,
-                "Instance is shutting down, interrupting plotting"
+                "Plotting was cancelled, interrupting plotting"
             );
-            return Ok(PlottingStatus::Interrupted);
+            return Ok(PlottingStatus::Cancelled);
         }
         let piece_index = sector_id.derive_piece_index(
             piece_offset as PieceIndex,
