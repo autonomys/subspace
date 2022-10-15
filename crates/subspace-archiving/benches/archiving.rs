@@ -1,5 +1,3 @@
-#![feature(int_log)]
-
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{thread_rng, Rng};
 use subspace_archiving::archiver::Archiver;

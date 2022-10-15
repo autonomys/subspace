@@ -8018,6 +8018,7 @@ dependencies = [
  "blake2-rfc",
  "bytesize",
  "clap",
+ "criterion",
  "derive_more",
  "dirs",
  "event-listener-primitives",
