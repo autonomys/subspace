@@ -581,8 +581,6 @@ impl SingleDiskPlot {
             (metadata_header, metadata_header_mmap)
         };
 
-        metadata_file.advise_random_access()?;
-
         let metadata_header = Arc::new(Mutex::new(metadata_header));
 
         let mut metadata_mmap_mut = unsafe {
@@ -599,7 +597,6 @@ impl SingleDiskPlot {
             .open(directory.join(Self::PLOT_FILE))?;
 
         plot_file.preallocate(plot_sector_size * target_sector_count)?;
-        plot_file.advise_random_access()?;
 
         let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
 
@@ -726,9 +723,13 @@ impl SingleDiskPlot {
                             let plot_mmap = unsafe {
                                 MmapOptions::new()
                                     .len((plot_sector_size * sector_count) as usize)
-                                    .map_mut(&plot_file)
+                                    .map(&plot_file)
                                     .map_err(|error| FarmingError::FailedToMapPlot { error })?
                             };
+                            #[cfg(unix)]
+                            {
+                                plot_mmap.advise(memmap2::Advice::Random).unwrap();
+                            }
                             let metadata_mmap = unsafe {
                                 MmapOptions::new()
                                     .offset(RESERVED_PLOT_METADATA)
@@ -736,6 +737,10 @@ impl SingleDiskPlot {
                                     .map(&metadata_file)
                                     .map_err(|error| FarmingError::FailedToMapMetadata { error })?
                             };
+                            #[cfg(unix)]
+                            {
+                                metadata_mmap.advise(memmap2::Advice::Random).unwrap();
+                            }
                             let shutting_down = Arc::clone(&shutting_down);
 
                             let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
