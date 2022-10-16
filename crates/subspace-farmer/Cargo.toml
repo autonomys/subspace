@@ -79,3 +79,7 @@ harness = false
 [[bench]]
 name = "auditing"
 harness = false
+
+[[bench]]
+name = "proving"
+harness = false

@@ -243,14 +243,19 @@ impl PlotMetadataHeader {
     }
 }
 
+/// Metadata of the plotted sector
+#[doc(hidden)]
 #[derive(Debug, Encode, Decode)]
-struct SectorMetadata {
-    total_pieces: NonZeroU64,
-    expires_at: SegmentIndex,
+pub struct SectorMetadata {
+    /// Total number of pieces in archived history of the blockchain as of sector creation
+    pub total_pieces: NonZeroU64,
+    /// Sector expiration, defined as sector of the archived history of the blockchain
+    pub expires_at: SegmentIndex,
 }
 
 impl SectorMetadata {
-    fn encoded_size() -> usize {
+    /// Size of encoded sector metadata
+    pub fn encoded_size() -> usize {
         let default = SectorMetadata {
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             expires_at: 0,
