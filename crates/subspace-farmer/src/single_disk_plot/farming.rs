@@ -1,4 +1,7 @@
+use crate::single_disk_plot::FarmingError;
 use bitvec::prelude::*;
+use std::io;
+use std::io::SeekFrom;
 use subspace_core_primitives::{
     Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, SolutionRange, PIECE_SIZE,
 };
@@ -25,14 +28,20 @@ pub struct EligibleSector {
 }
 
 /// Audit a single sector
-pub fn audit_sector(
+///
+/// Note: auditing expects cursor to be set to the beginning of the sector and will move the cursor
+/// during its operation. Make sure to return it back to the beginning of the sector if necessary.
+pub fn audit_sector<S>(
     public_key: &PublicKey,
     sector_index: u64,
     farmer_protocol_info: &FarmerProtocolInfo,
     global_challenge: &Blake2b256Hash,
     solution_range: SolutionRange,
-    sector: &[u8],
-) -> Option<EligibleSector> {
+    mut sector: S,
+) -> Result<Option<EligibleSector>, FarmingError>
+where
+    S: io::Read + io::Seek,
+{
     let sector_id = SectorId::new(public_key, sector_index);
     let chunks_in_sector = u64::from(farmer_protocol_info.record_size.get()) * u64::from(u8::BITS)
         / u64::from(farmer_protocol_info.space_l.get());
@@ -44,8 +53,9 @@ pub fn audit_sector(
     let audit_piece_bytes_offset = audit_piece_offset * PIECE_SIZE as u64;
     // Audit index (chunk) within corresponding piece
     let audit_index_within_piece = audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
-    let piece = Piece::try_from(&sector[audit_piece_bytes_offset as usize..][..PIECE_SIZE])
-        .expect("Slice is guaranteed to have correct length; qed");
+    let mut piece = Piece::default();
+    sector.seek(SeekFrom::Current(audit_piece_bytes_offset as i64))?;
+    sector.read_exact(&mut piece)?;
 
     // TODO: We are skipping witness part of the piece or else it is not
     //  decodable
@@ -59,7 +69,7 @@ pub fn audit_sector(
         None => {
             // TODO: Record size is not multiple of `space_l`, last bits
             //  were not encoded and should not be used for solving
-            return None;
+            return Ok(None);
         }
     };
 
@@ -67,17 +77,17 @@ pub fn audit_sector(
     //  something else?
     let expanded_chunk = chunk.expand(local_challenge);
 
-    if is_within_solution_range(local_challenge, expanded_chunk, solution_range) {
-        Some(EligibleSector {
-            sector_id,
-            local_challenge,
-            audit_index,
-            chunk,
-            expanded_chunk,
-            piece,
-            audit_piece_offset,
-        })
-    } else {
-        None
-    }
+    Ok(
+        is_within_solution_range(local_challenge, expanded_chunk, solution_range).then_some(
+            EligibleSector {
+                sector_id,
+                local_challenge,
+                audit_index,
+                chunk,
+                expanded_chunk,
+                piece,
+                audit_piece_offset,
+            },
+        ),
+    )
 }

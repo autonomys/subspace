@@ -395,6 +395,9 @@ pub enum FarmingError {
         /// Lower-level error
         error: rpc_client::Error,
     },
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
 }
 
 /// Errors that happen in background tasks
@@ -759,8 +762,8 @@ impl SingleDiskPlot {
                                     &farmer_protocol_info,
                                     &slot_info.global_challenge,
                                     slot_info.voting_solution_range,
-                                    sector,
-                                ) {
+                                    io::Cursor::new(sector),
+                                )? {
                                     Some(eligible_sector) => eligible_sector,
                                     None => {
                                         continue;
