@@ -1,18 +1,26 @@
-use crate::single_disk_plot::FarmingError;
+use crate::identity::Identity;
+use crate::single_disk_plot::{FarmingError, SectorMetadata};
 use bitvec::prelude::*;
+use parity_scale_codec::Decode;
 use std::io;
 use std::io::SeekFrom;
+use subspace_core_primitives::crypto::blake2b_256_254_hash;
+use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
-    Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, SolutionRange, PIECE_SIZE,
+    Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, Solution, SolutionRange, PIECE_SIZE,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
+use subspace_solving::derive_chunk_otp;
 use subspace_verification::is_within_solution_range;
+use tracing::error;
 
 /// Sector that can be used to create a solution that is within desired solution range
 #[derive(Debug, Clone)]
 pub struct EligibleSector {
     /// Sector ID
     pub sector_id: SectorId,
+    /// Sector index
+    pub sector_index: u64,
     /// Derived local challenge
     pub local_challenge: SolutionRange,
     /// Audit index corresponding to the challenge used
@@ -81,6 +89,7 @@ where
         is_within_solution_range(local_challenge, expanded_chunk, solution_range).then_some(
             EligibleSector {
                 sector_id,
+                sector_index,
                 local_challenge,
                 audit_index,
                 chunk,
@@ -90,4 +99,75 @@ where
             },
         ),
     )
+}
+
+/// Create solution for eligible sector
+pub fn create_solution(
+    identity: &Identity,
+    mut eligible_sector: EligibleSector,
+    reward_address: PublicKey,
+    farmer_protocol_info: &FarmerProtocolInfo,
+    sector_metadata: &[u8],
+) -> Result<Option<Solution<PublicKey, PublicKey>>, FarmingError> {
+    let sector_metadata = SectorMetadata::decode(&mut &*sector_metadata)
+        .map_err(|error| FarmingError::FailedToDecodeMetadata { error })?;
+
+    // Decode piece
+    let (record, witness_bytes) = eligible_sector
+        .piece
+        .split_at_mut(farmer_protocol_info.record_size.get() as usize);
+    let piece_witness = match Witness::try_from_bytes(
+        (&*witness_bytes).try_into().expect(
+            "Witness must have correct size unless implementation is broken in a big way; qed",
+        ),
+    ) {
+        Ok(piece_witness) => piece_witness,
+        Err(error) => {
+            let piece_index = eligible_sector.sector_id.derive_piece_index(
+                eligible_sector.audit_piece_offset,
+                sector_metadata.total_pieces,
+            );
+            let audit_piece_bytes_offset = eligible_sector.audit_piece_offset * PIECE_SIZE as u64;
+            error!(
+                ?error,
+                sector_id = ?eligible_sector.sector_id,
+                %audit_piece_bytes_offset,
+                %piece_index,
+                "Failed to decode witness for piece, likely caused by on-disk data corruption"
+            );
+            return Ok(None);
+        }
+    };
+    // TODO: Extract encoding into separate function reusable in
+    //  farmer and otherwise
+    record
+        .view_bits_mut::<Lsb0>()
+        .chunks_mut(farmer_protocol_info.space_l.get() as usize)
+        .enumerate()
+        .for_each(|(chunk_index, bits)| {
+            // Derive one-time pad
+            let mut otp = derive_chunk_otp(
+                &eligible_sector.sector_id,
+                witness_bytes,
+                chunk_index as u32,
+            );
+            // XOR chunk bit by bit with one-time pad
+            bits.iter_mut()
+                .zip(otp.view_bits_mut::<Lsb0>().iter())
+                .for_each(|(mut a, b)| {
+                    *a ^= *b;
+                });
+        });
+
+    Ok(Some(Solution {
+        public_key: PublicKey::from(identity.public_key().to_bytes()),
+        reward_address,
+        sector_index: eligible_sector.sector_index,
+        total_pieces: sector_metadata.total_pieces,
+        piece_offset: eligible_sector.audit_piece_offset,
+        piece_record_hash: blake2b_256_254_hash(record),
+        piece_witness,
+        chunk: eligible_sector.chunk,
+        chunk_signature: identity.create_chunk_signature(&eligible_sector.chunk),
+    }))
 }

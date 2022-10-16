@@ -6,10 +6,9 @@ use crate::identity::Identity;
 use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
-use crate::single_disk_plot::farming::{audit_sector, EligibleSector};
+use crate::single_disk_plot::farming::{audit_sector, create_solution};
 use crate::single_disk_plot::plotting::{plot_sector, PlottingStatus};
 use crate::utils::JoinOnDrop;
-use bitvec::prelude::*;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use futures::channel::oneshot;
@@ -31,13 +30,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
-use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
     plot_sector_size, PieceIndex, PublicKey, SectorIndex, SegmentIndex, Solution, PIECE_SIZE,
 };
 use subspace_rpc_primitives::SolutionResponse;
-use subspace_solving::derive_chunk_otp;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, info_span, trace, Instrument, Span};
@@ -775,82 +771,20 @@ impl SingleDiskPlot {
                                     }
                                 };
 
-                                let EligibleSector {
-                                    sector_id,
-                                    chunk,
-                                    mut piece,
-                                    audit_piece_offset,
-                                    ..
-                                } = eligible_sector;
-
-                                let sector_metadata = SectorMetadata::decode(
-                                    &mut &*sector_metadata,
-                                )
-                                .map_err(|error| FarmingError::FailedToDecodeMetadata { error })?;
-
-                                debug!("Solution found");
-
-                                // Decode piece
-                                let (record, witness_bytes) = piece
-                                    .split_at_mut(farmer_protocol_info.record_size.get() as usize);
-                                let piece_witness = match Witness::try_from_bytes(
-                                    (&*witness_bytes).try_into().expect(
-                                        "Witness must have correct size unless implementation \
-                                            is broken in a big way; qed",
-                                    ),
-                                ) {
-                                    Ok(piece_witness) => piece_witness,
-                                    Err(error) => {
-                                        let piece_index = sector_id.derive_piece_index(
-                                            audit_piece_offset,
-                                            sector_metadata.total_pieces,
-                                        );
-                                        let audit_piece_bytes_offset =
-                                            audit_piece_offset * PIECE_SIZE as u64;
-                                        error!(
-                                            ?error,
-                                            ?sector_id,
-                                            %audit_piece_bytes_offset,
-                                            %piece_index,
-                                            "Failed to decode witness for piece, likely \
-                                            caused by on-disk data corruption"
-                                        );
+                                let solution = match create_solution(
+                                    &identity,
+                                    eligible_sector,
+                                    reward_address,
+                                    &farmer_protocol_info,
+                                    sector_metadata,
+                                )? {
+                                    Some(solution) => solution,
+                                    None => {
                                         continue;
                                     }
                                 };
-                                // TODO: Extract encoding into separate function reusable in
-                                //  farmer and otherwise
-                                record
-                                    .view_bits_mut::<Lsb0>()
-                                    .chunks_mut(space_l.get() as usize)
-                                    .enumerate()
-                                    .for_each(|(chunk_index, bits)| {
-                                        // Derive one-time pad
-                                        let mut otp = derive_chunk_otp(
-                                            &sector_id,
-                                            witness_bytes,
-                                            chunk_index as u32,
-                                        );
-                                        // XOR chunk bit by bit with one-time pad
-                                        bits.iter_mut()
-                                            .zip(otp.view_bits_mut::<Lsb0>().iter())
-                                            .for_each(|(mut a, b)| {
-                                                *a ^= *b;
-                                            });
-                                    });
 
-                                let solution = Solution {
-                                    public_key,
-                                    reward_address,
-                                    sector_index,
-                                    total_pieces: sector_metadata.total_pieces,
-                                    piece_offset: audit_piece_offset,
-                                    piece_record_hash: blake2b_256_254_hash(record),
-                                    piece_witness,
-                                    chunk,
-                                    chunk_signature: identity.create_chunk_signature(&chunk),
-                                };
-
+                                debug!("Solution found");
                                 trace!(?solution, "Solution found");
 
                                 solutions.push(solution);
