@@ -1,7 +1,7 @@
 use crate::identity::Identity;
 use crate::single_disk_plot::{FarmingError, SectorMetadata};
 use bitvec::prelude::*;
-use parity_scale_codec::Decode;
+use parity_scale_codec::{Decode, IoReader};
 use std::io;
 use std::io::SeekFrom;
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
@@ -102,14 +102,17 @@ where
 }
 
 /// Create solution for eligible sector
-pub fn create_solution(
+pub fn create_solution<SM>(
     identity: &Identity,
     mut eligible_sector: EligibleSector,
     reward_address: PublicKey,
     farmer_protocol_info: &FarmerProtocolInfo,
-    sector_metadata: &[u8],
-) -> Result<Option<Solution<PublicKey, PublicKey>>, FarmingError> {
-    let sector_metadata = SectorMetadata::decode(&mut &*sector_metadata)
+    sector_metadata: SM,
+) -> Result<Option<Solution<PublicKey, PublicKey>>, FarmingError>
+where
+    SM: io::Read,
+{
+    let sector_metadata = SectorMetadata::decode(&mut IoReader(sector_metadata))
         .map_err(|error| FarmingError::FailedToDecodeMetadata { error })?;
 
     // Decode piece
