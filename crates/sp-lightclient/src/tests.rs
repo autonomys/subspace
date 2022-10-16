@@ -123,12 +123,11 @@ fn valid_header(
                 .unwrap(),
         )
         .unwrap();
-        let piece_witness =
-            Witness::try_from_bytes(&piece[RECORD_SIZE as usize..].try_into().unwrap()).unwrap();
-        let piece_record_hash = blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]);
 
         // Encode piece
         let (record, witness_bytes) = piece.split_at_mut(RECORD_SIZE as usize);
+        let piece_witness = Witness::try_from_bytes((&*witness_bytes).try_into().unwrap()).unwrap();
+        let piece_record_hash = blake2b_256_254_hash(record);
         // TODO: Extract encoding into separate function reusable in
         //  farmer and otherwise
         record

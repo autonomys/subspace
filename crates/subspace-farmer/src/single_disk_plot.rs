@@ -785,13 +785,14 @@ impl SingleDiskPlot {
 
                                 debug!("Solution found");
 
+                                // Decode piece
+                                let (record, witness_bytes) = piece
+                                    .split_at_mut(farmer_protocol_info.record_size.get() as usize);
                                 let piece_witness = match Witness::try_from_bytes(
-                                    &piece[farmer_protocol_info.record_size.get() as usize..]
-                                        .try_into()
-                                        .expect(
-                                            "Witness must have correct size unless implementation \
+                                    (&*witness_bytes).try_into().expect(
+                                        "Witness must have correct size unless implementation \
                                             is broken in a big way; qed",
-                                        ),
+                                    ),
                                 ) {
                                     Ok(piece_witness) => piece_witness,
                                     Err(error) => {
@@ -799,10 +800,12 @@ impl SingleDiskPlot {
                                             audit_piece_offset,
                                             sector_metadata.total_pieces,
                                         );
+                                        let audit_piece_bytes_offset =
+                                            audit_piece_offset * PIECE_SIZE as u64;
                                         error!(
                                             ?error,
                                             ?sector_id,
-                                            audit_piece_bytes_offset = %audit_piece_offset * PIECE_SIZE as u64,
+                                            %audit_piece_bytes_offset,
                                             %piece_index,
                                             "Failed to decode witness for piece, likely \
                                             caused by on-disk data corruption"
@@ -810,9 +813,6 @@ impl SingleDiskPlot {
                                         continue;
                                     }
                                 };
-                                // Decode piece
-                                let (record, witness_bytes) = piece
-                                    .split_at_mut(farmer_protocol_info.record_size.get() as usize);
                                 // TODO: Extract encoding into separate function reusable in
                                 //  farmer and otherwise
                                 record
