@@ -3,6 +3,7 @@ use parity_scale_codec::{Decode, Encode};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
+use std::ops::Deref;
 use std::path::Path;
 use subspace_core_primitives::{Chunk, ChunkSignature};
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
@@ -33,6 +34,14 @@ pub struct Identity {
     keypair: Zeroizing<Keypair>,
     entropy: Zeroizing<Vec<u8>>,
     substrate_ctx: SigningContext,
+}
+
+impl Deref for Identity {
+    type Target = Keypair;
+
+    fn deref(&self) -> &Self::Target {
+        &self.keypair
+    }
 }
 
 impl Identity {

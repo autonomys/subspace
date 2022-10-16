@@ -1,7 +1,7 @@
-use crate::identity::Identity;
 use crate::single_disk_plot::{FarmingError, SectorMetadata};
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, IoReader};
+use schnorrkel::Keypair;
 use std::io;
 use std::io::SeekFrom;
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
@@ -10,7 +10,7 @@ use subspace_core_primitives::{
     Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, Solution, SolutionRange, PIECE_SIZE,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
-use subspace_solving::derive_chunk_otp;
+use subspace_solving::{create_chunk_signature, derive_chunk_otp};
 use subspace_verification::is_within_solution_range;
 use tracing::error;
 
@@ -103,7 +103,7 @@ where
 
 /// Create solution for eligible sector
 pub fn create_solution<SM>(
-    identity: &Identity,
+    keypair: &Keypair,
     mut eligible_sector: EligibleSector,
     reward_address: PublicKey,
     farmer_protocol_info: &FarmerProtocolInfo,
@@ -163,7 +163,7 @@ where
         });
 
     Ok(Some(Solution {
-        public_key: PublicKey::from(identity.public_key().to_bytes()),
+        public_key: PublicKey::from(keypair.public.to_bytes()),
         reward_address,
         sector_index: eligible_sector.sector_index,
         total_pieces: sector_metadata.total_pieces,
@@ -171,6 +171,6 @@ where
         piece_record_hash: blake2b_256_254_hash(record),
         piece_witness,
         chunk: eligible_sector.chunk,
-        chunk_signature: identity.create_chunk_signature(&eligible_sector.chunk),
+        chunk_signature: create_chunk_signature(keypair, &eligible_sector.chunk),
     }))
 }
