@@ -17,9 +17,9 @@ use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 
 // This is helpful for overriding locally for benching different parameters
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
-pub fn criterion_benchmark(c: &mut Criterion) {
+fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::default();
     let sector_index = 0;
     let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
@@ -28,7 +28,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
     let piece = Piece::try_from(
         archiver
-            .add_block(input.clone(), Default::default())
+            .add_block(input, Default::default())
             .into_iter()
             .next()
             .unwrap()

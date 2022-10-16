@@ -75,3 +75,7 @@ rayon = "1.5.3"
 [[bench]]
 name = "plotting"
 harness = false
+
+[[bench]]
+name = "auditing"
+harness = false

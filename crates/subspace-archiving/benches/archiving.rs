@@ -6,9 +6,9 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PIECES_IN_SEGMENT, RECORD_SIZE};
 
 // This is helpful for overriding locally for benching different parameters
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
-pub fn criterion_benchmark(c: &mut Criterion) {
+fn criterion_benchmark(c: &mut Criterion) {
     let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     thread_rng().fill(input.as_mut_slice());
     let kzg = Kzg::new(kzg::test_public_parameters());
