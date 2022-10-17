@@ -195,11 +195,12 @@ pub enum CreationError {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create<
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
->(
+pub async fn create<RecordStore>(
     config: Config<RecordStore>,
-) -> Result<(Node, NodeRunner<RecordStore>), CreationError> {
+) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     let Config {
         keypair,
         listen_on,

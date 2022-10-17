@@ -13,6 +13,8 @@ use std::sync::Arc;
 use std::vec;
 use tracing::{debug, error, trace};
 
+const PARITY_DB_COLUMN_NAME: u8 = 0;
+
 #[derive(Clone)]
 pub struct CustomRecordStore<
     RecordStorage = NoRecordStorage,
@@ -260,25 +262,27 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+use parity_scale_codec::{Decode, Encode};
+
+#[derive(Clone, Debug, Serialize, Deserialize, Decode, Encode)]
 struct ParityDbRecord {
-    /// Key of the record.
-    pub key: Key,
-    /// Value of the record.
-    pub value: Vec<u8>,
-    /// The (original) publisher of the record.
-    pub publisher: Option<PeerId>,
+    // Key of the record.
+    key: Vec<u8>,
+    // Value of the record.
+    value: Vec<u8>,
+    // The (original) publisher of the record.
+    publisher: Option<Vec<u8>>,
     // TODO: add expiration field and convert Instant to serializable time-type
-    // /// The expiration time as measured by a local, monotonic clock.
-    // pub expires: Option<Instant>,
+    // // The expiration time as measured by a local, monotonic clock.
+    // expires: Option<Instant>,
 }
 
 impl From<Record> for ParityDbRecord {
     fn from(rec: Record) -> Self {
         Self {
-            key: rec.key,
+            key: rec.key.to_vec(),
             value: rec.value,
-            publisher: rec.publisher,
+            publisher: rec.publisher.map(|peer_id| peer_id.to_bytes()),
         }
     }
 }
@@ -286,9 +290,11 @@ impl From<Record> for ParityDbRecord {
 impl From<ParityDbRecord> for Record {
     fn from(rec: ParityDbRecord) -> Self {
         Self {
-            key: rec.key,
+            key: rec.key.into(),
             value: rec.value,
-            publisher: rec.publisher,
+            publisher: rec
+                .publisher
+                .map(|peer_id| PeerId::from_bytes(&peer_id).expect("Fatal serialization error.")),
             expires: None,
         }
     }
@@ -299,8 +305,6 @@ impl From<ParityDbRecord> for Record {
 pub struct ParityDbRecordStorage {
     // Parity DB instance
     db: Arc<Db>,
-    // Column ID to persist parameters
-    column_id: u8,
 }
 
 impl ParityDbRecordStorage {
@@ -314,18 +318,14 @@ impl ParityDbRecordStorage {
         options.stats = false;
 
         let db = Db::open_or_create(&options)?;
-        let column_id = 0u8;
 
-        Ok(Self {
-            db: Arc::new(db),
-            column_id,
-        })
+        Ok(Self { db: Arc::new(db) })
     }
 
     fn save_data(&mut self, key: &Key, data: Option<Vec<u8>>) -> bool {
         let key: &[u8] = key.borrow();
 
-        let tx = vec![(self.column_id, key, data)];
+        let tx = Some((PARITY_DB_COLUMN_NAME, key, data));
 
         let result = self.db.commit(tx);
         if let Err(ref err) = result {
@@ -335,8 +335,8 @@ impl ParityDbRecordStorage {
         result.is_ok()
     }
 
-    fn convert_to_record(data: Vec<u8>) -> Result<Record, serde_json::Error> {
-        serde_json::from_slice::<ParityDbRecord>(&data).map(Into::into)
+    fn convert_to_record(data: Vec<u8>) -> Result<Record, parity_scale_codec::Error> {
+        ParityDbRecord::decode(&mut data.as_slice()).map(Into::into)
     }
 }
 
@@ -344,30 +344,29 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     type RecordsIter = ParityDbRecordIterator<'a>;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
-        let result = self.db.get(self.column_id, key.borrow());
+        let result = self.db.get(PARITY_DB_COLUMN_NAME, key.borrow());
 
         match result {
-            Ok(data) => {
-                if let Some(data) = data {
-                    let db_rec_result = ParityDbRecordStorage::convert_to_record(data);
+            Ok(Some(data)) => {
+                let db_rec_result = ParityDbRecordStorage::convert_to_record(data);
 
-                    match db_rec_result {
-                        Ok(db_rec) => {
-                            trace!(?key, "Record loaded successfully from DB");
+                match db_rec_result {
+                    Ok(db_rec) => {
+                        trace!(?key, "Record loaded successfully from DB");
 
-                            Some(Cow::Owned(db_rec))
-                        }
-                        Err(err) => {
-                            debug!(?key, ?err, "Parity DB record deserialization error");
-
-                            None
-                        }
+                        Some(Cow::Owned(db_rec))
                     }
-                } else {
-                    trace!(?key, "No Parity DB record for given key");
+                    Err(err) => {
+                        debug!(?key, ?err, "Parity DB record deserialization error");
 
-                    None
+                        None
+                    }
                 }
+            }
+            Ok(None) => {
+                trace!(?key, "No Parity DB record for given key");
+
+                None
             }
             Err(err) => {
                 debug!(?key, ?err, "Parity DB record storage error");
@@ -378,12 +377,11 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     }
 
     fn put(&'a mut self, record: Record) -> store::Result<()> {
-        debug!("Saving a new record to DB: {:?}", record);
+        debug!("Saving a new record to DB, key: {:?}", record.key);
 
-        let db_rec: ParityDbRecord = record.clone().into();
-        let data = serde_json::to_vec(&db_rec).expect("We don't expect an error here.");
+        let db_rec = ParityDbRecord::from(record.clone());
 
-        self.save_data(&record.key, Some(data));
+        self.save_data(&record.key, Some(db_rec.encode()));
 
         Ok(())
     }
@@ -394,7 +392,7 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
 
     fn records(&'a self) -> Self::RecordsIter {
         let rec_iter_result: Result<ParityDbRecordIterator, parity_db::Error> = try {
-            let btree_iter = self.db.iter(self.column_id)?;
+            let btree_iter = self.db.iter(PARITY_DB_COLUMN_NAME)?;
             ParityDbRecordIterator::new(btree_iter)?
         };
 
