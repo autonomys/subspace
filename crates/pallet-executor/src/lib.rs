@@ -28,9 +28,9 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
-    read_bundle_election_params, verify_vrf_proof, BundleElectionParams, BundleEquivocationProof,
-    ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionCode, InvalidTransactionProof,
-    ProofOfElection, SignedOpaqueBundle,
+    is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
+    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof,
+    InvalidTransactionCode, InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
@@ -641,7 +641,7 @@ impl<T: Config> Pallet<T> {
             slot_probability,
         );
 
-        if u128::from(election_solution) > threshold {
+        if !is_election_solution_within_threshold(election_solution.into(), threshold) {
             return Err(BundleError::InvalidElectionSolution);
         }
 

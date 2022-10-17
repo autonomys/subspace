@@ -249,11 +249,11 @@ parameter_types! {
     pub const MaxExecutorStake: Balance = 1000 * SSC;
     pub const MinExecutors: u32 = 1;
     pub const MaxExecutors: u32 = 10;
-    // One hour.
-    pub const EpochDuration: BlockNumber = 600;
+    // One hour in blocks.
+    pub const EpochDuration: BlockNumber = 3600 / 6;
     pub const MaxWithdrawals: u32 = 1;
-    // One day.
-    pub const WithdrawalDuration: BlockNumber = 14400;
+    // One day in blocks.
+    pub const WithdrawalDuration: BlockNumber = 3600 * 24 / 6;
 }
 
 impl pallet_executor_registry::Config for Runtime {

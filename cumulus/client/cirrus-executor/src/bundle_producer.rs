@@ -8,12 +8,12 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_core::{ByteArray, H256};
+use sp_core::H256;
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
-    make_local_randomness_transcript_data, well_known_keys, Bundle, BundleElectionParams,
-    BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, ProofOfElection, SignedBundle,
-    SignedOpaqueBundle, StakeWeight,
+    is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
+    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature,
+    ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -103,7 +103,7 @@ where
     > {
         let ExecutorSlotInfo {
             slot,
-            global_challenge,
+            slot_randomness,
         } = slot_info;
 
         let parent_number = self.client.info().best_number;
@@ -175,7 +175,6 @@ where
         };
 
         let best_hash = self.client.info().best_hash;
-        let slot_randomness = global_challenge;
 
         if let Some((executor_id, proof_of_election)) =
             self.solve_bundle_election_challenge(best_hash, slot_randomness)?
@@ -271,8 +270,10 @@ where
                     slot_probability,
                 );
 
-                if u128::from(election_solution) <= threshold {
+                if is_election_solution_within_threshold(election_solution.into(), threshold) {
                     let storage_keys = well_known_keys::bundle_election_storage_keys();
+                    // TODO: bench how large the storage proof we can afford and try proving a single
+                    // electioned executor storage instead of the whole authority set.
                     let storage_proof = self.client.read_proof(
                         &best_block_id,
                         &mut storage_keys.iter().map(|s| s.as_slice()),
@@ -291,13 +292,12 @@ where
                         })?;
 
                     // TODO: vrf_public_key and authority_id are essentially the same, merge them?
-                    let vrf_public_key =
-                        schnorrkel::PublicKey::from_bytes(&ByteArray::to_raw_vec(&authority_id))
-                            .map_err(|err| {
-                                sp_blockchain::Error::Application(Box::from(format!(
-                                    "Failed to convert ExecutorId to schnorrkel::PublicKey: {err}",
-                                )))
-                            })?;
+                    let vrf_public_key = schnorrkel::PublicKey::from_bytes(authority_id.as_ref())
+                        .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to convert ExecutorId to schnorrkel::PublicKey: {err}",
+                        )))
+                    })?;
 
                     let proof_of_election = ProofOfElection {
                         domain_id: SYSTEM_DOMAIN_ID,

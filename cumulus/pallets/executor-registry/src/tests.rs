@@ -1,6 +1,6 @@
 use crate::{
-    self as pallet_executor_registry, Error, ExecutorConfig, Executors, TotalActiveExecutors,
-    TotalActiveStake, Withdrawal,
+    self as pallet_executor_registry, Error, ExecutorConfig, Executors, KeyOwner,
+    TotalActiveExecutors, TotalActiveStake, Withdrawal,
 };
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
 use frame_support::{assert_noop, assert_ok, bounded_vec, parameter_types};
@@ -191,6 +191,7 @@ fn register_should_work() {
                 fee_frozen: stake
             }
         );
+        assert_eq!(KeyOwner::<Test>::get(&public_key).unwrap(), 2);
         assert_eq!(
             Executors::<Test>::get(&2),
             Some(ExecutorConfig {

@@ -17,6 +17,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use crate::well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -33,7 +34,7 @@ use sp_std::borrow::Cow;
 use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
-use subspace_core_primitives::crypto::blake2b_256_hash;
+use subspace_core_primitives::crypto::blake2b_256_hash_list;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
 
@@ -116,10 +117,7 @@ impl<Hash: Encode> BundleHeader<Hash> {
 
 // TODO: unify the type between the solution and threshold better.
 pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u64 {
-    let mut data = domain_id.to_le_bytes().to_vec();
-    data.extend_from_slice(vrf_output);
-
-    let local_domain_randomness = blake2b_256_hash(&data);
+    let local_domain_randomness = blake2b_256_hash_list(&[&domain_id.to_le_bytes(), vrf_output]);
 
     let election_solution = u64::from_le_bytes(
         local_domain_randomness
@@ -132,13 +130,26 @@ pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -
     election_solution
 }
 
+/// Returns the election threshold based on the stake weight proportion and slot probability.
 pub fn calculate_bundle_election_threshold(
     stake_weight: StakeWeight,
     total_stake_weight: StakeWeight,
     slot_probability: (u64, u64),
 ) -> u128 {
-    stake_weight / total_stake_weight * u128::MAX * u128::from(slot_probability.0)
-        / u128::from(slot_probability.1)
+    // The calculation is written for not causing the overflow, which might be harder to
+    // understand, the formula in a readable form is as followes:
+    //
+    //              slot_probability.0      stake_weight
+    // threshold =  ------------------ * --------------------- * u128::MAX
+    //              slot_probability.1    total_stake_weight
+    //
+    // TODO: better to have more audits on this calculation.
+    u128::MAX / total_stake_weight * u128::from(slot_probability.0) / u128::from(slot_probability.1)
+        * stake_weight
+}
+
+pub fn is_election_solution_within_threshold(election_solution: u128, threshold: u128) -> bool {
+    election_solution <= threshold
 }
 
 /// Make a VRF transcript.
@@ -249,27 +260,28 @@ pub fn read_bundle_election_params(
     storage_proof: StorageProof,
     state_root: &H256,
 ) -> Result<BundleElectionParams, ReadBundleElectionParamsError> {
-    use well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
-    use ReadBundleElectionParamsError::{DecodeError, MissingValue, TrieError};
-
     let db = storage_proof.into_memory_db::<BlakeTwo256>();
 
     let read_value = |storage_key| {
         read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key)
-            .map_err(|_| TrieError)
+            .map_err(|_| ReadBundleElectionParamsError::TrieError)
     };
 
-    let authorities = read_value(&AUTHORITIES)?.ok_or(MissingValue)?;
+    let authorities =
+        read_value(&AUTHORITIES)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
     let authorities: Vec<(ExecutorId, StakeWeight)> =
-        Decode::decode(&mut authorities.as_slice()).map_err(|_| DecodeError)?;
+        Decode::decode(&mut authorities.as_slice())
+            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
-    let total_stake_weight_value = read_value(&TOTAL_STAKE_WEIGHT)?.ok_or(MissingValue)?;
-    let total_stake_weight: StakeWeight =
-        Decode::decode(&mut total_stake_weight_value.as_slice()).map_err(|_| DecodeError)?;
+    let total_stake_weight_value =
+        read_value(&TOTAL_STAKE_WEIGHT)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+    let total_stake_weight: StakeWeight = Decode::decode(&mut total_stake_weight_value.as_slice())
+        .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
-    let slot_probability_value = read_value(&SLOT_PROBABILITY)?.ok_or(MissingValue)?;
-    let slot_probability: (u64, u64) =
-        Decode::decode(&mut slot_probability_value.as_slice()).map_err(|_| DecodeError)?;
+    let slot_probability_value =
+        read_value(&SLOT_PROBABILITY)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+    let slot_probability: (u64, u64) = Decode::decode(&mut slot_probability_value.as_slice())
+        .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
     Ok(BundleElectionParams {
         authorities,

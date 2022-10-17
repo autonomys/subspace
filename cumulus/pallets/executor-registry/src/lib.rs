@@ -167,6 +167,8 @@ mod pallet {
 
             Self::lock_fund(&who, stake);
 
+            KeyOwner::<T>::insert(&public_key, &who);
+
             let executor_config = ExecutorConfig {
                 public_key,
                 reward_address,
@@ -645,6 +647,8 @@ mod pallet {
             // 2. Activate the new executor public key if any.
             if (block_number % T::EpochDuration::get()).is_zero() {
                 let mut total_stake_weight = 0;
+                // TODO: currently, we are iterating the Executors map, figure out how many executors
+                // we can support with this approach and optimize it when it does not satisfy our requirement.
                 let authorities = Executors::<T>::iter()
                     .filter(|(_who, executor_config)| executor_config.is_active)
                     .map(|(who, executor_config)| {
@@ -652,13 +656,19 @@ mod pallet {
                             Some(new_key) => {
                                 // It's okay to update a field while iterating the storage map.
                                 //
-                                // TODO: Add a test that the public_key can be updated as expected.
+                                // TODO: add a test that the public_key can be updated and the key_owner
+                                // will be deleted as expected.
                                 Executors::<T>::mutate(who, |maybe_executor_config| {
                                     let executor_config = maybe_executor_config
                                         .as_mut()
                                         .expect("Executor config must exist; qed");
+
+                                    // Clear the old key owner.
+                                    KeyOwner::<T>::remove(&executor_config.public_key);
+
                                     executor_config.public_key = new_key.clone();
                                 });
+
                                 new_key
                             }
                             None => executor_config.public_key,
