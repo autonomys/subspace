@@ -54,8 +54,8 @@ use sp_std::prelude::*;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, PIECES_IN_SEGMENT,
-    PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SectorId, SectorIndex, SegmentIndex,
+    SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -129,10 +129,7 @@ struct VoteVerificationData {
     global_randomness: Randomness,
     solution_range: SolutionRange,
     salt: Salt,
-    record_size: u32,
-    recorded_history_segment_size: u32,
-    max_plot_size: u64,
-    total_pieces: u64,
+    pieces_in_segment: u32,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -150,11 +147,12 @@ mod pallet {
     use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
-    use sp_runtime::traits::One;
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
-    use subspace_core_primitives::{Randomness, RootBlock, SegmentIndex, SolutionRange};
+    use subspace_core_primitives::{
+        Randomness, RootBlock, SectorIndex, SegmentIndex, SolutionRange,
+    };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
         _config: T,
@@ -322,7 +320,7 @@ mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             if self.enable_rewards {
-                EnableRewards::<T>::put::<T::BlockNumber>(One::one());
+                EnableRewards::<T>::put::<T::BlockNumber>(sp_runtime::traits::One::one());
             }
             IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
             match &self.allow_authoring_by {
@@ -434,7 +432,8 @@ mod pallet {
 
     /// Parent block author information.
     #[pallet::storage]
-    pub(super) type ParentBlockAuthorInfo<T> = StorageValue<_, (FarmerPublicKey, Slot)>;
+    pub(super) type ParentBlockAuthorInfo<T> =
+        StorageValue<_, (FarmerPublicKey, SectorIndex, Slot)>;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -443,20 +442,22 @@ mod pallet {
     /// Temporary value (cleared at block finalization) with block author information.
     #[pallet::storage]
     pub(super) type CurrentBlockAuthorInfo<T: Config> =
-        StorageValue<_, (FarmerPublicKey, Slot, T::AccountId)>;
+        StorageValue<_, (FarmerPublicKey, SectorIndex, Slot, T::AccountId)>;
 
     /// Voters in the parent block (set at the end of the block with current values).
     #[pallet::storage]
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
-        BTreeMap<(FarmerPublicKey, Slot), (T::AccountId, FarmerSignature)>,
+        BTreeMap<(FarmerPublicKey, SectorIndex, Slot), (T::AccountId, FarmerSignature)>,
         ValueQuery,
     >;
 
     /// Temporary value (cleared at block finalization) with voters in the current block thus far.
     #[pallet::storage]
-    pub(super) type CurrentBlockVoters<T: Config> =
-        StorageValue<_, BTreeMap<(FarmerPublicKey, Slot), (T::AccountId, FarmerSignature)>>;
+    pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
+        _,
+        BTreeMap<(FarmerPublicKey, SectorIndex, Slot), (T::AccountId, FarmerSignature)>,
+    >;
 
     /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
     #[pallet::storage]
@@ -844,9 +845,13 @@ impl<T: Config> Pallet<T> {
                 });
             }
 
-            let key = (farmer_public_key, pre_digest.slot);
+            let key = (
+                farmer_public_key,
+                pre_digest.solution.sector_index,
+                pre_digest.slot,
+            );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
-                let (public_key, slot) = key;
+                let (public_key, _sector_index, slot) = key;
 
                 let offence = SubspaceEquivocationOffence {
                     slot,
@@ -863,17 +868,18 @@ impl<T: Config> Pallet<T> {
                     );
                 }
             } else {
-                let (public_key, slot) = key;
+                let (public_key, sector_index, slot) = key;
 
                 CurrentBlockAuthorInfo::<T>::put((
                     public_key,
+                    sector_index,
                     slot,
                     pre_digest.solution.reward_address,
                 ));
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (FarmerPublicKey, Slot),
+            (FarmerPublicKey, SectorIndex, Slot),
             (T::AccountId, FarmerSignature),
         >::default());
 
@@ -918,8 +924,8 @@ impl<T: Config> Pallet<T> {
         // Tag signature is validated by the client and is always valid here.
         let por_randomness: Randomness = derive_randomness(
             &PublicKey::from(&pre_digest.solution.public_key),
-            pre_digest.solution.tag,
-            &pre_digest.solution.tag_signature,
+            &pre_digest.solution.chunk,
+            &pre_digest.solution.chunk_signature,
         )
         .expect("Tag signature is verified by the client and is always valid; qed");
         // Store PoR randomness for block duration as it might be useful.
@@ -994,8 +1000,10 @@ impl<T: Config> Pallet<T> {
 
         PorRandomness::<T>::take();
 
-        if let Some((public_key, slot, _reward_address)) = CurrentBlockAuthorInfo::<T>::take() {
-            ParentBlockAuthorInfo::<T>::put((public_key, slot));
+        if let Some((public_key, sector_index, slot, _reward_address)) =
+            CurrentBlockAuthorInfo::<T>::take()
+        {
+            ParentBlockAuthorInfo::<T>::put((public_key, sector_index, slot));
         }
 
         ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
@@ -1291,10 +1299,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .next
                 .expect("Next salt must always be available if `switch_next_block` is true; qed")
         },
-        record_size: RECORD_SIZE,
-        recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-        max_plot_size: Pallet::<T>::max_plot_size(),
-        total_pieces: Pallet::<T>::total_pieces(),
+        pieces_in_segment: RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2,
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
             .map(|parent_vote_verification_data| {
@@ -1318,6 +1323,7 @@ enum CheckVoteError {
     SlotInTheFuture,
     SlotInThePast,
     BadRewardSignature(SignatureError),
+    TotalNumberOfPiecesCantBeZero,
     UnknownRecordsRoot,
     InvalidSolution(VerificationError),
     DuplicateVote,
@@ -1335,6 +1341,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
             CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
+            CheckVoteError::TotalNumberOfPiecesCantBeZero => InvalidTransaction::Call,
             CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
@@ -1464,12 +1471,15 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let pieces_in_segment = vote_verification_data.recorded_history_segment_size
-        / vote_verification_data.record_size
-        * 2;
-    let segment_index = solution.piece_index / u64::from(pieces_in_segment);
-    let position = u32::try_from(solution.piece_index % u64::from(pieces_in_segment))
+    let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
+
+    let piece_index = sector_id
+        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .map_err(|()| CheckVoteError::TotalNumberOfPiecesCantBeZero)?;
+    let pieces_in_segment = vote_verification_data.pieces_in_segment;
+    let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
         .expect("Position within segment always fits into u32; qed");
+    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(pieces_in_segment);
 
     let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
         records_root
@@ -1489,15 +1499,11 @@ fn check_vote<T: Config>(
         VerifySolutionParams {
             global_randomness: &vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
-            salt: vote_verification_data.salt,
             piece_check_params: Some(PieceCheckParams {
-                records_root,
+                records_root: &records_root,
                 position,
                 kzg: &kzg,
                 pieces_in_segment,
-                record_size: vote_verification_data.record_size,
-                max_plot_size: vote_verification_data.max_plot_size,
-                total_pieces: vote_verification_data.total_pieces,
             }),
         },
     ) {
@@ -1508,7 +1514,7 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::InvalidSolution(error));
     }
 
-    let key = (solution.public_key.clone(), slot);
+    let key = (solution.public_key.clone(), solution.sector_index, slot);
     // Check that farmer didn't use solution from this vote yet in:
     // * parent block
     // * current block
@@ -1516,7 +1522,9 @@ fn check_vote<T: Config>(
     // * current block vote
     let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
         || CurrentBlockAuthorInfo::<T>::get()
-            .map(|(public_key, slot, _reward_address)| (public_key, slot))
+            .map(|(public_key, sector_index, slot, _reward_address)| {
+                (public_key, sector_index, slot)
+            })
             .as_ref()
             == Some(&key);
 
@@ -1552,7 +1560,7 @@ fn check_vote<T: Config>(
             }
         });
 
-        let (public_key, _slot) = key;
+        let (public_key, _sector_index, _slot) = key;
 
         return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
@@ -1644,20 +1652,22 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
 
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
-        CurrentBlockAuthorInfo::<T>::get().and_then(|(public_key, _slot, reward_address)| {
-            // Equivocation might have happened in this block, if so - no reward for block
-            // author
-            if !BlockList::<T>::contains_key(&public_key) {
-                // Rewards might be disabled, in which case no block reward either
-                if let Some(height) = EnableRewards::<T>::get() {
-                    if frame_system::Pallet::<T>::current_block_number() >= height {
-                        return Some(reward_address);
+        CurrentBlockAuthorInfo::<T>::get().and_then(
+            |(public_key, _sector_index, _slot, reward_address)| {
+                // Equivocation might have happened in this block, if so - no reward for block
+                // author
+                if !BlockList::<T>::contains_key(&public_key) {
+                    // Rewards might be disabled, in which case no block reward either
+                    if let Some(height) = EnableRewards::<T>::get() {
+                        if frame_system::Pallet::<T>::current_block_number() >= height {
+                            return Some(reward_address);
+                        }
                     }
                 }
-            }
 
-            None
-        })
+                None
+            },
+        )
     }
 }
 

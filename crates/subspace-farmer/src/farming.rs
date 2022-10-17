@@ -214,48 +214,48 @@ async fn subscribe_to_slot_info<T: RpcClient>(
                             .next()
                             .expect("Due to if condition vector is not empty; qed");
 
-                        if is_within_solution_range(target, tag, slot_info.solution_range) {
-                            // Found a tag within solution range for blocks
-                            Some((tag, piece_offset))
-                        } else {
-                            // There might be something that is within solution range for blocks
-                            commitments
-                                .find_by_range(
-                                    target,
-                                    slot_info.solution_range,
-                                    slot_info.salt,
-                                    TAGS_SEARCH_LIMIT,
-                                )
-                                .into_iter()
-                                .next()
-                                .or(Some((tag, piece_offset)))
-                        }
+                        // if is_within_solution_range(target, tag, slot_info.solution_range) {
+                        //     // Found a tag within solution range for blocks
+                        //     Some((tag, piece_offset))
+                        // } else {
+                        // There might be something that is within solution range for blocks
+                        commitments
+                            .find_by_range(
+                                target,
+                                slot_info.solution_range,
+                                slot_info.salt,
+                                TAGS_SEARCH_LIMIT,
+                            )
+                            .into_iter()
+                            .next()
+                            .or(Some((tag, piece_offset)))
+                        // }
                     };
 
-                    match maybe_tag {
-                        Some((tag, piece_offset)) => {
-                            let (encoding, piece_index) = plot
-                                .read_piece_with_index(piece_offset)
-                                .map_err(FarmingError::PlotRead)?;
-                            let solution = Solution {
-                                public_key: identity.public_key().to_bytes().into(),
-                                reward_address,
-                                piece_index,
-                                encoding,
-                                tag_signature: identity.create_tag_signature(tag),
-                                local_challenge,
-                                tag,
-                            };
-                            debug!("Solution found");
-                            trace!(?solution, "Solution found");
-
-                            Ok(Some(solution))
-                        }
-                        None => {
-                            debug!("Solution not found");
-                            Ok(None)
-                        }
-                    }
+                    // match maybe_tag {
+                    //     Some((tag, piece_offset)) => {
+                    //         let (encoding, piece_index) = plot
+                    //             .read_piece_with_index(piece_offset)
+                    //             .map_err(FarmingError::PlotRead)?;
+                    //         let solution = Solution {
+                    //             public_key: identity.public_key().to_bytes().into(),
+                    //             reward_address,
+                    //             piece_index,
+                    //             encoding,
+                    //             tag_signature: identity.create_tag_signature(tag),
+                    //             local_challenge,
+                    //             tag,
+                    //         };
+                    //         debug!("Solution found");
+                    //         trace!(?solution, "Solution found");
+                    //
+                    //         Ok(Some(solution))
+                    //     }
+                    //     None => {
+                    debug!("Solution not found");
+                    Ok(None)
+                    //     }
+                    // }
                 }
             });
 
@@ -264,7 +264,7 @@ async fn subscribe_to_slot_info<T: RpcClient>(
             client
                 .submit_solution_response(SolutionResponse {
                     slot_number: slot_info.slot_number,
-                    maybe_solution,
+                    solutions: maybe_solution.into_iter().collect(),
                 })
                 .await
                 .map_err(FarmingError::RpcError)?;

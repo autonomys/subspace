@@ -28,7 +28,7 @@ pub mod objects;
 
 extern crate alloc;
 
-use crate::crypto::kzg::Commitment;
+use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -65,6 +65,7 @@ pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
 /// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
 
+// TODO: Delete tag
 /// Size of `Tag` in bytes.
 pub const TAG_SIZE: usize = 8;
 
@@ -209,7 +210,7 @@ impl AsRef<[u8]> for RewardSignature {
 /// VRF signature output and proof as produced by `schnorrkel` crate.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TagSignature {
+pub struct ChunkSignature {
     /// VRF output bytes.
     pub output: [u8; VRF_OUTPUT_LENGTH],
     /// VRF proof bytes.
@@ -389,7 +390,9 @@ impl AsMut<[u8]> for FlatPieces {
 }
 
 /// Chunk within farmer's sector
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Chunk(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 8]);
 
@@ -417,6 +420,12 @@ impl From<&BitSlice<u8, Lsb0>> for Chunk {
 impl AsRef<[u8]> for Chunk {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl AsMut<[u8]> for Chunk {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
     }
 }
 
@@ -563,6 +572,9 @@ impl RootBlock {
 /// Piece index in consensus
 pub type PieceIndex = u64;
 
+/// Sector index in consensus
+pub type SectorIndex = u64;
+
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -603,16 +615,20 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub public_key: PublicKey,
     /// Address for receiving block reward
     pub reward_address: RewardAddress,
-    /// Index of encoded piece
-    pub piece_index: PieceIndex,
-    /// Encoding
-    pub encoding: Piece,
-    /// VRF signature of the tag
-    pub tag_signature: TagSignature,
-    /// Local challenge derived from global challenge using farmer's identity.
-    pub local_challenge: LocalChallenge,
-    /// Tag (hmac of encoding and salt)
-    pub tag: Tag,
+    /// Index of the sector where solution was found
+    pub sector_index: SectorIndex,
+    /// Number of pieces in archived history at time of sector creation
+    pub total_pieces: PieceIndex,
+    /// Pieces offset within sector
+    pub piece_offset: PieceIndex,
+    /// Piece commitment that can use used to verify that piece was included in blockchain history
+    pub piece_record_hash: Blake2b256Hash,
+    /// Witness for above piece commitment
+    pub piece_witness: Witness,
+    /// Chunk (only `space_l` first bits should be used)
+    pub chunk: Chunk,
+    /// VRF signature of expanded version of the above chunk
+    pub chunk_signature: ChunkSignature,
 }
 
 impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
@@ -628,20 +644,24 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
         let Solution {
             public_key,
             reward_address,
-            piece_index,
-            encoding,
-            tag_signature,
-            local_challenge,
-            tag,
+            sector_index,
+            total_pieces,
+            piece_offset,
+            piece_record_hash: piece_commitment,
+            piece_witness,
+            chunk,
+            chunk_signature,
         } = self;
         Solution {
             public_key,
             reward_address: Into::<T>::into(reward_address).into(),
-            piece_index,
-            encoding,
-            tag_signature,
-            local_challenge,
-            tag,
+            sector_index,
+            total_pieces,
+            piece_offset,
+            piece_record_hash: piece_commitment,
+            piece_witness,
+            chunk,
+            chunk_signature,
         }
     }
 }
@@ -656,17 +676,16 @@ where
         Self {
             public_key,
             reward_address,
-            piece_index: 0,
-            encoding: Piece::default(),
-            tag_signature: TagSignature {
+            sector_index: 0,
+            total_pieces: 1,
+            piece_offset: 0,
+            piece_record_hash: Blake2b256Hash::default(),
+            piece_witness: Witness::default(),
+            chunk: Chunk::default(),
+            chunk_signature: ChunkSignature {
                 output: [0; 32],
                 proof: [0; 64],
             },
-            local_challenge: LocalChallenge {
-                output: [0; 32],
-                proof: [0; 64],
-            },
-            tag: Tag::default(),
         }
     }
 }
@@ -868,7 +887,7 @@ impl AsRef<[u8]> for SectorId {
 
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key: &PublicKey, sector_index: u64) -> Self {
+    pub fn new(public_key: &PublicKey, sector_index: SectorIndex) -> Self {
         Self(blake2b_256_hash_with_key(
             &sector_index.to_le_bytes(),
             public_key.as_ref(),
@@ -877,19 +896,26 @@ impl SectorId {
 
     /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
     /// of blockchain_history is `total_pieces`
+    ///
+    /// Returns `Err(())` if `total_pieces` is zero, which is invalid.
+    #[allow(clippy::result_unit_err)]
     pub fn derive_piece_index(
         &self,
         piece_offset: PieceIndex,
         total_pieces: PieceIndex,
-    ) -> PieceIndex {
+    ) -> Result<PieceIndex, ()> {
+        if total_pieces == 0 {
+            return Err(());
+        }
+
         let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
             &piece_offset.to_le_bytes(),
             &self.0,
         )) % U256::from(total_pieces);
 
-        piece_index
-            .try_into()
-            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+        Ok(piece_index.try_into().expect(
+            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
+        ))
     }
 
     /// Derive local challenge for this sector from provided global challenge

@@ -7579,6 +7579,7 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "frame-support",
  "parity-scale-codec",
  "rand 0.8.5",
@@ -8337,8 +8338,8 @@ dependencies = [
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "futures 0.3.21",
- "rand 0.8.5",
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus-subspace",

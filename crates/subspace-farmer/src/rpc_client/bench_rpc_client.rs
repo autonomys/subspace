@@ -23,7 +23,6 @@ pub struct BenchRpcClient {
 pub struct Inner {
     farmer_protocol_info: FarmerProtocolInfo,
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
-    acknowledge_archived_segment_sender: mpsc::Sender<SegmentIndex>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     _segment_producer_handle: AbortingJoinHandle<()>,
 }
@@ -47,7 +46,6 @@ impl BenchRpcClient {
         farmer_protocol_info: FarmerProtocolInfo,
         slot_info_receiver: mpsc::Receiver<SlotInfo>,
         mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
-        acknowledge_archived_segment_sender: mpsc::Sender<SegmentIndex>,
     ) -> Self {
         let (mut inner_archived_segments_sender, inner_archived_segments_receiver) =
             mpsc::channel(10);
@@ -67,7 +65,6 @@ impl BenchRpcClient {
                 farmer_protocol_info,
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 archived_segments_receiver: Arc::new(Mutex::new(inner_archived_segments_receiver)),
-                acknowledge_archived_segment_sender,
                 _segment_producer_handle: AbortingJoinHandle::new(segment_producer_handle),
             }),
         }
@@ -132,15 +129,6 @@ impl RpcClient for BenchRpcClient {
         });
 
         Ok(Box::pin(receiver))
-    }
-
-    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> Result<(), Error> {
-        self.inner
-            .acknowledge_archived_segment_sender
-            .clone()
-            .send(segment_index)
-            .await?;
-        Ok(())
     }
 
     async fn records_roots(&self, _: Vec<SegmentIndex>) -> Result<Vec<Option<RecordsRoot>>, Error> {

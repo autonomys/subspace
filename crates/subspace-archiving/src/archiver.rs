@@ -756,3 +756,21 @@ pub fn is_piece_valid(
         &witness,
     )
 }
+
+/// Validate witness for pieces record hash produced by archiver
+pub fn is_piece_record_hash_valid(
+    kzg: &Kzg,
+    num_pieces_in_segment: u32,
+    piece_record_hash: &Blake2b256Hash,
+    commitment: &Commitment,
+    witness: &Witness,
+    position: u32,
+) -> bool {
+    kzg.verify(
+        commitment,
+        num_pieces_in_segment,
+        position,
+        piece_record_hash,
+        witness,
+    )
+}

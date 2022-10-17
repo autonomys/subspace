@@ -165,8 +165,6 @@ async fn test_dsn_sync() {
 
     let (_slot_info_sender, slot_info_receiver) = mpsc::channel(0);
     let (mut archived_segments_sender, archived_segments_receiver) = mpsc::channel(0);
-    let (acknowledge_archived_segment_sender, mut acknowledge_archived_segment_receiver) =
-        mpsc::channel(0);
     let farmer_protocol_info = {
         let mut farmer_protocol_info = BENCH_FARMER_PROTOCOL_INFO;
         farmer_protocol_info.total_pieces = seeder_max_piece_count;
@@ -176,7 +174,6 @@ async fn test_dsn_sync() {
         farmer_protocol_info,
         slot_info_receiver,
         archived_segments_receiver,
-        acknowledge_archived_segment_sender,
     );
 
     let plot_factory = move |options: PlotFactoryOptions<'_>| {
@@ -282,7 +279,6 @@ async fn test_dsn_sync() {
                 .send(archived_segment)
                 .await
                 .unwrap();
-            acknowledge_archived_segment_receiver.next().await.unwrap();
             last_archived_block.set_complete();
         }
 

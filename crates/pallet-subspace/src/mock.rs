@@ -35,16 +35,15 @@ use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, LocalChallenge, Piece, Randomness,
-    RecordsRoot, RootBlock, Salt, SegmentIndex, Solution, SolutionRange, Tag, PIECE_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, Chunk, LastArchivedBlock, Piece, Randomness,
+    RecordsRoot, RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
     RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
-    create_tag, create_tag_signature, derive_global_challenge, derive_local_challenge,
-    SubspaceCodec, REWARD_SIGNING_CONTEXT,
+    create_chunk_signature, derive_global_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -191,32 +190,20 @@ pub fn go_to_block(
         System::parent_hash()
     };
 
-    let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
-    let piece_index = 0;
-    let mut encoding = Piece::default();
-    subspace_codec.encode(&mut encoding, piece_index).unwrap();
-    let tag: Tag = create_tag(&encoding, {
-        let salts = Subspace::salts();
-        if salts.switch_next_block {
-            salts.next.unwrap()
-        } else {
-            salts.current
-        }
-    });
+    let chunk = Default::default();
 
     let pre_digest = make_pre_digest(
         slot.into(),
         Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
-            piece_index: 0,
-            encoding,
-            tag_signature: create_tag_signature(keypair, tag),
-            local_challenge: LocalChallenge {
-                output: [0; 32],
-                proof: [0; 64],
-            },
-            tag,
+            sector_index: 0,
+            total_pieces: 1,
+            piece_offset: 0,
+            piece_record_hash: Default::default(),
+            piece_witness: Default::default(),
+            chunk,
+            chunk_signature: create_chunk_signature(keypair, &chunk),
         },
     );
 
@@ -271,26 +258,30 @@ pub fn generate_equivocation_proof(
     let current_block = System::block_number();
     let current_slot = CurrentSlot::<Test>::get();
 
-    let encoding = Piece::default();
-    let tag: Tag = [(current_block % 8) as u8; 8];
+    let chunk: Chunk = {
+        let mut chunk = Chunk::default();
+        chunk.as_mut().iter_mut().for_each(|byte| {
+            *byte = (current_block % 8) as u8;
+        });
+        chunk
+    };
 
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
 
-    let make_header = |piece_index, reward_address: <Test as frame_system::Config>::AccountId| {
+    let make_header = |piece_offset, reward_address: <Test as frame_system::Config>::AccountId| {
         let parent_hash = System::parent_hash();
         let pre_digest = make_pre_digest(
             slot,
             Solution {
                 public_key: public_key.clone(),
                 reward_address,
-                piece_index,
-                encoding: encoding.clone(),
-                tag_signature: create_tag_signature(keypair, tag),
-                local_challenge: LocalChallenge {
-                    output: [0; 32],
-                    proof: [0; 64],
-                },
-                tag,
+                sector_index: 0,
+                total_pieces: 1,
+                piece_offset,
+                piece_record_hash: Default::default(),
+                piece_witness: Default::default(),
+                chunk,
+                chunk_signature: create_chunk_signature(keypair, &chunk),
             },
         );
         System::reset_events();
@@ -386,15 +377,15 @@ pub fn create_signed_vote(
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
     global_randomnesses: &Randomness,
-    salt: Salt,
-    encoding: Piece,
+    piece: Piece,
     reward_address: <Test as frame_system::Config>::AccountId,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
 
-    let global_challenge = derive_global_challenge(global_randomnesses, slot.into());
+    // TODO: global challenge will be necessary in the future when we actually verify the chunk
+    let _global_challenge = derive_global_challenge(global_randomnesses, slot.into());
 
-    let tag = create_tag(&encoding, salt);
+    let chunk = Default::default();
 
     let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
         height,
@@ -403,11 +394,16 @@ pub fn create_signed_vote(
         solution: Solution {
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
-            piece_index: 0,
-            encoding,
-            tag_signature: create_tag_signature(keypair, tag),
-            local_challenge: derive_local_challenge(keypair, global_challenge),
-            tag,
+            sector_index: 0,
+            total_pieces: 1,
+            piece_offset: 0,
+            piece_record_hash: blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]),
+            piece_witness: Witness::try_from_bytes(
+                &piece[RECORD_SIZE as usize..].try_into().unwrap(),
+            )
+            .unwrap(),
+            chunk,
+            chunk_signature: create_chunk_signature(keypair, &chunk),
         },
     };
 

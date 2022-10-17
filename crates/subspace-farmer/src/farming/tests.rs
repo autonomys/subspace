@@ -66,44 +66,45 @@ async fn farming_simulator(slots: Vec<SlotInfo>, tags: Vec<Tag>) {
 
     let farming_instance_task = tokio::spawn(async move { farming_instance.wait().await });
 
-    let mut counter = 0;
-    let mut latest_salt = slots.first().unwrap().salt;
-    for (slot, tag) in slots.into_iter().zip(tags) {
-        counter += 1;
-
-        let (commitment_created_sender, mut commitment_created_receiver) =
-            mpsc::unbounded::<Salt>();
-
-        let _handler = commitments.on_status_change(Arc::new(move |commitment_status_change| {
-            if let CommitmentStatusChange::Created { salt } = commitment_status_change {
-                let _ = futures::executor::block_on(commitment_created_sender.clone().send(*salt));
-            }
-        }));
-
-        client.send_slot_info(slot.clone()).await;
-
-        // if salt will change, wait for background recommitment to finish first
-        if let Some(next_salt) = slot.next_salt {
-            if next_salt != latest_salt {
-                latest_salt = next_salt;
-                assert_eq!(
-                    latest_salt,
-                    commitment_created_receiver.next().await.unwrap()
-                );
-            }
-        }
-
-        tokio::select! {
-            Some(solution) = client.receive_solution() => {
-                if let Some(solution) = solution.maybe_solution {
-                    assert_eq!(solution.tag, tag, "Wrong Tag!");
-                } else {
-                    panic!("Solution was None! For challenge #: {}", counter);
-                }
-            },
-            _ = sleep(Duration::from_secs(1)) => { panic!("Something is taking too much time!"); },
-        }
-    }
+    // TODO: Update implementation for V2 consensus
+    // let mut counter = 0;
+    // let mut latest_salt = slots.first().unwrap().salt;
+    // for (slot, tag) in slots.into_iter().zip(tags) {
+    //     counter += 1;
+    //
+    //     let (commitment_created_sender, mut commitment_created_receiver) =
+    //         mpsc::unbounded::<Salt>();
+    //
+    //     let _handler = commitments.on_status_change(Arc::new(move |commitment_status_change| {
+    //         if let CommitmentStatusChange::Created { salt } = commitment_status_change {
+    //             let _ = futures::executor::block_on(commitment_created_sender.clone().send(*salt));
+    //         }
+    //     }));
+    //
+    //     client.send_slot_info(slot.clone()).await;
+    //
+    //     // if salt will change, wait for background recommitment to finish first
+    //     if let Some(next_salt) = slot.next_salt {
+    //         if next_salt != latest_salt {
+    //             latest_salt = next_salt;
+    //             assert_eq!(
+    //                 latest_salt,
+    //                 commitment_created_receiver.next().await.unwrap()
+    //             );
+    //         }
+    //     }
+    //
+    //     tokio::select! {
+    //         Some(solution) = client.receive_solution() => {
+    //             if let Some(solution) = solution.maybe_solution {
+    //                 assert_eq!(solution.tag, tag, "Wrong Tag!");
+    //             } else {
+    //                 panic!("Solution was None! For challenge #: {}", counter);
+    //             }
+    //         },
+    //         _ = sleep(Duration::from_secs(1)) => { panic!("Something is taking too much time!"); },
+    //     }
+    // }
 
     // let the farmer know we are done by closing the channel(s)
     client.drop_slot_sender().await;
