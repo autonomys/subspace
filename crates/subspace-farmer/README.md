@@ -37,8 +37,6 @@ RocksDB on Linux needs LLVM/Clang:
 sudo apt-get install llvm clang
 ```
 
-For OpenCL support before enabling `opencl` feature make sure to follow documentation of `sloth256-189` library: <https://docs.rs/sloth256-189/latest/sloth256_189/opencl/index.html>.
-
 Then build the farmer using Cargo:
 ```
 cargo build --profile production --bin subspace-farmer
