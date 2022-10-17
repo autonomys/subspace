@@ -177,7 +177,7 @@ pub enum ArchiverInstantiationError {
 /// ## Panics
 /// Panics when operating on blocks, whose length doesn't fit into u32 (should never be the case in
 /// blockchain context anyway).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment

@@ -53,6 +53,9 @@ pub type ChannelId = U256;
 /// Nonce is always increasing.
 pub type Nonce = U256;
 
+/// Unique Id of a message between two domains.
+type MessageId = (ChannelId, Nonce);
+
 /// Channel describes a bridge to exchange messages between two domains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Channel {
@@ -93,8 +96,8 @@ mod pallet {
     };
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        Channel, ChannelId, ChannelState, InitiateChannelParams, Nonce, OutboxMessageResult,
-        StateRootOf, U256,
+        Channel, ChannelId, ChannelState, InitiateChannelParams, MessageId, Nonce,
+        OutboxMessageResult, StateRootOf, U256,
     };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
@@ -115,7 +118,7 @@ mod pallet {
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_response_handler(
             endpoint: &Endpoint,
-        ) -> Option<Box<dyn EndpointHandler<Self::DomainId>>>;
+        ) -> Option<Box<dyn EndpointHandler<Self::DomainId, MessageId>>>;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -408,16 +411,21 @@ mod pallet {
     }
 
     impl<T: Config> Sender<T::DomainId> for Pallet<T> {
-        fn send_message(dst_domain_id: T::DomainId, req: EndpointRequest) -> DispatchResult {
+        type MessageId = MessageId;
+
+        fn send_message(
+            dst_domain_id: T::DomainId,
+            req: EndpointRequest,
+        ) -> Result<Self::MessageId, DispatchError> {
             let channel_id = Self::get_open_channel_for_domain(dst_domain_id)
                 .ok_or(Error::<T>::NoOpenChannel)?;
-            Self::new_outbox_message(
+            let nonce = Self::new_outbox_message(
                 T::SelfDomainId::get(),
                 dst_domain_id,
                 channel_id,
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
             )?;
-            Ok(())
+            Ok((channel_id, nonce))
         }
     }
 
