@@ -94,8 +94,6 @@ fn create_genesis_config(
             enable_rewards: false,
             enable_storage_access: false,
             allow_authoring_by: AllowAuthoringBy::Anyone,
-            // 100GiB
-            max_plot_size: 100 * 1024 * 1024 * 1024,
         },
         vesting: VestingConfig { vesting },
         executor: ExecutorConfig {

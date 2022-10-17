@@ -18,8 +18,7 @@
 use serde::{Deserialize, Serialize};
 use std::num::{NonZeroU16, NonZeroU32};
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RewardSignature, Salt, SegmentIndex, SlotNumber, Solution,
-    SolutionRange,
+    Blake2b256Hash, PublicKey, RewardSignature, SegmentIndex, SlotNumber, Solution, SolutionRange,
 };
 
 /// Defines a limit for segment indexes array. It affects storage access on the runtime side.
@@ -36,8 +35,6 @@ pub struct FarmerProtocolInfo {
     pub record_size: NonZeroU32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).
     pub recorded_history_segment_size: u32,
-    /// Maximum plot size in bytes
-    pub max_plot_size: u64,
     /// Total number of pieces stored on the network
     pub total_pieces: u64,
     /// Space parameter for proof-of-replication in bits
@@ -54,10 +51,6 @@ pub struct SlotInfo {
     pub slot_number: SlotNumber,
     /// Global slot challenge
     pub global_challenge: Blake2b256Hash,
-    /// Salt
-    pub salt: Salt,
-    /// Salt for the next eon
-    pub next_salt: Option<Salt>,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting

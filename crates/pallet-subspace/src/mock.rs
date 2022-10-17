@@ -18,8 +18,8 @@
 
 use crate::equivocation::EquivocationHandler;
 use crate::{
-    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEonChange,
-    NormalEraChange, NormalGlobalRandomnessInterval,
+    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEraChange,
+    NormalGlobalRandomnessInterval,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, GenesisBuild, OnInitialize};
@@ -42,9 +42,7 @@ use subspace_core_primitives::{
     RecordsRoot, RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
     RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{
-    create_chunk_signature, derive_global_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -138,8 +136,6 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
 parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
-    pub const EonDuration: u32 = 6;
-    pub const EonNextSaltReveal: u64 = 3;
     // 1GB
     pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
@@ -156,8 +152,6 @@ impl Config for Test {
     type Event = Event;
     type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type EraDuration = EraDuration;
-    type EonDuration = EonDuration;
-    type EonNextSaltReveal = EonNextSaltReveal;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ConstU64<1>;
@@ -165,7 +159,6 @@ impl Config for Test {
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
-    type EonChangeTrigger = NormalEonChange;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
@@ -348,26 +341,6 @@ pub fn create_archived_segment() -> ArchivedSegment {
         .into_iter()
         .next()
         .unwrap()
-}
-
-pub fn extract_piece(
-    keypair: &Keypair,
-    archived_segment: &ArchivedSegment,
-    piece_index: u64,
-) -> Piece {
-    let codec = SubspaceCodec::new(keypair.public.as_ref());
-
-    let mut piece: [u8; PIECE_SIZE] = archived_segment
-        .pieces
-        .as_pieces()
-        .nth(piece_index as usize)
-        .unwrap()
-        .try_into()
-        .unwrap();
-
-    codec.encode(&mut piece, piece_index).unwrap();
-
-    piece.into()
 }
 
 #[allow(clippy::too_many_arguments)]

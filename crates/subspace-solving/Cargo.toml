@@ -13,14 +13,8 @@ include = [
 
 [dependencies]
 merlin = { version = "2.0.1", default-features = false }
-num_cpus = { version = "1.13.0", optional = true }
-num-traits = { version = "0.2.15", default-features = false }
-rayon = { version = "1.5.3", optional = true }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
-sloth256-189 = { version = "0.4.2", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.32", optional = true }
-tracing = { version = "0.1.36", default-features = false }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["min_const_gen"] }
@@ -31,16 +25,6 @@ default = [
 ]
 std = [
     "merlin/std",
-    "num_cpus",
-    "num-traits/std",
-    "rayon",
     "schnorrkel/std",
-    "sloth256-189/std",
     "subspace-core-primitives/std",
-    "thiserror",
-    "tracing/std",
-]
-# Compile with OpenCL support and use it if compatible GPU is available
-opencl = [
-    "sloth256-189/opencl",
 ]

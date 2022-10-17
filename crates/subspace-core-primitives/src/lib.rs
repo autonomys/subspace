@@ -41,7 +41,7 @@ use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-#[cfg(feature = "std")]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Size of BLAKE2b-256 hash output (in bytes).
@@ -65,22 +65,6 @@ pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
 /// Type of randomness.
 pub type Randomness = [u8; RANDOMNESS_LENGTH];
 
-// TODO: Delete tag
-/// Size of `Tag` in bytes.
-pub const TAG_SIZE: usize = 8;
-
-/// Type of the commitment for a particular piece.
-pub type Tag = [u8; TAG_SIZE];
-
-/// Tag prefix
-pub const SALT_HASHING_PREFIX: &[u8] = b"salt";
-
-/// Size of `Tag` in bytes.
-pub const SALT_SIZE: usize = 8;
-
-/// Salt used for creating commitment tags for pieces.
-pub type Salt = [u8; SALT_SIZE];
-
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
 
@@ -101,24 +85,10 @@ pub type SegmentIndex = u64;
 /// Records root type.
 pub type RecordsRoot = Commitment;
 
-/// Eon Index type.
-pub type EonIndex = u64;
-
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
-/// 128 data records and 128 parity records (as a result of erasure coding) together form a perfect
-/// Merkle Tree and will result in witness size of `log2(PIECES_IN_SEGMENT) * SHA256_HASH_SIZE`.
-///
-/// This number is a tradeoff:
-/// * as this number goes up, fewer [`RootBlock`]s are required to be stored for verifying archival
-///   history of the network, which makes sync quicker and more efficient, but also more data in
-///   each [`Piece`] will be occupied with witness, thus wasting space that otherwise could have
-///   been used for storing data (record part of a Piece)
-/// * as this number goes down, witness get smaller leading to better piece utilization, but the
-///   number of root blocks goes up making sync less efficient and less records are needed to be
-///   lost before part of the archived history become unrecoverable, reducing reliability of the
-///   data stored on the network
+/// 128 data records and 128 parity records (as a result of erasure coding).
 pub const PIECES_IN_SEGMENT: u32 = 256;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
 /// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
@@ -211,17 +181,6 @@ impl AsRef<[u8]> for RewardSignature {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ChunkSignature {
-    /// VRF output bytes.
-    pub output: [u8; VRF_OUTPUT_LENGTH],
-    /// VRF proof bytes.
-    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))]
-    pub proof: [u8; VRF_PROOF_LENGTH],
-}
-
-/// VRF signature output and proof as produced by `schnorrkel` crate.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct LocalChallenge {
     /// VRF output bytes.
     pub output: [u8; VRF_OUTPUT_LENGTH],
     /// VRF proof bytes.
@@ -339,15 +298,6 @@ impl FlatPieces {
 impl From<Piece> for FlatPieces {
     fn from(Piece(piece): Piece) -> Self {
         Self(piece)
-    }
-}
-
-// TODO: Remove once we no longer use `unzip` in farmer and get `(Vec<PieceIndex>, FlatPieces)`
-// after requesting sequential pieces.
-impl Extend<Piece> for FlatPieces {
-    fn extend<T: IntoIterator<Item = Piece>>(&mut self, iter: T) {
-        self.0
-            .extend(iter.into_iter().flat_map(|piece| piece.0.into_iter()))
     }
 }
 
@@ -691,7 +641,7 @@ where
 }
 
 /// Bidirectional distance metric implemented on top of subtraction
-pub fn bidirectional_distance<T: num_traits::WrappingSub + Ord>(a: &T, b: &T) -> T {
+pub fn bidirectional_distance<T: WrappingSub + Ord>(a: &T, b: &T) -> T {
     let diff = a.wrapping_sub(b);
     let diff2 = b.wrapping_sub(a);
     // Find smaller diff between 2 directions.

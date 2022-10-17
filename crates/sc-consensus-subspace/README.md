@@ -5,7 +5,7 @@ allocation. On every slot, all the farmers evaluate their disk-based plot. If th
 to a valid encoding) that it is lower than a given threshold (which is proportional to the total space pledged by the
 network) they may produce a new block.
 
-Core inputs to the Proof-of-Archival-Storage, such as global randomness, solution range and salt come from the runtime,
+Core inputs to the Proof-of-Archival-Storage, such as global randomness and solution range come from the runtime,
 see `pallet-subspace` for details.
 
 The fork choice rule is weight-based, where weight is derived from the distance between solution proposed in a block and

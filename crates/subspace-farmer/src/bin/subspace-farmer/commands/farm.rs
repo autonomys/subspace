@@ -5,8 +5,8 @@ use futures::future::select;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
-use subspace_farmer::{NodeRpcClient, RpcClient};
-use tracing::{info, warn};
+use subspace_farmer::NodeRpcClient;
+use tracing::info;
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -28,7 +28,6 @@ pub(crate) async fn farm_multi_disk(
         node_rpc_url,
         reward_address,
         plot_size: _,
-        max_plot_size,
         disk_concurrency,
         disable_farming,
     } = farming_args;
@@ -47,20 +46,6 @@ pub(crate) async fn farm_multi_disk(
 
         info!("Connecting to node at {}", node_rpc_url);
         let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
-
-        let mut farmer_protocol_info = rpc_client
-            .farmer_protocol_info()
-            .await
-            .map_err(|error| anyhow!(error))?;
-
-        if let Some(max_plot_size) = max_plot_size {
-            let max_plot_size = max_plot_size.as_u64();
-            if max_plot_size > farmer_protocol_info.max_plot_size {
-                warn!("Passed `max_plot_size` is too big. Fallback to the one from consensus.");
-            } else {
-                farmer_protocol_info.max_plot_size = max_plot_size;
-            }
-        }
 
         let single_disk_plot = SingleDiskPlot::new(SingleDiskPlotOptions {
             directory: disk_farm.directory,

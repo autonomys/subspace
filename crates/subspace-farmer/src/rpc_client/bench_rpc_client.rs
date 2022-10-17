@@ -33,7 +33,6 @@ pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     // PIECE_SIZE - WITNESS_SIZE
     record_size: NonZeroU32::new(3840).expect("We must set non-zero integer here."),
     recorded_history_segment_size: 491520, // RECORD_SIZE * PIECES_IN_SEGMENT / 2
-    max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,
     space_l: NonZeroU16::new(20).unwrap(),

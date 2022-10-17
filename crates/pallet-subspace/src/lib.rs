@@ -32,7 +32,7 @@ use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::traits::{Get, OnTimestampSet};
 use frame_support::weights::{Pays, Weight};
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
@@ -54,14 +54,13 @@ use sp_std::prelude::*;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SectorId, SectorIndex, SegmentIndex,
+    PublicKey, Randomness, RewardSignature, RootBlock, SectorId, SectorIndex, SegmentIndex,
     SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
-    check_reward_signature, derive_next_salt_from_randomness, derive_next_solution_range,
-    derive_randomness, verify_solution, Error as VerificationError, PieceCheckParams,
-    VerifySolutionParams,
+    check_reward_signature, derive_next_solution_range, derive_randomness, verify_solution,
+    Error as VerificationError, PieceCheckParams, VerifySolutionParams,
 };
 
 pub trait WeightInfo {
@@ -106,29 +105,10 @@ impl EraChangeTrigger for NormalEraChange {
     }
 }
 
-/// Trigger an eon change, if any should take place.
-pub trait EonChangeTrigger {
-    /// Trigger an eon change, if any should take place. This should be called
-    /// during every block, after initialization is done.
-    fn trigger<T: Config>(block_number: T::BlockNumber);
-}
-
-/// A type signifying to Subspace that it should perform eon changes with an internal trigger.
-pub struct NormalEonChange;
-
-impl EonChangeTrigger for NormalEonChange {
-    fn trigger<T: Config>(block_number: T::BlockNumber) {
-        if <Pallet<T>>::should_eon_change(block_number) {
-            <Pallet<T>>::enact_eon_change(block_number);
-        }
-    }
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
     global_randomness: Randomness,
     solution_range: SolutionRange,
-    salt: Salt,
     pieces_in_segment: u32,
     current_slot: Slot,
     parent_slot: Slot,
@@ -137,8 +117,7 @@ struct VoteVerificationData {
 #[frame_support::pallet]
 mod pallet {
     use super::{
-        EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
-        WeightInfo,
+        EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData, WeightInfo,
     };
     use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
@@ -205,20 +184,6 @@ mod pallet {
         #[pallet::constant]
         type EraDuration: Get<Self::BlockNumber>;
 
-        /// The amount of time, in slots, that each eon should last.
-        /// NOTE: Currently it is not possible to change the eon duration after
-        /// the chain has started. Attempting to do so will brick block production.
-        #[pallet::constant]
-        type EonDuration: Get<u64>;
-
-        /// The amount of time within eon, in slots, after which next eon salt should be revealed.
-        ///
-        /// The purpose of this is to allow to start tag recommitment a bit upfront, but not too
-        /// soon. For instance, if eon duration is 7 days, this parameter may be set to 6 days worth
-        /// of timeslots.
-        #[pallet::constant]
-        type EonNextSaltReveal: Get<u64>;
-
         /// Initial solution range used for challenges during the very first era.
         #[pallet::constant]
         type InitialSolutionRange: Get<u64>;
@@ -260,12 +225,6 @@ mod pallet {
         /// Era is normally used to update solution range used for challenges.
         type EraChangeTrigger: EraChangeTrigger;
 
-        /// Subspace requires some logic to be triggered on every block to query for whether an eon
-        /// has ended and to perform the transition to the next eon.
-        ///
-        /// Era is normally used to update salt used for plot commitments.
-        type EonChangeTrigger: EonChangeTrigger;
-
         /// The equivocation handling subsystem, defines methods to report an offence (after the
         /// equivocation has been validated) and for submitting a transaction to report an
         /// equivocation (from an offchain context).
@@ -299,8 +258,6 @@ mod pallet {
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
-        /// Maximum plot size in bytes.
-        pub max_plot_size: u64,
     }
 
     #[cfg(feature = "std")]
@@ -310,8 +267,6 @@ mod pallet {
                 enable_rewards: true,
                 enable_storage_access: true,
                 allow_authoring_by: AllowAuthoringBy::Anyone,
-                // 100GiB by default
-                max_plot_size: 100 * 1024 * 1024 * 1024,
             }
         }
     }
@@ -335,7 +290,6 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
-            MaxPlotSize::<T>::put(self.max_plot_size);
         }
     }
 
@@ -365,11 +319,6 @@ mod pallet {
         /// Rewards already active.
         RewardsAlreadyEnabled,
     }
-
-    /// Current eon index.
-    #[pallet::storage]
-    #[pallet::getter(fn eon_index)]
-    pub type EonIndex<T> = StorageValue<_, subspace_core_primitives::EonIndex, ValueQuery>;
 
     /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
@@ -406,11 +355,6 @@ mod pallet {
     /// Override solution range during next update
     #[pallet::storage]
     pub type NextSolutionRangeOverride<T> = StorageValue<_, SolutionRangeOverride>;
-
-    /// Salts used for challenges.
-    #[pallet::storage]
-    #[pallet::getter(fn salts)]
-    pub type Salts<T> = StorageValue<_, sp_consensus_subspace::Salts, ValueQuery>;
 
     /// Slot at which current era started.
     #[pallet::storage]
@@ -471,11 +415,6 @@ mod pallet {
     /// Allow block authoring by anyone or just root.
     #[pallet::storage]
     pub(super) type AllowAuthoringByAnyone<T> = StorageValue<_, bool, ValueQuery>;
-
-    /// Maximum plot size in bytes.
-    #[pallet::storage]
-    #[pallet::getter(fn max_plot_size)]
-    pub(super) type MaxPlotSize<T> = StorageValue<_, u64, ValueQuery>;
 
     /// Root plot public key.
     ///
@@ -709,13 +648,6 @@ impl<T: Config> Pallet<T> {
         block_number % T::EraDuration::get() == Zero::zero()
     }
 
-    /// Determine whether an eon change should take place at this block.
-    /// Assumes that initialization has already taken place.
-    fn should_eon_change(_block_number: T::BlockNumber) -> bool {
-        let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
-        *diff >= T::EonDuration::get()
-    }
-
     /// DANGEROUS: Enact update of global randomness. Should be done on every block where `should_update_global_randomness`
     /// has returned `true`, and the caller is the only caller of this function.
     fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
@@ -765,44 +697,6 @@ impl<T: Config> Pallet<T> {
         });
 
         EraStartSlot::<T>::put(current_slot);
-    }
-
-    /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
-    /// returned `true`, and the caller is the only caller of this function.
-    fn enact_eon_change(_block_number: T::BlockNumber) {
-        let current_slot = *Self::current_slot();
-        let eon_index: subspace_core_primitives::EonIndex = current_slot
-            .checked_sub(*GenesisSlot::<T>::get())
-            .expect("Current slot is never lower than genesis slot; qed")
-            .checked_div(T::EonDuration::get())
-            .expect("Eon duration is never zero; qed");
-
-        EonIndex::<T>::put(eon_index);
-        Salts::<T>::mutate(|salts| {
-            salts.switch_next_block = true;
-        });
-    }
-
-    /// Finds the start slot of the current eon. Only guaranteed to give correct results after
-    /// `do_initialize` of the first block in the chain (as its result is based off of
-    /// `GenesisSlot`).
-    fn current_eon_start() -> Slot {
-        Self::eon_start(EonIndex::<T>::get())
-    }
-
-    fn eon_start(eon_index: subspace_core_primitives::EonIndex) -> Slot {
-        // (eon_index * eon_duration) + genesis_slot
-
-        const PROOF: &str =
-            "slot number is u64; it should relate in some way to wall clock time; if u64 is not \
-            enough we should crash for safety; qed.";
-
-        let eon_start = eon_index.checked_mul(T::EonDuration::get()).expect(PROOF);
-
-        eon_start
-            .checked_add(*GenesisSlot::<T>::get())
-            .expect(PROOF)
-            .into()
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
@@ -906,20 +800,6 @@ impl<T: Config> Pallet<T> {
             });
         }
 
-        // Update current salt if needed
-        {
-            let salts = Salts::<T>::get();
-            if salts.switch_next_block {
-                if let Some(next_salt) = salts.next {
-                    Salts::<T>::put(sp_consensus_subspace::Salts {
-                        current: next_salt,
-                        next: None,
-                        switch_next_block: false,
-                    });
-                }
-            }
-        }
-
         // Extract PoR randomness from pre-digest.
         // Tag signature is validated by the client and is always valid here.
         let por_randomness: Randomness = derive_randomness(
@@ -939,52 +819,17 @@ impl<T: Config> Pallet<T> {
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range(
             SolutionRanges::<T>::get().current,
         ));
-        // Deposit salt data such that light client can validate blocks later.
-        frame_system::Pallet::<T>::deposit_log(DigestItem::salt(Salts::<T>::get().current));
-
-        let next_salt_reveal = Self::current_eon_start()
-            .checked_add(T::EonNextSaltReveal::get())
-            .expect("Will not overflow until the end of universe; qed");
-        let current_slot = Self::current_slot();
-        if current_slot >= next_salt_reveal {
-            Salts::<T>::mutate(|salts| {
-                if salts.next.is_none() {
-                    let eon_index = Self::eon_index();
-                    info!(
-                        target: "runtime::subspace",
-                        "🔃 Updating next salt on eon {} slot {}",
-                        eon_index,
-                        *current_slot
-                    );
-                    salts
-                        .next
-                        .replace(derive_next_salt_from_randomness(eon_index, &por_randomness));
-                }
-            });
-        }
 
         // Enact global randomness update, if necessary.
         T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
-        // Enact eon change, if necessary.
-        T::EonChangeTrigger::trigger::<T>(block_number);
 
         if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
             // Deposit next global randomness data such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
                 next_global_randomness,
             ));
-        }
-
-        {
-            let salts = Salts::<T>::get();
-            if salts.switch_next_block {
-                if let Some(next_salt) = salts.next {
-                    // Deposit next salt data such that light client can validate blocks later.
-                    frame_system::Pallet::<T>::deposit_log(DigestItem::next_salt(next_salt));
-                }
-            }
         }
     }
 
@@ -1165,8 +1010,6 @@ impl<T: Config> Pallet<T> {
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
             slot_probability: T::SlotProbability::get(),
-            eon_duration: T::EonDuration::get(),
-            eon_next_salt_reveal: T::EonNextSaltReveal::get(),
         }
     }
 }
@@ -1276,7 +1119,6 @@ impl<T: Config> Pallet<T> {
 fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
     let global_randomnesses = GlobalRandomnesses::<T>::get();
     let solution_ranges = SolutionRanges::<T>::get();
-    let salts = Salts::<T>::get();
     VoteVerificationData {
         global_randomness: if is_block_initialized {
             global_randomnesses.current
@@ -1291,13 +1133,6 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
             solution_ranges
                 .voting_next
                 .unwrap_or(solution_ranges.voting_current)
-        },
-        salt: if is_block_initialized || !salts.switch_next_block {
-            salts.current
-        } else {
-            salts
-                .next
-                .expect("Next salt must always be available if `switch_next_block` is true; qed")
         },
         pieces_in_segment: RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2,
         current_slot: Pallet::<T>::current_slot(),

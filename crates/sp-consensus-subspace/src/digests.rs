@@ -27,11 +27,9 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    EonIndex, PublicKey, Randomness, RecordsRoot, Salt, SegmentIndex, Solution, SolutionRange,
+    PublicKey, Randomness, RecordsRoot, SegmentIndex, Solution, SolutionRange,
 };
-use subspace_verification::{
-    derive_next_eon_index, derive_next_salt_from_randomness, derive_randomness,
-};
+use subspace_verification::derive_randomness;
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
@@ -73,12 +71,6 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace solution range, return it.
     fn as_solution_range(&self) -> Option<SolutionRange>;
 
-    /// Construct a digest item which contains a salt.
-    fn salt(salt: Salt) -> Self;
-
-    /// If this item is a Subspace salt, return it.
-    fn as_salt(&self) -> Option<Salt>;
-
     /// Construct a digest item which contains next global randomness.
     fn next_global_randomness(global_randomness: Randomness) -> Self;
 
@@ -90,12 +82,6 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace next solution range, return it.
     fn as_next_solution_range(&self) -> Option<SolutionRange>;
-
-    /// Construct a digest item which contains next salt.
-    fn next_salt(salt: Salt) -> Self;
-
-    /// If this item is a Subspace next salt, return it.
-    fn as_next_salt(&self) -> Option<Salt>;
 
     /// Construct a digest item which contains records root.
     fn records_root(segment_index: SegmentIndex, records_root: RecordsRoot) -> Self;
@@ -173,20 +159,6 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn salt(salt: Salt) -> Self {
-        Self::Consensus(SUBSPACE_ENGINE_ID, ConsensusLog::Salt(salt).encode())
-    }
-
-    fn as_salt(&self) -> Option<Salt> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::Salt(salt) = c {
-                Some(salt)
-            } else {
-                None
-            }
-        })
-    }
-
     fn next_global_randomness(global_randomness: Randomness) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
@@ -215,20 +187,6 @@ impl CompatibleDigestItem for DigestItem {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::NextSolutionRange(solution_range) = c {
                 Some(solution_range)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn next_salt(salt: Salt) -> Self {
-        Self::Consensus(SUBSPACE_ENGINE_ID, ConsensusLog::NextSalt(salt).encode())
-    }
-
-    fn as_next_salt(&self) -> Option<Salt> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::NextSalt(salt) = c {
-                Some(salt)
             } else {
                 None
             }
@@ -304,14 +262,10 @@ pub enum ErrorDigestType {
     GlobalRandomness,
     /// Solution range
     SolutionRange,
-    /// Salt
-    Salt,
     /// Next global randomness
     NextGlobalRandomness,
     /// Next solution range
     NextSolutionRange,
-    /// Next salt
-    NextSalt,
     /// Records root
     RecordsRoot,
     /// Generic consensus
@@ -337,17 +291,11 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::SolutionRange => {
                 write!(f, "SolutionRange")
             }
-            ErrorDigestType::Salt => {
-                write!(f, "Salt")
-            }
             ErrorDigestType::NextGlobalRandomness => {
                 write!(f, "NextGlobalRandomness")
             }
             ErrorDigestType::NextSolutionRange => {
                 write!(f, "NextSolutionRange")
-            }
-            ErrorDigestType::NextSalt => {
-                write!(f, "NextSalt")
             }
             ErrorDigestType::RecordsRoot => {
                 write!(f, "RecordsRoot")
@@ -498,9 +446,6 @@ where
                             maybe_solution_range.replace(solution_range);
                         }
                     },
-                    ConsensusLog::Salt(_salt) => {
-                        // Ignore for now
-                    }
                     ConsensusLog::NextGlobalRandomness(global_randomness) => {
                         match maybe_next_global_randomness {
                             Some(_) => {
@@ -523,14 +468,11 @@ where
                             }
                         }
                     }
-                    ConsensusLog::NextSalt(_salt) => {
-                        // Ignore for now
-                    }
                     ConsensusLog::RecordsRoot((segment_index, records_root)) => {
                         if let Entry::Vacant(entry) = records_roots.entry(segment_index) {
                             entry.insert(records_root);
                         } else {
-                            return Err(Error::Duplicate(ErrorDigestType::NextSalt));
+                            return Err(Error::Duplicate(ErrorDigestType::RecordsRoot));
                         }
                     }
                     ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
@@ -653,35 +595,6 @@ pub fn derive_next_global_randomness<Header: HeaderT>(
     )
     .map(Some)
     .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
-}
-
-/// Returns the next salt if eon changes.
-pub fn derive_next_salt<Header: HeaderT>(
-    eon_duration: u64,
-    current_eon_index: EonIndex,
-    genesis_slot: Slot,
-    current_slot: Slot,
-    maybe_randomness: Option<Randomness>,
-) -> Result<Option<Salt>, Error> {
-    // check if eon changes
-    let maybe_next_eon_index = derive_next_eon_index(
-        current_eon_index,
-        eon_duration,
-        u64::from(genesis_slot),
-        u64::from(current_slot),
-    );
-
-    // eon has changed, derive salt from the randomness derived from header at which salt is revealed
-    if maybe_next_eon_index.is_some() {
-        if let Some(randomness) = maybe_randomness {
-            return Ok(Some(derive_next_salt_from_randomness(
-                current_eon_index,
-                &randomness,
-            )));
-        }
-    }
-
-    Ok(None)
 }
 
 /// Params used to derive the next solution range.

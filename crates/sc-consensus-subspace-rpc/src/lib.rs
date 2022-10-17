@@ -200,7 +200,6 @@ where
                     ApiError::Application("Incorrect record_size set".to_string().into())
                 })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-                max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
                 // Total pieces should never be zero. blockchain is always initialized with one segment.
                 total_pieces: runtime_api
                     .total_pieces(&best_block_id)?
@@ -307,8 +306,6 @@ where
                     SlotInfo {
                         slot_number: new_slot_info.slot.into(),
                         global_challenge: new_slot_info.global_challenge,
-                        salt: new_slot_info.salt,
-                        next_salt: new_slot_info.next_salt,
                         solution_range: new_slot_info.solution_range,
                         voting_solution_range: new_slot_info.voting_solution_range,
                     }

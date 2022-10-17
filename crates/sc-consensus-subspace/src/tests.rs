@@ -73,13 +73,9 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ChunkSignature, FlatPieces, LocalChallenge, Piece, Solution, Tag,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    ChunkSignature, FlatPieces, Piece, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{
-    create_chunk_signature, create_tag, derive_local_challenge, SubspaceCodec,
-    REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -180,10 +176,6 @@ impl DummyProposer {
 
         {
             let digest = DigestItem::solution_range(u64::MAX);
-            block.header.digest_mut().push(digest);
-        }
-        {
-            let digest = DigestItem::salt(0u64.to_le_bytes());
             block.header.digest_mut().push(digest);
         }
 
@@ -560,7 +552,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
                 .unwrap()
@@ -570,7 +561,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
                 .unwrap();
-            subspace_codec.encode(&mut encoding, piece_index).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -578,9 +568,9 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = create_tag(&encoding, new_slot_info.salt);
-
                     // TODO: Update implementation for V2 consensus
+                    // let tag: Tag = create_tag(&encoding, new_slot_info.salt);
+                    //
                     // let _ = solution_sender
                     //     .send(Solution {
                     //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),

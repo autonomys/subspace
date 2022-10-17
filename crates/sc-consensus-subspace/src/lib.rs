@@ -82,7 +82,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, RootBlock, Salt, SectorId, SegmentIndex, Solution, SolutionRange,
+    Blake2b256Hash, BlockWeight, RootBlock, SectorId, SegmentIndex, Solution, SolutionRange,
     PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -95,10 +95,6 @@ pub struct NewSlotInfo {
     pub slot: Slot,
     /// Global slot challenge
     pub global_challenge: Blake2b256Hash,
-    /// Salt
-    pub salt: Salt,
-    /// Salt for the next eon
-    pub next_salt: Option<Salt>,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting
@@ -196,9 +192,6 @@ pub enum Error<Header: HeaderT> {
     /// Invalid encoding of a piece
     #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),
-    /// Invalid tag for salt
-    #[error("Invalid tag for salt for slot {0}")]
-    InvalidTag(Slot),
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
@@ -208,9 +201,6 @@ pub enum Error<Header: HeaderT> {
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
-    /// Block has invalid associated salt
-    #[error("Invalid salt for block {0}")]
-    InvalidSalt(Header::Hash),
     /// Invalid set of root blocks
     #[error("Invalid set of root blocks")]
     InvalidSetOfRootBlocks,
@@ -683,7 +673,7 @@ where
         // Stateless header verification only. This means only check that header contains required
         // contents, correct signature and valid Proof-of-Space, but because previous block is not
         // guaranteed to be imported at this point, it is not possible to verify
-        // Proof-of-Archival-Storage. In order to verify PoAS randomness, solution range and salt
+        // Proof-of-Archival-Storage. In order to verify PoAS randomness and solution range
         // from the header are checked against expected correct values during block import as well
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
