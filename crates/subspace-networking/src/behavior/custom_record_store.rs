@@ -328,7 +328,7 @@ impl ParityDbRecordStorage {
     fn save_data(&mut self, key: &Key, data: Option<Vec<u8>>) -> bool {
         let key: &[u8] = key.borrow();
 
-        let tx = Some((PARITY_DB_COLUMN_NAME, key, data));
+        let tx = [(PARITY_DB_COLUMN_NAME, key, data)];
 
         let result = self.db.commit(tx);
         if let Err(ref err) = result {
@@ -404,6 +404,8 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
             Err(err) => {
                 error!(?err, "Can't create Parity DB record storage iterator.");
 
+                // TODO: The error handling can be changed:
+                // https://github.com/libp2p/rust-libp2p/issues/3035
                 ParityDbRecordIterator::empty()
             }
         }
