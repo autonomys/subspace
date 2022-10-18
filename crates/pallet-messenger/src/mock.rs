@@ -79,6 +79,8 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub const SelfDomainId: DomainId = $domain_id;
+            pub const MaximumRelayers: u32 = 1;
+            pub const RelayerDeposit: Balance = 500;
         }
 
         impl crate::Config for $runtime {
@@ -86,6 +88,9 @@ macro_rules! impl_runtime {
             type DomainId = DomainId;
             type SelfDomainId = SelfDomainId;
             type SystemDomainTracker = SystemDomainTracker;
+            type MaximumRelayers = MaximumRelayers;
+            type Currency = Balances;
+            type RelayerDeposit = RelayerDeposit;
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,

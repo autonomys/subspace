@@ -2,12 +2,13 @@ use crate::messages::{
     CrossDomainMessage, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use crate::mock::domain_a::{
-    new_test_ext as new_domain_a_ext, Event, Messenger, Origin, Runtime, System,
+    new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
     DomainId, TestExternalities,
 };
+use crate::relayer::RelayerInfo;
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
 use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
@@ -732,5 +733,50 @@ fn test_transport_funds_between_domains_failed_no_open_channel() {
             500,
         );
         assert_err!(res, crate::Error::<domain_a::Runtime>::NoOpenChannel);
+    });
+}
+
+#[test]
+fn test_join_relayer_low_balance() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    // account with no balance
+    let account_id = 2;
+    let relayer_id = 100;
+
+    domain_a_test_ext.execute_with(|| {
+        let res =
+            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        assert_err!(
+            res,
+            pallet_balances::Error::<domain_a::Runtime>::InsufficientBalance
+        );
+    });
+}
+
+#[test]
+fn test_join_relayer() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    // account with balance
+    let account_id = 1;
+    let relayer_id = 100;
+
+    domain_a_test_ext.execute_with(|| {
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 1000);
+        let res =
+            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        assert_ok!(res);
+        assert_eq!(
+            domain_a::Messenger::relayers_info(relayer_id).unwrap(),
+            RelayerInfo {
+                owner: account_id,
+                deposit_reserved: RelayerDeposit::get()
+            }
+        );
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+
+        // cannot rejoin again
+        let res =
+            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        assert_err!(res, crate::Error::<domain_a::Runtime>::AlreadyRelayer);
     });
 }
