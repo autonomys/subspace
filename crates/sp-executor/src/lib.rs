@@ -68,7 +68,9 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
     type Public = ExecutorId;
 }
 
-/// Stake weight in the bundle election.
+/// Stake weight in the domain bundle election.
+///
+/// Derived from the Balance and can't be smaller than u128.
 pub type StakeWeight = u128;
 
 /// Unique identifier for each domain.

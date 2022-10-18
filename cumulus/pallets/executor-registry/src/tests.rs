@@ -7,7 +7,7 @@ use frame_support::{assert_noop, assert_ok, bounded_vec, parameter_types};
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
-use sp_executor::ExecutorPair;
+use sp_executor::{ExecutorPair, StakeWeight};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 
@@ -88,6 +88,7 @@ parameter_types! {
 impl pallet_executor_registry::Config for Test {
     type Event = Event;
     type Currency = Balances;
+    type StakeWeight = StakeWeight;
     type MinExecutorStake = MinExecutorStake;
     type MaxExecutorStake = MaxExecutorStake;
     type MinExecutors = MinExecutors;

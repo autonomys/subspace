@@ -259,6 +259,7 @@ parameter_types! {
 impl pallet_executor_registry::Config for Runtime {
     type Event = Event;
     type Currency = Balances;
+    type StakeWeight = sp_executor::StakeWeight;
     type MinExecutorStake = MinExecutorStake;
     type MaxExecutorStake = MaxExecutorStake;
     type MinExecutors = MinExecutors;

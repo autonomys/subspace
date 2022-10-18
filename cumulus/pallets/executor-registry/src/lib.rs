@@ -34,11 +34,17 @@ const MIN_ACTIVE_EXECUTORS_FACTOR: Percent = Percent::from_percent(75);
 #[frame_support::pallet]
 mod pallet {
     use super::{BalanceOf, MIN_ACTIVE_EXECUTORS_FACTOR};
+    use codec::Codec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
-    use sp_executor::{ExecutorId, StakeWeight};
-    use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, Zero};
+    use sp_executor::ExecutorId;
+    use sp_runtime::traits::{
+        AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
+        MaybeSerializeDeserialize, Zero,
+    };
+    use sp_runtime::FixedPointOperand;
+    use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
     #[pallet::config]
@@ -46,6 +52,20 @@ mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
+
+        /// The stake weight of an executor.
+        type StakeWeight: Parameter
+            + Member
+            + AtLeast32BitUnsigned
+            + Codec
+            + Default
+            + Copy
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaxEncodedLen
+            + TypeInfo
+            + FixedPointOperand
+            + From<BalanceOf<Self>>;
 
         /// Minimum SSC required to be an executor.
         #[pallet::constant]
@@ -533,9 +553,7 @@ mod pallet {
                 TotalActiveExecutors::<T>::mutate(|total| {
                     *total += 1;
                 });
-                let stake_weight: StakeWeight = initial_stake
-                    .try_into()
-                    .unwrap_or_else(|_| panic!("Balance must fit into StakeWeight; qed"));
+                let stake_weight: T::StakeWeight = initial_stake.into();
                 authorities.push((executor_id, stake_weight));
             }
 
@@ -543,9 +561,7 @@ mod pallet {
                 .expect("T::MaxExecutors bound is checked above; qed");
             Authorities::<T>::put(bounded_authorities);
 
-            let total_stake_weight: StakeWeight = TotalActiveStake::<T>::get()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Balance must fit into StakeWeight; qed"));
+            let total_stake_weight: T::StakeWeight = TotalActiveStake::<T>::get().into();
             TotalStakeWeight::<T>::put(total_stake_weight);
 
             SlotProbability::<T>::put(self.slot_probability);
@@ -646,7 +662,7 @@ mod pallet {
             // 1. Snapshot the latest state of active executors.
             // 2. Activate the new executor public key if any.
             if (block_number % T::EpochDuration::get()).is_zero() {
-                let mut total_stake_weight = 0;
+                let mut total_stake_weight = T::StakeWeight::zero();
                 // TODO: currently, we are iterating the Executors map, figure out how many executors
                 // we can support with this approach and optimize it when it does not satisfy our requirement.
                 let authorities = Executors::<T>::iter()
@@ -673,11 +689,15 @@ mod pallet {
                             }
                             None => executor_config.public_key,
                         };
-                        let stake_weight: StakeWeight = executor_config
-                            .stake
-                            .try_into()
-                            .unwrap_or_else(|_| panic!("Balance must fit into StakeWeight; qed"));
-                        total_stake_weight += stake_weight;
+
+                        let stake_weight: T::StakeWeight = executor_config.stake.into();
+
+                        total_stake_weight = total_stake_weight.checked_add(&stake_weight).expect(
+                            "
+                                `total_stake_weight` as u128 won't overflow even with 100K executor and \
+                                each of them has 1_000_000_000 SSC at stake; qed",
+                        );
+
                         (public_key, stake_weight)
                     })
                     .collect::<Vec<_>>();
@@ -731,12 +751,12 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn authorities)]
     pub(super) type Authorities<T: Config> =
-        StorageValue<_, BoundedVec<(ExecutorId, StakeWeight), T::MaxExecutors>, ValueQuery>;
+        StorageValue<_, BoundedVec<(ExecutorId, T::StakeWeight), T::MaxExecutors>, ValueQuery>;
 
     /// Total stake weight of authorities.
     #[pallet::storage]
     #[pallet::getter(fn total_stake_weight)]
-    pub(super) type TotalStakeWeight<T> = StorageValue<_, StakeWeight, ValueQuery>;
+    pub(super) type TotalStakeWeight<T: Config> = StorageValue<_, T::StakeWeight, ValueQuery>;
 
     /// How many bundles on average in a number of slots.
     ///
