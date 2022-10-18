@@ -19,7 +19,7 @@ use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -46,8 +46,10 @@ const LOG_TARGET: &str = "executor-worker";
 pub(super) struct ExecutorSlotInfo {
     /// Slot
     pub(super) slot: Slot,
-    /// Global slot challenge
-    pub(super) global_challenge: Blake2b256Hash,
+    /// Slot randomness
+    ///
+    /// Currently, `global_challenge` is used as the slot randomness.
+    pub(super) slot_randomness: Blake2b256Hash,
 }
 
 /// An event telling the `Overseer` on the particular block
@@ -94,8 +96,12 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     PBlock: BlockT,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
     Client::Api: SecondaryApi<Block, AccountId>
         + BlockBuilder<Block>
         + sp_api::ApiExt<
@@ -168,7 +174,7 @@ pub(super) async fn start_worker<
         Box::pin(
             new_slot_notification_stream.map(|(slot, global_challenge)| ExecutorSlotInfo {
                 slot,
-                global_challenge,
+                slot_randomness: global_challenge,
             }),
         ),
     );

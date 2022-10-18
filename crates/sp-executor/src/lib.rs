@@ -17,19 +17,28 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use crate::well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
+use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use schnorrkel::vrf::{VRFOutput, VRFProof};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
+#[cfg(feature = "std")]
+use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
+use sp_std::vec;
 use sp_std::vec::Vec;
-use sp_trie::StorageProof;
+use sp_trie::{read_trie_value, LayoutV1, StorageProof};
+use subspace_core_primitives::crypto::blake2b_256_hash_list;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
+
+const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
 
 /// Key type for Executor.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
@@ -58,6 +67,15 @@ pub struct ExecutorKey;
 impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
     type Public = ExecutorId;
 }
+
+/// Stake weight in the domain bundle election.
+///
+/// Derived from the Balance and can't be smaller than u128.
+pub type StakeWeight = u128;
+
+/// Unique identifier for each domain.
+// TODO: unify the DomainId usage across the codebase.
+pub type DomainId = u64;
 
 /// Custom invalid validity code for the extrinsics in pallet-executor.
 #[repr(u8)]
@@ -96,6 +114,213 @@ impl<Hash: Encode> BundleHeader<Hash> {
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
+    }
+}
+
+/// Returns the solution for the challenge of producing a bundle.
+pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u128 {
+    let local_domain_randomness = blake2b_256_hash_list(&[&domain_id.to_le_bytes(), vrf_output]);
+
+    let election_solution = u128::from_le_bytes(
+        local_domain_randomness
+            .split_at(core::mem::size_of::<u128>())
+            .0
+            .try_into()
+            .expect("Local domain randomness must fit into u128; qed"),
+    );
+
+    election_solution
+}
+
+/// Returns the election threshold based on the stake weight proportion and slot probability.
+pub fn calculate_bundle_election_threshold(
+    stake_weight: StakeWeight,
+    total_stake_weight: StakeWeight,
+    slot_probability: (u64, u64),
+) -> u128 {
+    // The calculation is written for not causing the overflow, which might be harder to
+    // understand, the formula in a readable form is as followes:
+    //
+    //              slot_probability.0      stake_weight
+    // threshold =  ------------------ * --------------------- * u128::MAX
+    //              slot_probability.1    total_stake_weight
+    //
+    // TODO: better to have more audits on this calculation.
+    u128::MAX / u128::from(slot_probability.1) * u128::from(slot_probability.0) / total_stake_weight
+        * stake_weight
+}
+
+pub fn is_election_solution_within_threshold(election_solution: u128, threshold: u128) -> bool {
+    election_solution <= threshold
+}
+
+/// Make a VRF transcript.
+pub fn make_local_randomness_transcript(slot_randomness: &Blake2b256Hash) -> Transcript {
+    let mut transcript = Transcript::new(VRF_TRANSCRIPT_LABEL);
+    transcript.append_message(b"slot randomness", slot_randomness);
+    transcript
+}
+
+/// Make a VRF transcript data.
+#[cfg(feature = "std")]
+pub fn make_local_randomness_transcript_data(
+    slot_randomness: &Blake2b256Hash,
+) -> VRFTranscriptData {
+    VRFTranscriptData {
+        label: VRF_TRANSCRIPT_LABEL,
+        items: vec![(
+            "slot randomness",
+            VRFTranscriptValue::Bytes(slot_randomness.to_vec()),
+        )],
+    }
+}
+
+pub mod well_known_keys {
+    use sp_std::vec;
+    use sp_std::vec::Vec;
+
+    /// Storage key of `pallet_executor_registry::Authorities`.
+    ///
+    /// Authorities::<T>::hashed_key().
+    pub(crate) const AUTHORITIES: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 94, 6, 33, 196,
+        134, 154, 166, 12, 2, 190, 154, 220, 201, 138, 13, 29,
+    ];
+
+    /// Storage key of `pallet_executor_registry::TotalStakeWeight`.
+    ///
+    /// TotalStakeWeight::<T>::hashed_key().
+    pub(crate) const TOTAL_STAKE_WEIGHT: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 173, 245, 4, 89,
+        128, 92, 85, 189, 74, 160, 138, 209, 188, 18, 62, 94,
+    ];
+
+    /// Storage key of `pallet_executor_registry::SlotProbability`.
+    ///
+    /// SlotProbability::<T>::hashed_key().
+    pub(crate) const SLOT_PROBABILITY: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 60, 16, 174, 72,
+        214, 175, 220, 254, 34, 167, 168, 222, 147, 18, 4, 168,
+    ];
+
+    pub fn bundle_election_storage_keys() -> Vec<[u8; 32]> {
+        vec![AUTHORITIES, TOTAL_STAKE_WEIGHT, SLOT_PROBABILITY]
+    }
+}
+
+/// Parameters for the bundle election.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleElectionParams {
+    pub authorities: Vec<(ExecutorId, StakeWeight)>,
+    pub total_stake_weight: StakeWeight,
+    pub slot_probability: (u64, u64),
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum VrfProofError {
+    /// Can not construct the vrf public_key/output/proof from the raw bytes.
+    VrfSignatureConstructionError,
+    /// Invalid vrf proof.
+    BadProof,
+}
+
+/// Verify the vrf proof generated in the bundle election.
+pub fn verify_vrf_proof(
+    public_key: &[u8],
+    vrf_output: &[u8],
+    vrf_proof: &[u8],
+    slot_randomness: &Blake2b256Hash,
+) -> Result<(), VrfProofError> {
+    let public_key = schnorrkel::PublicKey::from_bytes(public_key)
+        .map_err(|_| VrfProofError::VrfSignatureConstructionError)?;
+
+    public_key
+        .vrf_verify(
+            make_local_randomness_transcript(slot_randomness),
+            &VRFOutput::from_bytes(vrf_output)
+                .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
+            &VRFProof::from_bytes(vrf_proof)
+                .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
+        )
+        .map_err(|_| VrfProofError::BadProof)?;
+
+    Ok(())
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum ReadBundleElectionParamsError {
+    /// Trie error.
+    TrieError,
+    /// The value does not exist in the trie.
+    MissingValue,
+    /// Failed to decode the value read from the trie.
+    DecodeError,
+}
+
+/// Returns the bundle election parameters read from the given storage proof.
+pub fn read_bundle_election_params(
+    storage_proof: StorageProof,
+    state_root: &H256,
+) -> Result<BundleElectionParams, ReadBundleElectionParamsError> {
+    let db = storage_proof.into_memory_db::<BlakeTwo256>();
+
+    let read_value = |storage_key| {
+        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key)
+            .map_err(|_| ReadBundleElectionParamsError::TrieError)
+    };
+
+    let authorities =
+        read_value(&AUTHORITIES)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+    let authorities: Vec<(ExecutorId, StakeWeight)> =
+        Decode::decode(&mut authorities.as_slice())
+            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+    let total_stake_weight_value =
+        read_value(&TOTAL_STAKE_WEIGHT)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+    let total_stake_weight: StakeWeight = Decode::decode(&mut total_stake_weight_value.as_slice())
+        .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+    let slot_probability_value =
+        read_value(&SLOT_PROBABILITY)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+    let slot_probability: (u64, u64) = Decode::decode(&mut slot_probability_value.as_slice())
+        .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+    Ok(BundleElectionParams {
+        authorities,
+        total_stake_weight,
+        slot_probability,
+    })
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct ProofOfElection {
+    /// Domain id.
+    pub domain_id: DomainId,
+    /// VRF output.
+    pub vrf_output: Vec<u8>,
+    /// VRF proof.
+    pub vrf_proof: Vec<u8>,
+    /// VRF public key.
+    pub vrf_public_key: Vec<u8>,
+    /// Slot randomness.
+    pub slot_randomness: Blake2b256Hash,
+    /// State root corresponding to the storage proof above.
+    pub state_root: H256,
+    /// Storage proof for the bundle election state.
+    pub storage_proof: StorageProof,
+}
+
+impl ProofOfElection {
+    pub fn dummy() -> Self {
+        Self {
+            domain_id: DomainId::default(),
+            vrf_output: Vec::new(),
+            vrf_proof: Vec::new(),
+            vrf_public_key: Vec::new(),
+            slot_randomness: Blake2b256Hash::default(),
+            state_root: H256::default(),
+            storage_proof: StorageProof::empty(),
+        }
     }
 }
 
@@ -153,6 +378,8 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
 pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     /// The bundle header.
     pub bundle: Bundle<Extrinsic, Number, Hash, SecondaryHash>,
+    /// Proof of bundle election.
+    pub proof_of_election: ProofOfElection,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
     /// Signer of the signature.
@@ -179,6 +406,7 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
     pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, SecondaryHash> {
         SignedOpaqueBundle {
             bundle: self.bundle.into_opaque_bundle(),
+            proof_of_election: self.proof_of_election,
             signature: self.signature,
             signer: self.signer,
         }

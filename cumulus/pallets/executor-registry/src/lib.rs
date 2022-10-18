@@ -23,6 +23,8 @@ mod tests;
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_arithmetic::Percent;
+use sp_executor::ExecutorId;
+use sp_runtime::BoundedVec;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -34,17 +36,38 @@ const MIN_ACTIVE_EXECUTORS_FACTOR: Percent = Percent::from_percent(75);
 #[frame_support::pallet]
 mod pallet {
     use super::{BalanceOf, MIN_ACTIVE_EXECUTORS_FACTOR};
+    use codec::Codec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
     use sp_executor::ExecutorId;
-    use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, CheckedSub, Zero};
+    use sp_runtime::traits::{
+        AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
+        MaybeSerializeDeserialize, Zero,
+    };
+    use sp_runtime::FixedPointOperand;
+    use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
+
+        /// The stake weight of an executor.
+        type StakeWeight: Parameter
+            + Member
+            + AtLeast32BitUnsigned
+            + Codec
+            + Default
+            + Copy
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaxEncodedLen
+            + TypeInfo
+            + FixedPointOperand
+            + From<BalanceOf<Self>>;
 
         /// Minimum SSC required to be an executor.
         #[pallet::constant]
@@ -159,27 +182,13 @@ mod pallet {
                 T::Currency::free_balance(&who) >= stake,
                 Error::<T>::InsufficientBalance
             );
-            // TODO: public_key sanity check.
+            ensure!(
+                KeyOwner::<T>::get(&public_key).is_none(),
+                Error::<T>::DuplicatedKey
+            );
 
-            Self::lock_fund(&who, stake);
-
-            let executor_config = ExecutorConfig {
-                public_key,
-                reward_address,
-                is_active,
-                stake,
-                withdrawals: BoundedVec::default(),
-            };
-            Executors::<T>::insert(&who, &executor_config);
-
-            if is_active {
-                TotalActiveStake::<T>::mutate(|total| {
-                    *total += stake;
-                });
-                TotalActiveExecutors::<T>::mutate(|total| {
-                    *total += 1;
-                });
-            }
+            let executor_config =
+                Self::apply_register(&who, public_key, reward_address, is_active, stake);
 
             Self::deposit_event(Event::<T>::NewExecutor {
                 who,
@@ -199,6 +208,7 @@ mod pallet {
             // Ensure the number of remaining executors can't be lower than T::MinExecutors.
             // Ensure the executor has no funds locked in this pallet(deposits and pending_withdrawals).
             // Remove the corresponding entry from the Executors.
+            // Remove the corresponding entry from the KeyOwner.
             // Deposit an event Deregistered.
 
             Ok(())
@@ -423,8 +433,18 @@ mod pallet {
         /// It won't take effect until next epoch.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn update_public_key(origin: OriginFor<T>, _new: ExecutorId) -> DispatchResult {
-            let _who = ensure_signed(origin)?;
+        pub fn update_public_key(origin: OriginFor<T>, next_key: ExecutorId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                KeyOwner::<T>::get(&next_key).is_none(),
+                Error::<T>::DuplicatedKey
+            );
+
+            NextKey::<T>::insert(&who, &next_key);
+            KeyOwner::<T>::insert(&next_key, &who);
+
+            Self::deposit_event(Event::<T>::PublicKeyUpdated { who, next_key });
 
             Ok(())
         }
@@ -464,6 +484,7 @@ mod pallet {
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub executors: Vec<GenesisExecutorInfo<T>>,
+        pub slot_probability: (u64, u64),
     }
 
     #[cfg(feature = "std")]
@@ -471,6 +492,7 @@ mod pallet {
         fn default() -> Self {
             Self {
                 executors: Vec::new(),
+                slot_probability: (1u64, 1u64),
             }
         }
     }
@@ -487,6 +509,7 @@ mod pallet {
                 "Too many genesis executors"
             );
 
+            let mut authorities = Vec::new();
             for (executor, initial_stake, reward_address, executor_id) in self.executors.clone() {
                 assert!(
                     initial_stake >= T::MinExecutorStake::get()
@@ -497,24 +520,27 @@ mod pallet {
                     T::Currency::free_balance(&executor) >= initial_stake,
                     "Genesis executor does not have enough balance to stake."
                 );
-                Pallet::<T>::lock_fund(&executor, initial_stake);
-                Executors::<T>::insert(
-                    executor,
-                    ExecutorConfig {
-                        public_key: executor_id,
-                        reward_address,
-                        is_active: true,
-                        stake: initial_stake,
-                        withdrawals: BoundedVec::default(),
-                    },
+
+                Pallet::<T>::apply_register(
+                    &executor,
+                    executor_id.clone(),
+                    reward_address,
+                    true,
+                    initial_stake,
                 );
-                TotalActiveStake::<T>::mutate(|total| {
-                    *total += initial_stake;
-                });
-                TotalActiveExecutors::<T>::mutate(|total| {
-                    *total += 1;
-                });
+
+                let stake_weight: T::StakeWeight = initial_stake.into();
+                authorities.push((executor_id, stake_weight));
             }
+
+            let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
+                .expect("T::MaxExecutors bound is checked above; qed");
+            Authorities::<T>::put(bounded_authorities);
+
+            let total_stake_weight: T::StakeWeight = TotalActiveStake::<T>::get().into();
+            TotalStakeWeight::<T>::put(total_stake_weight);
+
+            SlotProbability::<T>::put(self.slot_probability);
         }
     }
 
@@ -554,6 +580,9 @@ mod pallet {
 
         /// Foo few active executors.
         TooFewActiveExecutors,
+
+        /// Executor public key is already occupied.
+        DuplicatedKey,
     }
 
     #[pallet::event]
@@ -590,7 +619,10 @@ mod pallet {
         Resumed { who: T::AccountId },
 
         /// An executor updated its public key.
-        PublicKeyUpdated { who: T::AccountId, new: ExecutorId },
+        PublicKeyUpdated {
+            who: T::AccountId,
+            next_key: ExecutorId,
+        },
 
         /// An executor updated its reward address.
         RewardAddressUpdated {
@@ -602,9 +634,60 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
+            // Enact the epoch change:
+            // 1. Snapshot the latest state of active executors.
+            // 2. Activate the new executor public key if any.
             if (block_number % T::EpochDuration::get()).is_zero() {
-                // TODO: Enact the epoch change.
+                let mut total_stake_weight = T::StakeWeight::zero();
+                // TODO: currently, we are iterating the Executors map, figure out how many executors
+                // we can support with this approach and optimize it when it does not satisfy our requirement.
+                let authorities = Executors::<T>::iter()
+                    .filter(|(_who, executor_config)| executor_config.is_active)
+                    .map(|(who, executor_config)| {
+                        let public_key = match NextKey::<T>::take(&who) {
+                            Some(new_key) => {
+                                // It's okay to update a field while iterating the storage map.
+                                //
+                                // TODO: add a test that the public_key can be updated and the key_owner
+                                // will be deleted as expected.
+                                Executors::<T>::mutate(who, |maybe_executor_config| {
+                                    let executor_config = maybe_executor_config
+                                        .as_mut()
+                                        .expect("Executor config must exist; qed");
+
+                                    // Clear the old key owner.
+                                    KeyOwner::<T>::remove(&executor_config.public_key);
+
+                                    executor_config.public_key = new_key.clone();
+                                });
+
+                                new_key
+                            }
+                            None => executor_config.public_key,
+                        };
+
+                        let stake_weight: T::StakeWeight = executor_config.stake.into();
+
+                        total_stake_weight = total_stake_weight.checked_add(&stake_weight).expect(
+                            "
+                                `total_stake_weight` as u128 won't overflow even with 100K executor and \
+                                each of them has 1_000_000_000 SSC at stake; qed",
+                        );
+
+                        (public_key, stake_weight)
+                    })
+                    .collect::<Vec<_>>();
+
+                let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
+                    .expect(
+                        "T::MaxExecutors bound is ensured while registering a new executor; qed",
+                    );
+                Authorities::<T>::put(bounded_authorities);
+
+                TotalStakeWeight::<T>::put(total_stake_weight);
             }
+
+            // TODO: proper weight
             Weight::zero()
         }
 
@@ -629,10 +712,70 @@ mod pallet {
     /// Total number of active executors.
     #[pallet::storage]
     pub(super) type TotalActiveExecutors<T> = StorageValue<_, u32, ValueQuery>;
+
+    /// Pending executor public key for the next epoch.
+    #[pallet::storage]
+    pub(super) type NextKey<T: Config> =
+        StorageMap<_, Twox64Concat, T::AccountId, ExecutorId, OptionQuery>;
+
+    /// A map tracking the owner of current and next key of each executor.
+    #[pallet::storage]
+    pub(super) type KeyOwner<T: Config> =
+        StorageMap<_, Twox64Concat, ExecutorId, T::AccountId, OptionQuery>;
+
+    /// Current epoch executor authorities.
+    #[pallet::storage]
+    #[pallet::getter(fn authorities)]
+    pub(super) type Authorities<T: Config> =
+        StorageValue<_, BoundedVec<(ExecutorId, T::StakeWeight), T::MaxExecutors>, ValueQuery>;
+
+    /// Total stake weight of authorities.
+    #[pallet::storage]
+    #[pallet::getter(fn total_stake_weight)]
+    pub(super) type TotalStakeWeight<T: Config> = StorageValue<_, T::StakeWeight, ValueQuery>;
+
+    /// How many bundles on average in a number of slots.
+    ///
+    /// TODO: Add a root call to update the slot probability.
+    #[pallet::storage]
+    #[pallet::getter(fn slot_probability)]
+    pub(super) type SlotProbability<T> = StorageValue<_, (u64, u64), ValueQuery>;
 }
 
 impl<T: Config> Pallet<T> {
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
+    }
+
+    fn apply_register(
+        who: &T::AccountId,
+        public_key: ExecutorId,
+        reward_address: T::AccountId,
+        is_active: bool,
+        stake: BalanceOf<T>,
+    ) -> ExecutorConfig<T> {
+        Self::lock_fund(who, stake);
+
+        KeyOwner::<T>::insert(&public_key, who);
+
+        let executor_config = ExecutorConfig {
+            public_key,
+            reward_address,
+            is_active,
+            stake,
+            withdrawals: BoundedVec::default(),
+        };
+        Executors::<T>::insert(who, &executor_config);
+
+        if is_active {
+            TotalActiveStake::<T>::mutate(|total| {
+                *total += stake;
+            });
+            TotalActiveExecutors::<T>::mutate(|total| {
+                *total += 1;
+            });
+        }
+
+        executor_config
     }
 }

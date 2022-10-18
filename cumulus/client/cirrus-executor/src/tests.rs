@@ -10,7 +10,9 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
-use sp_executor::{Bundle, BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, SignedBundle};
+use sp_executor::{
+    Bundle, BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, ProofOfElection, SignedBundle,
+};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
@@ -339,6 +341,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
 
         let signed_opaque_bundle = SignedBundle {
             bundle,
+            proof_of_election: ProofOfElection::dummy(), // TODO: mock ProofOfElection properly
             signature,
             signer,
         }

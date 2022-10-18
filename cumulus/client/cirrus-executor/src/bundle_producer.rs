@@ -3,15 +3,17 @@ use crate::{BundleSender, ExecutionReceiptFor};
 use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_core::ByteArray;
+use sp_core::H256;
 use sp_executor::{
-    Bundle, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature, SignedBundle,
-    SignedOpaqueBundle,
+    calculate_bundle_election_threshold, derive_bundle_election_solution,
+    is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
+    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature,
+    ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -20,7 +22,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 
 const LOG_TARGET: &str = "bundle-producer";
 
@@ -62,7 +64,11 @@ impl<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>,
     Client::Api: SecondaryApi<Block, AccountId> + BlockBuilder<Block>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
@@ -95,6 +101,11 @@ where
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
     > {
+        let ExecutorSlotInfo {
+            slot,
+            slot_randomness,
+        } = slot_info;
+
         let parent_number = self.client.info().best_number;
 
         let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
@@ -156,27 +167,20 @@ where
         let bundle = Bundle {
             header: BundleHeader {
                 primary_hash,
-                slot_number: slot_info.slot.into(),
+                slot_number: slot.into(),
                 extrinsics_root,
             },
             receipts,
             extrinsics,
         };
 
-        let executor_id = self
-            .primary_chain_client
-            .runtime_api()
-            .executor_id(&BlockId::Hash(
-                PBlock::Hash::decode(&mut primary_hash.encode().as_slice())
-                    .expect("Primary block hash must be the correct type; qed"),
-            ))?;
+        let best_hash = self.client.info().best_hash;
 
-        if self.is_authority
-            && SyncCryptoStore::has_keys(
-                &*self.keystore,
-                &[(ByteArray::to_raw_vec(&executor_id), ExecutorId::ID)],
-            )
+        if let Some((executor_id, proof_of_election)) =
+            self.solve_bundle_election_challenge(best_hash, slot_randomness)?
         {
+            tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
+
             let to_sign = bundle.hash();
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
@@ -187,6 +191,7 @@ where
                 Ok(Some(signature)) => {
                     let signed_bundle = SignedBundle {
                         bundle,
+                        proof_of_election,
                         signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
                             |err| {
                                 sp_blockchain::Error::Application(Box::from(format!(
@@ -214,6 +219,102 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    fn solve_bundle_election_challenge(
+        &self,
+        best_hash: Block::Hash,
+        slot_randomness: Blake2b256Hash,
+    ) -> sp_blockchain::Result<Option<(ExecutorId, ProofOfElection)>> {
+        // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
+        let best_block_id = BlockId::Hash(best_hash);
+
+        let BundleElectionParams {
+            authorities,
+            total_stake_weight,
+            slot_probability,
+        } = self
+            .client
+            .runtime_api()
+            .bundle_elections_params(&best_block_id)?;
+
+        assert!(
+            total_stake_weight
+                == authorities
+                    .iter()
+                    .map(|(_, weight)| weight)
+                    .sum::<StakeWeight>(),
+            "Total stake weight mismatches, which must be a bug in the runtime"
+        );
+
+        let transcript_data = make_local_randomness_transcript_data(&slot_randomness);
+
+        for (authority_id, stake_weight) in authorities {
+            if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
+                &*self.keystore,
+                ExecutorId::ID,
+                authority_id.as_ref(),
+                transcript_data.clone(),
+            ) {
+                // TODO: specify domain_id properly.
+                const SYSTEM_DOMAIN_ID: u64 = 0;
+
+                let election_solution = derive_bundle_election_solution(
+                    SYSTEM_DOMAIN_ID,
+                    vrf_signature.output.as_bytes(),
+                );
+
+                let threshold = calculate_bundle_election_threshold(
+                    stake_weight,
+                    total_stake_weight,
+                    slot_probability,
+                );
+
+                if is_election_solution_within_threshold(election_solution, threshold) {
+                    let storage_keys = well_known_keys::bundle_election_storage_keys();
+                    // TODO: bench how large the storage proof we can afford and try proving a single
+                    // electioned executor storage instead of the whole authority set.
+                    let storage_proof = self.client.read_proof(
+                        &best_block_id,
+                        &mut storage_keys.iter().map(|s| s.as_slice()),
+                    )?;
+
+                    let state_root = *self
+                        .client
+                        .header(best_block_id)?
+                        .expect("Best block header must exist; qed")
+                        .state_root();
+                    let state_root =
+                        H256::decode(&mut state_root.encode().as_slice()).map_err(|err| {
+                            sp_blockchain::Error::Application(Box::from(format!(
+                                "Failed to decode state root({state_root:?}) into H256: {err}",
+                            )))
+                        })?;
+
+                    // TODO: vrf_public_key and authority_id are essentially the same, merge them?
+                    let vrf_public_key = schnorrkel::PublicKey::from_bytes(authority_id.as_ref())
+                        .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to convert ExecutorId to schnorrkel::PublicKey: {err}",
+                        )))
+                    })?;
+
+                    let proof_of_election = ProofOfElection {
+                        domain_id: SYSTEM_DOMAIN_ID,
+                        vrf_output: vrf_signature.output.to_bytes().to_vec(),
+                        vrf_proof: vrf_signature.proof.to_bytes().to_vec(),
+                        vrf_public_key: vrf_public_key.to_bytes().to_vec(),
+                        slot_randomness,
+                        state_root,
+                        storage_proof,
+                    };
+
+                    return Ok(Some((authority_id, proof_of_election)));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     fn expected_receipts_on_primary_chain(

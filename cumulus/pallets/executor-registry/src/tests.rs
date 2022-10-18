@@ -1,13 +1,13 @@
 use crate::{
-    self as pallet_executor_registry, Error, ExecutorConfig, Executors, TotalActiveExecutors,
-    TotalActiveStake, Withdrawal,
+    self as pallet_executor_registry, Error, ExecutorConfig, Executors, KeyOwner,
+    TotalActiveExecutors, TotalActiveStake, Withdrawal,
 };
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
 use frame_support::{assert_noop, assert_ok, bounded_vec, parameter_types};
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
-use sp_executor::ExecutorPair;
+use sp_executor::{ExecutorPair, StakeWeight};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 
@@ -88,6 +88,7 @@ parameter_types! {
 impl pallet_executor_registry::Config for Test {
     type Event = Event;
     type Currency = Balances;
+    type StakeWeight = StakeWeight;
     type MinExecutorStake = MinExecutorStake;
     type MaxExecutorStake = MaxExecutorStake;
     type MinExecutors = MinExecutors;
@@ -115,6 +116,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
             1 + 10000,
             ExecutorPair::from_seed(&U256::from(1u32).into()).public(),
         )],
+        slot_probability: (1u64, 1u64),
     }
     .assimilate_storage(&mut t)
     .unwrap();
@@ -125,8 +127,15 @@ fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn register_should_work() {
     new_test_ext().execute_with(|| {
+        // Check the registration of genesis executors.
+        let genesis_executor_public_key =
+            ExecutorPair::from_seed(&U256::from(1u32).into()).public();
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 1);
+        assert_eq!(
+            KeyOwner::<Test>::get(&genesis_executor_public_key).unwrap(),
+            1
+        );
 
         let public_key = ExecutorPair::from_seed(&U256::from(2u32).into()).public();
         let reward_address = 2 + 10_000;
@@ -190,6 +199,7 @@ fn register_should_work() {
                 fee_frozen: stake
             }
         );
+        assert_eq!(KeyOwner::<Test>::get(&public_key).unwrap(), 2);
         assert_eq!(
             Executors::<Test>::get(&2),
             Some(ExecutorConfig {

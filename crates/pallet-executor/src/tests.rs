@@ -5,7 +5,7 @@ use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
 use sp_executor::{
     Bundle, BundleHeader, ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof,
-    SignedOpaqueBundle,
+    ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -124,6 +124,7 @@ fn create_dummy_bundle(
 
     SignedOpaqueBundle {
         bundle,
+        proof_of_election: ProofOfElection::dummy(),
         signature,
         signer,
     }
@@ -152,6 +153,7 @@ fn create_dummy_bundle_with_receipts(
 
     SignedOpaqueBundle {
         bundle,
+        proof_of_election: ProofOfElection::dummy(),
         signature,
         signer,
     }

@@ -827,6 +827,7 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
+ "schnorrkel",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -945,6 +946,7 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-core",
+ "sp-executor",
  "sp-runtime",
  "sp-std",
 ]
@@ -963,6 +965,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -998,6 +1001,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -1044,6 +1048,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
+ "sp-executor",
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
@@ -4538,6 +4543,7 @@ dependencies = [
  "sp-executor",
  "sp-io",
  "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7435,12 +7441,15 @@ dependencies = [
 name = "sp-executor"
 version = "0.1.0"
 dependencies = [
+ "merlin 2.0.1",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "sp-api",
  "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
  "sp-std",

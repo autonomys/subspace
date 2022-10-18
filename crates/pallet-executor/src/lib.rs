@@ -27,8 +27,10 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_executor::{
-    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
-    InvalidTransactionProof, SignedOpaqueBundle,
+    calculate_bundle_election_threshold, derive_bundle_election_solution,
+    is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
+    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof,
+    InvalidTransactionCode, InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
@@ -99,6 +101,14 @@ mod pallet {
         UnexpectedSigner,
         /// Invalid transaction bundle signature.
         BadSignature,
+        /// Invalid vrf proof.
+        BadVrfProof,
+        /// Can not retrieve the state needed from the storage proof.
+        BadStorageProof,
+        /// Bundle author is not found in the authority set.
+        AuthorityNotFound,
+        /// Election solution does not satisfy the threshold.
+        InvalidElectionSolution,
         /// An invalid execution receipt found in the bundle.
         Receipt(ExecutionReceiptError),
     }
@@ -586,6 +596,58 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn validate_bundle_election(
+        executor_id: &ExecutorId,
+        proof_of_election: &ProofOfElection,
+    ) -> Result<(), BundleError> {
+        let ProofOfElection {
+            domain_id,
+            vrf_output,
+            vrf_proof,
+            vrf_public_key,
+            slot_randomness,
+            state_root,
+            storage_proof,
+        } = proof_of_election;
+
+        verify_vrf_proof(vrf_public_key, vrf_output, vrf_proof, slot_randomness)
+            .map_err(|_| BundleError::BadVrfProof)?;
+
+        // TODO: verify `state_root` is valid.
+
+        let BundleElectionParams {
+            authorities,
+            total_stake_weight,
+            slot_probability,
+        } = read_bundle_election_params(storage_proof.clone(), state_root)
+            .map_err(|_| BundleError::BadStorageProof)?;
+
+        let stake_weight = authorities
+            .iter()
+            .find_map(|(authority, weight)| {
+                if authority == executor_id {
+                    Some(weight)
+                } else {
+                    None
+                }
+            })
+            .ok_or(BundleError::AuthorityNotFound)?;
+
+        let election_solution = derive_bundle_election_solution(*domain_id, vrf_output);
+
+        let threshold = calculate_bundle_election_threshold(
+            *stake_weight,
+            total_stake_weight,
+            slot_probability,
+        );
+
+        if !is_election_solution_within_threshold(election_solution, threshold) {
+            return Err(BundleError::InvalidElectionSolution);
+        }
+
+        Ok(())
+    }
+
     fn validate_execution_receipts(
         execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
     ) -> Result<(), ExecutionReceiptError> {
@@ -646,6 +708,7 @@ impl<T: Config> Pallet<T> {
     fn validate_bundle(
         SignedOpaqueBundle {
             bundle,
+            proof_of_election,
             signature,
             signer,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
@@ -654,13 +717,7 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        // TODO: upgrade once the trusted executor system is upgraded.
-        let expected_executor = Self::executor()
-            .map(|(_, authority_id)| authority_id)
-            .expect("Executor must be initialized before launching the executor chain; qed");
-        if *signer != expected_executor {
-            return Err(BundleError::UnexpectedSigner);
-        }
+        Self::validate_bundle_election(signer, proof_of_election)?;
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
