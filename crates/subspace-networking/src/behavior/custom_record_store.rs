@@ -4,7 +4,7 @@ use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use parity_db::{ColumnOptions, Db, Options};
-use serde::{Deserialize, Serialize};
+use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 use std::iter::IntoIterator;
@@ -262,9 +262,7 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     }
 }
 
-use parity_scale_codec::{Decode, Encode};
-
-#[derive(Clone, Debug, Serialize, Deserialize, Decode, Encode)]
+#[derive(Clone, Debug, Decode, Encode)]
 struct ParityDbRecord {
     // Key of the record.
     key: Vec<u8>,
@@ -294,7 +292,12 @@ impl From<ParityDbRecord> for Record {
             value: rec.value,
             publisher: rec
                 .publisher
-                .map(|peer_id| PeerId::from_bytes(&peer_id).expect("Fatal serialization error.")),
+                // We don't expect an error here because ParityDbRecord contains a bytes
+                // representation of the valid PeerId.
+                .map(|peer_id| {
+                    PeerId::from_bytes(&peer_id)
+                        .expect("Peer ID should be valid in bytes representation.")
+                }),
             expires: None,
         }
     }
