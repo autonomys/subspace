@@ -23,7 +23,6 @@ pub struct BenchRpcClient {
 pub struct Inner {
     farmer_protocol_info: FarmerProtocolInfo,
     slot_info_receiver: Arc<Mutex<mpsc::Receiver<SlotInfo>>>,
-    acknowledge_archived_segment_sender: mpsc::Sender<SegmentIndex>,
     archived_segments_receiver: Arc<Mutex<mpsc::Receiver<ArchivedSegment>>>,
     _segment_producer_handle: AbortingJoinHandle<()>,
 }
@@ -34,7 +33,6 @@ pub const BENCH_FARMER_PROTOCOL_INFO: FarmerProtocolInfo = FarmerProtocolInfo {
     // PIECE_SIZE - WITNESS_SIZE
     record_size: NonZeroU32::new(3840).expect("We must set non-zero integer here."),
     recorded_history_segment_size: 491520, // RECORD_SIZE * PIECES_IN_SEGMENT / 2
-    max_plot_size: 100 * 1024 * 1024 * 1024, // 100G
     // Doesn't matter, as we don't start sync
     total_pieces: 0,
     space_l: NonZeroU16::new(20).unwrap(),
@@ -47,7 +45,6 @@ impl BenchRpcClient {
         farmer_protocol_info: FarmerProtocolInfo,
         slot_info_receiver: mpsc::Receiver<SlotInfo>,
         mut archived_segments_receiver: mpsc::Receiver<ArchivedSegment>,
-        acknowledge_archived_segment_sender: mpsc::Sender<SegmentIndex>,
     ) -> Self {
         let (mut inner_archived_segments_sender, inner_archived_segments_receiver) =
             mpsc::channel(10);
@@ -67,7 +64,6 @@ impl BenchRpcClient {
                 farmer_protocol_info,
                 slot_info_receiver: Arc::new(Mutex::new(slot_info_receiver)),
                 archived_segments_receiver: Arc::new(Mutex::new(inner_archived_segments_receiver)),
-                acknowledge_archived_segment_sender,
                 _segment_producer_handle: AbortingJoinHandle::new(segment_producer_handle),
             }),
         }
@@ -132,15 +128,6 @@ impl RpcClient for BenchRpcClient {
         });
 
         Ok(Box::pin(receiver))
-    }
-
-    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> Result<(), Error> {
-        self.inner
-            .acknowledge_archived_segment_sender
-            .clone()
-            .send(segment_index)
-            .await?;
-        Ok(())
     }
 
     async fn records_roots(&self, _: Vec<SegmentIndex>) -> Result<Vec<Option<RecordsRoot>>, Error> {

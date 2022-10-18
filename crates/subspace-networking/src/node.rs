@@ -84,6 +84,22 @@ impl From<oneshot::Canceled> for GetValueError {
 }
 
 #[derive(Debug, Error)]
+pub enum PutValueError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+}
+
+impl From<oneshot::Canceled> for PutValueError {
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum GetClosestPeersError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
@@ -304,6 +320,22 @@ impl Node {
             .command_sender
             .clone()
             .send(Command::GetValue { key, result_sender })
+            .await?;
+
+        Ok(result_receiver.await?)
+    }
+
+    pub async fn put_value(&self, key: Multihash, value: Vec<u8>) -> Result<bool, PutValueError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::PutValue {
+                key,
+                value,
+                result_sender,
+            })
             .await?;
 
         Ok(result_receiver.await?)

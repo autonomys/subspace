@@ -14,7 +14,7 @@ Our snapshots are categorized as the following:
 
 You need 2 executables, select whichever applies to your operating system
 * Node Executable - `subspace-node-...`
-* Farmer Executable - `subspace-farmer-...` or `subspace-farmer-opencl-...` (in case you have OpenCL-capable AMD, Intel or Nvidia GPU)
+* Farmer Executable - `subspace-farmer-...`
 
 You can find these executables in the [Releases](https://github.com/subspace/subspace/releases) section of this Repository.
 
@@ -33,13 +33,6 @@ On the desktop side if you have a router in front of your computer, you'll need 
 If you're connected directly without any router, then again nothing needs to be done in such case.
 
 ## 🖼️ Windows Instructions
-
-### OpenCL support
-If you use farmer executable starting with `subspace-farmer-opencl-` and see this error:
-> The code execution cannot proceed because OpenCL.dll was not found. Reinstalling the program may fix this problem.
-
-Or farmer exits in CLI without any messages, it means you don't have OpenCL-capable GPU or drivers installed.
-Installing OpenCL GPU drivers or using farmer executable without `opencl` in file name will fix the issue.
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open `Powershell` (we do not recommend using Command Prompt as it's syntax is slightly different)
@@ -89,25 +82,6 @@ Installing OpenCL GPU drivers or using farmer executable without `opencl` in fil
 ```
 
 ## 🐧 Ubuntu Instructions
-
-### Required dependencies
-There are two packages that are typically already installed, but might be missing on your machine.
-
-If you see this error:
-> error while loading shared libraries: libOpenCL.so.1: cannot open shared object file: No such file or directory
-
-Make sure to install `ocl-icd-libopencl1` library with `sudo apt-get install ocl-icd-libopencl1`.
-
-If you see this error:
-> error while loading shared libraries: libgomp.so.1: cannot open shared object file: No such file or directory
-
-Make sure to install `libgomp1` library with `sudo apt-get install libgomp1`.
-
-### OpenCL support
-Please read following documentation to make sure OpenCL support is enabled and working properly: <https://docs.rs/sloth256-189/latest/sloth256_189/opencl/index.html>
-
-OpenCL support is used for GPU acceleration (AMD, Intel, Nvidia) of initial plotting.
-GPU is not required generally for farmer to work and is not used at all after initial plotting.
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
 2. Open your favourite terminal, and change to the Downloads directory using `cd Downloads`
@@ -343,9 +317,9 @@ Examples:
 ./FARMER_FILE_NAME wipe
 ```
 
-## [Advanced] Support for multiple disks (including HDD/SSD separation)
+## [Advanced] Support for multiple disks
 
-Farmer has an advanced set of parameters that allow using multiple disks, including separate HDD/SSD for different kinds of data farmer stores.
+Farmer has an advanced set of parameters that allow using multiple disks.
 
 To use this advanced parameters you need to replace this command:
 ```
@@ -354,29 +328,25 @@ To use this advanced parameters you need to replace this command:
 
 With this:
 ```
-./FARMER_FILE_NAME --farm hdd=/hdd1,ssd=/ssd,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
+./FARMER_FILE_NAME --farm path=/path/to/directory,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
 ```
 
-`/hdd` is path to the HDD (or SSD if you'd like) that will store large amount of data, up to `PLOT_SIZE`.
-`/ssd` is path to the SSD (or HDD if you'd like, can even be the same as path to HDD if you don't have a separate SSD, it is fine too), farmer will store up to 8% of `PLOT_SIZE` worth of data there, make sure to have enough space.
+`/path/to/directory` is path that will store the data, up to `PLOT_SIZE`.
 
-NOTE: `PLOT_SIZE` has a different notion here, it doesn't include amount of data stored on SSD!
+NOTE: `PLOT_SIZE` has a different notion here, it doesn't include metadata size!
 
 Multiple farms are supported too, for example:
 ```
 ./FARMER_FILE_NAME \
-    --farm hdd=/media/hdd1,ssd=/media/hdd1,size=100GiB \
-    --farm hdd=/media/hdd2,ssd=/media/ssd1,size=10T \
-    --farm hdd=/media/hdd3,ssd=/media/ssd1,size=10T \
+    --farm path=/media/ssd1,size=100GiB \
+    --farm path=/media/ssd2,size=10T \
+    --farm path=/media/ssd3,size=10T \
     farm --reward-address WALLET_ADDRESS
 ```
 
-In above example `/media/hdd1` will store everything for the first farm and will occupy up to `100GiB+8%=108GiB` of space.
-`/media/hdd2` and `/media/hdd3` will store `10T` each and `/media/ssd1` will store up to `10TB*8%+10TB*8%=1.6TB` of data.
-
 You can also print info about farms with `info` command:
 ```
-./FARMER_FILE_NAME --farm hdd=/hdd1,ssd=/ssd,size=PLOT_SIZE info
+./FARMER_FILE_NAME --farm path=/media/ssd1,size=PLOT_SIZE info
 ```
 
 ## [Advanced] Build from source (Linux)
@@ -403,5 +373,3 @@ cargo build \
 ```
 
 You'll find two binaries under `target/production` directory once it succeeds, after which refer to instructions above on how to use them.
-
-If you want to enable OpenCL support (by adding `--features=subspace-farmer/opencl` to above `cargo build` command) you'll need to install extra dependencies: https://docs.rs/sloth256-189/latest/sloth256_189/opencl/index.html

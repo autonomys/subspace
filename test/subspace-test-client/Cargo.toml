@@ -15,8 +15,8 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+bitvec = "1.0.1"
 futures = "0.3.21"
-rand = "0.8.5"
 schnorrkel = "0.9.1"
 sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sc-client-api = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }

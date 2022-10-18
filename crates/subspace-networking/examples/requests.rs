@@ -26,10 +26,6 @@ async fn main() {
 
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-        value_getter: Arc::new(|key| {
-            // Return the reversed digest as a value
-            Some(key.digest().iter().copied().rev().collect())
-        }),
         allow_non_globals_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| {
             println!("Request handler for request");

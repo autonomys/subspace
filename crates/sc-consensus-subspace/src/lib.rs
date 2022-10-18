@@ -52,7 +52,6 @@ use sc_consensus_slots::{
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
-use schnorrkel::PublicKey;
 use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
@@ -83,10 +82,10 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, RootBlock, Salt, SegmentIndex, Solution, SolutionRange,
+    Blake2b256Hash, BlockWeight, RootBlock, SectorId, SegmentIndex, Solution, SolutionRange,
     PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{derive_global_challenge, derive_target, REWARD_SIGNING_CONTEXT};
+use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
 
 /// Information about new slot that just arrived
@@ -96,10 +95,6 @@ pub struct NewSlotInfo {
     pub slot: Slot,
     /// Global slot challenge
     pub global_challenge: Blake2b256Hash,
-    /// Salt
-    pub salt: Salt,
-    /// Salt for the next eon
-    pub next_salt: Option<Salt>,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting
@@ -188,9 +183,6 @@ pub enum Error<Header: HeaderT> {
     /// Bad solution signature
     #[error("Bad solution signature on slot {0:?}: {1:?}")]
     BadSolutionSignature(Slot, schnorrkel::SignatureError),
-    /// Bad local challenge
-    #[error("Local challenge is invalid for slot {0}: {1}")]
-    BadLocalChallenge(Slot, schnorrkel::SignatureError),
     /// Solution is outside of solution range
     #[error("Solution is outside of solution range for slot {0}")]
     OutsideOfSolutionRange(Slot),
@@ -200,9 +192,6 @@ pub enum Error<Header: HeaderT> {
     /// Invalid encoding of a piece
     #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),
-    /// Invalid tag for salt
-    #[error("Invalid tag for salt for slot {0}")]
-    InvalidTag(Slot),
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
@@ -212,9 +201,6 @@ pub enum Error<Header: HeaderT> {
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
-    /// Block has invalid associated salt
-    #[error("Invalid salt for block {0}")]
-    InvalidSalt(Header::Hash),
     /// Invalid set of root blocks
     #[error("Invalid set of root blocks")]
     InvalidSetOfRootBlocks,
@@ -233,6 +219,9 @@ pub enum Error<Header: HeaderT> {
     /// Only root plot public key is allowed
     #[error("Only root plot public key is allowed")]
     OnlyRootPlotPublicKeyAllowed,
+    /// Total number of pieces can't be zero
+    #[error("Total number of pieces can't be zero")]
+    TotalNumberOfPiecesCantBeZero,
     /// Check inherents error
     #[error("Checking inherents failed: {0}")]
     CheckInherents(sp_inherents::Error),
@@ -263,19 +252,13 @@ where
                 Error::BadRewardSignature(block_hash)
             }
             VerificationError::VerificationError(slot, error) => match error {
-                VerificationPrimitiveError::InvalidTag => Error::InvalidTag(slot),
-                VerificationPrimitiveError::InvalidPieceEncoding => Error::InvalidEncoding(slot),
                 VerificationPrimitiveError::InvalidPiece => Error::InvalidEncoding(slot),
-                VerificationPrimitiveError::InvalidLocalChallenge(err) => {
-                    Error::BadLocalChallenge(slot, err)
-                }
                 VerificationPrimitiveError::OutsideSolutionRange => {
                     Error::OutsideOfSolutionRange(slot)
                 }
                 VerificationPrimitiveError::InvalidSolutionSignature(err) => {
                     Error::BadSolutionSignature(slot, err)
                 }
-                VerificationPrimitiveError::OutsideMaxPlot => Error::OutsideOfMaxPlot(slot),
             },
         }
     }
@@ -690,7 +673,7 @@ where
         // Stateless header verification only. This means only check that header contains required
         // contents, correct signature and valid Proof-of-Space, but because previous block is not
         // guaranteed to be imported at this point, it is not possible to verify
-        // Proof-of-Archival-Storage. In order to verify PoAS randomness, solution range and salt
+        // Proof-of-Archival-Storage. In order to verify PoAS randomness and solution range
         // from the header are checked against expected correct values during block import as well
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
@@ -705,7 +688,6 @@ where
                     verify_solution_params: VerifySolutionParams {
                         global_randomness: &subspace_digest_items.global_randomness,
                         solution_range: subspace_digest_items.solution_range,
-                        salt: subspace_digest_items.salt,
                         piece_check_params: None,
                     },
                     reward_signing_context: &self.reward_signing_context,
@@ -890,9 +872,7 @@ where
             .header(parent_block_id)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let (correct_global_randomness, correct_solution_range, correct_salt) = if block_number
-            .is_one()
-        {
+        let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
             // instead
             let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
@@ -903,14 +883,8 @@ where
                 self.client.as_ref(),
                 &parent_block_id,
             )?;
-            let (correct_salt, _) =
-                slot_worker::extract_salt_for_block(self.client.as_ref(), &parent_block_id)?;
 
-            (
-                correct_global_randomness,
-                correct_solution_range,
-                correct_salt,
-            )
+            (correct_global_randomness, correct_solution_range)
         } else {
             let parent_subspace_digest_items = extract_subspace_digest_items::<
                 _,
@@ -930,16 +904,7 @@ where
                 None => parent_subspace_digest_items.solution_range,
             };
 
-            let correct_salt = match parent_subspace_digest_items.next_salt {
-                Some(salt) => salt,
-                None => parent_subspace_digest_items.salt,
-            };
-
-            (
-                correct_global_randomness,
-                correct_solution_range,
-                correct_salt,
-            )
+            (correct_global_randomness, correct_solution_range)
         };
 
         if subspace_digest_items.global_randomness != correct_global_randomness {
@@ -950,15 +915,22 @@ where
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        if subspace_digest_items.salt != correct_salt {
-            return Err(Error::InvalidSalt(block_hash));
-        }
+        let sector_id = SectorId::new(
+            &(&pre_digest.solution.public_key).into(),
+            pre_digest.solution.sector_index,
+        );
 
-        let segment_index: SegmentIndex =
-            pre_digest.solution.piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
-        let position =
-            u32::try_from(pre_digest.solution.piece_index % u64::from(PIECES_IN_SEGMENT))
-                .expect("Position within segment always fits into u32; qed");
+        // TODO: Derive `pre_digest.solution.piece_offset` from local challenge instead
+
+        let piece_index = sector_id
+            .derive_piece_index(
+                pre_digest.solution.piece_offset,
+                pre_digest.solution.total_pieces,
+            )
+            .map_err(|()| Error::TotalNumberOfPiecesCantBeZero)?;
+        let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
+            .expect("Position within segment always fits into u32; qed");
+        let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
@@ -994,9 +966,8 @@ where
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
             PIECES_IN_SEGMENT,
-            records_root,
+            &records_root,
             position,
-            RECORD_SIZE,
             &pre_digest.solution,
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
@@ -1144,21 +1115,21 @@ where
                 pre_digest.slot.into(),
             );
 
-            // Verification of the local challenge was done before this
-            let target = SolutionRange::from_be_bytes(
-                derive_target(
-                    &PublicKey::from_bytes(pre_digest.solution.public_key.as_ref())
-                        .expect("Always correct length; qed"),
-                    global_challenge,
-                    &pre_digest.solution.local_challenge,
-                )
-                .expect("Verification of the local challenge was done before this; qed"),
+            let sector_id = SectorId::new(
+                &(&pre_digest.solution.public_key).into(),
+                pre_digest.solution.sector_index,
             );
-            let tag = SolutionRange::from_be_bytes(pre_digest.solution.tag);
+
+            let local_challenge = sector_id.derive_local_challenge(&global_challenge);
+
+            let expanded_chunk = pre_digest.solution.chunk.expand(local_challenge);
 
             BlockWeight::from(
                 SolutionRange::MAX
-                    - subspace_core_primitives::bidirectional_distance(&target, &tag),
+                    - subspace_core_primitives::bidirectional_distance(
+                        &local_challenge,
+                        &expanded_chunk,
+                    ),
             )
         };
         let total_weight = parent_weight + added_weight;

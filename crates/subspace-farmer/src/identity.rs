@@ -4,10 +4,8 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::path::Path;
-use subspace_core_primitives::{Blake2b256Hash, LocalChallenge, Tag, TagSignature};
-use subspace_solving::{
-    create_tag_signature, derive_local_challenge_and_target, REWARD_SIGNING_CONTEXT,
-};
+use subspace_core_primitives::{Chunk, ChunkSignature};
+use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_bip39::mini_secret_from_entropy;
 use tracing::debug;
 use zeroize::Zeroizing;
@@ -123,15 +121,8 @@ impl Identity {
         &self.entropy
     }
 
-    pub fn create_tag_signature(&self, tag: Tag) -> TagSignature {
-        create_tag_signature(&self.keypair, tag)
-    }
-
-    pub fn derive_local_challenge_and_target(
-        &self,
-        global_challenge: Blake2b256Hash,
-    ) -> (LocalChallenge, Tag) {
-        derive_local_challenge_and_target(&self.keypair, global_challenge)
+    pub fn create_chunk_signature(&self, chunk: &Chunk) -> ChunkSignature {
+        create_chunk_signature(&self.keypair, chunk)
     }
 
     /// Sign reward hash.

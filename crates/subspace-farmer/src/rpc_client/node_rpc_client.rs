@@ -124,19 +124,6 @@ impl RpcClient for NodeRpcClient {
         )))
     }
 
-    async fn acknowledge_archived_segment(
-        &self,
-        segment_index: SegmentIndex,
-    ) -> Result<(), RpcError> {
-        Ok(self
-            .client
-            .request(
-                "subspace_acknowledgeArchivedSegment",
-                rpc_params![&segment_index],
-            )
-            .await?)
-    }
-
     async fn records_roots(
         &self,
         segment_indexes: Vec<SegmentIndex>,

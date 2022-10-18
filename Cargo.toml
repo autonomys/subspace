@@ -62,7 +62,6 @@ ring = { opt-level = 3 }
 rustls = { opt-level = 3 }
 sha2 = { opt-level = 3 }
 sha3 = { opt-level = 3 }
-sloth256-189 = { opt-level = 3 }
 smallvec = { opt-level = 3 }
 snow = { opt-level = 3 }
 subspace-core-primitives = { opt-level = 3 }
