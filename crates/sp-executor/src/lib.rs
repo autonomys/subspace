@@ -146,7 +146,7 @@ pub fn calculate_bundle_election_threshold(
     //              slot_probability.1    total_stake_weight
     //
     // TODO: better to have more audits on this calculation.
-    u128::MAX / total_stake_weight * u128::from(slot_probability.0) / u128::from(slot_probability.1)
+    u128::MAX / u128::from(slot_probability.1) * u128::from(slot_probability.0) / total_stake_weight
         * stake_weight
 }
 

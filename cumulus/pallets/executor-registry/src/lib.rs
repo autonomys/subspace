@@ -23,6 +23,8 @@ mod tests;
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_arithmetic::Percent;
+use sp_executor::ExecutorId;
+use sp_runtime::BoundedVec;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -185,27 +187,8 @@ mod pallet {
                 Error::<T>::DuplicatedKey
             );
 
-            Self::lock_fund(&who, stake);
-
-            KeyOwner::<T>::insert(&public_key, &who);
-
-            let executor_config = ExecutorConfig {
-                public_key,
-                reward_address,
-                is_active,
-                stake,
-                withdrawals: BoundedVec::default(),
-            };
-            Executors::<T>::insert(&who, &executor_config);
-
-            if is_active {
-                TotalActiveStake::<T>::mutate(|total| {
-                    *total += stake;
-                });
-                TotalActiveExecutors::<T>::mutate(|total| {
-                    *total += 1;
-                });
-            }
+            let executor_config =
+                Self::apply_register(&who, public_key, reward_address, is_active, stake);
 
             Self::deposit_event(Event::<T>::NewExecutor {
                 who,
@@ -225,6 +208,7 @@ mod pallet {
             // Ensure the number of remaining executors can't be lower than T::MinExecutors.
             // Ensure the executor has no funds locked in this pallet(deposits and pending_withdrawals).
             // Remove the corresponding entry from the Executors.
+            // Remove the corresponding entry from the KeyOwner.
             // Deposit an event Deregistered.
 
             Ok(())
@@ -536,23 +520,15 @@ mod pallet {
                     T::Currency::free_balance(&executor) >= initial_stake,
                     "Genesis executor does not have enough balance to stake."
                 );
-                Pallet::<T>::lock_fund(&executor, initial_stake);
-                Executors::<T>::insert(
-                    executor,
-                    ExecutorConfig {
-                        public_key: executor_id.clone(),
-                        reward_address,
-                        is_active: true,
-                        stake: initial_stake,
-                        withdrawals: BoundedVec::default(),
-                    },
+
+                Pallet::<T>::apply_register(
+                    &executor,
+                    executor_id.clone(),
+                    reward_address,
+                    true,
+                    initial_stake,
                 );
-                TotalActiveStake::<T>::mutate(|total| {
-                    *total += initial_stake;
-                });
-                TotalActiveExecutors::<T>::mutate(|total| {
-                    *total += 1;
-                });
+
                 let stake_weight: T::StakeWeight = initial_stake.into();
                 authorities.push((executor_id, stake_weight));
             }
@@ -769,5 +745,37 @@ mod pallet {
 impl<T: Config> Pallet<T> {
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
+    }
+
+    fn apply_register(
+        who: &T::AccountId,
+        public_key: ExecutorId,
+        reward_address: T::AccountId,
+        is_active: bool,
+        stake: BalanceOf<T>,
+    ) -> ExecutorConfig<T> {
+        Self::lock_fund(who, stake);
+
+        KeyOwner::<T>::insert(&public_key, who);
+
+        let executor_config = ExecutorConfig {
+            public_key,
+            reward_address,
+            is_active,
+            stake,
+            withdrawals: BoundedVec::default(),
+        };
+        Executors::<T>::insert(who, &executor_config);
+
+        if is_active {
+            TotalActiveStake::<T>::mutate(|total| {
+                *total += stake;
+            });
+            TotalActiveExecutors::<T>::mutate(|total| {
+                *total += 1;
+            });
+        }
+
+        executor_config
     }
 }

@@ -127,8 +127,15 @@ fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn register_should_work() {
     new_test_ext().execute_with(|| {
+        // Check the registration of genesis executors.
+        let genesis_executor_public_key =
+            ExecutorPair::from_seed(&U256::from(1u32).into()).public();
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 1);
+        assert_eq!(
+            KeyOwner::<Test>::get(&genesis_executor_public_key).unwrap(),
+            1
+        );
 
         let public_key = ExecutorPair::from_seed(&U256::from(2u32).into()).public();
         let reward_address = 2 + 10_000;
