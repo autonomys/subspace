@@ -34,7 +34,6 @@ use sc_consensus_subspace::{
 };
 use sc_piece_cache::PieceCache;
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -43,11 +42,8 @@ use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::num::{NonZeroU16, NonZeroU32};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -100,9 +96,6 @@ pub trait SubspaceRpcApi {
     )]
     fn subscribe_archived_segment(&self);
 
-    #[method(name = "subspace_acknowledgeArchivedSegment")]
-    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> RpcResult<()>;
-
     #[method(name = "subspace_recordsRoots")]
     async fn records_roots(
         &self,
@@ -125,12 +118,6 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
-#[derive(Default)]
-struct ArchivedSegmentAcknowledgementSenders {
-    segment_index: SegmentIndex,
-    senders: HashMap<u64, TracingUnboundedSender<()>>,
-}
-
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
 pub struct SubspaceRpc<Block, Client, PC> {
     client: Arc<Client>,
@@ -140,9 +127,7 @@ pub struct SubspaceRpc<Block, Client, PC> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
-    archived_segment_acknowledgement_senders: Arc<Mutex<ArchivedSegmentAcknowledgementSenders>>,
     piece_cache: PC,
-    next_subscription_id: AtomicU64,
     _phantom: PhantomData<Block>,
 }
 
@@ -173,9 +158,7 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
             archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
-            archived_segment_acknowledgement_senders: Arc::default(),
             piece_cache,
-            next_subscription_id: AtomicU64::default(),
             _phantom: PhantomData::default(),
         }
     }
@@ -217,7 +200,6 @@ where
                     ApiError::Application("Incorrect record_size set".to_string().into())
                 })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-                max_plot_size: runtime_api.max_plot_size(&best_block_id)?,
                 // Total pieces should never be zero. blockchain is always initialized with one segment.
                 total_pieces: runtime_api
                     .total_pieces(&best_block_id)?
@@ -284,7 +266,7 @@ where
                     // data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
                         if let Ok(solution_response) = response_receiver.await {
-                            if let Some(solution) = solution_response.maybe_solution {
+                            for solution in solution_response.solutions {
                                 let public_key = FarmerPublicKey::from_slice(&solution.public_key)
                                     .expect("Always correct length; qed");
                                 let reward_address =
@@ -294,11 +276,13 @@ where
                                 let solution = Solution {
                                     public_key,
                                     reward_address,
-                                    piece_index: solution.piece_index,
-                                    encoding: solution.encoding,
-                                    tag_signature: solution.tag_signature,
-                                    local_challenge: solution.local_challenge,
-                                    tag: solution.tag,
+                                    sector_index: solution.sector_index,
+                                    total_pieces: solution.total_pieces,
+                                    piece_offset: solution.piece_offset,
+                                    piece_record_hash: solution.piece_record_hash,
+                                    piece_witness: solution.piece_witness,
+                                    chunk: solution.chunk,
+                                    chunk_signature: solution.chunk_signature,
                                 };
 
                                 let _ = solution_sender.send(solution).await;
@@ -322,8 +306,6 @@ where
                     SlotInfo {
                         slot_number: new_slot_info.slot.into(),
                         global_challenge: new_slot_info.global_challenge,
-                        salt: new_slot_info.salt,
-                        next_salt: new_slot_info.next_salt,
                         solution_range: new_slot_info.solution_range,
                         voting_solution_range: new_slot_info.voting_solution_range,
                     }
@@ -440,52 +422,14 @@ where
     }
 
     fn subscribe_archived_segment(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
-        let archived_segment_acknowledgement_senders =
-            self.archived_segment_acknowledgement_senders.clone();
-
-        let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
-
-        let stream = self
-            .archived_segment_notification_stream
-            .subscribe()
-            .filter_map(move |archived_segment_notification| {
-                let ArchivedSegmentNotification {
-                    archived_segment,
-                    acknowledgement_sender,
-                } = archived_segment_notification;
-
-                let segment_index = archived_segment.root_block.segment_index();
-
-                // Store acknowledgment sender so that we can retrieve it when acknowledgement
-                // comes from the farmer
-                {
-                    let mut archived_segment_acknowledgement_senders =
-                        archived_segment_acknowledgement_senders.lock();
-
-                    if archived_segment_acknowledgement_senders.segment_index != segment_index {
-                        archived_segment_acknowledgement_senders.segment_index = segment_index;
-                        archived_segment_acknowledgement_senders.senders.clear();
-                    }
-
-                    let maybe_archived_segment = match archived_segment_acknowledgement_senders
-                        .senders
-                        .entry(subscription_id)
-                    {
-                        Entry::Occupied(_) => {
-                            // No need to do anything, farmer is processing request
-                            None
-                        }
-                        Entry::Vacant(entry) => {
-                            entry.insert(acknowledgement_sender);
-
-                            // This will be sent to the farmer
-                            Some(archived_segment.as_ref().clone())
-                        }
-                    };
-
-                    Box::pin(async move { maybe_archived_segment })
-                }
-            });
+        let stream = self.archived_segment_notification_stream.subscribe().map(
+            |archived_segment_notification| {
+                archived_segment_notification
+                    .archived_segment
+                    .as_ref()
+                    .clone()
+            },
+        );
 
         let fut = async move {
             sink.pipe_from_stream(stream).await;
@@ -496,39 +440,6 @@ where
             Some("rpc"),
             fut.boxed(),
         );
-
-        Ok(())
-    }
-
-    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> RpcResult<()> {
-        let archived_segment_acknowledgement_senders =
-            self.archived_segment_acknowledgement_senders.clone();
-
-        let maybe_sender = {
-            let mut archived_segment_acknowledgement_senders_guard =
-                archived_segment_acknowledgement_senders.lock();
-
-            (archived_segment_acknowledgement_senders_guard.segment_index == segment_index)
-                .then(|| {
-                    let last_key = *archived_segment_acknowledgement_senders_guard
-                        .senders
-                        .keys()
-                        .next()?;
-
-                    archived_segment_acknowledgement_senders_guard
-                        .senders
-                        .remove(&last_key)
-                })
-                .flatten()
-        };
-
-        if let Some(mut sender) = maybe_sender {
-            if let Err(error) = sender.send(()).await {
-                if !error.is_disconnected() {
-                    warn!("Failed to acknowledge archived segment: {error}");
-                }
-            }
-        }
 
         Ok(())
     }

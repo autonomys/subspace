@@ -15,6 +15,7 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
@@ -22,6 +23,7 @@ sp-runtime = { version = "6.0.0", default-features = false, git = "https://githu
 default = ["std"]
 std = [
 	"codec/std",
+	"frame-support/std",
 	"scale-info/std",
 	"sp-runtime/std"
 ]

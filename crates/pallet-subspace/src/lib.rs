@@ -32,7 +32,7 @@ use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::traits::{Get, OnTimestampSet};
 use frame_support::weights::{Pays, Weight};
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
@@ -54,14 +54,13 @@ use sp_std::prelude::*;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, Salt, SolutionRange, PIECES_IN_SEGMENT,
-    PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PublicKey, Randomness, RewardSignature, RootBlock, SectorId, SectorIndex, SegmentIndex,
+    SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
-    check_reward_signature, derive_next_salt_from_randomness, derive_next_solution_range,
-    derive_randomness, verify_solution, Error as VerificationError, PieceCheckParams,
-    VerifySolutionParams,
+    check_reward_signature, derive_next_solution_range, derive_randomness, verify_solution,
+    Error as VerificationError, PieceCheckParams, VerifySolutionParams,
 };
 
 pub trait WeightInfo {
@@ -106,33 +105,11 @@ impl EraChangeTrigger for NormalEraChange {
     }
 }
 
-/// Trigger an eon change, if any should take place.
-pub trait EonChangeTrigger {
-    /// Trigger an eon change, if any should take place. This should be called
-    /// during every block, after initialization is done.
-    fn trigger<T: Config>(block_number: T::BlockNumber);
-}
-
-/// A type signifying to Subspace that it should perform eon changes with an internal trigger.
-pub struct NormalEonChange;
-
-impl EonChangeTrigger for NormalEonChange {
-    fn trigger<T: Config>(block_number: T::BlockNumber) {
-        if <Pallet<T>>::should_eon_change(block_number) {
-            <Pallet<T>>::enact_eon_change(block_number);
-        }
-    }
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
     global_randomness: Randomness,
     solution_range: SolutionRange,
-    salt: Salt,
-    record_size: u32,
-    recorded_history_segment_size: u32,
-    max_plot_size: u64,
-    total_pieces: u64,
+    pieces_in_segment: u32,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -140,8 +117,7 @@ struct VoteVerificationData {
 #[frame_support::pallet]
 mod pallet {
     use super::{
-        EonChangeTrigger, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
-        WeightInfo,
+        EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData, WeightInfo,
     };
     use crate::equivocation::HandleEquivocation;
     use frame_support::pallet_prelude::*;
@@ -150,11 +126,12 @@ mod pallet {
     use sp_consensus_subspace::digests::CompatibleDigestItem;
     use sp_consensus_subspace::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
-    use sp_runtime::traits::One;
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
-    use subspace_core_primitives::{Randomness, RootBlock, SegmentIndex, SolutionRange};
+    use subspace_core_primitives::{
+        Randomness, RootBlock, SectorIndex, SegmentIndex, SolutionRange,
+    };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
         _config: T,
@@ -207,20 +184,6 @@ mod pallet {
         #[pallet::constant]
         type EraDuration: Get<Self::BlockNumber>;
 
-        /// The amount of time, in slots, that each eon should last.
-        /// NOTE: Currently it is not possible to change the eon duration after
-        /// the chain has started. Attempting to do so will brick block production.
-        #[pallet::constant]
-        type EonDuration: Get<u64>;
-
-        /// The amount of time within eon, in slots, after which next eon salt should be revealed.
-        ///
-        /// The purpose of this is to allow to start tag recommitment a bit upfront, but not too
-        /// soon. For instance, if eon duration is 7 days, this parameter may be set to 6 days worth
-        /// of timeslots.
-        #[pallet::constant]
-        type EonNextSaltReveal: Get<u64>;
-
         /// Initial solution range used for challenges during the very first era.
         #[pallet::constant]
         type InitialSolutionRange: Get<u64>;
@@ -262,12 +225,6 @@ mod pallet {
         /// Era is normally used to update solution range used for challenges.
         type EraChangeTrigger: EraChangeTrigger;
 
-        /// Subspace requires some logic to be triggered on every block to query for whether an eon
-        /// has ended and to perform the transition to the next eon.
-        ///
-        /// Era is normally used to update salt used for plot commitments.
-        type EonChangeTrigger: EonChangeTrigger;
-
         /// The equivocation handling subsystem, defines methods to report an offence (after the
         /// equivocation has been validated) and for submitting a transaction to report an
         /// equivocation (from an offchain context).
@@ -301,8 +258,6 @@ mod pallet {
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
-        /// Maximum plot size in bytes.
-        pub max_plot_size: u64,
     }
 
     #[cfg(feature = "std")]
@@ -312,8 +267,6 @@ mod pallet {
                 enable_rewards: true,
                 enable_storage_access: true,
                 allow_authoring_by: AllowAuthoringBy::Anyone,
-                // 100GiB by default
-                max_plot_size: 100 * 1024 * 1024 * 1024,
             }
         }
     }
@@ -322,7 +275,7 @@ mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             if self.enable_rewards {
-                EnableRewards::<T>::put::<T::BlockNumber>(One::one());
+                EnableRewards::<T>::put::<T::BlockNumber>(sp_runtime::traits::One::one());
             }
             IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
             match &self.allow_authoring_by {
@@ -337,7 +290,6 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
-            MaxPlotSize::<T>::put(self.max_plot_size);
         }
     }
 
@@ -367,11 +319,6 @@ mod pallet {
         /// Rewards already active.
         RewardsAlreadyEnabled,
     }
-
-    /// Current eon index.
-    #[pallet::storage]
-    #[pallet::getter(fn eon_index)]
-    pub type EonIndex<T> = StorageValue<_, subspace_core_primitives::EonIndex, ValueQuery>;
 
     /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
@@ -409,11 +356,6 @@ mod pallet {
     #[pallet::storage]
     pub type NextSolutionRangeOverride<T> = StorageValue<_, SolutionRangeOverride>;
 
-    /// Salts used for challenges.
-    #[pallet::storage]
-    #[pallet::getter(fn salts)]
-    pub type Salts<T> = StorageValue<_, sp_consensus_subspace::Salts, ValueQuery>;
-
     /// Slot at which current era started.
     #[pallet::storage]
     pub type EraStartSlot<T> = StorageValue<_, Slot>;
@@ -434,7 +376,8 @@ mod pallet {
 
     /// Parent block author information.
     #[pallet::storage]
-    pub(super) type ParentBlockAuthorInfo<T> = StorageValue<_, (FarmerPublicKey, Slot)>;
+    pub(super) type ParentBlockAuthorInfo<T> =
+        StorageValue<_, (FarmerPublicKey, SectorIndex, Slot)>;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -443,20 +386,22 @@ mod pallet {
     /// Temporary value (cleared at block finalization) with block author information.
     #[pallet::storage]
     pub(super) type CurrentBlockAuthorInfo<T: Config> =
-        StorageValue<_, (FarmerPublicKey, Slot, T::AccountId)>;
+        StorageValue<_, (FarmerPublicKey, SectorIndex, Slot, T::AccountId)>;
 
     /// Voters in the parent block (set at the end of the block with current values).
     #[pallet::storage]
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
-        BTreeMap<(FarmerPublicKey, Slot), (T::AccountId, FarmerSignature)>,
+        BTreeMap<(FarmerPublicKey, SectorIndex, Slot), (T::AccountId, FarmerSignature)>,
         ValueQuery,
     >;
 
     /// Temporary value (cleared at block finalization) with voters in the current block thus far.
     #[pallet::storage]
-    pub(super) type CurrentBlockVoters<T: Config> =
-        StorageValue<_, BTreeMap<(FarmerPublicKey, Slot), (T::AccountId, FarmerSignature)>>;
+    pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
+        _,
+        BTreeMap<(FarmerPublicKey, SectorIndex, Slot), (T::AccountId, FarmerSignature)>,
+    >;
 
     /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
     #[pallet::storage]
@@ -470,11 +415,6 @@ mod pallet {
     /// Allow block authoring by anyone or just root.
     #[pallet::storage]
     pub(super) type AllowAuthoringByAnyone<T> = StorageValue<_, bool, ValueQuery>;
-
-    /// Maximum plot size in bytes.
-    #[pallet::storage]
-    #[pallet::getter(fn max_plot_size)]
-    pub(super) type MaxPlotSize<T> = StorageValue<_, u64, ValueQuery>;
 
     /// Root plot public key.
     ///
@@ -708,13 +648,6 @@ impl<T: Config> Pallet<T> {
         block_number % T::EraDuration::get() == Zero::zero()
     }
 
-    /// Determine whether an eon change should take place at this block.
-    /// Assumes that initialization has already taken place.
-    fn should_eon_change(_block_number: T::BlockNumber) -> bool {
-        let diff = Self::current_slot().saturating_sub(Self::current_eon_start());
-        *diff >= T::EonDuration::get()
-    }
-
     /// DANGEROUS: Enact update of global randomness. Should be done on every block where `should_update_global_randomness`
     /// has returned `true`, and the caller is the only caller of this function.
     fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
@@ -766,44 +699,6 @@ impl<T: Config> Pallet<T> {
         EraStartSlot::<T>::put(current_slot);
     }
 
-    /// DANGEROUS: Enact an eon change. Should be done on every block where `should_eon_change` has
-    /// returned `true`, and the caller is the only caller of this function.
-    fn enact_eon_change(_block_number: T::BlockNumber) {
-        let current_slot = *Self::current_slot();
-        let eon_index: subspace_core_primitives::EonIndex = current_slot
-            .checked_sub(*GenesisSlot::<T>::get())
-            .expect("Current slot is never lower than genesis slot; qed")
-            .checked_div(T::EonDuration::get())
-            .expect("Eon duration is never zero; qed");
-
-        EonIndex::<T>::put(eon_index);
-        Salts::<T>::mutate(|salts| {
-            salts.switch_next_block = true;
-        });
-    }
-
-    /// Finds the start slot of the current eon. Only guaranteed to give correct results after
-    /// `do_initialize` of the first block in the chain (as its result is based off of
-    /// `GenesisSlot`).
-    fn current_eon_start() -> Slot {
-        Self::eon_start(EonIndex::<T>::get())
-    }
-
-    fn eon_start(eon_index: subspace_core_primitives::EonIndex) -> Slot {
-        // (eon_index * eon_duration) + genesis_slot
-
-        const PROOF: &str =
-            "slot number is u64; it should relate in some way to wall clock time; if u64 is not \
-            enough we should crash for safety; qed.";
-
-        let eon_start = eon_index.checked_mul(T::EonDuration::get()).expect(PROOF);
-
-        eon_start
-            .checked_add(*GenesisSlot::<T>::get())
-            .expect(PROOF)
-            .into()
-    }
-
     fn do_initialize(block_number: T::BlockNumber) {
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
@@ -844,9 +739,13 @@ impl<T: Config> Pallet<T> {
                 });
             }
 
-            let key = (farmer_public_key, pre_digest.slot);
+            let key = (
+                farmer_public_key,
+                pre_digest.solution.sector_index,
+                pre_digest.slot,
+            );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
-                let (public_key, slot) = key;
+                let (public_key, _sector_index, slot) = key;
 
                 let offence = SubspaceEquivocationOffence {
                     slot,
@@ -863,17 +762,18 @@ impl<T: Config> Pallet<T> {
                     );
                 }
             } else {
-                let (public_key, slot) = key;
+                let (public_key, sector_index, slot) = key;
 
                 CurrentBlockAuthorInfo::<T>::put((
                     public_key,
+                    sector_index,
                     slot,
                     pre_digest.solution.reward_address,
                 ));
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (FarmerPublicKey, Slot),
+            (FarmerPublicKey, SectorIndex, Slot),
             (T::AccountId, FarmerSignature),
         >::default());
 
@@ -900,26 +800,12 @@ impl<T: Config> Pallet<T> {
             });
         }
 
-        // Update current salt if needed
-        {
-            let salts = Salts::<T>::get();
-            if salts.switch_next_block {
-                if let Some(next_salt) = salts.next {
-                    Salts::<T>::put(sp_consensus_subspace::Salts {
-                        current: next_salt,
-                        next: None,
-                        switch_next_block: false,
-                    });
-                }
-            }
-        }
-
         // Extract PoR randomness from pre-digest.
         // Tag signature is validated by the client and is always valid here.
         let por_randomness: Randomness = derive_randomness(
             &PublicKey::from(&pre_digest.solution.public_key),
-            pre_digest.solution.tag,
-            &pre_digest.solution.tag_signature,
+            &pre_digest.solution.chunk,
+            &pre_digest.solution.chunk_signature,
         )
         .expect("Tag signature is verified by the client and is always valid; qed");
         // Store PoR randomness for block duration as it might be useful.
@@ -933,52 +819,17 @@ impl<T: Config> Pallet<T> {
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range(
             SolutionRanges::<T>::get().current,
         ));
-        // Deposit salt data such that light client can validate blocks later.
-        frame_system::Pallet::<T>::deposit_log(DigestItem::salt(Salts::<T>::get().current));
-
-        let next_salt_reveal = Self::current_eon_start()
-            .checked_add(T::EonNextSaltReveal::get())
-            .expect("Will not overflow until the end of universe; qed");
-        let current_slot = Self::current_slot();
-        if current_slot >= next_salt_reveal {
-            Salts::<T>::mutate(|salts| {
-                if salts.next.is_none() {
-                    let eon_index = Self::eon_index();
-                    info!(
-                        target: "runtime::subspace",
-                        "🔃 Updating next salt on eon {} slot {}",
-                        eon_index,
-                        *current_slot
-                    );
-                    salts
-                        .next
-                        .replace(derive_next_salt_from_randomness(eon_index, &por_randomness));
-                }
-            });
-        }
 
         // Enact global randomness update, if necessary.
         T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
-        // Enact eon change, if necessary.
-        T::EonChangeTrigger::trigger::<T>(block_number);
 
         if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
             // Deposit next global randomness data such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
                 next_global_randomness,
             ));
-        }
-
-        {
-            let salts = Salts::<T>::get();
-            if salts.switch_next_block {
-                if let Some(next_salt) = salts.next {
-                    // Deposit next salt data such that light client can validate blocks later.
-                    frame_system::Pallet::<T>::deposit_log(DigestItem::next_salt(next_salt));
-                }
-            }
         }
     }
 
@@ -994,8 +845,10 @@ impl<T: Config> Pallet<T> {
 
         PorRandomness::<T>::take();
 
-        if let Some((public_key, slot, _reward_address)) = CurrentBlockAuthorInfo::<T>::take() {
-            ParentBlockAuthorInfo::<T>::put((public_key, slot));
+        if let Some((public_key, sector_index, slot, _reward_address)) =
+            CurrentBlockAuthorInfo::<T>::take()
+        {
+            ParentBlockAuthorInfo::<T>::put((public_key, sector_index, slot));
         }
 
         ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
@@ -1157,8 +1010,6 @@ impl<T: Config> Pallet<T> {
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
             slot_probability: T::SlotProbability::get(),
-            eon_duration: T::EonDuration::get(),
-            eon_next_salt_reveal: T::EonNextSaltReveal::get(),
         }
     }
 }
@@ -1268,7 +1119,6 @@ impl<T: Config> Pallet<T> {
 fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
     let global_randomnesses = GlobalRandomnesses::<T>::get();
     let solution_ranges = SolutionRanges::<T>::get();
-    let salts = Salts::<T>::get();
     VoteVerificationData {
         global_randomness: if is_block_initialized {
             global_randomnesses.current
@@ -1284,17 +1134,7 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .voting_next
                 .unwrap_or(solution_ranges.voting_current)
         },
-        salt: if is_block_initialized || !salts.switch_next_block {
-            salts.current
-        } else {
-            salts
-                .next
-                .expect("Next salt must always be available if `switch_next_block` is true; qed")
-        },
-        record_size: RECORD_SIZE,
-        recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-        max_plot_size: Pallet::<T>::max_plot_size(),
-        total_pieces: Pallet::<T>::total_pieces(),
+        pieces_in_segment: RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2,
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
             .map(|parent_vote_verification_data| {
@@ -1318,6 +1158,7 @@ enum CheckVoteError {
     SlotInTheFuture,
     SlotInThePast,
     BadRewardSignature(SignatureError),
+    TotalNumberOfPiecesCantBeZero,
     UnknownRecordsRoot,
     InvalidSolution(VerificationError),
     DuplicateVote,
@@ -1335,6 +1176,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
             CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
+            CheckVoteError::TotalNumberOfPiecesCantBeZero => InvalidTransaction::Call,
             CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
@@ -1464,12 +1306,15 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let pieces_in_segment = vote_verification_data.recorded_history_segment_size
-        / vote_verification_data.record_size
-        * 2;
-    let segment_index = solution.piece_index / u64::from(pieces_in_segment);
-    let position = u32::try_from(solution.piece_index % u64::from(pieces_in_segment))
+    let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
+
+    let piece_index = sector_id
+        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .map_err(|()| CheckVoteError::TotalNumberOfPiecesCantBeZero)?;
+    let pieces_in_segment = vote_verification_data.pieces_in_segment;
+    let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
         .expect("Position within segment always fits into u32; qed");
+    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(pieces_in_segment);
 
     let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
         records_root
@@ -1489,15 +1334,11 @@ fn check_vote<T: Config>(
         VerifySolutionParams {
             global_randomness: &vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
-            salt: vote_verification_data.salt,
             piece_check_params: Some(PieceCheckParams {
-                records_root,
+                records_root: &records_root,
                 position,
                 kzg: &kzg,
                 pieces_in_segment,
-                record_size: vote_verification_data.record_size,
-                max_plot_size: vote_verification_data.max_plot_size,
-                total_pieces: vote_verification_data.total_pieces,
             }),
         },
     ) {
@@ -1508,7 +1349,7 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::InvalidSolution(error));
     }
 
-    let key = (solution.public_key.clone(), slot);
+    let key = (solution.public_key.clone(), solution.sector_index, slot);
     // Check that farmer didn't use solution from this vote yet in:
     // * parent block
     // * current block
@@ -1516,7 +1357,9 @@ fn check_vote<T: Config>(
     // * current block vote
     let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
         || CurrentBlockAuthorInfo::<T>::get()
-            .map(|(public_key, slot, _reward_address)| (public_key, slot))
+            .map(|(public_key, sector_index, slot, _reward_address)| {
+                (public_key, sector_index, slot)
+            })
             .as_ref()
             == Some(&key);
 
@@ -1552,7 +1395,7 @@ fn check_vote<T: Config>(
             }
         });
 
-        let (public_key, _slot) = key;
+        let (public_key, _sector_index, _slot) = key;
 
         return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
@@ -1644,20 +1487,22 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
 
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
-        CurrentBlockAuthorInfo::<T>::get().and_then(|(public_key, _slot, reward_address)| {
-            // Equivocation might have happened in this block, if so - no reward for block
-            // author
-            if !BlockList::<T>::contains_key(&public_key) {
-                // Rewards might be disabled, in which case no block reward either
-                if let Some(height) = EnableRewards::<T>::get() {
-                    if frame_system::Pallet::<T>::current_block_number() >= height {
-                        return Some(reward_address);
+        CurrentBlockAuthorInfo::<T>::get().and_then(
+            |(public_key, _sector_index, _slot, reward_address)| {
+                // Equivocation might have happened in this block, if so - no reward for block
+                // author
+                if !BlockList::<T>::contains_key(&public_key) {
+                    // Rewards might be disabled, in which case no block reward either
+                    if let Some(height) = EnableRewards::<T>::get() {
+                        if frame_system::Pallet::<T>::current_block_number() >= height {
+                            return Some(reward_address);
+                        }
                     }
                 }
-            }
 
-            None
-        })
+                None
+            },
+        )
     }
 }
 

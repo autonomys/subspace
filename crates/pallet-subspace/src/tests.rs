@@ -17,10 +17,9 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_archived_segment, create_root_block, create_signed_vote, extract_piece,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, EonDuration, Event,
-    GlobalRandomnessUpdateInterval, Origin, ReportLongevity, Subspace, System, Test,
-    INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    create_archived_segment, create_root_block, create_signed_vote, generate_equivocation_proof,
+    go_to_block, new_test_ext, progress_to_block, Event, GlobalRandomnessUpdateInterval, Origin,
+    ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
@@ -34,7 +33,7 @@ use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, Salts, SolutionRanges, Vote,
+    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, SolutionRanges, Vote,
 };
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
@@ -44,6 +43,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use subspace_core_primitives::Piece;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::Error as VerificationError;
@@ -280,60 +280,6 @@ fn solution_range_should_not_update_when_disabled() {
         assert_eq!(
             Subspace::solution_ranges().next.unwrap(),
             INITIAL_SOLUTION_RANGE
-        );
-    })
-}
-
-#[test]
-fn can_update_salt_on_eon_change() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        assert_eq!(<Test as Config>::EonDuration::get(), 6);
-        assert_eq!(<Test as Config>::EonNextSaltReveal::get(), 3);
-        let initial_salts = Salts::default();
-        assert_eq!(Subspace::salts(), initial_salts);
-
-        // Almost salt reveal
-        progress_to_block(&keypair, 3, 1);
-        // No salts update
-        assert_eq!(Subspace::salts(), initial_salts);
-
-        // Salt reveal
-        progress_to_block(&keypair, 5, 1);
-        // Next salt should be revealed, but current is still unchanged and it is not yet scheduled
-        // for switch in the next block.
-        let revealed_salts = Subspace::salts();
-        assert_eq!(revealed_salts.current, initial_salts.current);
-        assert!(revealed_salts.next.is_some());
-        assert!(!revealed_salts.switch_next_block);
-
-        // Almost eon edge
-        progress_to_block(&keypair, 6, 1);
-        // No changes from before
-        assert_eq!(Subspace::salts(), revealed_salts);
-
-        // Eon edge
-        progress_to_block(&keypair, 7, 1);
-        // Same salts, scheduled to be updated in the next block
-        assert_eq!(
-            Subspace::salts(),
-            Salts {
-                current: revealed_salts.current,
-                next: revealed_salts.next,
-                switch_next_block: true
-            }
-        );
-
-        progress_to_block(&keypair, 8, 1);
-        // Salts switched
-        assert_eq!(
-            Subspace::salts(),
-            Salts {
-                current: revealed_salts.next.unwrap(),
-                next: None,
-                switch_next_block: false
-            }
         );
     })
 }
@@ -678,7 +624,7 @@ fn vote_block_listed() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         BlockList::<Test>::insert(
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
@@ -692,7 +638,6 @@ fn vote_block_listed() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -709,7 +654,7 @@ fn vote_after_genesis() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         // Can't submit vote right after genesis block
         let signed_vote = create_signed_vote(
@@ -718,7 +663,6 @@ fn vote_after_genesis() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -735,7 +679,7 @@ fn vote_too_low_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 1, 1);
 
@@ -748,7 +692,6 @@ fn vote_too_low_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece.clone(),
                 1,
             );
@@ -766,7 +709,7 @@ fn vote_past_future_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 4, 1);
 
@@ -778,7 +721,6 @@ fn vote_past_future_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece.clone(),
                 1,
             );
@@ -797,7 +739,6 @@ fn vote_past_future_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -815,7 +756,7 @@ fn vote_wrong_parent() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -826,7 +767,6 @@ fn vote_wrong_parent() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -843,7 +783,7 @@ fn vote_past_future_slot() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -865,7 +805,6 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 2.into(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece.clone(),
                 1,
             );
@@ -888,7 +827,6 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 4.into(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -903,7 +841,8 @@ fn vote_past_future_slot() {
         // in that context it is valid
         {
             let keypair = Keypair::generate();
-            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let piece =
+                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
             let signed_vote = create_signed_vote(
                 &keypair,
@@ -911,7 +850,6 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(1),
                 2.into(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -944,14 +882,14 @@ fn vote_same_slot() {
         // Same time slot in the vote as in the block is fine if height is the same (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let piece =
+                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
             let signed_vote = create_signed_vote(
                 &keypair,
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -963,14 +901,14 @@ fn vote_same_slot() {
         // (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece = extract_piece(&keypair, &archived_segment, 0);
+            let piece =
+                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
             let signed_vote = create_signed_vote(
                 &keypair,
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
-                Subspace::salts().current,
                 piece,
                 1,
             );
@@ -988,7 +926,7 @@ fn vote_bad_reward_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -999,7 +937,6 @@ fn vote_bad_reward_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1018,7 +955,7 @@ fn vote_unknown_records_root() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1029,7 +966,6 @@ fn vote_unknown_records_root() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1046,7 +982,7 @@ fn vote_outside_of_solution_range() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1062,7 +998,6 @@ fn vote_outside_of_solution_range() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1081,7 +1016,7 @@ fn vote_invalid_solution_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1102,13 +1037,12 @@ fn vote_invalid_solution_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
 
         let Vote::V0 { solution, .. } = &mut signed_vote.vote;
-        solution.tag_signature.output = rand::random();
+        solution.chunk_signature.output = rand::random();
 
         // Fix signed vote signature after changed contents
         signed_vote.signature = FarmerSignature::unchecked_from(
@@ -1134,7 +1068,7 @@ fn vote_correct_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1155,7 +1089,6 @@ fn vote_correct_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             1,
         );
@@ -1169,7 +1102,7 @@ fn vote_randomness_update() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -1183,7 +1116,9 @@ fn vote_randomness_update() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // On the edge of change of global randomness, salt or solution range vote must be validated
+        // TODO: This must fail, but currently doesn't. Once fixed must include  both success and
+        //  failure cases
+        // On the edge of change of global randomness or solution range vote must be validated
         // with correct data (in this test case randomness just updated)
         let signed_vote = create_signed_vote(
             &keypair,
@@ -1191,66 +1126,6 @@ fn vote_randomness_update() {
             frame_system::Pallet::<Test>::block_hash(GlobalRandomnessUpdateInterval::get() - 1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().next.unwrap(),
-            {
-                let salts = Subspace::salts();
-                if salts.switch_next_block {
-                    salts.next.unwrap()
-                } else {
-                    salts.current
-                }
-            },
-            piece,
-            1,
-        );
-
-        assert_ok!(super::check_vote::<Test>(&signed_vote, false));
-    });
-}
-
-#[test]
-fn vote_salt_update() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
-
-        RecordsRoot::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
-        );
-
-        // Reset so that any solution works for votes
-        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
-            solution_ranges.voting_current = u64::MAX;
-        });
-
-        // Jump to the edge of the eon where salt update happens
-        go_to_block(
-            &keypair,
-            u64::from(EonDuration::get() - 1),
-            u64::from(
-                (u64::from(Subspace::current_slot()) as u32 / EonDuration::get() + 1)
-                    * EonDuration::get(),
-            ),
-            1,
-        );
-
-        // On the edge of change of global randomness, salt or solution range vote must be validated
-        // with correct data (in this test case salt just updated)
-        let signed_vote = create_signed_vote(
-            &keypair,
-            u64::from(EonDuration::get() - 1),
-            frame_system::Pallet::<Test>::block_hash(u64::from(EonDuration::get() - 2)),
-            Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
-            {
-                let salts = Subspace::salts();
-                if salts.switch_next_block {
-                    salts.next.unwrap()
-                } else {
-                    salts.current
-                }
-            },
             piece,
             1,
         );
@@ -1264,7 +1139,7 @@ fn vote_equivocation_current_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1284,6 +1159,7 @@ fn vote_equivocation_current_block_plus_vote() {
 
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            0,
             slot,
             reward_address,
         ));
@@ -1294,7 +1170,6 @@ fn vote_equivocation_current_block_plus_vote() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1314,7 +1189,7 @@ fn vote_equivocation_parent_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1328,12 +1203,14 @@ fn vote_equivocation_parent_block_plus_vote() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Parent block author + slot matches that of the vote
+        // Parent block author + sector index + slot matches that of the vote
 
         let slot = Subspace::current_slot();
+        let sector_index = 0;
         let reward_address = 1;
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            sector_index,
             slot,
         ));
 
@@ -1343,7 +1220,6 @@ fn vote_equivocation_parent_block_plus_vote() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1372,6 +1248,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 fn vote_equivocation_current_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let archived_segment = create_archived_segment();
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
@@ -1387,7 +1264,6 @@ fn vote_equivocation_current_voters_duplicate() {
 
         // Current block author + slot matches that of the vote
         let voter_keypair = Keypair::generate();
-        let piece = extract_piece(&voter_keypair, &archived_segment, 0);
         let slot = Subspace::current_slot();
         let reward_address = 0;
 
@@ -1397,7 +1273,6 @@ fn vote_equivocation_current_voters_duplicate() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1407,6 +1282,7 @@ fn vote_equivocation_current_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1425,6 +1301,7 @@ fn vote_equivocation_current_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1432,7 +1309,7 @@ fn vote_equivocation_current_voters_duplicate() {
             map
         });
 
-        // Different vote for the same time slot leads to equivocation
+        // Different vote for the same sector index and time slot leads to equivocation
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
         assert_err!(
             Subspace::vote(Origin::none(), Box::new(signed_vote)),
@@ -1449,7 +1326,7 @@ fn vote_equivocation_parent_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = extract_piece(&keypair, &archived_segment, 0);
+        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1463,7 +1340,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Current block author + slot matches that of the vote
+        // Current block author + sector index + slot matches that of the vote
         let slot = Subspace::current_slot() + 1;
         let reward_address = 1;
 
@@ -1473,7 +1350,6 @@ fn vote_equivocation_parent_voters_duplicate() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            Subspace::salts().current,
             piece,
             reward_address,
         );
@@ -1483,6 +1359,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1501,6 +1378,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    signed_vote.vote.solution().sector_index,
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1527,6 +1405,7 @@ fn enabling_block_rewards_works() {
     fn set_block_rewards() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+            0,
             Subspace::current_slot(),
             1,
         ));
@@ -1535,6 +1414,7 @@ fn enabling_block_rewards_works() {
             map.insert(
                 (
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
+                    0,
                     Subspace::current_slot(),
                 ),
                 (2, FarmerSignature::unchecked_from([0; 64])),

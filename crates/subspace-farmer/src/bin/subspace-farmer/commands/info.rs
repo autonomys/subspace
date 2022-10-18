@@ -1,6 +1,5 @@
 use crate::DiskFarm;
-use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
-use subspace_farmer::single_plot_farm::SinglePlotFarmSummary;
+use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotSummary};
 
 pub(crate) fn info(disk_farms: Vec<DiskFarm>) {
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
@@ -8,111 +7,28 @@ pub(crate) fn info(disk_farms: Vec<DiskFarm>) {
             println!();
         }
 
-        let DiskFarm {
-            plot_directory,
-            metadata_directory,
-            ..
-        } = disk_farm;
+        let DiskFarm { directory, .. } = disk_farm;
 
         println!("Single disk farm {disk_farm_index}:");
-        match SingleDiskFarm::collect_summary(plot_directory, metadata_directory) {
-            SingleDiskFarmSummary::Found {
-                id,
-                genesis_hash,
-                allocated_plotting_space,
-                plot_directory,
-                metadata_directory,
-                single_plot_farm_summaries,
-            } => {
-                println!("  ID: {id}");
-                println!("  Genesis hash: 0x{}", hex::encode(genesis_hash));
+        match SingleDiskPlot::collect_summary(directory) {
+            SingleDiskPlotSummary::Found { info, directory } => {
+                println!("  ID: {}", info.id());
+                println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
+                println!("  Public key: 0x{}", hex::encode(info.public_key()));
+                println!("  First sector index: {}", info.first_sector_index());
                 println!(
-                    "  Allocated plotting space: {} ({})",
-                    bytesize::to_string(allocated_plotting_space, true),
-                    bytesize::to_string(allocated_plotting_space, false)
+                    "  Allocated space: {} ({})",
+                    bytesize::to_string(info.allocated_space(), true),
+                    bytesize::to_string(info.allocated_space(), false)
                 );
-                println!("  Plot directory (HDD): {}", plot_directory.display());
-                println!(
-                    "  Metadata directory (SSD): {}",
-                    metadata_directory.display()
-                );
-
-                for (plot_farm_index, single_plot_farm_summary) in
-                    single_plot_farm_summaries.into_iter().enumerate()
-                {
-                    println!();
-
-                    match single_plot_farm_summary {
-                        SinglePlotFarmSummary::Found {
-                            id,
-                            public_key,
-                            allocated_plotting_space,
-                            plot_directory,
-                            metadata_directory,
-                        } => {
-                            println!("  Single plot farm {disk_farm_index}.{plot_farm_index}:");
-                            println!("    ID: {id}");
-                            println!("    Public key: 0x{}", hex::encode(public_key));
-                            println!(
-                                "    Allocated plotting space: {} ({})",
-                                bytesize::to_string(allocated_plotting_space, true),
-                                bytesize::to_string(allocated_plotting_space, false)
-                            );
-                            println!("    Plot directory (HDD): {}", plot_directory.display());
-                            println!(
-                                "    Metadata directory (SSD): {}",
-                                metadata_directory.display()
-                            );
-                        }
-                        SinglePlotFarmSummary::NotFound {
-                            plot_directory,
-                            metadata_directory,
-                        } => {
-                            println!("  Single plot farm {}:", plot_farm_index);
-                            println!("    Plot directory (HDD): {}", plot_directory.display());
-                            println!(
-                                "    Metadata directory (SSD): {}",
-                                metadata_directory.display()
-                            );
-                            println!("    No farm found here yet");
-                        }
-                        SinglePlotFarmSummary::Error {
-                            plot_directory,
-                            metadata_directory,
-                            error,
-                        } => {
-                            println!("  Single plot farm {}:", plot_farm_index);
-                            println!("    Plot directory (HDD): {}", plot_directory.display());
-                            println!(
-                                "    Metadata directory (SSD): {}",
-                                metadata_directory.display()
-                            );
-                            println!("    Failed to open farm info: {}", error);
-                        }
-                    }
-                }
+                println!("  Directory: {}", directory.display());
             }
-            SingleDiskFarmSummary::NotFound {
-                plot_directory,
-                metadata_directory,
-            } => {
-                println!("  Plot directory (HDD): {}", plot_directory.display());
-                println!(
-                    "  Metadata directory (SSD): {}",
-                    metadata_directory.display()
-                );
+            SingleDiskPlotSummary::NotFound { directory } => {
+                println!("  Plot directory: {}", directory.display());
                 println!("  No farm found here yet");
             }
-            SingleDiskFarmSummary::Error {
-                plot_directory,
-                metadata_directory,
-                error,
-            } => {
-                println!("  Plot directory (HDD): {}", plot_directory.display());
-                println!(
-                    "  Metadata directory (SSD): {}",
-                    metadata_directory.display()
-                );
+            SingleDiskPlotSummary::Error { directory, error } => {
+                println!("  Ddirectory: {}", directory.display());
                 println!("  Failed to open farm info: {}", error);
             }
         }

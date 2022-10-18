@@ -48,7 +48,7 @@ pub use pallet_subspace::AllowAuthoringBy;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, Salts, SignedVote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, SignedVote,
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
@@ -68,7 +68,6 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
@@ -139,19 +138,10 @@ const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
-/// Eon duration is 7 days
-const EON_DURATION_IN_SLOTS: u64 = 3600 * 24 * 7;
-/// Reveal next eon salt 1 day before eon end
-const EON_NEXT_SALT_REVEAL: u64 = EON_DURATION_IN_SLOTS
-    .checked_sub(3600 * 24)
-    .expect("Offset is smaller than eon duration; qed");
-
-// We assume initial plot size starts with the a single recorded history segment (which is erasure
-// coded of course, hence `*2`).
-const INITIAL_SOLUTION_RANGE: SolutionRange = SolutionRange::MAX
-    / (RECORDED_HISTORY_SEGMENT_SIZE * 2 / RECORD_SIZE as u32) as SolutionRange
-    * SLOT_PROBABILITY.0
-    / SLOT_PROBABILITY.1;
+// We assume initial plot size starts with the a single sector, hence we have one attempt per time
+// slot.
+const INITIAL_SOLUTION_RANGE: SolutionRange =
+    SolutionRange::MAX / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0;
 
 /// Number of votes expected per block.
 ///
@@ -259,8 +249,6 @@ impl pallet_subspace::Config for Runtime {
     type Event = Event;
     type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
-    type EonDuration = ConstU64<EON_DURATION_IN_SLOTS>;
-    type EonNextSaltReveal = ConstU64<EON_NEXT_SALT_REVEAL>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
@@ -269,7 +257,6 @@ impl pallet_subspace::Config for Runtime {
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
-    type EonChangeTrigger = pallet_subspace::NormalEonChange;
 
     type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
         OffencesSubspace,
@@ -607,8 +594,8 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let seed: &[u8] = b"extrinsics-shuffling-seed";
         let randomness = derive_randomness(
             &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            pre_digest.solution.tag,
-            &pre_digest.solution.tag_signature,
+            &pre_digest.solution.chunk,
+            &pre_digest.solution.chunk_signature,
         )
         .expect("Tag signature is verified by the client and must always be valid; qed");
         let mut data = Vec::with_capacity(seed.len() + randomness.len());
@@ -711,10 +698,6 @@ impl_runtime_apis! {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
-        fn max_plot_size() -> u64 {
-            Subspace::max_plot_size()
-        }
-
         fn slot_duration() -> Duration {
             Duration::from_millis(Subspace::slot_duration())
         }
@@ -725,10 +708,6 @@ impl_runtime_apis! {
 
         fn solution_ranges() -> SolutionRanges {
             Subspace::solution_ranges()
-        }
-
-        fn salts() -> Salts {
-            Subspace::salts()
         }
 
         fn submit_report_equivocation_extrinsic(

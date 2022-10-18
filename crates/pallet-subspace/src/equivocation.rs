@@ -213,7 +213,7 @@ fn is_known_offence<T: Config>(
 
 /// A Subspace equivocation offence report.
 ///
-/// When a farmer released two or more blocks at the same slot.
+/// When a farmer released two or more solutions at the same slot.
 #[derive(Debug, Eq, PartialEq)]
 pub struct SubspaceEquivocationOffence<PublicKey> {
     /// A Subspace slot in which this incident happened.

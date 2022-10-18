@@ -26,7 +26,6 @@ use sc_consensus_slots::{
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
-use schnorrkel::PublicKey;
 use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
@@ -42,9 +41,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{
-    Randomness, RewardSignature, Salt, Solution, PIECES_IN_SEGMENT, RECORD_SIZE,
+    Randomness, RewardSignature, SectorId, SegmentIndex, Solution, PIECES_IN_SEGMENT,
 };
-use subspace_solving::{derive_global_challenge, derive_target};
+use subspace_solving::derive_global_challenge;
 use subspace_verification::{
     check_reward_signature, is_within_solution_range, verify_solution, PieceCheckParams,
     VerifySolutionParams,
@@ -155,8 +154,6 @@ where
             extract_global_randomness_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id).ok()?;
-        let (salt, next_salt) =
-            extract_salt_for_block(self.client.as_ref(), &parent_block_id).ok()?;
         let global_challenge = derive_global_challenge(&global_randomness, slot.into());
 
         let maybe_root_plot_public_key = self
@@ -168,8 +165,6 @@ where
         let new_slot_info = NewSlotInfo {
             slot,
             global_challenge,
-            salt,
-            next_salt,
             solution_range,
             voting_solution_range,
         };
@@ -210,14 +205,29 @@ where
                 continue;
             }
 
-            let max_plot_size = runtime_api.max_plot_size(&parent_block_id).ok()?;
-            let segment_index = solution.piece_index / u64::from(PIECES_IN_SEGMENT);
-            let position = u32::try_from(solution.piece_index % u64::from(PIECES_IN_SEGMENT))
+            let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
+
+            let piece_index =
+                match sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces) {
+                    Ok(piece_index) => piece_index,
+                    Err(()) => {
+                        warn!(
+                            target: "subspace",
+                            "Ignoring solution for slot {} provided by farmer due to zero total \
+                            pieces at which sector was supposedly created, which is impossible",
+                            slot,
+                        );
+                        continue;
+                    }
+                };
+            let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+            let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
                 .expect("Position within segment always fits into u32; qed");
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
-            let total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
+            // TODO: This will be necessary for verifying sector expiration in the future
+            let _total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
@@ -254,15 +264,11 @@ where
                 VerifySolutionParams {
                     global_randomness: &global_randomness,
                     solution_range: voting_solution_range,
-                    salt,
                     piece_check_params: Some(PieceCheckParams {
-                        records_root,
+                        records_root: &records_root,
                         position,
                         kzg: &self.subspace_link.kzg,
                         pieces_in_segment: PIECES_IN_SEGMENT,
-                        record_size: RECORD_SIZE,
-                        max_plot_size,
-                        total_pieces,
                     }),
                 },
             );
@@ -270,18 +276,14 @@ where
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
             } else {
-                // Verification of the local challenge was done before this
-                let target = derive_target(
-                    &PublicKey::from_bytes(solution.public_key.as_ref())
-                        .expect("Always correct length; qed"),
-                    global_challenge,
-                    &solution.local_challenge,
-                )
-                .expect("Verification of the local challenge was done before this; qed");
+                let local_challenge = sector_id.derive_local_challenge(&global_challenge);
+
+                let expanded_chunk = solution.chunk.expand(local_challenge);
+
                 // If solution is of high enough quality and block pre-digest wasn't produced yet,
                 // block reward is claimed
                 if maybe_pre_digest.is_none()
-                    && is_within_solution_range(target, solution.tag, solution_range)
+                    && is_within_solution_range(local_challenge, expanded_chunk, solution_range)
                 {
                     info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
@@ -525,29 +527,4 @@ where
                     .unwrap_or(solution_ranges.voting_current),
             )
         })
-}
-
-// TODO: Replace with querying parent block header when breaking protocol
-/// Extract salt and next salt for block, given ID of the parent block.
-pub(crate) fn extract_salt_for_block<Block, Client>(
-    client: &Client,
-    parent_block_id: &BlockId<Block>,
-) -> Result<(Salt, Option<Salt>), ApiError>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-{
-    client.runtime_api().salts(parent_block_id).map(|salts| {
-        if salts.switch_next_block {
-            (
-                salts.next.expect(
-                    "Next salt must always be present if `switch_next_block` is `true`; qed",
-                ),
-                None,
-            )
-        } else {
-            (salts.current, salts.next)
-        }
-    })
 }

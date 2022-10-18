@@ -1,6 +1,4 @@
 pub mod bench_rpc_client;
-#[cfg(test)]
-pub mod mock_rpc_client;
 pub(crate) mod node_rpc_client;
 
 use async_trait::async_trait;
@@ -47,9 +45,6 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
     async fn subscribe_archived_segments(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, Error>;
-
-    /// Acknowledge receiving of archived segments
-    async fn acknowledge_archived_segment(&self, segment_index: SegmentIndex) -> Result<(), Error>;
 
     /// Get records roots for the segments
     async fn records_roots(

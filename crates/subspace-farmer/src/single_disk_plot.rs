@@ -3,7 +3,6 @@ use crate::identity::Identity;
 use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
-use crate::single_disk_farm::SingleDiskSemaphore;
 use crate::utils::JoinOnDrop;
 use bitvec::prelude::*;
 use bytesize::ByteSize;
@@ -26,17 +25,20 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
-use std::{fs, io, thread};
+use std::{fmt, fs, io, thread};
+use std_semaphore::{Semaphore, SemaphoreGuard};
+use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
-    plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SegmentIndex, Solution,
-    PIECE_SIZE,
+    plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, SegmentIndex,
+    Solution, PIECE_SIZE,
 };
-use subspace_solving::{derive_chunk_otp, SubspaceCodec};
-use subspace_verification::is_within_solution_range2;
+use subspace_rpc_primitives::SolutionResponse;
+use subspace_solving::derive_chunk_otp;
+use subspace_verification::is_within_solution_range;
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{debug, error, info, info_span, Instrument, Span};
+use tracing::{debug, error, info, info_span, trace, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -45,6 +47,35 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
+
+/// Semaphore that limits disk access concurrency in strategic places to the number specified during
+/// initialization
+#[derive(Clone)]
+pub struct SingleDiskSemaphore {
+    inner: Arc<Semaphore>,
+}
+
+impl fmt::Debug for SingleDiskSemaphore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SingleDiskSemaphore").finish()
+    }
+}
+
+impl SingleDiskSemaphore {
+    /// Create new semaphore for limiting concurrency of the major processes working with the same
+    /// disk
+    pub fn new(concurrency: NonZeroU16) -> Self {
+        Self {
+            inner: Arc::new(Semaphore::new(concurrency.get() as isize)),
+        }
+    }
+
+    /// Acquire access, will block current thread until previously acquired guards are dropped and
+    /// access is released
+    pub fn acquire(&self) -> SemaphoreGuard<'_> {
+        self.inner.access()
+    }
+}
 
 /// An identifier for single disk plot, can be used for in logs, thread names, etc.
 #[derive(
@@ -83,7 +114,7 @@ pub enum SingleDiskPlotInfo {
         /// Multiple plots can reuse the same identity, but they have to use different ranges for
         /// sector indexes or else they'll essentially plot the same data and will not result in
         /// increased probability of winning the reward.
-        first_sector_index: u64,
+        first_sector_index: SectorIndex,
         /// How much space in bytes is allocated for this plot
         allocated_space: u64,
     },
@@ -96,7 +127,7 @@ impl SingleDiskPlotInfo {
         id: SingleDiskPlotId,
         genesis_hash: [u8; 32],
         public_key: PublicKey,
-        first_sector_index: u64,
+        first_sector_index: SectorIndex,
         allocated_space: u64,
     ) -> Self {
         Self::V0 {
@@ -158,7 +189,7 @@ impl SingleDiskPlotInfo {
     /// Multiple plots can reuse the same identity, but they have to use different ranges for
     /// sector indexes or else they'll essentially plot the same data and will not result in
     /// increased probability of winning the reward.
-    pub fn first_sector_index(&self) -> u64 {
+    pub fn first_sector_index(&self) -> SectorIndex {
         let Self::V0 {
             first_sector_index, ..
         } = self;
@@ -353,6 +384,12 @@ pub enum FarmingError {
         /// Lower-level error
         error: parity_scale_codec::Error,
     },
+    /// Failed to submit solutions response
+    #[error("Failed to submit solutions response: {error}")]
+    FailedToSubmitSolutionsResponse {
+        /// Lower-level error
+        error: rpc_client::Error,
+    },
 }
 
 /// Errors that happen in background tasks
@@ -403,8 +440,7 @@ impl SingleDiskPlot {
             directory,
             allocated_space,
             rpc_client,
-            // TODO: Use this or remove
-            reward_address: _,
+            reward_address,
         } = options;
 
         fs::create_dir_all(&directory)?;
@@ -485,10 +521,12 @@ impl SingleDiskPlot {
         };
 
         let single_disk_plot_id = *single_disk_plot_info.id();
+        let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Account for plot overhead
         let target_sector_count = allocated_space / plot_sector_size;
 
+        // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -557,9 +595,6 @@ impl SingleDiskPlot {
 
         let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
 
-        // TODO: Use this or remove
-        let _codec = SubspaceCodec::new_with_gpu(public_key.as_ref());
-
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
@@ -605,16 +640,12 @@ impl SingleDiskPlot {
                                 metadata_header.lock().sector_count as usize,
                             )
                             .map(|(sector_index, (sector, metadata))| {
-                                (
-                                    sector_index as u64
-                                        + single_disk_plot_info.first_sector_index(),
-                                    sector,
-                                    metadata,
-                                )
+                                (sector_index as u64 + first_sector_index, sector, metadata)
                             });
 
                         // TODO: Concurrency
-                        for (sector_index, sector, sector_metadata) in plot_initial_sector {
+                        'sector: for (sector_index, sector, sector_metadata) in plot_initial_sector
+                        {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
@@ -648,8 +679,18 @@ impl SingleDiskPlot {
                                     );
                                     return;
                                 }
-                                let piece_index = sector_id
-                                    .derive_piece_index(piece_offset as PieceIndex, total_pieces);
+                                let piece_index = match sector_id
+                                    .derive_piece_index(piece_offset as PieceIndex, total_pieces)
+                                {
+                                    Ok(piece_index) => piece_index,
+                                    Err(()) => {
+                                        error!(
+                                            "Total number of pieces received from node is 0, this \
+                                            should never happen! Aborting sector plotting."
+                                        );
+                                        break 'sector;
+                                    }
+                                };
 
                                 let mut piece: Piece = handle
                                     .block_on(rpc_client.get_piece(piece_index))
@@ -660,13 +701,12 @@ impl SingleDiskPlot {
                                     .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
                                 let piece_witness = match Witness::try_from_bytes(
-                                    &<[u8; 48]>::try_from(
-                                        &piece[farmer_protocol_info.record_size.get() as usize..],
-                                    )
-                                    .expect(
-                                        "Witness must have correct size unless implementation \
-                                        is broken in a big way; qed",
-                                    ),
+                                    &piece[farmer_protocol_info.record_size.get() as usize..]
+                                        .try_into()
+                                        .expect(
+                                            "Witness must have correct size unless implementation \
+                                            is broken in a big way; qed",
+                                        ),
                                 ) {
                                     Ok(piece_witness) => piece_witness,
                                     Err(error) => {
@@ -683,6 +723,8 @@ impl SingleDiskPlot {
                                 // TODO: Last bits may not be encoded if record size is not multiple
                                 //  of `space_l`
                                 // Encode piece
+                                // TODO: Extract encoding into separate function reusable in
+                                //  farmer and otherwise
                                 piece[..farmer_protocol_info.record_size.get() as usize]
                                     .view_bits_mut::<Lsb0>()
                                     .chunks_mut(space_l.get() as usize)
@@ -736,6 +778,7 @@ impl SingleDiskPlot {
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
                 let shutting_down = Arc::clone(&shutting_down);
+                let identity = identity.clone();
                 let rpc_client = rpc_client.clone();
 
                 move || {
@@ -774,13 +817,16 @@ impl SingleDiskPlot {
                             };
                             let shutting_down = Arc::clone(&shutting_down);
 
-                            let solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+                            let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
                             // TODO: This loop should happen in a blocking task
-                            for (sector_index, (sector, sector_metadata)) in plot_mmap
+                            for (sector_index, sector, sector_metadata) in plot_mmap
                                 .chunks_exact(plot_sector_size as usize)
                                 .zip(metadata_mmap.chunks_exact(SectorMetadata::encoded_size()))
                                 .enumerate()
+                                .map(|(sector_index, (sector, metadata))| {
+                                    (sector_index as u64 + first_sector_index, sector, metadata)
+                                })
                             {
                                 if shutting_down.load(Ordering::Acquire) {
                                     debug!(
@@ -790,20 +836,21 @@ impl SingleDiskPlot {
                                     return;
                                 }
 
-                                let sector_id = SectorId::new(&public_key, sector_index as u64);
+                                let sector_id = SectorId::new(&public_key, sector_index);
 
                                 let local_challenge =
                                     sector_id.derive_local_challenge(&slot_info.global_challenge);
                                 let audit_index: u64 = local_challenge % chunks_in_sector;
+                                let audit_piece_offset =
+                                    (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
                                 // Offset of the piece in sector (in bytes)
-                                let audit_piece_offset = (audit_index / u64::from(u8::BITS))
-                                    / PIECE_SIZE as u64
-                                    * PIECE_SIZE as u64;
+                                let audit_piece_bytes_offset =
+                                    audit_piece_offset * PIECE_SIZE as u64;
                                 // Audit index (chunk) within corresponding piece
                                 let audit_index_within_piece =
-                                    audit_index - audit_piece_offset * u64::from(u8::BITS);
+                                    audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
                                 let mut piece = Piece::try_from(
-                                    &sector[audit_piece_offset as usize..][..PIECE_SIZE],
+                                    &sector[audit_piece_bytes_offset as usize..][..PIECE_SIZE],
                                 )
                                 .expect("Slice is guaranteed to have correct length; qed");
 
@@ -828,7 +875,7 @@ impl SingleDiskPlot {
                                 //  something else?
                                 let expanded_chunk = chunk.expand(local_challenge);
 
-                                if is_within_solution_range2(
+                                if is_within_solution_range(
                                     local_challenge,
                                     expanded_chunk,
                                     slot_info.voting_solution_range,
@@ -841,29 +888,47 @@ impl SingleDiskPlot {
                                     debug!("Solution found");
 
                                     let piece_witness = match Witness::try_from_bytes(
-                                        &<[u8; 48]>::try_from(&piece[record_size..]).expect(
+                                        &piece[record_size..].try_into().expect(
                                             "Witness must have correct size unless implementation \
                                             is broken in a big way; qed",
                                         ),
                                     ) {
                                         Ok(piece_witness) => piece_witness,
                                         Err(error) => {
-                                            let piece_index = sector_id.derive_piece_index(
-                                                audit_piece_offset / PIECE_SIZE as u64,
+                                            if let Ok(piece_index) = sector_id.derive_piece_index(
+                                                audit_piece_bytes_offset / PIECE_SIZE as u64,
                                                 sector_metadata.total_pieces,
-                                            );
-                                            error!(
-                                                ?error,
-                                                %piece_index,
-                                                "Failed to decode witness for piece, likely caused \
-                                                by on-disk data corruption"
-                                            );
+                                            ) {
+                                                error!(
+                                                    ?error,
+                                                    ?sector_id,
+                                                    %audit_piece_bytes_offset,
+                                                    %piece_index,
+                                                    "Failed to decode witness for piece, likely \
+                                                    caused by on-disk data corruption"
+                                                );
+                                            } else {
+                                                error!(
+                                                    ?sector_id,
+                                                    %audit_piece_bytes_offset,
+                                                    "Failed to decode witness for piece, likely \
+                                                    caused by on-disk data corruption"
+                                                );
+                                                error!(
+                                                    ?sector_id,
+                                                    %audit_piece_bytes_offset,
+                                                    "Total number of pieces in sector metadata is \
+                                                    0, this means on-disk data were corrupted or \
+                                                    severe implementation bug!"
+                                                );
+                                            }
                                             continue;
                                         }
                                     };
                                     // Decode piece
-                                    piece
-                                        .as_mut()
+                                    // TODO: Extract encoding into separate function reusable in
+                                    //  farmer and otherwise
+                                    piece[..record_size]
                                         .view_bits_mut::<Lsb0>()
                                         .chunks_mut(space_l.get() as usize)
                                         .enumerate()
@@ -882,20 +947,35 @@ impl SingleDiskPlot {
                                                     *a ^= *b;
                                                 });
                                         });
-                                    // let solution = Solution {
-                                    // };
-                                    // solutions.push(solution);
+
+                                    let solution = Solution {
+                                        public_key,
+                                        reward_address,
+                                        sector_index,
+                                        total_pieces: sector_metadata.total_pieces,
+                                        piece_offset: audit_piece_offset,
+                                        piece_record_hash: blake2b_256_254_hash(
+                                            &piece[..record_size],
+                                        ),
+                                        piece_witness,
+                                        chunk,
+                                        chunk_signature: identity.create_chunk_signature(&chunk),
+                                    };
+
+                                    trace!(?solution, "Solution found");
+
+                                    solutions.push(solution);
                                 }
                             }
 
-                            drop(solutions);
-                            // client
-                            //     .submit_solution_response(SolutionResponse {
-                            //         slot_number: slot_info.slot_number,
-                            //         solutions,
-                            //     })
-                            //     .await
-                            //     .map_err(FarmingError::RpcError)?;
+                            handle
+                                .block_on(rpc_client.submit_solution_response(SolutionResponse {
+                                    slot_number: slot_info.slot_number,
+                                    solutions,
+                                }))
+                                .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
+                                    error,
+                                })?;
                         }
                     };
 
@@ -958,5 +1038,45 @@ impl SingleDiskPlot {
         }
 
         Ok(())
+    }
+
+    /// Wipe everything that belongs to this single disk plot
+    pub fn wipe(directory: &Path) -> io::Result<()> {
+        let single_disk_plot_info_path = directory.join(SingleDiskPlotInfo::FILE_NAME);
+        let single_disk_plot_info = SingleDiskPlotInfo::load_from(directory)?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "Single disk plot info not found at {}",
+                    single_disk_plot_info_path.display()
+                ),
+            )
+        })?;
+
+        info!("Found single disk plot {}", single_disk_plot_info.id());
+
+        {
+            let plot = directory.join(Self::PLOT_FILE);
+            info!("Deleting plot file at {}", plot.display());
+            fs::remove_file(plot)?;
+        }
+        {
+            let metadata = directory.join(Self::METADATA_FILE);
+            info!("Deleting metadata file at {}", metadata.display());
+            fs::remove_file(metadata)?;
+        }
+        // TODO: Identity should be able to wipe itself instead of assuming a specific file name
+        //  here
+        {
+            let identity = directory.join("identity.bin");
+            info!("Deleting identity file at {}", identity.display());
+            fs::remove_file(identity)?;
+        }
+
+        info!(
+            "Deleting info file at {}",
+            single_disk_plot_info_path.display()
+        );
+        fs::remove_file(single_disk_plot_info_path)
     }
 }

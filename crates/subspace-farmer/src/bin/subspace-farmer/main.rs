@@ -8,12 +8,11 @@ use bytesize::ByteSize;
 use clap::{ArgEnum, Parser, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
-use std::net::SocketAddr;
 use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
-use subspace_farmer::single_disk_farm::SingleDiskFarm;
+use subspace_farmer::single_disk_plot::SingleDiskPlot;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
@@ -31,20 +30,6 @@ use tracing_subscriber::{fmt, EnvFilter};
 #[global_allocator]
 static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-#[derive(Debug, Clone, Copy, ArgEnum)]
-enum ArchivingFrom {
-    /// Sync from node using RPC endpoint (recommended)
-    Rpc,
-    /// Sync from node using DSN (experimental)
-    Dsn,
-}
-
-impl Default for ArchivingFrom {
-    fn default() -> Self {
-        Self::Rpc
-    }
-}
-
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 struct FarmingArgs {
@@ -58,29 +43,15 @@ struct FarmingArgs {
     /// WebSocket RPC URL of the Subspace node to connect to
     #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
     node_rpc_url: String,
-    /// Host and port where built-in WebSocket RPC server should listen for incoming connections
-    #[clap(long, short, default_value = "127.0.0.1:9955")]
-    ws_server_listen_addr: SocketAddr,
     /// Address for farming rewards
     #[clap(long, parse(try_from_str = parse_ss58_reward_address))]
     reward_address: PublicKey,
     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[clap(long, default_value_t)]
     plot_size: ByteSize,
-    /// Maximum single plot size in bytes human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    ///
-    /// Only a developer testing flag, not helpful for normal users.
-    #[clap(long)]
-    max_plot_size: Option<ByteSize>,
     /// Number of major concurrent operations to allow for disk
     #[clap(long, default_value = "2")]
     disk_concurrency: NonZeroU16,
-    /// Archive data from
-    #[clap(arg_enum, long, default_value_t)]
-    archiving: ArchivingFrom,
-    /// Use dsn for syncing
-    #[clap(long)]
-    dsn_sync: bool,
     /// Disable farming
     #[clap(long)]
     disable_farming: bool,
@@ -106,40 +77,34 @@ enum Subcommand {
     Farm(FarmingArgs),
     /// Print information about farm and its content
     Info,
-    /// Benchmark disk in order to see a throughput of the disk for plotting
-    Bench {
-        /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-        #[clap(long)]
-        plot_size: ByteSize,
-        /// Maximum single plot size in bytes human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-        ///
-        /// Only a developer testing flag, as it might be needed for testing.
-        #[clap(long)]
-        max_plot_size: Option<ByteSize>,
-        /// Number of major concurrent operations to allow for disk
-        #[clap(long, default_value = "2")]
-        disk_concurrency: NonZeroU16,
-        /// How much things to write on disk (the more we write during benchmark, the more accurate
-        /// it is)
-        #[clap(arg_enum, long, default_value_t)]
-        write_to_disk: WriteToDisk,
-        /// Amount of data to plot for benchmarking.
-        ///
-        /// Only `G` and `T` endings are supported.
-        #[clap(long)]
-        write_pieces_size: ByteSize,
-        /// Skip recommitment benchmark
-        #[clap(long)]
-        no_recommitments: bool,
-    },
+    // TODO: Update or remove
+    // /// Benchmark disk in order to see a throughput of the disk for plotting
+    // Bench {
+    //     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+    //     #[clap(long)]
+    //     plot_size: ByteSize,
+    //     /// Number of major concurrent operations to allow for disk
+    //     #[clap(long, default_value = "2")]
+    //     disk_concurrency: NonZeroU16,
+    //     /// How much things to write on disk (the more we write during benchmark, the more accurate
+    //     /// it is)
+    //     #[clap(arg_enum, long, default_value_t)]
+    //     write_to_disk: WriteToDisk,
+    //     /// Amount of data to plot for benchmarking.
+    //     ///
+    //     /// Only `G` and `T` endings are supported.
+    //     #[clap(long)]
+    //     write_pieces_size: ByteSize,
+    //     /// Skip recommitment benchmark
+    //     #[clap(long)]
+    //     no_recommitments: bool,
+    // },
 }
 
 #[derive(Debug)]
 struct DiskFarm {
-    /// Path to directory where plots are stored, typically HDD.
-    plot_directory: PathBuf,
-    /// Path to directory for storing metadata, typically SSD.
-    metadata_directory: PathBuf,
+    /// Path to directory where data is stored.
+    directory: PathBuf,
     /// How much space in bytes can farm use for plots (metadata space is not included)
     allocated_plotting_space: u64,
 }
@@ -154,7 +119,6 @@ impl FromStr for DiskFarm {
         }
 
         let mut plot_directory = None;
-        let mut metadata_directory = None;
         let mut allocated_plotting_space = None;
 
         for part in parts {
@@ -167,17 +131,10 @@ impl FromStr for DiskFarm {
             let value = *part.get(1).expect("Length checked above; qed");
 
             match key {
-                "hdd" => {
+                "path" => {
                     plot_directory.replace(
                         PathBuf::try_from(value).map_err(|error| {
-                            format!("Failed to parse `hdd` \"{value}\": {error}")
-                        })?,
-                    );
-                }
-                "ssd" => {
-                    metadata_directory.replace(
-                        PathBuf::try_from(value).map_err(|error| {
-                            format!("Failed to parse `ssd` \"{value}\": {error}")
+                            format!("Failed to parse `path` \"{value}\": {error}")
                         })?,
                     );
                 }
@@ -193,18 +150,15 @@ impl FromStr for DiskFarm {
                 }
                 key => {
                     return Err(format!(
-                        "Key \"{key}\" is not supported, only `hdd`, `ssd` or `size`"
+                        "Key \"{key}\" is not supported, only `path` or `size`"
                     ));
                 }
             }
         }
 
         Ok(DiskFarm {
-            plot_directory: plot_directory.ok_or({
-                "`hdd` key is required with path to directory where plots will be stored"
-            })?,
-            metadata_directory: metadata_directory.ok_or({
-                "`ssd` key is required with path to directory where metadata will be stored"
+            directory: plot_directory.ok_or({
+                "`path` key is required with path to directory where plots will be stored"
             })?,
             allocated_plotting_space: allocated_plotting_space.ok_or({
                 "`size` key is required with path to directory where plots will be stored"
@@ -227,22 +181,17 @@ struct Command {
         conflicts_with = "tmp"
     )]
     base_path: PathBuf,
-    /// Specify single disk farm consisting (typically) from HDD (used for storing plot) and SSD
-    /// (used for storing various metadata with frequent random access), can be specified multiple
-    /// times to use multiple disks.
+    /// Specify single plot located at specified path, can be specified multiple times to use
+    /// multiple disks.
     ///
     /// Format is coma-separated string like this:
     ///
-    ///   hdd=/path/to/plot-directory,ssd=/path/to/metadata-directory,size=5T
+    ///   path=/path/to/directory,size=5T
     ///
-    /// `size` is max plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+    /// `size` is max plot size in human readable format (e.g. 10GB, 2TiB) or just bytes.
+    /// TODO: Update overhead number here or account for it automatically
     /// Note that `size` is how much data will be plotted, you also need to account for metadata,
     /// which right now occupies up to 8% of the disk space.
-    ///
-    /// The same path can be specified for both `hdd` and `ssd` if you want, the same `ssd` path can
-    /// be shared by multiple `hdd`s as well:
-    ///
-    ///   --farm hdd=/hdd1,ssd=/ssd,size=5T --farm hdd=/hdd2,ssd=/ssd,size=5T
     #[clap(long, conflicts_with = "base-path", conflicts_with = "tmp")]
     farm: Vec<DiskFarm>,
     /// Run temporary farmer, this will create a temporary directory for storing farmer data that
@@ -282,27 +231,16 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                // TODO: Remove following line, it is only here for backwards compatibility
-                commands::wipe(&base_path)?;
+                // TODO: Support wiping of old disk plots for backwards compatibility
 
                 vec![DiskFarm {
-                    plot_directory: base_path.clone(),
-                    metadata_directory: base_path,
+                    directory: base_path,
                     allocated_plotting_space: get_usable_plot_space(0),
                 }]
             } else {
                 for farm in &command.farm {
-                    if !farm.plot_directory.exists() {
-                        panic!(
-                            "Plot directory {} doesn't exist",
-                            farm.plot_directory.display()
-                        );
-                    }
-                    if !farm.metadata_directory.exists() {
-                        panic!(
-                            "Metadata directory {} doesn't exist",
-                            farm.metadata_directory.display()
-                        );
+                    if !farm.directory.exists() {
+                        panic!("Directory {} doesn't exist", farm.directory.display());
                     }
                 }
 
@@ -310,7 +248,7 @@ async fn main() -> Result<()> {
             };
 
             for farm in &disk_farms {
-                SingleDiskFarm::wipe(&farm.plot_directory, &farm.metadata_directory)?;
+                SingleDiskPlot::wipe(&farm.directory)?;
             }
 
             info!("Done");
@@ -336,23 +274,13 @@ async fn main() -> Result<()> {
                 }
 
                 vec![DiskFarm {
-                    plot_directory: base_path.clone(),
-                    metadata_directory: base_path,
+                    directory: base_path,
                     allocated_plotting_space: get_usable_plot_space(plot_size),
                 }]
             } else {
                 for farm in &command.farm {
-                    if !farm.plot_directory.exists() {
-                        panic!(
-                            "Plot directory {} doesn't exist",
-                            farm.plot_directory.display()
-                        );
-                    }
-                    if !farm.metadata_directory.exists() {
-                        panic!(
-                            "Metadata directory {} doesn't exist",
-                            farm.metadata_directory.display()
-                        );
+                    if !farm.directory.exists() {
+                        panic!("Directory {} doesn't exist", farm.directory.display());
                     }
                 }
 
@@ -364,8 +292,7 @@ async fn main() -> Result<()> {
         Subcommand::Info => {
             let disk_farms = if command.farm.is_empty() {
                 vec![DiskFarm {
-                    plot_directory: base_path.clone(),
-                    metadata_directory: base_path,
+                    directory: base_path,
                     allocated_plotting_space: get_usable_plot_space(0),
                 }]
             } else {
@@ -373,68 +300,63 @@ async fn main() -> Result<()> {
             };
 
             commands::info(disk_farms);
-        }
-        Subcommand::Bench {
-            plot_size,
-            max_plot_size,
-            disk_concurrency,
-            write_to_disk,
-            write_pieces_size,
-            no_recommitments,
-        } => {
-            let disk_farms = if command.farm.is_empty() {
-                if !base_path.exists() {
-                    fs::create_dir_all(&base_path).unwrap_or_else(|error| {
-                        panic!(
-                            "Failed to create data directory {:?}: {:?}",
-                            base_path, error
-                        )
-                    });
-                }
-
-                let plot_size = plot_size.as_u64();
-
-                if plot_size < 1024 * 1024 {
-                    return Err(anyhow::anyhow!(
-                        "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
-                        plot_size
-                    ));
-                }
-
-                vec![DiskFarm {
-                    plot_directory: base_path.clone(),
-                    metadata_directory: base_path,
-                    allocated_plotting_space: get_usable_plot_space(plot_size),
-                }]
-            } else {
-                for farm in &command.farm {
-                    if !farm.plot_directory.exists() {
-                        panic!(
-                            "Plot directory {} doesn't exist",
-                            farm.plot_directory.display()
-                        );
-                    }
-                    if !farm.metadata_directory.exists() {
-                        panic!(
-                            "Metadata directory {} doesn't exist",
-                            farm.metadata_directory.display()
-                        );
-                    }
-                }
-
-                command.farm
-            };
-
-            commands::bench(
-                disk_farms,
-                max_plot_size.map(|max_plot_size| max_plot_size.as_u64()),
-                disk_concurrency,
-                write_to_disk,
-                write_pieces_size.as_u64(),
-                !no_recommitments,
-            )
-            .await?
-        }
+        } // TODO: Update or remove
+          // Subcommand::Bench {
+          //     plot_size,
+          //     disk_concurrency,
+          //     write_to_disk,
+          //     write_pieces_size,
+          //     no_recommitments,
+          // } => {
+          //     let disk_farms = if command.farm.is_empty() {
+          //         if !base_path.exists() {
+          //             fs::create_dir_all(&base_path).unwrap_or_else(|error| {
+          //                 panic!(
+          //                     "Failed to create data directory {:?}: {:?}",
+          //                     base_path, error
+          //                 )
+          //             });
+          //         }
+          //
+          //         let plot_size = plot_size.as_u64();
+          //
+          //         if plot_size < 1024 * 1024 {
+          //             return Err(anyhow::anyhow!(
+          //                 "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
+          //                 plot_size
+          //             ));
+          //         }
+          //
+          //         vec![DiskFarm {
+          //             directory: base_path.clone(),
+          //             metadata_directory: base_path,
+          //             allocated_plotting_space: get_usable_plot_space(plot_size),
+          //         }]
+          //     } else {
+          //         for farm in &command.farm {
+          //             if !farm.directory.exists() {
+          //                 panic!("Plot directory {} doesn't exist", farm.directory.display());
+          //             }
+          //             if !farm.metadata_directory.exists() {
+          //                 panic!(
+          //                     "Metadata directory {} doesn't exist",
+          //                     farm.metadata_directory.display()
+          //                 );
+          //             }
+          //         }
+          //
+          //         command.farm
+          //     };
+          //
+          //     commands::bench(
+          //         disk_farms,
+          //         disk_concurrency,
+          //         write_to_disk,
+          //         write_pieces_size.as_u64(),
+          //         !no_recommitments,
+          //     )
+          //     .await?
+          // }
     }
     Ok(())
 }

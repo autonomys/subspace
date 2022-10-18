@@ -17,6 +17,9 @@
 
 //! PoC testsuite
 
+// TODO: Tests need to be fixed, then this can be removed
+#![allow(unused_imports, unused_variables, unused_mut)]
+
 use crate::{
     extract_pre_digest, start_subspace, Config, NewSlotNotification, SubspaceLink, SubspaceParams,
     SubspaceVerifier,
@@ -70,12 +73,9 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    FlatPieces, LocalChallenge, Piece, Solution, Tag, TagSignature, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
+    ChunkSignature, FlatPieces, Piece, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{
-    create_tag, create_tag_signature, derive_local_challenge, SubspaceCodec, REWARD_SIGNING_CONTEXT,
-};
+use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 
 type TestClient = substrate_test_runtime_client::client::Client<
@@ -176,10 +176,6 @@ impl DummyProposer {
 
         {
             let digest = DigestItem::solution_range(u64::MAX);
-            block.header.digest_mut().push(digest);
-        }
-        {
-            let digest = DigestItem::salt(0u64.to_le_bytes());
             block.header.digest_mut().push(digest);
         }
 
@@ -556,7 +552,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {
             let keypair = Keypair::generate();
-            let subspace_codec = SubspaceCodec::new(keypair.public.as_ref());
             let (piece_index, mut encoding) = archived_pieces_receiver
                 .await
                 .unwrap()
@@ -566,7 +561,6 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .choose(&mut rand::thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
                 .unwrap();
-            subspace_codec.encode(&mut encoding, piece_index).unwrap();
 
             while let Some(NewSlotNotification {
                 new_slot_info,
@@ -574,24 +568,25 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             }) = new_slot_notification_stream.next().await
             {
                 if Into::<u64>::into(new_slot_info.slot) % 3 == (*peer_id) as u64 {
-                    let tag: Tag = create_tag(&encoding, new_slot_info.salt);
-
-                    let _ = solution_sender
-                        .send(Solution {
-                            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                            reward_address: FarmerPublicKey::unchecked_from(
-                                keypair.public.to_bytes(),
-                            ),
-                            piece_index,
-                            encoding: encoding.clone(),
-                            tag_signature: create_tag_signature(&keypair, tag),
-                            local_challenge: derive_local_challenge(
-                                &keypair,
-                                new_slot_info.global_challenge,
-                            ),
-                            tag,
-                        })
-                        .await;
+                    // TODO: Update implementation for V2 consensus
+                    // let tag: Tag = create_tag(&encoding, new_slot_info.salt);
+                    //
+                    // let _ = solution_sender
+                    //     .send(Solution {
+                    //         public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                    //         reward_address: FarmerPublicKey::unchecked_from(
+                    //             keypair.public.to_bytes(),
+                    //         ),
+                    //         piece_index,
+                    //         encoding: encoding.clone(),
+                    //         tag_signature: create_chunk_signature(&keypair, tag),
+                    //         local_challenge: derive_local_challenge(
+                    //             &keypair,
+                    //             new_slot_info.global_challenge,
+                    //         ),
+                    //         tag,
+                    //     })
+                    //     .await;
                 }
             }
         };
@@ -691,17 +686,16 @@ pub fn dummy_claim_slot(
             solution: Solution {
                 public_key: FarmerPublicKey::unchecked_from([0u8; 32]),
                 reward_address: FarmerPublicKey::unchecked_from([0u8; 32]),
-                piece_index: 0,
-                encoding: Piece::default(),
-                tag_signature: TagSignature {
+                sector_index: 0,
+                total_pieces: 1,
+                piece_offset: 0,
+                piece_record_hash: Default::default(),
+                piece_witness: Default::default(),
+                chunk: Default::default(),
+                chunk_signature: ChunkSignature {
                     output: [0; 32],
                     proof: [0; 64],
                 },
-                local_challenge: LocalChallenge {
-                    output: [0; 32],
-                    proof: [0; 64],
-                },
-                tag: Tag::default(),
             },
             slot,
         },
@@ -734,67 +728,69 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     proposer_factory: &mut DummyFactory,
     block_import: &mut BoxBlockImport<TestBlock, Transaction>,
 ) -> sp_core::H256 {
-    let mut proposer = futures::executor::block_on(proposer_factory.init(parent)).unwrap();
-
-    let slot = slot.unwrap_or_else(|| {
-        let parent_pre_digest = extract_pre_digest::<TestHeader>(parent).unwrap();
-        parent_pre_digest.slot + 1
-    });
-
-    let keypair = Keypair::generate();
-    let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
-
-    let (pre_digest, signature) = {
-        let encoding = Piece::default();
-        let tag: Tag = [0u8; 8];
-
-        (
-            sp_runtime::generic::Digest {
-                logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
-                    slot,
-                    solution: Solution {
-                        public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                        reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                        piece_index: 0,
-                        encoding,
-                        tag_signature: create_tag_signature(&keypair, tag),
-                        local_challenge: LocalChallenge {
-                            output: [0; 32],
-                            proof: [0; 64],
-                        },
-                        tag,
-                    },
-                })],
-            },
-            keypair.sign(ctx.bytes(&[])).to_bytes(),
-        )
-    };
-
-    let mut block = futures::executor::block_on(proposer.propose_with(pre_digest))
-        .unwrap()
-        .block;
-
-    let seal = DigestItem::subspace_seal(signature.to_vec().try_into().unwrap());
-
-    let post_hash = {
-        block.header.digest_mut().push(seal.clone());
-        let h = block.header.hash();
-        block.header.digest_mut().pop();
-        h
-    };
-
-    let mut import = BlockImportParams::new(BlockOrigin::Own, block.header);
-    import.post_digests.push(seal);
-    import.body = Some(block.extrinsics);
-    import.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-    let import_result = block_on(block_import.import_block(import, Default::default())).unwrap();
-
-    match import_result {
-        ImportResult::Imported(_) => {}
-        _ => panic!("expected block to be imported"),
-    }
-
-    post_hash
+    // TODO: Update implementation for V2 consensus
+    // let mut proposer = futures::executor::block_on(proposer_factory.init(parent)).unwrap();
+    //
+    // let slot = slot.unwrap_or_else(|| {
+    //     let parent_pre_digest = extract_pre_digest::<TestHeader>(parent).unwrap();
+    //     parent_pre_digest.slot + 1
+    // });
+    //
+    // let keypair = Keypair::generate();
+    // let ctx = schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT);
+    //
+    // let (pre_digest, signature) = {
+    //     let encoding = Piece::default();
+    //     let tag: Tag = [0u8; 8];
+    //
+    //     (
+    //         sp_runtime::generic::Digest {
+    //             logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
+    //                 slot,
+    //                 solution: Solution {
+    //                     public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+    //                     reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+    //                     piece_index: 0,
+    //                     encoding,
+    //                     tag_signature: create_chunk_signature(&keypair, tag),
+    //                     local_challenge: LocalChallenge {
+    //                         output: [0; 32],
+    //                         proof: [0; 64],
+    //                     },
+    //                     tag,
+    //                 },
+    //             })],
+    //         },
+    //         keypair.sign(ctx.bytes(&[])).to_bytes(),
+    //     )
+    // };
+    //
+    // let mut block = futures::executor::block_on(proposer.propose_with(pre_digest))
+    //     .unwrap()
+    //     .block;
+    //
+    // let seal = DigestItem::subspace_seal(signature.to_vec().try_into().unwrap());
+    //
+    // let post_hash = {
+    //     block.header.digest_mut().push(seal.clone());
+    //     let h = block.header.hash();
+    //     block.header.digest_mut().pop();
+    //     h
+    // };
+    //
+    // let mut import = BlockImportParams::new(BlockOrigin::Own, block.header);
+    // import.post_digests.push(seal);
+    // import.body = Some(block.extrinsics);
+    // import.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+    // let import_result = block_on(block_import.import_block(import, Default::default())).unwrap();
+    //
+    // match import_result {
+    //     ImportResult::Imported(_) => {}
+    //     _ => panic!("expected block to be imported"),
+    // }
+    //
+    // post_hash
+    todo!()
 }
 
 #[test]

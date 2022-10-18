@@ -145,47 +145,6 @@ pub trait Rpc {
 }
 
 /// Farmer RPC server implementation.
-///
-/// Usage example:
-/// ```rust
-///  async fn f() -> anyhow::Result<()> {
-/// use jsonrpsee::ws_server::WsServerBuilder;
-/// use subspace_farmer::{Identity, ObjectMappings, Plot};
-/// use subspace_farmer::single_plot_farm::{SinglePlotPieceGetter, SinglePlotFarmId};
-/// use subspace_farmer::ws_rpc_server::{RpcServer, RpcServerImpl};
-/// use subspace_solving::SubspaceCodec;
-/// use std::path::PathBuf;
-/// use std::sync::Arc;
-///
-/// let base_directory = PathBuf::from("/path/to/base/dir");
-/// let ws_server_listen_addr = "127.0.0.1:0";
-///
-/// let identity = Identity::open_or_create(&base_directory)?;
-/// let public_key = identity.public_key().to_bytes().into();
-/// let plot = Plot::open_or_create(
-///     &SinglePlotFarmId::new(),
-///     &base_directory,
-///     &base_directory,
-///     public_key,
-///     u64::MAX,
-/// )?;
-/// let object_mappings = ObjectMappings::open_or_create(
-///     &base_directory.join("object-mappings"),
-///     public_key,
-///     100 * 1024 * 1024,
-/// )?;
-/// let ws_server = WsServerBuilder::default().build(ws_server_listen_addr).await?;
-/// let rpc_server = RpcServerImpl::new(
-///     3840,
-///     3480 * 128,
-///     Arc::new(SinglePlotPieceGetter::new(SubspaceCodec::new(&public_key), plot)),
-///     Arc::new(vec![object_mappings]),
-/// );
-/// let ws_server = ws_server.start(rpc_server.into_rpc())?;
-///
-/// # Ok(())
-/// # }
-/// ```
 pub struct RpcServerImpl {
     record_size: u32,
     pieces_in_segment: u32,

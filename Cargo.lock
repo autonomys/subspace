@@ -2493,12 +2493,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
-
-[[package]]
 name = "globset"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4462,15 +4456,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
-name = "openmp-sys"
-version = "1.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3a0ed77d2794d2b9a59123e60e874190626c22b7124ce38959fe59386e317fa"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4603,6 +4588,8 @@ dependencies = [
  "hash-db",
  "hex",
  "log",
+ "pallet-balances",
+ "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -4783,6 +4770,22 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-transporter"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7125,19 +7128,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03b634d87b960ab1a38c4fe143b508576f075e7c978bfad18217645ebfdfa2ec"
 
 [[package]]
-name = "sloth256-189"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "658ce509e6f6d7c8200e1add83b1cf28983928f91c7d2a9fc3982793811f22bc"
-dependencies = [
- "cc",
- "glob",
- "openmp-sys",
- "thiserror",
- "which",
-]
-
-[[package]]
 name = "smallvec"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7561,6 +7551,7 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "frame-support",
  "parity-scale-codec",
  "rand 0.8.5",
@@ -7590,6 +7581,7 @@ dependencies = [
 name = "sp-messenger"
 version = "0.1.0"
 dependencies = [
+ "frame-support",
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
@@ -8302,23 +8294,17 @@ name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
  "merlin 2.0.1",
- "num-traits",
- "num_cpus",
  "rand 0.8.5",
- "rayon",
  "schnorrkel",
- "sloth256-189",
  "subspace-core-primitives",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "futures 0.3.21",
- "rand 0.8.5",
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus-subspace",

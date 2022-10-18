@@ -19,7 +19,7 @@ use crate::{
     SubspaceNotificationSender,
 };
 use codec::Encode;
-use futures::{future, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
@@ -31,15 +31,12 @@ use sp_objects::ObjectsApi;
 use sp_runtime::generic::{BlockId, SignedBlock};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     BlockNumber, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-
-const ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL: Duration = Duration::from_secs(5);
 
 fn find_last_archived_block<Block, Client>(
     client: &Client,
@@ -540,32 +537,15 @@ async fn send_archived_segment_notification(
     archived_segment: ArchivedSegment,
 ) {
     let (acknowledgement_sender, mut acknowledgement_receiver) =
-        tracing_unbounded("subspace_acknowledgement");
+        tracing_unbounded::<()>("subspace_acknowledgement");
     let archived_segment_notification = ArchivedSegmentNotification {
         archived_segment: Arc::new(archived_segment),
         acknowledgement_sender,
     };
 
-    // This could have been done in a nicer way (reactive), but that is a
-    // lot of code, so we have this for now with periodic attempts.
-    future::select(
-        Box::pin(async {
-            let get_value = move || archived_segment_notification;
+    archived_segment_notification_sender.notify(move || archived_segment_notification);
 
-            // Try in a loop until receiver below gets notification back
-            loop {
-                archived_segment_notification_sender.notify(get_value.clone());
-
-                futures_timer::Delay::new(ARCHIVED_SEGMENT_NOTIFICATION_INTERVAL).await;
-
-                info!(
-                    target: "subspace",
-                    "Waiting for farmer to receive and acknowledge \
-                    archived segment",
-                );
-            }
-        }),
-        Box::pin(acknowledgement_receiver.next()),
-    )
-    .await;
+    while acknowledgement_receiver.next().await.is_some() {
+        // Wait until all acknowledgements are received
+    }
 }

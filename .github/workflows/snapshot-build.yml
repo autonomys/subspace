@@ -111,12 +111,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      # For sloth256-189 Wasm support we need `llvm-ar`, which is not available by default
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-
       - name: Rust toolchain (${{ matrix.build.target }})
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -138,36 +132,11 @@ jobs:
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
 
-      - name: CUDA toolchain
-        uses: Jimver/cuda-toolkit@v0.2.6
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-
-      - name: OpenCL
-        run: sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev
-        if: runner.os == 'Linux'
-
       - name: AArch64 cross-compile packages
         run: sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
-      - name: Build farmer on Ubuntu or Windows with OpenCL
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --features=subspace-farmer/opencl
-        if: (runner.os == 'Linux' || runner.os == 'Windows') && matrix.build.target != 'aarch64-unknown-linux-gnu'
-
-      - name: Rename OpenCL farmer executable (Ubuntu)
-        run: |
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl
-        if: runner.os == 'Linux' && matrix.build.target != 'aarch64-unknown-linux-gnu'
-
-      - name: Rename OpenCL farmer executable (Windows)
-        run: |
-          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl.exe
-        if: runner.os == 'Windows'
-
-      - name: Build farmer without OpenCL
+      - name: Build farmer
         uses: actions-rs/cargo@v1
         with:
           command: build
@@ -223,8 +192,6 @@ jobs:
         run: |
           mkdir executables
           mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer executables/subspace-farmer-${{ matrix.build.suffix }}
-          # AArch64 doesn't have OpenCL build (yet)
-          mv ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl executables/subspace-farmer-opencl-${{ matrix.build.suffix }} || true
           mv ${{ env.PRODUCTION_TARGET }}/subspace-node executables/subspace-node-${{ matrix.build.suffix }}
         if: runner.os == 'Linux'
 
@@ -244,7 +211,6 @@ jobs:
         run: |
           mkdir executables
           move ${{ env.PRODUCTION_TARGET }}/subspace-farmer.exe executables/subspace-farmer-${{ matrix.build.suffix }}.exe
-          move ${{ env.PRODUCTION_TARGET }}/subspace-farmer-opencl.exe executables/subspace-farmer-opencl-${{ matrix.build.suffix }}.exe
           move ${{ env.PRODUCTION_TARGET }}/subspace-node.exe executables/subspace-node-${{ matrix.build.suffix }}.exe
         if: runner.os == 'Windows'
 
