@@ -25,6 +25,8 @@ macro_rules! impl_runtime {
         use sp_std::vec::Vec;
         use sp_messenger::endpoint::{EndpointHandler, Endpoint, EndpointId};
         use pallet_balances::AccountData;
+        use frame_support::assert_ok;
+        use crate::relayer::RelayerId;
 
         type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
         type Block = frame_system::mocking::MockBlock<Runtime>;
@@ -79,7 +81,7 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub const SelfDomainId: DomainId = $domain_id;
-            pub const MaximumRelayers: u32 = 1;
+            pub const MaximumRelayers: u32 = 2;
             pub const RelayerDeposit: Balance = 500;
         }
 
@@ -132,6 +134,9 @@ macro_rules! impl_runtime {
 
         pub const USER_ACCOUNT: AccountId = 1;
         pub const USER_INITIAL_BALANCE: Balance = 1000;
+        pub const RELAYER_OWNER_ACCOUNT: AccountId = 200;
+        pub const RELAYER_BALANCE: Balance = 1000;
+        pub const RELAYER_ID: RelayerId<$runtime> = 200;
 
         pub fn new_test_ext() -> TestExternalities {
            let mut t = frame_system::GenesisConfig::default()
@@ -139,13 +144,22 @@ macro_rules! impl_runtime {
                     .unwrap();
 
            pallet_balances::GenesisConfig::<$runtime> {
-                balances: vec![(USER_ACCOUNT, USER_INITIAL_BALANCE)],
+                balances: vec![
+                    (USER_ACCOUNT, USER_INITIAL_BALANCE),
+                    (RELAYER_OWNER_ACCOUNT, RELAYER_BALANCE),
+                ],
            }
             .assimilate_storage(&mut t)
             .unwrap();
 
            let mut t: TestExternalities = t.into();
            t.execute_with(|| System::set_block_number(1));
+
+           // add a relayer to messenger
+           t.execute_with(|| {
+               let res = Messenger::join_relayer_set(Origin::signed(RELAYER_OWNER_ACCOUNT), RELAYER_ID);
+               assert_ok!(res);
+           });
            t
         }
     };

@@ -208,6 +208,10 @@ mod pallet {
     pub(super) type Relayers<T: Config> =
         StorageValue<_, BoundedVec<RelayerId<T>, T::MaximumRelayers>, ValueQuery>;
 
+    #[pallet::storage]
+    #[pallet::getter(fn next_relayer_idx)]
+    pub(super) type NextRelayerIdx<T: Config> = StorageValue<_, u32, ValueQuery>;
+
     /// `pallet-messenger` events
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -241,6 +245,7 @@ mod pallet {
             domain_id: T::DomainId,
             channel_id: ChannelId,
             nonce: Nonce,
+            relayer_id: RelayerId<T>,
         },
 
         /// Emits when a message response is available for Outbox message.
@@ -252,7 +257,7 @@ mod pallet {
             nonce: Nonce,
         },
 
-        /// Emits outbox message event.
+        /// Emits outbox message result.
         OutboxMessageResult {
             domain_id: T::DomainId,
             channel_id: ChannelId,
@@ -274,6 +279,7 @@ mod pallet {
             /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
+            relayer_id: RelayerId<T>,
         },
 
         /// Emits when a relayer successfully joins the relayer pool.
@@ -367,6 +373,9 @@ mod pallet {
 
         /// Emits when a relayer tries to join when total relayers already reached maximum count.
         MaximumRelayerCount,
+
+        /// Emits when there are no relayers to relay messages between domains.
+        NoRelayersToAssign,
     }
 
     #[pallet::call]

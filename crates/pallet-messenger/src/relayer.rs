@@ -1,10 +1,12 @@
 //! Relayer specific functionality
 
-use crate::{Config, Decode, Encode, Error, Event, Pallet, Relayers, RelayersInfo, TypeInfo};
+use crate::{
+    Config, Decode, Encode, Error, Event, NextRelayerIdx, Pallet, Relayers, RelayersInfo, TypeInfo,
+};
 use frame_support::ensure;
 use frame_support::traits::ReservableCurrency;
 use sp_runtime::traits::Get;
-use sp_runtime::DispatchResult;
+use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 
 /// Relayer address to which rewards are paid.
 pub type RelayerId<T> = <T as frame_system::Config>::AccountId;
@@ -51,5 +53,27 @@ impl<T: Config> Pallet<T> {
 
         Self::deposit_event(Event::<T>::RelayerJoined { owner, relayer_id });
         Ok(())
+    }
+
+    pub(crate) fn next_relayer() -> Result<RelayerId<T>, DispatchError> {
+        let relayers = Relayers::<T>::get();
+        if relayers.is_empty() {
+            return Err(Error::<T>::NoRelayersToAssign.into());
+        }
+
+        // pick the next relayer_id
+        let next_relayer_idx = NextRelayerIdx::<T>::get() as usize % relayers.len();
+        let relayer_id = relayers
+            .get(next_relayer_idx)
+            .expect("should always be present due to modulus above")
+            .to_owned();
+
+        // update next relayer index
+        let next_relayer_idx = next_relayer_idx
+            .checked_add(1)
+            .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
+        NextRelayerIdx::<T>::put(next_relayer_idx as u32);
+
+        Ok(relayer_id)
     }
 }

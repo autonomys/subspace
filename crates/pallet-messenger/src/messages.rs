@@ -89,7 +89,6 @@ impl<T: Config> Pallet<T> {
             channel_id,
             |maybe_channel| -> Result<Nonce, DispatchError> {
                 let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
-                // TODO(ved): ensure channel is ready to send messages.
                 // check if the outbox is full
                 let count = Outbox::<T>::count();
                 ensure!(
@@ -115,11 +114,15 @@ impl<T: Config> Pallet<T> {
                     .checked_add(Nonce::one())
                     .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
 
+                // get next relayer
+                let relayer_id = Self::next_relayer()?;
+
                 // emit event to notify relayer
                 Self::deposit_event(Event::OutboxMessage {
                     domain_id: dst_domain_id,
                     channel_id,
                     nonce: next_outbox_nonce,
+                    relayer_id,
                 });
                 Ok(next_outbox_nonce)
             },
@@ -201,10 +204,14 @@ impl<T: Config> Pallet<T> {
                 },
             );
 
+            // get the next relayer
+            let relayer_id = Self::next_relayer()?;
+
             Self::deposit_event(Event::InboxMessageResponse {
                 domain_id: dst_domain_id,
                 channel_id,
                 nonce: next_inbox_nonce,
+                relayer_id,
             });
 
             next_inbox_nonce = next_inbox_nonce

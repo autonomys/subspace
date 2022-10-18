@@ -3,6 +3,7 @@ use crate::messages::{
 };
 use crate::mock::domain_a::{
     new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
+    RELAYER_ID,
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
@@ -62,6 +63,7 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
         domain_id,
         channel_id,
         nonce: Nonce::zero(),
+        relayer_id: RELAYER_ID,
     }));
 }
 
@@ -97,6 +99,7 @@ fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonc
         domain_id,
         channel_id,
         nonce: Nonce::one(),
+        relayer_id: RELAYER_ID,
     }));
 }
 
@@ -306,6 +309,7 @@ fn send_message_between_domains(
                 domain_id: domain_b_id,
                 channel_id,
                 nonce: Nonce::one(),
+                relayer_id: RELAYER_ID,
             },
         ));
     });
@@ -475,6 +479,7 @@ fn channel_relay_request_and_response(
             domain_id: domain_a_id,
             channel_id,
             nonce,
+            relayer_id: domain_b::RELAYER_ID,
         }));
 
         let response =
@@ -605,6 +610,7 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
             domain_id: domain_b::SelfDomainId::get(),
             channel_id: U256::zero(),
             nonce: U256::one(),
+            relayer_id: RELAYER_ID,
         }));
         assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
         assert!(domain_a::Transporter::outgoing_transfers(
@@ -663,6 +669,7 @@ fn verify_transfer_on_domain(
             domain_id: domain_a::SelfDomainId::get(),
             channel_id: U256::zero(),
             nonce: U256::one(),
+            relayer_id: domain_b::RELAYER_ID,
         }));
         assert_eq!(domain_b::Balances::free_balance(&account_id), 1500);
     })
@@ -778,5 +785,20 @@ fn test_join_relayer() {
         let res =
             domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
         assert_err!(res, crate::Error::<domain_a::Runtime>::AlreadyRelayer);
+
+        // get relayer, idx should increment
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, RELAYER_ID);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+
+        // get next relayer, idx should go beyond bound
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, relayer_id);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 2);
+
+        // get relayer should be back within bound and not skipped
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, RELAYER_ID);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
     });
 }
