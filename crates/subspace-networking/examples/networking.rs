@@ -1,3 +1,5 @@
+#![feature(type_changing_struct_update)]
+
 use futures::channel::oneshot;
 use futures::StreamExt;
 use libp2p::gossipsub::Sha256Topic;
@@ -6,7 +8,10 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::Blake2b256Hash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::{
+    BootstrappedNetworkingParameters, Config, CustomRecordStore, GetOnlyRecordStorage,
+    MemoryProviderStorage,
+};
 
 const TOPIC: &str = "Foo";
 
@@ -14,12 +19,15 @@ const TOPIC: &str = "Foo";
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let config_1 = Config {
+    let config_1 = Config::<CustomRecordStore<GetOnlyRecordStorage, MemoryProviderStorage>> {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-        value_getter: Arc::new(|key| {
-            // Return the reversed digest as a value
-            Some(key.digest().iter().copied().rev().collect())
-        }),
+        record_store: CustomRecordStore::new(
+            GetOnlyRecordStorage::new(Arc::new(|key| {
+                // Return the reversed digest as a value
+                Some(key.digest().iter().copied().rev().collect())
+            })),
+            MemoryProviderStorage::default(),
+        ),
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };

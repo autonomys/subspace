@@ -26,6 +26,11 @@ pub(crate) enum Command {
         key: Multihash,
         result_sender: oneshot::Sender<Option<Vec<u8>>>,
     },
+    PutValue {
+        key: Multihash,
+        value: Vec<u8>,
+        result_sender: oneshot::Sender<bool>,
+    },
     Subscribe {
         topic: Sha256Topic,
         result_sender: oneshot::Sender<Result<CreatedSubscription, SubscriptionError>>,
