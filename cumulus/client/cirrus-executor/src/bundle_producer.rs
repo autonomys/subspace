@@ -270,7 +270,7 @@ where
                     slot_probability,
                 );
 
-                if is_election_solution_within_threshold(election_solution.into(), threshold) {
+                if is_election_solution_within_threshold(election_solution, threshold) {
                     let storage_keys = well_known_keys::bundle_election_storage_keys();
                     // TODO: bench how large the storage proof we can afford and try proving a single
                     // electioned executor storage instead of the whole authority set.

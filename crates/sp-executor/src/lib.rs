@@ -115,16 +115,16 @@ impl<Hash: Encode> BundleHeader<Hash> {
     }
 }
 
-// TODO: unify the type between the solution and threshold better.
-pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u64 {
+/// Returns the solution for the challenge of producing a bundle.
+pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u128 {
     let local_domain_randomness = blake2b_256_hash_list(&[&domain_id.to_le_bytes(), vrf_output]);
 
-    let election_solution = u64::from_le_bytes(
+    let election_solution = u128::from_le_bytes(
         local_domain_randomness
-            .split_at(core::mem::size_of::<u64>())
+            .split_at(core::mem::size_of::<u128>())
             .0
             .try_into()
-            .expect("Local domain randomness must fit into u64; qed"),
+            .expect("Local domain randomness must fit into u128; qed"),
     );
 
     election_solution

@@ -641,7 +641,7 @@ impl<T: Config> Pallet<T> {
             slot_probability,
         );
 
-        if !is_election_solution_within_threshold(election_solution.into(), threshold) {
+        if !is_election_solution_within_threshold(election_solution, threshold) {
             return Err(BundleError::InvalidElectionSolution);
         }
 
