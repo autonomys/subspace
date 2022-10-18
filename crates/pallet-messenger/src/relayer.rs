@@ -55,6 +55,8 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    /// Selects the next relayer that needs to relay a message.
+    /// Relayer is selected using round robin selection.
     pub(crate) fn next_relayer() -> Result<RelayerId<T>, DispatchError> {
         let relayers = Relayers::<T>::get();
         if relayers.is_empty() {
@@ -75,5 +77,49 @@ impl<T: Config> Pallet<T> {
         NextRelayerIdx::<T>::put(next_relayer_idx as u32);
 
         Ok(relayer_id)
+    }
+
+    /// Unreserve the deposit and remove relayer to the relayer set.
+    /// Also adjust the next relayer index so that we wont skip any relayer due to relayer exit.
+    pub(crate) fn do_exit_relayer_set(
+        caller: T::AccountId,
+        relayer_id: RelayerId<T>,
+    ) -> DispatchResult {
+        // ensure relayer is in the set.
+        let relayer = RelayersInfo::<T>::take(relayer_id.clone()).ok_or(Error::<T>::NotRelayer)?;
+
+        // ensure caller is the owner of the relayer
+        ensure!(relayer.owner == caller, Error::<T>::NotOwner);
+
+        // release the deposit
+        T::Currency::unreserve(&caller, T::RelayerDeposit::get());
+
+        // remove relayer_id from the list
+        let idx = Relayers::<T>::mutate(|relayers| -> Result<usize, DispatchError> {
+            let idx = relayers
+                .into_iter()
+                .position(|id| *id == relayer_id.clone())
+                .expect("should be present due existence of RelayerInfo");
+            relayers.remove(idx);
+            Ok(idx)
+        })?;
+
+        // if the existed relayer index is >= next_relayer_idx,
+        // we do not need to shift the next_index.
+        // but if the idx is less than next_idx,
+        // then we need to adjust the index so that so we wont miss any relayer in the round robin.
+        let mut next_relayer_idx = NextRelayerIdx::<T>::get();
+        if idx < next_relayer_idx as usize {
+            next_relayer_idx = next_relayer_idx
+                .checked_sub(1)
+                .ok_or(DispatchError::Arithmetic(ArithmeticError::Underflow))?;
+            NextRelayerIdx::<T>::put(next_relayer_idx)
+        }
+
+        Self::deposit_event(Event::<T>::RelayerExited {
+            owner: caller,
+            relayer_id,
+        });
+        Ok(())
     }
 }

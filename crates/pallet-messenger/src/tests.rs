@@ -15,6 +15,7 @@ use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
     InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
+use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
@@ -761,7 +762,7 @@ fn test_join_relayer_low_balance() {
 }
 
 #[test]
-fn test_join_relayer() {
+fn test_join_relayer_set() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     // account with balance
     let account_id = 1;
@@ -800,5 +801,61 @@ fn test_join_relayer() {
         let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
         assert_eq!(assigned_relayer_id, RELAYER_ID);
         assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+    });
+}
+
+#[test]
+fn test_exit_relayer_set() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    // account with balance
+    let account_id = 1;
+    let relayer_id_1 = 100;
+    let relayer_id_2 = 101;
+    let relayer_id_3 = 102;
+
+    domain_a_test_ext.execute_with(|| {
+        domain_a::Balances::make_free_balance_be(&account_id, 2000);
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 2000);
+        for relayer in [relayer_id_1, relayer_id_2, relayer_id_3] {
+            let res = domain_a::Messenger::join_relayer_set(
+                domain_a::Origin::signed(account_id),
+                relayer,
+            );
+            assert_ok!(res);
+            assert_eq!(
+                domain_a::Messenger::relayers_info(relayer).unwrap(),
+                RelayerInfo {
+                    owner: account_id,
+                    deposit_reserved: RelayerDeposit::get()
+                }
+            );
+        }
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, RELAYER_ID);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, relayer_id_1);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 2);
+
+        // relayer_1 exits
+        let res = domain_a::Messenger::exit_relayer_set(
+            domain_a::Origin::signed(account_id),
+            relayer_id_1,
+        );
+        assert_ok!(res);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+
+        // relayer_3 exits
+        let res = domain_a::Messenger::exit_relayer_set(
+            domain_a::Origin::signed(account_id),
+            relayer_id_3,
+        );
+        assert_ok!(res);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, relayer_id_2);
     });
 }

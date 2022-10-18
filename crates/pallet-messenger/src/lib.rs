@@ -282,11 +282,19 @@ mod pallet {
             relayer_id: RelayerId<T>,
         },
 
-        /// Emits when a relayer successfully joins the relayer pool.
+        /// Emits when a relayer successfully joins the relayer set.
         RelayerJoined {
             /// Owner who controls the relayer.
             owner: T::AccountId,
             /// Relayer address to which rewards are paid.
+            relayer_id: RelayerId<T>,
+        },
+
+        /// Emits when a relayer exists the relayer set.
+        RelayerExited {
+            /// Owner who controls the relayer.
+            owner: T::AccountId,
+            /// Relayer address which exited the set.
             relayer_id: RelayerId<T>,
         },
     }
@@ -370,6 +378,12 @@ mod pallet {
 
         /// Emits when relayer tries to re-join the relayers.
         AlreadyRelayer,
+
+        /// Emits when a non relayer tries to do relayers specific actions.
+        NotRelayer,
+
+        /// Emits when there is mismatch between caller and relayer owner.
+        NotOwner,
 
         /// Emits when a relayer tries to join when total relayers already reached maximum count.
         MaximumRelayerCount,
@@ -459,6 +473,14 @@ mod pallet {
         pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::do_join_relayer_set(who, relayer_id)?;
+            Ok(())
+        }
+
+        /// Declare the desire to exit relaying for this domain.
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::do_exit_relayer_set(who, relayer_id)?;
             Ok(())
         }
     }

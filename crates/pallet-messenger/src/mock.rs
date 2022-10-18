@@ -81,7 +81,7 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub const SelfDomainId: DomainId = $domain_id;
-            pub const MaximumRelayers: u32 = 2;
+            pub const MaximumRelayers: u32 = 10;
             pub const RelayerDeposit: Balance = 500;
         }
 
