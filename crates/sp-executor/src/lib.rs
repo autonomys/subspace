@@ -21,7 +21,8 @@ use crate::well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use schnorrkel::vrf::{VRFOutput, VRFProof};
+use schnorrkel::vrf::{VRFOutput, VRFProof, VRF_PROOF_LENGTH};
+use schnorrkel::{SignatureResult, PUBLIC_KEY_LENGTH};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
@@ -34,14 +35,17 @@ use sp_std::borrow::Cow;
 use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
 
-const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
-
 /// Key type for Executor.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
+
+const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
+
+const ELECTION_RANDOMNESS_CONTEXT: &[u8] = b"election_randomness_context";
+
+type ElectionRandomness = [u8; core::mem::size_of::<u128>()];
 
 mod app {
     use super::KEY_TYPE;
@@ -117,19 +121,30 @@ impl<Hash: Encode> BundleHeader<Hash> {
     }
 }
 
+fn derive_election_randomness(
+    vrf_output: [u8; PUBLIC_KEY_LENGTH],
+    public_key: &ExecutorPublicKey,
+    slot_randomness: &Blake2b256Hash,
+) -> SignatureResult<ElectionRandomness> {
+    let in_out = VRFOutput(vrf_output).attach_input_hash(
+        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
+        make_local_randomness_transcript(slot_randomness),
+    )?;
+
+    Ok(in_out.make_bytes(ELECTION_RANDOMNESS_CONTEXT))
+}
+
 /// Returns the solution for the challenge of producing a bundle.
-pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u128 {
-    let local_domain_randomness = blake2b_256_hash_list(&[&domain_id.to_le_bytes(), vrf_output]);
+pub fn derive_bundle_election_solution(
+    vrf_output: [u8; PUBLIC_KEY_LENGTH],
+    public_key: &ExecutorPublicKey,
+    slot_randomness: &Blake2b256Hash,
+) -> SignatureResult<u128> {
+    let election_randomness = derive_election_randomness(vrf_output, public_key, slot_randomness)?;
 
-    let election_solution = u128::from_le_bytes(
-        local_domain_randomness
-            .split_at(core::mem::size_of::<u128>())
-            .0
-            .try_into()
-            .expect("Local domain randomness must fit into u128; qed"),
-    );
+    let election_solution = u128::from_le_bytes(election_randomness);
 
-    election_solution
+    Ok(election_solution)
 }
 
 /// Returns the election threshold based on the stake weight proportion and slot probability.
@@ -294,12 +309,13 @@ pub fn read_bundle_election_params(
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ProofOfElection {
+    // TODO: remove it once confirmed useless.
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
-    pub vrf_output: Vec<u8>,
+    pub vrf_output: [u8; PUBLIC_KEY_LENGTH],
     /// VRF proof.
-    pub vrf_proof: Vec<u8>,
+    pub vrf_proof: [u8; VRF_PROOF_LENGTH],
     /// VRF public key.
     pub executor_public_key: ExecutorPublicKey,
     /// Slot randomness.
@@ -315,8 +331,8 @@ impl ProofOfElection {
     pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id: DomainId::default(),
-            vrf_output: Vec::new(),
-            vrf_proof: Vec::new(),
+            vrf_output: [0u8; PUBLIC_KEY_LENGTH],
+            vrf_proof: [0u8; VRF_PROOF_LENGTH],
             executor_public_key,
             slot_randomness: Blake2b256Hash::default(),
             state_root: H256::default(),

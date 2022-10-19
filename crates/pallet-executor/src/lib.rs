@@ -599,7 +599,7 @@ impl<T: Config> Pallet<T> {
 
     fn validate_bundle_election(proof_of_election: &ProofOfElection) -> Result<(), BundleError> {
         let ProofOfElection {
-            domain_id,
+            domain_id: _,
             vrf_output,
             vrf_proof,
             executor_public_key,
@@ -631,7 +631,9 @@ impl<T: Config> Pallet<T> {
             })
             .ok_or(BundleError::AuthorityNotFound)?;
 
-        let election_solution = derive_bundle_election_solution(*domain_id, vrf_output);
+        let election_solution =
+            derive_bundle_election_solution(*vrf_output, executor_public_key, slot_randomness)
+                .map_err(|_| BundleError::BadVrfProof)?;
 
         let threshold = calculate_bundle_election_threshold(
             *stake_weight,

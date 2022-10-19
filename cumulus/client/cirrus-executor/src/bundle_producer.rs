@@ -259,9 +259,15 @@ where
                 const SYSTEM_DOMAIN_ID: u64 = 0;
 
                 let election_solution = derive_bundle_election_solution(
-                    SYSTEM_DOMAIN_ID,
-                    vrf_signature.output.as_bytes(),
-                );
+                    vrf_signature.output.to_bytes(),
+                    &authority_id,
+                    &slot_randomness,
+                )
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to derive bundle election solution: {err}",
+                    )))
+                })?;
 
                 let threshold = calculate_bundle_election_threshold(
                     stake_weight,
@@ -292,8 +298,8 @@ where
 
                     let proof_of_election = ProofOfElection {
                         domain_id: SYSTEM_DOMAIN_ID,
-                        vrf_output: vrf_signature.output.to_bytes().to_vec(),
-                        vrf_proof: vrf_signature.proof.to_bytes().to_vec(),
+                        vrf_output: vrf_signature.output.to_bytes(),
+                        vrf_proof: vrf_signature.proof.to_bytes(),
                         executor_public_key: authority_id,
                         slot_randomness,
                         state_root,
