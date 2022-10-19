@@ -808,7 +808,7 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn executor_id() -> sp_executor::ExecutorId {
+        fn executor_id() -> sp_executor::ExecutorPublicKey {
             Executor::executor()
                 .map(|(_account_id, executor_id)| executor_id)
                 .expect("Executor must be provided; qed")

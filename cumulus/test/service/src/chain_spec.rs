@@ -3,7 +3,7 @@
 use cirrus_test_runtime::{AccountId, Balance, Signature};
 use sc_service::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_executor::ExecutorId;
+use sp_executor::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::SSC;
 
@@ -65,7 +65,7 @@ pub fn local_testnet_genesis() -> cirrus_test_runtime::GenesisConfig {
             get_account_id_from_seed::<sr25519::Public>("Alice"),
             1_000 * SSC,
             get_account_id_from_seed::<sr25519::Public>("Alice"),
-            get_from_seed::<ExecutorId>("Alice"),
+            get_from_seed::<ExecutorPublicKey>("Alice"),
         )],
     )
 }
@@ -73,7 +73,7 @@ pub fn local_testnet_genesis() -> cirrus_test_runtime::GenesisConfig {
 fn testnet_genesis(
     _root_key: AccountId,
     endowed_accounts: Vec<AccountId>,
-    executors: Vec<(AccountId, Balance, AccountId, ExecutorId)>,
+    executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
 ) -> cirrus_test_runtime::GenesisConfig {
     cirrus_test_runtime::GenesisConfig {
         system: cirrus_test_runtime::SystemConfig {

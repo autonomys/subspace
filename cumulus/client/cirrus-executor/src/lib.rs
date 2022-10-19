@@ -89,7 +89,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_executor::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
+    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
     InvalidTransactionProof, OpaqueBundle, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -512,8 +512,8 @@ pub enum GossipMessageError {
     BadBundleSignature,
     #[error("Invalid bundle author, got: {got}, expected: {expected}")]
     InvalidBundleAuthor {
-        got: ExecutorId,
-        expected: ExecutorId,
+        got: ExecutorPublicKey,
+        expected: ExecutorPublicKey,
     },
 }
 
@@ -615,16 +615,16 @@ where
                 return Err(Self::Error::BadBundleSignature);
             }
 
-            let expected_executor_id = self
+            let expected_executor_public_key = self
                 .primary_chain_client
                 .runtime_api()
                 .executor_id(&BlockId::Hash(primary_hash))?;
-            if *signer != expected_executor_id {
+            if *signer != expected_executor_public_key {
                 // TODO: handle the misbehavior.
 
                 return Err(Self::Error::InvalidBundleAuthor {
                     got: signer.clone(),
-                    expected: expected_executor_id,
+                    expected: expected_executor_public_key,
                 });
             }
 

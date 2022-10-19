@@ -12,7 +12,7 @@ use sp_core::H256;
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature,
+    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
     ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
@@ -176,7 +176,7 @@ where
 
         let best_hash = self.client.info().best_hash;
 
-        if let Some((executor_id, proof_of_election)) =
+        if let Some((executor_public_key, proof_of_election)) =
             self.solve_bundle_election_challenge(best_hash, slot_randomness)?
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
@@ -184,8 +184,8 @@ where
             let to_sign = bundle.hash();
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
-                ExecutorId::ID,
-                &executor_id.clone().into(),
+                ExecutorPublicKey::ID,
+                &executor_public_key.clone().into(),
                 to_sign.as_ref(),
             ) {
                 Ok(Some(signature)) => {
@@ -199,7 +199,7 @@ where
                                 )))
                             },
                         )?,
-                        signer: executor_id,
+                        signer: executor_public_key,
                     };
 
                     // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
@@ -225,7 +225,7 @@ where
         &self,
         best_hash: Block::Hash,
         slot_randomness: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<(ExecutorId, ProofOfElection)>> {
+    ) -> sp_blockchain::Result<Option<(ExecutorPublicKey, ProofOfElection)>> {
         // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
         let best_block_id = BlockId::Hash(best_hash);
 
@@ -252,7 +252,7 @@ where
         for (authority_id, stake_weight) in authorities {
             if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
                 &*self.keystore,
-                ExecutorId::ID,
+                ExecutorPublicKey::ID,
                 authority_id.as_ref(),
                 transcript_data.clone(),
             ) {
@@ -295,7 +295,7 @@ where
                     let vrf_public_key = schnorrkel::PublicKey::from_bytes(authority_id.as_ref())
                         .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
-                            "Failed to convert ExecutorId to schnorrkel::PublicKey: {err}",
+                            "Failed to convert ExecutorPublicKey to schnorrkel::PublicKey: {err}",
                         )))
                     })?;
 

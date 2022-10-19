@@ -59,13 +59,13 @@ pub type ExecutorSignature = app::Signature;
 pub type ExecutorPair = app::Pair;
 
 /// An executor authority identifier.
-pub type ExecutorId = app::Public;
+pub type ExecutorPublicKey = app::Public;
 
 /// A type that implements `BoundToRuntimeAppPublic`, used for executor signing key.
 pub struct ExecutorKey;
 
 impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
-    type Public = ExecutorId;
+    type Public = ExecutorPublicKey;
 }
 
 /// Stake weight in the domain bundle election.
@@ -211,7 +211,7 @@ pub mod well_known_keys {
 /// Parameters for the bundle election.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleElectionParams {
-    pub authorities: Vec<(ExecutorId, StakeWeight)>,
+    pub authorities: Vec<(ExecutorPublicKey, StakeWeight)>,
     pub total_stake_weight: StakeWeight,
     pub slot_probability: (u64, u64),
 }
@@ -271,7 +271,7 @@ pub fn read_bundle_election_params(
 
     let authorities =
         read_value(&AUTHORITIES)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
-    let authorities: Vec<(ExecutorId, StakeWeight)> =
+    let authorities: Vec<(ExecutorPublicKey, StakeWeight)> =
         Decode::decode(&mut authorities.as_slice())
             .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
@@ -383,7 +383,7 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
     /// Signer of the signature.
-    pub signer: ExecutorId,
+    pub signer: ExecutorPublicKey,
 }
 
 /// [`SignedBundle`] with opaque extrinsic.
@@ -446,7 +446,7 @@ pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
     /// Signature of the execution receipt.
     pub signature: ExecutorSignature,
     /// Signer of the signature.
-    pub signer: ExecutorId,
+    pub signer: ExecutorPublicKey,
 }
 
 impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
@@ -672,7 +672,7 @@ sp_api::decl_runtime_apis! {
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
 
         /// Returns the authority id of current executor.
-        fn executor_id() -> ExecutorId;
+        fn executor_id() -> ExecutorPublicKey;
 
         /// Returns the best execution chain number.
         fn best_execution_chain_number() -> NumberFor<Block>;
