@@ -24,6 +24,8 @@ use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRFOutput, VRFProof};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
+#[cfg(feature = "std")]
+use sp_core::crypto::Ss58Codec;
 use sp_core::H256;
 #[cfg(feature = "std")]
 use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
@@ -226,12 +228,12 @@ pub enum VrfProofError {
 
 /// Verify the vrf proof generated in the bundle election.
 pub fn verify_vrf_proof(
-    public_key: &[u8],
+    public_key: &ExecutorPublicKey,
     vrf_output: &[u8],
     vrf_proof: &[u8],
     slot_randomness: &Blake2b256Hash,
 ) -> Result<(), VrfProofError> {
-    let public_key = schnorrkel::PublicKey::from_bytes(public_key)
+    let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())
         .map_err(|_| VrfProofError::VrfSignatureConstructionError)?;
 
     public_key
@@ -301,7 +303,7 @@ pub struct ProofOfElection {
     /// VRF proof.
     pub vrf_proof: Vec<u8>,
     /// VRF public key.
-    pub vrf_public_key: Vec<u8>,
+    pub vrf_public_key: ExecutorPublicKey,
     /// Slot randomness.
     pub slot_randomness: Blake2b256Hash,
     /// State root corresponding to the storage proof above.
@@ -311,12 +313,13 @@ pub struct ProofOfElection {
 }
 
 impl ProofOfElection {
+    #[cfg(feature = "std")]
     pub fn dummy() -> Self {
         Self {
             domain_id: DomainId::default(),
             vrf_output: Vec::new(),
             vrf_proof: Vec::new(),
-            vrf_public_key: Vec::new(),
+            vrf_public_key: ExecutorPublicKey::from_string("//Alice").expect("Alice is valid; qed"),
             slot_randomness: Blake2b256Hash::default(),
             state_root: H256::default(),
             storage_proof: StorageProof::empty(),

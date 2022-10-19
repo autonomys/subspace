@@ -292,18 +292,12 @@ where
                         })?;
 
                     // TODO: vrf_public_key and authority_id are essentially the same, merge them?
-                    let vrf_public_key = schnorrkel::PublicKey::from_bytes(authority_id.as_ref())
-                        .map_err(|err| {
-                        sp_blockchain::Error::Application(Box::from(format!(
-                            "Failed to convert ExecutorPublicKey to schnorrkel::PublicKey: {err}",
-                        )))
-                    })?;
 
                     let proof_of_election = ProofOfElection {
                         domain_id: SYSTEM_DOMAIN_ID,
                         vrf_output: vrf_signature.output.to_bytes().to_vec(),
                         vrf_proof: vrf_signature.proof.to_bytes().to_vec(),
-                        vrf_public_key: vrf_public_key.to_bytes().to_vec(),
+                        vrf_public_key: authority_id.clone(),
                         slot_randomness,
                         state_root,
                         storage_proof,
