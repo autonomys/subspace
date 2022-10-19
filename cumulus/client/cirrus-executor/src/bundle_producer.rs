@@ -176,7 +176,7 @@ where
 
         let best_hash = self.client.info().best_hash;
 
-        if let Some((executor_public_key, proof_of_election)) =
+        if let Some(proof_of_election) =
             self.solve_bundle_election_challenge(best_hash, slot_randomness)?
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
@@ -185,7 +185,7 @@ where
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
                 ExecutorPublicKey::ID,
-                &executor_public_key.clone().into(),
+                &proof_of_election.executor_public_key.clone().into(),
                 to_sign.as_ref(),
             ) {
                 Ok(Some(signature)) => {
@@ -199,7 +199,6 @@ where
                                 )))
                             },
                         )?,
-                        signer: executor_public_key,
                     };
 
                     // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
@@ -225,7 +224,7 @@ where
         &self,
         best_hash: Block::Hash,
         slot_randomness: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<(ExecutorPublicKey, ProofOfElection)>> {
+    ) -> sp_blockchain::Result<Option<ProofOfElection>> {
         // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
         let best_block_id = BlockId::Hash(best_hash);
 
@@ -291,19 +290,17 @@ where
                             )))
                         })?;
 
-                    // TODO: vrf_public_key and authority_id are essentially the same, merge them?
-
                     let proof_of_election = ProofOfElection {
                         domain_id: SYSTEM_DOMAIN_ID,
                         vrf_output: vrf_signature.output.to_bytes().to_vec(),
                         vrf_proof: vrf_signature.proof.to_bytes().to_vec(),
-                        vrf_public_key: authority_id.clone(),
+                        executor_public_key: authority_id,
                         slot_randomness,
                         state_root,
                         storage_proof,
                     };
 
-                    return Ok(Some((authority_id, proof_of_election)));
+                    return Ok(Some(proof_of_election));
                 }
             }
         }

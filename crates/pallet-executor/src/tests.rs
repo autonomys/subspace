@@ -106,7 +106,6 @@ fn create_dummy_bundle(
     primary_hash: Hash,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
-    let signer = pair.public();
 
     let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
 
@@ -124,9 +123,8 @@ fn create_dummy_bundle(
 
     SignedOpaqueBundle {
         bundle,
-        proof_of_election: ProofOfElection::dummy(),
+        proof_of_election: ProofOfElection::with_public_key(pair.public()),
         signature,
-        signer,
     }
 }
 
@@ -135,7 +133,6 @@ fn create_dummy_bundle_with_receipts(
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
-    let signer = pair.public();
 
     let header = BundleHeader {
         primary_hash,
@@ -153,9 +150,8 @@ fn create_dummy_bundle_with_receipts(
 
     SignedOpaqueBundle {
         bundle,
-        proof_of_election: ProofOfElection::dummy(),
+        proof_of_election: ProofOfElection::with_public_key(pair.public()),
         signature,
-        signer,
     }
 }
 

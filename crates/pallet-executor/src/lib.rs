@@ -29,7 +29,7 @@ pub use pallet::*;
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
-    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, ExecutorPublicKey, FraudProof,
+    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, FraudProof,
     InvalidTransactionCode, InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
@@ -597,21 +597,18 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle_election(
-        executor_public_key: &ExecutorPublicKey,
-        proof_of_election: &ProofOfElection,
-    ) -> Result<(), BundleError> {
+    fn validate_bundle_election(proof_of_election: &ProofOfElection) -> Result<(), BundleError> {
         let ProofOfElection {
             domain_id,
             vrf_output,
             vrf_proof,
-            vrf_public_key,
+            executor_public_key,
             slot_randomness,
             state_root,
             storage_proof,
         } = proof_of_election;
 
-        verify_vrf_proof(vrf_public_key, vrf_output, vrf_proof, slot_randomness)
+        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, slot_randomness)
             .map_err(|_| BundleError::BadVrfProof)?;
 
         // TODO: verify `state_root` is valid.
@@ -711,14 +708,16 @@ impl<T: Config> Pallet<T> {
             bundle,
             proof_of_election,
             signature,
-            signer,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), BundleError> {
-        if !signer.verify(&bundle.hash(), signature) {
+        if !proof_of_election
+            .executor_public_key
+            .verify(&bundle.hash(), signature)
+        {
             return Err(BundleError::BadSignature);
         }
 
-        Self::validate_bundle_election(signer, proof_of_election)?;
+        Self::validate_bundle_election(proof_of_election)?;
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 

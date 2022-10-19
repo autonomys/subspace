@@ -24,8 +24,6 @@ use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRFOutput, VRFProof};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
-#[cfg(feature = "std")]
-use sp_core::crypto::Ss58Codec;
 use sp_core::H256;
 #[cfg(feature = "std")]
 use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
@@ -303,7 +301,7 @@ pub struct ProofOfElection {
     /// VRF proof.
     pub vrf_proof: Vec<u8>,
     /// VRF public key.
-    pub vrf_public_key: ExecutorPublicKey,
+    pub executor_public_key: ExecutorPublicKey,
     /// Slot randomness.
     pub slot_randomness: Blake2b256Hash,
     /// State root corresponding to the storage proof above.
@@ -314,12 +312,12 @@ pub struct ProofOfElection {
 
 impl ProofOfElection {
     #[cfg(feature = "std")]
-    pub fn dummy() -> Self {
+    pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id: DomainId::default(),
             vrf_output: Vec::new(),
             vrf_proof: Vec::new(),
-            vrf_public_key: ExecutorPublicKey::from_string("//Alice").expect("Alice is valid; qed"),
+            executor_public_key,
             slot_randomness: Blake2b256Hash::default(),
             state_root: H256::default(),
             storage_proof: StorageProof::empty(),
@@ -385,8 +383,6 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     pub proof_of_election: ProofOfElection,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
-    /// Signer of the signature.
-    pub signer: ExecutorPublicKey,
 }
 
 /// [`SignedBundle`] with opaque extrinsic.
@@ -411,7 +407,6 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
             bundle: self.bundle.into_opaque_bundle(),
             proof_of_election: self.proof_of_election,
             signature: self.signature,
-            signer: self.signer,
         }
     }
 }

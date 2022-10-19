@@ -575,9 +575,8 @@ where
 
         let SignedBundle {
             bundle,
-            proof_of_election: _,
+            proof_of_election,
             signature,
-            signer,
         } = signed_bundle;
 
         let check_equivocation =
@@ -611,7 +610,9 @@ where
                 PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
                     .expect("Hash type must be correct");
 
-            if !signer.verify(&bundle.hash(), signature) {
+            let executor_public_key = &proof_of_election.executor_public_key;
+
+            if !executor_public_key.verify(&bundle.hash(), signature) {
                 return Err(Self::Error::BadBundleSignature);
             }
 
@@ -619,11 +620,11 @@ where
                 .primary_chain_client
                 .runtime_api()
                 .executor_id(&BlockId::Hash(primary_hash))?;
-            if *signer != expected_executor_public_key {
+            if *executor_public_key != expected_executor_public_key {
                 // TODO: handle the misbehavior.
 
                 return Err(Self::Error::InvalidBundleAuthor {
-                    got: signer.clone(),
+                    got: executor_public_key.clone(),
                     expected: expected_executor_public_key,
                 });
             }
