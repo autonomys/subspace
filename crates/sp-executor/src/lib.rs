@@ -451,27 +451,6 @@ impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
     }
 }
 
-// TODO: Remove this when the bundle gossip is disabled.
-/// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
-    /// Execution receipt
-    pub execution_receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
-    /// Signature of the execution receipt.
-    pub signature: ExecutorSignature,
-    /// Signer of the signature.
-    pub signer: ExecutorPublicKey,
-}
-
-impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
-    SignedExecutionReceipt<Number, Hash, SecondaryHash>
-{
-    /// Returns the hash of signed execution receipt.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
-}
-
 /// Execution phase along with an optional encoded call data.
 ///
 /// Each execution phase has a different method for the runtime call.

@@ -225,7 +225,6 @@ where
         best_hash: Block::Hash,
         slot_randomness: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<ProofOfElection>> {
-        // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
         let best_block_id = BlockId::Hash(best_hash);
 
         let BundleElectionParams {
