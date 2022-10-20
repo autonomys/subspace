@@ -17,7 +17,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::SHANNON;
+use subspace_runtime_primitives::{SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -246,6 +246,29 @@ impl cirrus_pallet_executive::Config for Runtime {
     type Call = Call;
 }
 
+parameter_types! {
+    pub const MinExecutorStake: Balance = 10 * SSC;
+    pub const MaxExecutorStake: Balance = 10_000 * SSC;
+    pub const MinExecutors: u32 = 1;
+    pub const MaxExecutors: u32 = 10;
+    pub const EpochDuration: BlockNumber = 3;
+    pub const MaxWithdrawals: u32 = 1;
+    pub const WithdrawalDuration: BlockNumber = 10;
+}
+
+impl pallet_executor_registry::Config for Runtime {
+    type Event = Event;
+    type Currency = Balances;
+    type StakeWeight = sp_executor::StakeWeight;
+    type MinExecutorStake = MinExecutorStake;
+    type MaxExecutorStake = MaxExecutorStake;
+    type MinExecutors = MinExecutors;
+    type MaxExecutors = MaxExecutors;
+    type MaxWithdrawals = MaxWithdrawals;
+    type WithdrawalDuration = WithdrawalDuration;
+    type EpochDuration = EpochDuration;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
     pub struct Runtime
@@ -261,6 +284,12 @@ construct_runtime!(
         // Monetary stuff.
         Balances: pallet_balances,
         TransactionPayment: pallet_transaction_payment,
+
+        // System domain.
+        //
+        // Must be after Balances pallet so that its genesis is built after the Balances genesis is
+        // built.
+        ExecutorRegistry: pallet_executor_registry,
     }
 );
 
@@ -388,6 +417,14 @@ impl_runtime_apis! {
                     weight: 0
                 }.into()
             ).encode()
+        }
+
+        fn bundle_elections_params() -> sp_executor::BundleElectionParams {
+            sp_executor::BundleElectionParams {
+                authorities: ExecutorRegistry::authorities().into(),
+                total_stake_weight: ExecutorRegistry::total_stake_weight(),
+                slot_probability: ExecutorRegistry::slot_probability(),
+            }
         }
     }
 }

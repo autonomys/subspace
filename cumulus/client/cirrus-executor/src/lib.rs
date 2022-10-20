@@ -78,7 +78,7 @@ use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_consensus::ForkChoiceStrategy;
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -89,7 +89,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_executor::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorId,
+    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
     InvalidTransactionProof, OpaqueBundle, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -162,8 +162,12 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
     Client::Api: SecondaryApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
@@ -508,8 +512,8 @@ pub enum GossipMessageError {
     BadBundleSignature,
     #[error("Invalid bundle author, got: {got}, expected: {expected}")]
     InvalidBundleAuthor {
-        got: ExecutorId,
-        expected: ExecutorId,
+        got: ExecutorPublicKey,
+        expected: ExecutorPublicKey,
     },
 }
 
@@ -529,6 +533,7 @@ where
         + BlockBackend<Block>
         + ProvideRuntimeApi<Block>
         + AuxStore
+        + ProofProvider<Block>
         + Send
         + Sync
         + 'static,
@@ -570,8 +575,8 @@ where
 
         let SignedBundle {
             bundle,
+            proof_of_election,
             signature,
-            signer,
         } = signed_bundle;
 
         let check_equivocation =
@@ -605,20 +610,22 @@ where
                 PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
                     .expect("Hash type must be correct");
 
-            if !signer.verify(&bundle.hash(), signature) {
+            let executor_public_key = &proof_of_election.executor_public_key;
+
+            if !executor_public_key.verify(&bundle.hash(), signature) {
                 return Err(Self::Error::BadBundleSignature);
             }
 
-            let expected_executor_id = self
+            let expected_executor_public_key = self
                 .primary_chain_client
                 .runtime_api()
                 .executor_id(&BlockId::Hash(primary_hash))?;
-            if *signer != expected_executor_id {
+            if *executor_public_key != expected_executor_public_key {
                 // TODO: handle the misbehavior.
 
                 return Err(Self::Error::InvalidBundleAuthor {
-                    got: signer.clone(),
-                    expected: expected_executor_id,
+                    got: executor_public_key.clone(),
+                    expected: expected_executor_public_key,
                 });
             }
 

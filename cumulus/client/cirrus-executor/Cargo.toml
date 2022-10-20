@@ -32,6 +32,7 @@ rand = "0.8.5"
 rand_chacha = "0.3.1"
 merkletree = "0.22.0"
 parking_lot = "0.12.1"
+schnorrkel = "0.9.1"
 tracing = "0.1.36"
 thiserror = "1.0.32"
 tokio = { version = "1.20.1", features = ["macros"] }

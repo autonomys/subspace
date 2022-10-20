@@ -20,6 +20,7 @@ sp-arithmetic = { git = "https://github.com/subspace/substrate", rev = "1a7c2872
 sp-executor = { version = "0.1.0", path = "../../../crates/sp-executor", default-features = false }
 sp-io = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
+sp-std = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 
 [dev-dependencies]
 pallet-balances = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -36,5 +37,6 @@ std = [
 	"sp-executor/std",
 	"sp-io/std",
 	"sp-runtime/std",
+	"sp-std/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
