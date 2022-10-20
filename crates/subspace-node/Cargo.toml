@@ -20,8 +20,8 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-cirrus-node = { version = "0.1.0", path = "../../cumulus/node" }
-cirrus-runtime = { version = "0.1.0", path = "../../cumulus/runtime" }
+cirrus-node = { version = "0.1.0", path = "../../domains/node" }
+cirrus-runtime = { version = "0.1.0", path = "../../domains/runtime" }
 clap = { version = "3.2.16", features = ["derive"] }
 dirs = "4.0.0"
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false, features = ["runtime-benchmarks"] }

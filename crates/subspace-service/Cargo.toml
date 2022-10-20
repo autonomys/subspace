@@ -16,7 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-cirrus-primitives = { version = "0.1.0", path = "../../cumulus/primitives" }
+cirrus-primitives = { version = "0.1.0", path = "../../domains/primitives" }
 derive_more = "0.99.17"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 futures = "0.3.21"
