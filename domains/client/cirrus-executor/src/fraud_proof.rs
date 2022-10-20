@@ -1,6 +1,5 @@
 use crate::TransactionFor;
 use cirrus_block_builder::{BlockBuilder, RecordProof};
-use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
@@ -14,6 +13,7 @@ use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
+use system_runtime_primitives::{AccountId, SecondaryApi};
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]

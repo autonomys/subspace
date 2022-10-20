@@ -15,7 +15,6 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::{BundleProcessor, BundleProducer, TransactionFor};
-use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
@@ -37,6 +36,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
+use system_runtime_primitives::{AccountId, SecondaryApi};
 use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";

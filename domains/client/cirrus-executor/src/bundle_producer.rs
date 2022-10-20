@@ -1,6 +1,5 @@
 use crate::worker::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
-use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -23,6 +22,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use system_runtime_primitives::{AccountId, SecondaryApi};
 
 const LOG_TARGET: &str = "bundle-producer";
 

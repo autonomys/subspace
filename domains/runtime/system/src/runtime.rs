@@ -1,4 +1,3 @@
-pub use cirrus_primitives::{AccountId, Address, Balance, BlockNumber, Hash, Index, Signature};
 use frame_support::traits::{ConstU16, ConstU32, Everything};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND,
@@ -18,6 +17,9 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
+pub use system_runtime_primitives::{
+    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
+};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -385,11 +387,11 @@ impl_runtime_apis! {
         }
     }
 
-    impl cirrus_primitives::SecondaryApi<Block, AccountId> for Runtime {
+    impl system_runtime_primitives::SecondaryApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
-            use cirrus_primitives::Signer;
+            use system_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
             extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
         }

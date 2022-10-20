@@ -2,7 +2,6 @@
 
 use cirrus_client_executor::Executor;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
-use cirrus_primitives::SecondaryApi;
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -32,6 +31,7 @@ use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_domain_runtime::opaque::Block;
 use system_domain_runtime::{AccountId, Balance, Hash};
+use system_runtime_primitives::SecondaryApi;
 
 /// Native executor instance.
 pub struct CirrusRuntimeExecutor;

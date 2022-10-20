@@ -74,7 +74,6 @@ use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::worker::BlockInfo;
 use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
-use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -101,6 +100,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
+use system_runtime_primitives::{AccountId, SecondaryApi};
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";

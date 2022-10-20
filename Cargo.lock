@@ -807,7 +807,6 @@ dependencies = [
  "blake2-rfc",
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
- "cirrus-primitives",
  "cirrus-test-service",
  "crossbeam",
  "futures 0.3.21",
@@ -847,6 +846,7 @@ dependencies = [
  "subspace-test-service",
  "substrate-test-runtime-client",
  "substrate-test-utils",
+ "system-runtime-primitives",
  "thiserror",
  "tokio",
  "tracing",
@@ -890,23 +890,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-primitives"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "cirrus-test-runtime"
 version = "0.1.0"
 dependencies = [
  "cirrus-pallet-executive",
- "cirrus-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -935,6 +922,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -1600,7 +1588,6 @@ version = "0.1.0"
 dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
- "cirrus-primitives",
  "clap",
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
@@ -1642,6 +1629,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "system-domain-runtime",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8037,7 +8025,6 @@ name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
- "cirrus-primitives",
  "cirrus-test-service",
  "futures 0.3.21",
  "hash-db",
@@ -8056,6 +8043,7 @@ dependencies = [
  "sp-state-machine",
  "sp-trie",
  "substrate-test-utils",
+ "system-runtime-primitives",
  "tokio",
  "tracing",
 ]
@@ -8144,7 +8132,6 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",
@@ -8190,6 +8177,7 @@ dependencies = [
  "subspace-wasm-tools",
  "substrate-wasm-builder",
  "system-domain-runtime",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8209,7 +8197,6 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
  "derive_more",
  "frame-support",
  "frame-system-rpc-runtime-api",
@@ -8258,6 +8245,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "system-runtime-primitives",
  "thiserror",
  "tracing",
 ]
@@ -8302,7 +8290,6 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
  "cirrus-test-runtime",
  "frame-executive",
  "frame-support",
@@ -8344,6 +8331,7 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8646,7 +8634,6 @@ name = "system-domain-runtime"
 version = "0.1.0"
 dependencies = [
  "cirrus-pallet-executive",
- "cirrus-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -8675,6 +8662,19 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-runtime-primitives",
+]
+
+[[package]]
+name = "system-runtime-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

@@ -65,7 +65,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     fn new(
@@ -106,7 +107,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -267,7 +269,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -414,7 +417,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();

@@ -1,7 +1,6 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::TransactionFor;
 use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
-use cirrus_primitives::{AccountId, SecondaryApi};
 use codec::{Decode, Encode};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -25,6 +24,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, Randomness};
+use system_runtime_primitives::{AccountId, SecondaryApi};
 
 const LOG_TARGET: &str = "bundle-processor";
 

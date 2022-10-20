@@ -473,7 +473,7 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type Event = Event;
-    type SecondaryHash = cirrus_primitives::Hash;
+    type SecondaryHash = system_runtime_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -815,7 +815,7 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 
 fn extract_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
@@ -833,7 +833,7 @@ fn extract_bundles(
 
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, cirrus_primitives::Hash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, system_runtime_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
@@ -1057,8 +1057,8 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
-        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>) {
+    impl sp_domains::ExecutorApi<Block, system_runtime_primitives::Hash> for Runtime {
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>) {
             Domains::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
@@ -1078,13 +1078,13 @@ impl_runtime_apis! {
             Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
             extract_bundles(extrinsics)
         }
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
             extract_receipts(extrinsics)
         }
 

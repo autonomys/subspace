@@ -16,7 +16,6 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-cirrus-primitives = { version = "0.1.0", path = "../../domains/primitives" }
 derive_more = "0.99.17"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 futures = "0.3.21"
@@ -62,6 +61,7 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+system-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/system-runtime" }
 thiserror = "1.0.32"
 tracing = "0.1.36"
 

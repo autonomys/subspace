@@ -45,10 +45,10 @@ pallet-transaction-payment = { default-features = false, git = "https://github.c
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 cirrus-pallet-executive = { path = "../../pallets/executive", default-features = false }
-cirrus-primitives = { path = "../../primitives", default-features = false }
 pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
 sp-domains = { path = "../../../crates/sp-domains", default-features = false }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives", default-features = false }
+system-runtime-primitives = { path = "../../primitives/system-runtime", default-features = false }
 
 [build-dependencies]
 subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-wasm-tools" }
@@ -80,10 +80,10 @@ std = [
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
 	"cirrus-pallet-executive/std",
-	"cirrus-primitives/std",
 	"pallet-executor-registry/std",
 	"sp-domains/std",
 	"subspace-runtime-primitives/std",
+	"system-runtime-primitives/std",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []

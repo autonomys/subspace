@@ -16,7 +16,6 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-cirrus-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives" }
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
 frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -56,6 +55,7 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../subspace-verification" }
 system-domain-runtime = { version = "0.1.0", default-features = false, path = "../../domains/runtime/system" }
+system-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/system-runtime" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -75,7 +75,6 @@ hex-literal = { version = "0.3.3" }
 [features]
 default = ["std"]
 std = [
-	"cirrus-primitives/std",
 	"codec/std",
 	"frame-executive/std",
 	"frame-support/std",
@@ -116,6 +115,7 @@ std = [
 	"subspace-runtime-primitives/std",
 	"subspace-verification/std",
 	"system-domain-runtime/std",
+	"system-runtime-primitives/std",
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
