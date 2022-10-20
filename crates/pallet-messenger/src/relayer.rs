@@ -92,7 +92,7 @@ impl<T: Config> Pallet<T> {
         ensure!(relayer.owner == caller, Error::<T>::NotOwner);
 
         // release the deposit
-        T::Currency::unreserve(&caller, T::RelayerDeposit::get());
+        T::Currency::unreserve(&caller, relayer.deposit_reserved);
 
         // remove relayer_id from the list
         let idx = Relayers::<T>::mutate(|relayers| -> Result<usize, DispatchError> {
