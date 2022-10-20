@@ -16,19 +16,16 @@
 
 //! Subspace chain configurations.
 
-use crate::chain_spec_utils::{
-    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
-};
+use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use crate::secondary_chain;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::{ChainSpecExtensions, ConsensusChainSpec};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_domains::ExecutorPublicKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
-    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
+    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
@@ -132,14 +129,6 @@ pub fn gemini_2a_compiled(
                 sudo_account,
                 balances,
                 vesting_schedules,
-                (
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
-                        .expect("Wrong Executor account address"),
-                    ExecutorPublicKey::from_ss58check(
-                        "5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx",
-                    )
-                    .expect("Wrong Executor authority address"),
-                ),
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
@@ -236,14 +225,6 @@ pub fn x_net_config_compiled(
                 sudo_account,
                 balances,
                 vesting_schedules,
-                (
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
-                        .expect("Wrong Executor account address"),
-                    ExecutorPublicKey::from_ss58check(
-                        "5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx",
-                    )
-                    .expect("Wrong Executor authority address"),
-                ),
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
@@ -297,10 +278,6 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
                     (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
                 ],
                 vec![],
-                (
-                    get_account_id_from_seed("Alice"),
-                    get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
-                ),
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
@@ -356,10 +333,6 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
                     (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
                 ],
                 vec![],
-                (
-                    get_account_id_from_seed("Alice"),
-                    get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
-                ),
                 GenesisParams {
                     enable_rewards: false,
                     enable_storage_access: false,
@@ -391,7 +364,6 @@ fn subspace_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-    executor_authority: (AccountId, ExecutorPublicKey),
     genesis_params: GenesisParams,
 ) -> GenesisConfig {
     let GenesisParams {
@@ -418,9 +390,6 @@ fn subspace_genesis_config(
             allow_authoring_by,
         },
         vesting: VestingConfig { vesting },
-        domains: DomainsConfig {
-            executor: Some(executor_authority),
-        },
         runtime_configs: RuntimeConfigsConfig { enable_executor },
     }
 }

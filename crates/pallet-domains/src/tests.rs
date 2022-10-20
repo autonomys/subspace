@@ -1,5 +1,5 @@
 use crate::{self as pallet_domains, BlockHash, ReceiptVotes, Receipts};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
@@ -72,18 +72,9 @@ impl pallet_domains::Config for Test {
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::default()
+    let t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
-
-    pallet_domains::GenesisConfig::<Test> {
-        executor: Some((
-            100,
-            ExecutorPair::from_seed(&U256::from(100u32).into()).public(),
-        )),
-    }
-    .assimilate_storage(&mut t)
-    .unwrap();
 
     t.into()
 }

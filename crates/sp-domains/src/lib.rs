@@ -664,9 +664,6 @@ sp_api::decl_runtime_apis! {
         /// WASM bundle for execution runtime.
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
 
-        /// Returns the authority id of current executor.
-        fn executor_id() -> ExecutorPublicKey;
-
         /// Returns the best execution chain number.
         fn best_execution_chain_number() -> NumberFor<Block>;
 

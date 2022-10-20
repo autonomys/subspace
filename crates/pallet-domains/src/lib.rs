@@ -44,8 +44,8 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::{
-        BundleEquivocationProof, ExecutionReceipt, ExecutorPublicKey, FraudProof,
-        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
+        BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
+        InvalidTransactionProof, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
         BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
@@ -284,12 +284,6 @@ mod pallet {
         }
     }
 
-    /// A tuple of (stable_executor_account_id, executor_public_key).
-    #[pallet::storage]
-    #[pallet::getter(fn executor)]
-    pub(super) type Executor<T: Config> =
-        StorageValue<_, (T::AccountId, ExecutorPublicKey), OptionQuery>;
-
     /// Map of block number to block hash.
     ///
     /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
@@ -339,29 +333,6 @@ mod pallet {
             }
 
             T::DbWeight::get().writes(1)
-        }
-    }
-
-    #[pallet::genesis_config]
-    pub struct GenesisConfig<T: Config> {
-        pub executor: Option<(T::AccountId, ExecutorPublicKey)>,
-    }
-
-    #[cfg(feature = "std")]
-    impl<T: Config> Default for GenesisConfig<T> {
-        fn default() -> Self {
-            Self { executor: None }
-        }
-    }
-
-    #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
-        fn build(&self) {
-            <Executor<T>>::put(
-                self.executor
-                    .clone()
-                    .expect("Executor authority must be provided at genesis; qed"),
-            );
         }
     }
 

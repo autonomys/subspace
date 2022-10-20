@@ -8275,7 +8275,6 @@ dependencies = [
  "sp-api",
  "sp-consensus-subspace",
  "sp-core",
- "sp-domains",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",

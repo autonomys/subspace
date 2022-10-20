@@ -1100,12 +1100,6 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn executor_id() -> sp_domains::ExecutorPublicKey {
-            Domains::executor()
-                .map(|(_account_id, executor_id)| executor_id)
-                .expect("Executor must be provided; qed")
-        }
-
         fn best_execution_chain_number() -> NumberFor<Block> {
             Domains::best_execution_chain_number()
         }

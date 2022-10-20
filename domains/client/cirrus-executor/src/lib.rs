@@ -606,7 +606,7 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            let primary_hash =
+            let _primary_hash =
                 PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
                     .expect("Hash type must be correct");
 
@@ -616,18 +616,7 @@ where
                 return Err(Self::Error::BadBundleSignature);
             }
 
-            let expected_executor_public_key = self
-                .primary_chain_client
-                .runtime_api()
-                .executor_id(&BlockId::Hash(primary_hash))?;
-            if *executor_public_key != expected_executor_public_key {
-                // TODO: handle the misbehavior.
-
-                return Err(Self::Error::InvalidBundleAuthor {
-                    got: executor_public_key.clone(),
-                    expected: expected_executor_public_key,
-                });
-            }
+            // TODO: validate the bundle election.
 
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
             for receipt in &bundle.receipts {
