@@ -136,7 +136,7 @@ async fn run_executor(
     };
 
     let block_import_throttling_buffer_size = 10;
-    let secondary_chain_node = domain_service::service::new_full::<
+    let secondary_chain_node = domain_service::new_full::<
         _,
         _,
         _,
@@ -172,7 +172,7 @@ async fn run_executor(
     )
     .await?;
 
-    let domain_service::service::NewFull {
+    let domain_service::NewFull {
         mut task_manager,
         client,
         backend,

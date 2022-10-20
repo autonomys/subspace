@@ -423,7 +423,7 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                    let secondary_chain_node_fut = domain_service::service::new_full::<
+                    let secondary_chain_node_fut = domain_service::new_full::<
                         _,
                         _,
                         _,
