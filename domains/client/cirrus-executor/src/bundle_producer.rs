@@ -22,7 +22,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
-use system_runtime_primitives::{AccountId, SecondaryApi};
+use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 const LOG_TARGET: &str = "bundle-producer";
 
@@ -69,7 +69,7 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>,
-    Client::Api: SecondaryApi<Block, AccountId> + BlockBuilder<Block>,
+    Client::Api: SystemDomainApi<Block, AccountId> + BlockBuilder<Block>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,

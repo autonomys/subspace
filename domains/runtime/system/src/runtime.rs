@@ -387,7 +387,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl system_runtime_primitives::SecondaryApi<Block, AccountId> for Runtime {
+    impl system_runtime_primitives::SystemDomainApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {

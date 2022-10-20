@@ -36,7 +36,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
-use system_runtime_primitives::{AccountId, SecondaryApi};
+use system_runtime_primitives::{AccountId, SystemDomainApi};
 use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
@@ -102,7 +102,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SecondaryApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId>
         + BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,

@@ -24,7 +24,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, Randomness};
-use system_runtime_primitives::{AccountId, SecondaryApi};
+use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 const LOG_TARGET: &str = "bundle-processor";
 
@@ -123,7 +123,7 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SecondaryApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Primitives for executor pallet.
+//! Primitives for system domain runtime.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -69,8 +69,8 @@ where
 }
 
 sp_api::decl_runtime_apis! {
-    /// API necessary for secondary node.
-    pub trait SecondaryApi<AccountId: Encode + Decode> {
+    /// API necessary for system domain.
+    pub trait SystemDomainApi<AccountId: Encode + Decode> {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,

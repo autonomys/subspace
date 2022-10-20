@@ -31,7 +31,7 @@ use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_domain_runtime::opaque::Block;
 use system_domain_runtime::{AccountId, Balance, Hash};
-use system_runtime_primitives::SecondaryApi;
+use system_runtime_primitives::SystemDomainApi;
 
 /// Native executor instance.
 pub struct CirrusRuntimeExecutor;
@@ -174,7 +174,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SecondaryApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -239,7 +239,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SecondaryApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,

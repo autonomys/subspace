@@ -12,7 +12,7 @@ use sp_domains::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, Opa
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
-use system_runtime_primitives::{Hash, SecondaryApi};
+use system_runtime_primitives::{Hash, SystemDomainApi};
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]

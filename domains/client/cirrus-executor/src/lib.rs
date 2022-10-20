@@ -100,7 +100,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
-use system_runtime_primitives::{AccountId, SecondaryApi};
+use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 /// The logging target.
 const LOG_TARGET: &str = "cirrus::executor";
@@ -168,7 +168,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SecondaryApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -537,7 +537,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SecondaryApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
