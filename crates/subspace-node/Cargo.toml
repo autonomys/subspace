@@ -20,10 +20,10 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-cirrus-node = { version = "0.1.0", path = "../../domains/node" }
 cirrus-runtime = { version = "0.1.0", path = "../../domains/runtime" }
 clap = { version = "3.2.16", features = ["derive"] }
 dirs = "4.0.0"
+domain-service = { version = "0.1.0", path = "../../domains/service" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false, features = ["runtime-benchmarks"] }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 futures = "0.3.21"
@@ -63,7 +63,7 @@ do-not-enforce-cost-of-storage = [
 	"subspace-runtime/do-not-enforce-cost-of-storage"
 ]
 runtime-benchmarks = [
-	"cirrus-node/runtime-benchmarks",
 	"cirrus-runtime/runtime-benchmarks",
+	"domain-service/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 ]

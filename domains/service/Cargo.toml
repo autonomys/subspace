@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-node"
+name = "domain-service"
 version = "0.1.0"
 authors = ["Anonymous"]
 description = "A new Cumulus FRAME-based Substrate Node, ready for hacking together a parachain."

@@ -869,56 +869,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-node"
-version = "0.1.0"
-dependencies = [
- "cirrus-client-executor",
- "cirrus-client-executor-gossip",
- "cirrus-primitives",
- "cirrus-runtime",
- "clap",
- "cumulus-client-consensus-relay-chain",
- "frame-benchmarking",
- "frame-benchmarking-cli",
- "futures 0.3.21",
- "hex-literal",
- "jsonrpsee",
- "log",
- "pallet-transaction-payment-rpc",
- "sc-chain-spec",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-executor",
- "sc-network",
- "sc-rpc",
- "sc-rpc-api",
- "sc-service",
- "sc-telemetry",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sc-utils",
- "serde",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-keystore",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-transaction-pool",
- "subspace-core-primitives",
- "subspace-runtime-primitives",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
-]
-
-[[package]]
 name = "cirrus-pallet-executive"
 version = "0.1.0"
 dependencies = [
@@ -1029,9 +979,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cirrus-client-executor",
- "cirrus-node",
  "cirrus-test-runtime",
  "cumulus-client-consensus-relay-chain",
+ "domain-service",
  "frame-system",
  "futures 0.3.21",
  "pallet-transaction-payment",
@@ -1678,6 +1628,56 @@ checksum = "c4d33be9473d06f75f58220f71f7a9317aca647dc061dbd3c361b0bef505fbea"
 dependencies = [
  "byteorder 1.4.3",
  "quick-error",
+]
+
+[[package]]
+name = "domain-service"
+version = "0.1.0"
+dependencies = [
+ "cirrus-client-executor",
+ "cirrus-client-executor-gossip",
+ "cirrus-primitives",
+ "cirrus-runtime",
+ "clap",
+ "cumulus-client-consensus-relay-chain",
+ "frame-benchmarking",
+ "frame-benchmarking-cli",
+ "futures 0.3.21",
+ "hex-literal",
+ "jsonrpsee",
+ "log",
+ "pallet-transaction-payment-rpc",
+ "sc-chain-spec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-executor",
+ "sc-network",
+ "sc-rpc",
+ "sc-rpc-api",
+ "sc-service",
+ "sc-telemetry",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "sc-utils",
+ "serde",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-slots",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-keystore",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-transaction-pool",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
 ]
 
 [[package]]
@@ -8131,10 +8131,10 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
- "cirrus-node",
  "cirrus-runtime",
  "clap",
  "dirs",
+ "domain-service",
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.21",

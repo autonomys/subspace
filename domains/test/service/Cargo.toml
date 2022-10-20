@@ -40,9 +40,9 @@ sp-timestamp = { git = "https://github.com/subspace/substrate", rev = "1a7c28721
 substrate-test-client = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 cirrus-client-executor = { path = "../../client/cirrus-executor" }
-cirrus-node = { path = "../../node" }
 cirrus-test-runtime = { path = "../runtime" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
+domain-service = { path = "../../service" }
 
 sp-domains = { path = "../../../crates/sp-domains" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }
