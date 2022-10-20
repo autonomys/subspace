@@ -23,7 +23,7 @@ clap = { version = "3.2.16", features = ["derive"] }
 jsonrpsee = { version = "0.15.1", features = ["server"] }
 
 # Local Dependencies
-cirrus-runtime = { path = "../runtime" }
+system-domain-runtime = { path = "../runtime/system" }
 
 # Substrate Dependencies
 frame-benchmarking = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -78,5 +78,5 @@ substrate-build-script-utils = { git = "https://github.com/subspace/substrate", 
 
 [features]
 runtime-benchmarks = [
-    "cirrus-runtime/runtime-benchmarks",
+    "system-domain-runtime/runtime-benchmarks",
 ]

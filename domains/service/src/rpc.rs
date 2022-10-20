@@ -5,8 +5,6 @@
 
 #![warn(missing_docs)]
 
-use cirrus_runtime::opaque::Block;
-use cirrus_runtime::{AccountId, Balance, Index as Nonce};
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::AuxStore;
@@ -17,6 +15,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use std::sync::Arc;
 use substrate_frame_rpc_system::{System, SystemApiServer};
+use system_domain_runtime::opaque::Block;
+use system_domain_runtime::{AccountId, Balance, Index as Nonce};
 
 /// Full client dependencies
 pub struct FullDeps<C, P> {

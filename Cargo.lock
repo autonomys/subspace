@@ -902,42 +902,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-runtime"
-version = "0.1.0"
-dependencies = [
- "cirrus-pallet-executive",
- "cirrus-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-executor-registry",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-io",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-runtime-primitives",
- "subspace-wasm-tools",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "cirrus-test-runtime"
 version = "0.1.0"
 dependencies = [
@@ -1637,7 +1601,6 @@ dependencies = [
  "cirrus-client-executor",
  "cirrus-client-executor-gossip",
  "cirrus-primitives",
- "cirrus-runtime",
  "clap",
  "cumulus-client-consensus-relay-chain",
  "frame-benchmarking",
@@ -1678,6 +1641,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
+ "system-domain-runtime",
 ]
 
 [[package]]
@@ -8131,7 +8095,6 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
- "cirrus-runtime",
  "clap",
  "dirs",
  "domain-service",
@@ -8163,6 +8126,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "substrate-build-script-utils",
+ "system-domain-runtime",
  "thiserror",
  "tokio",
 ]
@@ -8181,7 +8145,6 @@ name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
  "cirrus-primitives",
- "cirrus-runtime",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",
@@ -8226,6 +8189,7 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-domain-runtime",
 ]
 
 [[package]]
@@ -8675,6 +8639,42 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "system-domain-runtime"
+version = "0.1.0"
+dependencies = [
+ "cirrus-pallet-executive",
+ "cirrus-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-executor-registry",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "subspace-wasm-tools",
+ "substrate-wasm-builder",
 ]
 
 [[package]]

@@ -3,8 +3,6 @@
 use cirrus_client_executor::Executor;
 use cirrus_client_executor_gossip::ExecutorGossipParams;
 use cirrus_primitives::SecondaryApi;
-use cirrus_runtime::opaque::Block;
-use cirrus_runtime::{AccountId, Balance, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -32,6 +30,8 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
+use system_domain_runtime::opaque::Block;
+use system_domain_runtime::{AccountId, Balance, Hash};
 
 /// Native executor instance.
 pub struct CirrusRuntimeExecutor;
@@ -40,11 +40,11 @@ impl NativeExecutionDispatch for CirrusRuntimeExecutor {
     type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        cirrus_runtime::api::dispatch(method, data)
+        system_domain_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        cirrus_runtime::native_version()
+        system_domain_runtime::native_version()
     }
 }
 

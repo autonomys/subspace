@@ -17,7 +17,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 cirrus-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives" }
-cirrus-runtime = { version = "0.1.0", default-features = false, path = "../../domains/runtime" }
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
 frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -56,6 +55,7 @@ sp-version = { version = "5.0.0", default-features = false, git = "https://githu
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../subspace-verification" }
+system-domain-runtime = { version = "0.1.0", default-features = false, path = "../../domains/runtime/system" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -76,7 +76,6 @@ hex-literal = { version = "0.3.3" }
 default = ["std"]
 std = [
 	"cirrus-primitives/std",
-	"cirrus-runtime/std",
 	"codec/std",
 	"frame-executive/std",
 	"frame-support/std",
@@ -115,10 +114,10 @@ std = [
 	"sp-version/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
-	"subspace-verification/std"
+	"subspace-verification/std",
+	"system-domain-runtime/std",
 ]
 runtime-benchmarks = [
-	"cirrus-runtime/runtime-benchmarks",
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system-benchmarking",
@@ -129,5 +128,6 @@ runtime-benchmarks = [
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-utility/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
+	"system-domain-runtime/runtime-benchmarks",
 ]
 do-not-enforce-cost-of-storage = []

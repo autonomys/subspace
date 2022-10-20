@@ -8,7 +8,7 @@ members = [
     "domains/client/executor-gossip",
     "domains/pallets/*",
     "domains/primitives",
-    "domains/runtime",
+    "domains/runtime/*",
     "domains/service",
     "domains/test/runtime",
     "domains/test/service",

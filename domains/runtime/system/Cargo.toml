@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-runtime"
+name = "system-domain-runtime"
 version = "0.1.0"
 authors = ["Anonymous"]
 description = "A new Cumulus FRAME-based Substrate Runtime, ready for hacking together a parachain."
@@ -7,7 +7,7 @@ license = "Unlicense"
 homepage = "https://substrate.io"
 repository = "https://github.com/paritytech/cumulus/"
 edition = "2021"
-links = "cirrus-runtime"
+links = "system-domain-runtime"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -44,14 +44,14 @@ pallet-balances = { default-features = false, git = "https://github.com/subspace
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
-cirrus-pallet-executive = { path = "../pallets/executive", default-features = false }
-cirrus-primitives = { path = "../primitives", default-features = false }
-pallet-executor-registry = { path = "../pallets/executor-registry", default-features = false }
-sp-domains = { path = "../../crates/sp-domains", default-features = false }
-subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives", default-features = false }
+cirrus-pallet-executive = { path = "../../pallets/executive", default-features = false }
+cirrus-primitives = { path = "../../primitives", default-features = false }
+pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
+sp-domains = { path = "../../../crates/sp-domains", default-features = false }
+subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives", default-features = false }
 
 [build-dependencies]
-subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../crates/subspace-wasm-tools" }
+subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-wasm-tools" }
 substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 [features]

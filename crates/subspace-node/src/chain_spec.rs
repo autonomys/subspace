@@ -20,7 +20,6 @@ use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
 use crate::secondary_chain;
-use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::{ChainSpecExtensions, ConsensusChainSpec};
 use sc_telemetry::TelemetryEndpoints;
@@ -32,6 +31,7 @@ use subspace_runtime::{
     SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
+use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
@@ -73,12 +73,12 @@ struct GenesisParams {
     enable_executor: bool,
 }
 
-pub fn gemini_2a() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+pub fn gemini_2a() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     ConsensusChainSpec::from_json_bytes(GEMINI_2A_CHAIN_SPEC)
 }
 
 pub fn gemini_2a_compiled(
-) -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace Gemini 2a",
@@ -176,12 +176,13 @@ pub fn gemini_2a_compiled(
     ))
 }
 
-pub fn x_net_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+pub fn x_net_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String>
+{
     ConsensusChainSpec::from_json_bytes(X_NET_1_CHAIN_SPEC)
 }
 
 pub fn x_net_config_compiled(
-) -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace X-Net 1",
@@ -273,7 +274,8 @@ pub fn x_net_config_compiled(
     ))
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String>
+{
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -323,7 +325,8 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesis
     ))
 }
 
-pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig>, String> {
+pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String>
+{
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
