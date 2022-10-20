@@ -21,8 +21,8 @@ use crate::well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use schnorrkel::vrf::{VRFOutput, VRFProof, VRF_PROOF_LENGTH};
-use schnorrkel::{SignatureResult, PUBLIC_KEY_LENGTH};
+use schnorrkel::vrf::{VRFOutput, VRFProof, VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
+use schnorrkel::SignatureResult;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
@@ -122,7 +122,7 @@ impl<Hash: Encode> BundleHeader<Hash> {
 }
 
 fn derive_election_randomness(
-    vrf_output: [u8; PUBLIC_KEY_LENGTH],
+    vrf_output: [u8; VRF_OUTPUT_LENGTH],
     public_key: &ExecutorPublicKey,
     slot_randomness: &Blake2b256Hash,
 ) -> SignatureResult<ElectionRandomness> {
@@ -136,7 +136,7 @@ fn derive_election_randomness(
 
 /// Returns the solution for the challenge of producing a bundle.
 pub fn derive_bundle_election_solution(
-    vrf_output: [u8; PUBLIC_KEY_LENGTH],
+    vrf_output: [u8; VRF_OUTPUT_LENGTH],
     public_key: &ExecutorPublicKey,
     slot_randomness: &Blake2b256Hash,
 ) -> SignatureResult<u128> {
@@ -313,7 +313,7 @@ pub struct ProofOfElection {
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
-    pub vrf_output: [u8; PUBLIC_KEY_LENGTH],
+    pub vrf_output: [u8; VRF_OUTPUT_LENGTH],
     /// VRF proof.
     pub vrf_proof: [u8; VRF_PROOF_LENGTH],
     /// VRF public key.
@@ -331,7 +331,7 @@ impl ProofOfElection {
     pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id: DomainId::default(),
-            vrf_output: [0u8; PUBLIC_KEY_LENGTH],
+            vrf_output: [0u8; VRF_OUTPUT_LENGTH],
             vrf_proof: [0u8; VRF_PROOF_LENGTH],
             executor_public_key,
             slot_randomness: Blake2b256Hash::default(),
