@@ -5,7 +5,7 @@ use futures::{future, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
-use sp_executor::SignedBundle;
+use sp_domains::SignedBundle;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 

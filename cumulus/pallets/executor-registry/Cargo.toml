@@ -17,7 +17,7 @@ frame-support = { git = "https://github.com/subspace/substrate", rev = "1a7c2872
 frame-system = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 sp-arithmetic = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
-sp-executor = { version = "0.1.0", path = "../../../crates/sp-executor", default-features = false }
+sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-io = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 sp-std = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
@@ -34,7 +34,7 @@ std = [
 	"frame-system/std",
 	"scale-info/std",
 	"sp-arithmetic/std",
-	"sp-executor/std",
+	"sp-domains/std",
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",

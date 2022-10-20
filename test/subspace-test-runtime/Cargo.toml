@@ -42,7 +42,7 @@ sp-api = { version = "4.0.0-dev", default-features = false, git = "https://githu
 sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false, version = "4.0.0-dev"}
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../../crates/sp-consensus-subspace" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sp-executor = { version = "0.1.0", default-features = false, path = "../../crates/sp-executor" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../../crates/sp-domains" }
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false, version = "4.0.0-dev"}
 sp-objects = { version = "0.1.0", default-features = false, path = "../../crates/sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -92,7 +92,7 @@ std = [
 	"sp-block-builder/std",
 	"sp-consensus-subspace/std",
 	"sp-core/std",
-	"sp-executor/std",
+	"sp-domains/std",
 	"sp-inherents/std",
 	"sp-objects/std",
 	"sp-offchain/std",

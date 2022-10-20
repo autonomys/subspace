@@ -86,7 +86,7 @@ pub mod opaque {
 impl_opaque_keys! {
     pub struct SessionKeys {
         /// Primarily used for adding the executor authority key into the keystore in the dev mode.
-        pub executor: sp_executor::ExecutorKey,
+        pub executor: sp_domains::ExecutorKey,
     }
 }
 
@@ -259,7 +259,7 @@ parameter_types! {
 impl pallet_executor_registry::Config for Runtime {
     type Event = Event;
     type Currency = Balances;
-    type StakeWeight = sp_executor::StakeWeight;
+    type StakeWeight = sp_domains::StakeWeight;
     type MinExecutorStake = MinExecutorStake;
     type MaxExecutorStake = MaxExecutorStake;
     type MinExecutors = MinExecutors;
@@ -419,8 +419,8 @@ impl_runtime_apis! {
             ).encode()
         }
 
-        fn bundle_elections_params() -> sp_executor::BundleElectionParams {
-            sp_executor::BundleElectionParams {
+        fn bundle_elections_params() -> sp_domains::BundleElectionParams {
+            sp_domains::BundleElectionParams {
                 authorities: ExecutorRegistry::authorities().into(),
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),

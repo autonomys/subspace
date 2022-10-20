@@ -56,7 +56,7 @@
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
-//! [`FraudProof`]: ../sp_executor/struct.FraudProof.html
+//! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
 #![feature(drain_filter)]
 
@@ -88,7 +88,7 @@ use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
-use sp_executor::{
+use sp_domains::{
     Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
     InvalidTransactionProof, OpaqueBundle, SignedBundle,
 };

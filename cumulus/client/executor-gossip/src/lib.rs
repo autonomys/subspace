@@ -10,7 +10,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_executor::SignedBundle;
+use sp_domains::SignedBundle;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::fmt::Debug;

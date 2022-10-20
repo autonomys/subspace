@@ -21,7 +21,7 @@ use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParam
 use sc_consensus::StateAction;
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::{CacheKeyId, Error as ConsensusError};
-use sp_executor::ExecutorApi;
+use sp_domains::ExecutorApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::collections::HashMap;

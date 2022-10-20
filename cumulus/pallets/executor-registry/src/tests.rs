@@ -7,7 +7,7 @@ use frame_support::{assert_noop, assert_ok, bounded_vec, parameter_types};
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
-use sp_executor::{ExecutorPair, StakeWeight};
+use sp_domains::{ExecutorPair, StakeWeight};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 

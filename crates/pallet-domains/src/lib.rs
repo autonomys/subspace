@@ -26,7 +26,7 @@ use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
-use sp_executor::{
+use sp_domains::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
     BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, FraudProof,
@@ -43,7 +43,7 @@ mod pallet {
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_executor::{
+    use sp_domains::{
         BundleEquivocationProof, ExecutionReceipt, ExecutorPublicKey, FraudProof,
         InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
     };

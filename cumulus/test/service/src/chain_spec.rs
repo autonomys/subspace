@@ -3,7 +3,7 @@
 use cirrus_test_runtime::{AccountId, Balance, Signature};
 use sc_service::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_executor::ExecutorPublicKey;
+use sp_domains::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::SSC;
 

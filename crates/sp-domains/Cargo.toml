@@ -1,12 +1,12 @@
 [package]
-name = "sp-executor"
+name = "sp-domains"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
-description = "Primitives of executor pallet"
+description = "Primitives of domains pallet"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

@@ -69,7 +69,7 @@ cirrus-client-executor-gossip = { path = "../client/executor-gossip" }
 cirrus-primitives = { path = "../primitives" }
 
 # Subspace dependencies
-sp-executor = { path = "../../crates/sp-executor" }
+sp-domains = { path = "../../crates/sp-domains" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 

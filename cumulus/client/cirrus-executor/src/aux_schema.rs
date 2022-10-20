@@ -5,7 +5,7 @@ use sc_client_api::backend::AuxStore;
 use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
-use sp_executor::ExecutionReceipt;
+use sp_domains::ExecutionReceipt;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
@@ -385,7 +385,7 @@ mod tests {
     use subspace_test_runtime::Block as PBlock;
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
-    type ExecutionReceipt = sp_executor::ExecutionReceipt<BlockNumber, Hash, Hash>;
+    type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, Hash>;
 
     fn create_execution_receipt(primary_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {

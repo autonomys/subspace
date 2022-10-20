@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 parity-scale-codec = { version = "3.1.5", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sp-executor = { version = "0.1.0", default-features = false, path = "../../crates/sp-executor" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../../crates/sp-domains" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
@@ -25,7 +25,7 @@ std = [
 	"parity-scale-codec/std",
 	"sp-api/std",
 	"sp-core/std",
-	"sp-executor/std",
+	"sp-domains/std",
 	"sp-runtime/std",
 	"sp-std/std",
 ]

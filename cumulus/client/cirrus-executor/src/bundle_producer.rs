@@ -9,7 +9,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
-use sp_executor::{
+use sp_domains::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
     Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorPublicKey, ExecutorSignature,

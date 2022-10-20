@@ -40,7 +40,7 @@ tokio = { version = "1.20.1", features = ["macros"] }
 cirrus-block-builder = { path = "../block-builder" }
 cirrus-client-executor-gossip = { path = "../executor-gossip" }
 cirrus-primitives = { path = "../../primitives" }
-sp-executor = { path = "../../../crates/sp-executor" }
+sp-domains = { path = "../../../crates/sp-domains" }
 subspace-fraud-proof = { path = "../../../crates/subspace-fraud-proof" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

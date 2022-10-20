@@ -44,7 +44,7 @@ sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "1a7c2
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false, version = "4.0.0-dev"}
 sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -104,7 +104,7 @@ std = [
 	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
 	"sp-core/std",
-	"sp-executor/std",
+	"sp-domains/std",
 	"sp-inherents/std",
 	"sp-objects/std",
 	"sp-offchain/std",

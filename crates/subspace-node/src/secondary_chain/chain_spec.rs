@@ -26,7 +26,7 @@ use cirrus_runtime::{
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
-use sp_executor::ExecutorPublicKey;
+use sp_domains::ExecutorPublicKey;
 use subspace_runtime_primitives::SSC;
 
 pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {

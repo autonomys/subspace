@@ -23,7 +23,7 @@ mod tests;
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_arithmetic::Percent;
-use sp_executor::ExecutorPublicKey;
+use sp_domains::ExecutorPublicKey;
 use sp_runtime::BoundedVec;
 
 type BalanceOf<T> =
@@ -40,7 +40,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
-    use sp_executor::ExecutorPublicKey;
+    use sp_domains::ExecutorPublicKey;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
         MaybeSerializeDeserialize, Zero,

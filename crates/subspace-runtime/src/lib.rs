@@ -53,7 +53,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
-use sp_executor::{
+use sp_domains::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
     SignedOpaqueBundle,
 };
@@ -765,7 +765,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
+    impl sp_domains::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>) {
             Domains::submit_transaction_bundle_unsigned(opaque_bundle)
         }
@@ -808,7 +808,7 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn executor_id() -> sp_executor::ExecutorPublicKey {
+        fn executor_id() -> sp_domains::ExecutorPublicKey {
             Domains::executor()
                 .map(|(_account_id, executor_id)| executor_id)
                 .expect("Executor must be provided; qed")
