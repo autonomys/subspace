@@ -145,7 +145,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     };
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_executor::Call::submit_fraud_proof {
+        pallet_domains::Call::submit_fraud_proof {
             fraud_proof: valid_fraud_proof.clone(),
         }
         .into(),
@@ -170,7 +170,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     };
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_executor::Call::submit_fraud_proof {
+        pallet_domains::Call::submit_fraud_proof {
             fraud_proof: invalid_fraud_proof,
         }
         .into(),
@@ -285,7 +285,7 @@ async fn set_new_code_should_work() {
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
-async fn pallet_executor_unsigned_extrinsics_should_work() {
+async fn pallet_domains_unsigned_extrinsics_should_work() {
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -346,7 +346,7 @@ async fn pallet_executor_unsigned_extrinsics_should_work() {
         .into_signed_opaque_bundle();
 
         let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_executor::Call::submit_transaction_bundle {
+            pallet_domains::Call::submit_transaction_bundle {
                 signed_opaque_bundle,
             }
             .into(),

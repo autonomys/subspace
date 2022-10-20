@@ -1,4 +1,4 @@
-use crate::{self as pallet_executor, BlockHash, ReceiptVotes, Receipts};
+use crate::{self as pallet_domains, BlockHash, ReceiptVotes, Receipts};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
@@ -23,7 +23,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system,
-        Executor: pallet_executor,
+        Domains: pallet_domains,
     }
 );
 
@@ -63,7 +63,7 @@ parameter_types! {
     pub const ConfirmationDepthK: u32 = 10;
 }
 
-impl pallet_executor::Config for Test {
+impl pallet_domains::Config for Test {
     type Event = Event;
     type SecondaryHash = H256;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
@@ -76,7 +76,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
         .build_storage::<Test>()
         .unwrap();
 
-    pallet_executor::GenesisConfig::<Test> {
+    pallet_domains::GenesisConfig::<Test> {
         executor: Some((
             100,
             ExecutorPair::from_seed(&U256::from(100u32).into()).public(),
@@ -175,53 +175,53 @@ fn submit_execution_receipt_incrementally_should_work() {
     new_test_ext().execute_with(|| {
         let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
         BlockHash::<Test>::insert(0, genesis_hash);
-        Executor::initialize_genesis_receipt(genesis_hash);
+        Domains::initialize_genesis_receipt(genesis_hash);
 
         (0..256).for_each(|index| {
             let block_hash = block_hashes[index];
             BlockHash::<Test>::insert((index + 1) as u64, block_hash);
 
-            assert_ok!(pallet_executor::Pallet::<Test>::pre_dispatch(
-                &pallet_executor::Call::submit_transaction_bundle {
+            assert_ok!(pallet_domains::Pallet::<Test>::pre_dispatch(
+                &pallet_domains::Call::submit_transaction_bundle {
                     signed_opaque_bundle: dummy_bundles[index].clone()
                 }
             ));
-            assert_ok!(Executor::submit_transaction_bundle(
+            assert_ok!(Domains::submit_transaction_bundle(
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
 
-            assert_eq!(Executor::finalized_receipt_number(), 0);
+            assert_eq!(Domains::finalized_receipt_number(), 0);
         });
 
         assert!(Receipts::<Test>::get(receipt_hash(257)).is_none());
-        assert_ok!(Executor::submit_transaction_bundle(
+        assert_ok!(Domains::submit_transaction_bundle(
             Origin::none(),
             dummy_bundles[256].clone(),
         ));
         // The oldest ER should be deleted.
         assert!(Receipts::<Test>::get(receipt_hash(1)).is_none());
-        assert_eq!(Executor::finalized_receipt_number(), 1);
+        assert_eq!(Domains::finalized_receipt_number(), 1);
         assert!(Receipts::<Test>::get(receipt_hash(257)).is_some());
 
         assert!(Receipts::<Test>::get(receipt_hash(2)).is_some());
         assert!(Receipts::<Test>::get(receipt_hash(258)).is_none());
 
         assert_noop!(
-            pallet_executor::Pallet::<Test>::pre_dispatch(
-                &pallet_executor::Call::submit_transaction_bundle {
+            pallet_domains::Pallet::<Test>::pre_dispatch(
+                &pallet_domains::Call::submit_transaction_bundle {
                     signed_opaque_bundle: dummy_bundles[258].clone()
                 }
             ),
             TransactionValidityError::Invalid(InvalidTransaction::Future)
         );
 
-        assert_ok!(Executor::submit_transaction_bundle(
+        assert_ok!(Domains::submit_transaction_bundle(
             Origin::none(),
             dummy_bundles[257].clone(),
         ));
         assert!(Receipts::<Test>::get(receipt_hash(2)).is_none());
-        assert_eq!(Executor::finalized_receipt_number(), 2);
+        assert_eq!(Domains::finalized_receipt_number(), 2);
         assert!(Receipts::<Test>::get(receipt_hash(258)).is_some());
     });
 }
@@ -238,13 +238,13 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
     let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
         System::set_block_number(1);
         System::initialize(&1, &System::parent_hash(), &Default::default());
-        <Executor as Hooks<BlockNumber>>::on_initialize(1);
+        <Domains as Hooks<BlockNumber>>::on_initialize(1);
         System::finalize();
 
         for b in 2..=n {
             System::set_block_number(b);
             System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
-            <Executor as Hooks<BlockNumber>>::on_initialize(b);
+            <Domains as Hooks<BlockNumber>>::on_initialize(b);
             System::finalize();
         }
     };
@@ -257,7 +257,7 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
         (0..255).for_each(|index| {
-            assert_ok!(Executor::submit_transaction_bundle(
+            assert_ok!(Domains::submit_transaction_bundle(
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
@@ -265,26 +265,26 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
-        assert_ok!(Executor::submit_transaction_bundle(
+        assert_ok!(Domains::submit_transaction_bundle(
             Origin::none(),
             dummy_bundles[255].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(0));
 
         assert!(BlockHash::<Test>::contains_key(1));
-        assert_ok!(Executor::submit_transaction_bundle(
+        assert_ok!(Domains::submit_transaction_bundle(
             Origin::none(),
             dummy_bundles[256].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(1));
 
         assert!(BlockHash::<Test>::contains_key(2));
-        assert_ok!(Executor::submit_transaction_bundle(
+        assert_ok!(Domains::submit_transaction_bundle(
             Origin::none(),
             dummy_bundles[257].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(2));
-        assert_eq!(Executor::finalized_receipt_number(), 2);
+        assert_eq!(Domains::finalized_receipt_number(), 2);
     });
 }
 
@@ -315,13 +315,13 @@ fn submit_bundle_with_many_reeipts_should_work() {
     let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
         System::set_block_number(1);
         System::initialize(&1, &System::parent_hash(), &Default::default());
-        <Executor as Hooks<BlockNumber>>::on_initialize(1);
+        <Domains as Hooks<BlockNumber>>::on_initialize(1);
         System::finalize();
 
         for b in 2..=n {
             System::set_block_number(b);
             System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
-            <Executor as Hooks<BlockNumber>>::on_initialize(b);
+            <Domains as Hooks<BlockNumber>>::on_initialize(b);
             System::finalize();
         }
     };
@@ -333,23 +333,23 @@ fn submit_bundle_with_many_reeipts_should_work() {
         // in System has been removed.
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
-        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle1));
-        assert_eq!(Executor::best_execution_chain_number(), 255);
+        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle1));
+        assert_eq!(Domains::best_execution_chain_number(), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
-        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle2));
+        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle2));
         assert!(!BlockHash::<Test>::contains_key(0));
 
         assert!(BlockHash::<Test>::contains_key(1));
-        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle3));
+        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle3));
         assert!(!BlockHash::<Test>::contains_key(1));
 
         assert!(BlockHash::<Test>::contains_key(2));
-        assert_ok!(Executor::submit_transaction_bundle(Origin::none(), bundle4));
+        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle4));
         assert!(!BlockHash::<Test>::contains_key(2));
-        assert_eq!(Executor::finalized_receipt_number(), 2);
-        assert_eq!(Executor::best_execution_chain_number(), 258);
+        assert_eq!(Domains::finalized_receipt_number(), 2);
+        assert_eq!(Domains::best_execution_chain_number(), 258);
     });
 }
 
@@ -377,7 +377,7 @@ fn submit_fraud_proof_should_work() {
             let block_hash = block_hashes[index];
             BlockHash::<Test>::insert((index + 1) as u64, block_hash);
 
-            assert_ok!(Executor::submit_transaction_bundle(
+            assert_ok!(Domains::submit_transaction_bundle(
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
@@ -389,8 +389,8 @@ fn submit_fraud_proof_should_work() {
             assert_eq!(votes.next(), None);
         });
 
-        assert_ok!(Executor::submit_fraud_proof(Origin::none(), dummy_proof));
-        assert_eq!(Executor::best_execution_chain_number(), 99);
+        assert_ok!(Domains::submit_fraud_proof(Origin::none(), dummy_proof));
+        assert_eq!(Domains::best_execution_chain_number(), 99);
         let receipt_hash = dummy_bundles[98].clone().bundle.receipts[0].hash();
         assert!(Receipts::<Test>::get(receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.

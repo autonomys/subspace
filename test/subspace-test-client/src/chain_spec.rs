@@ -6,7 +6,7 @@ use sp_executor::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, SubspaceConfig, SudoConfig,
     SystemConfig, VestingConfig, SSC, WASM_BINARY,
 };
 
@@ -96,7 +96,7 @@ fn create_genesis_config(
             allow_authoring_by: AllowAuthoringBy::Anyone,
         },
         vesting: VestingConfig { vesting },
-        executor: ExecutorConfig {
+        domains: DomainsConfig {
             executor: Some(executor_authority),
         },
     }

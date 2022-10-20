@@ -28,7 +28,7 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_executor::ExecutorPublicKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, ExecutorConfig, GenesisConfig, RuntimeConfigsConfig,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
     SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
@@ -415,7 +415,7 @@ fn subspace_genesis_config(
             allow_authoring_by,
         },
         vesting: VestingConfig { vesting },
-        executor: ExecutorConfig {
+        domains: DomainsConfig {
             executor: Some(executor_authority),
         },
         runtime_configs: RuntimeConfigsConfig { enable_executor },

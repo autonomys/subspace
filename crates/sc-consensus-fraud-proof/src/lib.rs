@@ -31,7 +31,7 @@ use subspace_fraud_proof::VerifyFraudProof;
 
 /// A block-import handler for Subspace fraud proof.
 ///
-/// This scans each imported block for a fraud proof. If the extrinsc `pallet_executor::Call::submit_fraud_proof`
+/// This scans each imported block for a fraud proof. If the extrinsc `pallet_domains::Call::submit_fraud_proof`
 /// is found, ensure the included fraud proof in it is valid.
 ///
 /// This block import object should be used with the subspace consensus block import together until

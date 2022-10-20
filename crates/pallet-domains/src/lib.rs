@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Pallet Executor
+//! Pallet Domains
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(is_sorted)]

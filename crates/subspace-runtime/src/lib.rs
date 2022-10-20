@@ -382,7 +382,7 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
 }
 
-impl pallet_executor::Config for Runtime {
+impl pallet_domains::Config for Runtime {
     type Event = Event;
     type SecondaryHash = cirrus_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
@@ -471,7 +471,7 @@ construct_runtime!(
         Feeds: pallet_feeds = 9,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
-        Executor: pallet_executor = 12,
+        Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
 
         Vesting: orml_vesting = 13,
@@ -527,7 +527,7 @@ fn extract_bundles(
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+            if let Call::Domains(pallet_domains::Call::submit_transaction_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -545,7 +545,7 @@ fn extract_receipts(
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+            if let Call::Domains(pallet_domains::Call::submit_transaction_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -562,7 +562,7 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_fraud_proof { fraud_proof }) =
+            if let Call::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
                 uxt.function
             {
                 Some(fraud_proof)
@@ -767,23 +767,23 @@ impl_runtime_apis! {
 
     impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
         fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>) {
-            Executor::submit_transaction_bundle_unsigned(opaque_bundle)
+            Domains::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
-            Executor::submit_fraud_proof_unsigned(fraud_proof)
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
             bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
         ) {
-            Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
+            Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
 
         fn submit_invalid_transaction_proof_unsigned(
             invalid_transaction_proof: InvalidTransactionProof,
         ) {
-            Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
+            Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
         fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
@@ -809,17 +809,17 @@ impl_runtime_apis! {
         }
 
         fn executor_id() -> sp_executor::ExecutorPublicKey {
-            Executor::executor()
+            Domains::executor()
                 .map(|(_account_id, executor_id)| executor_id)
                 .expect("Executor must be provided; qed")
         }
 
         fn best_execution_chain_number() -> NumberFor<Block> {
-            Executor::best_execution_chain_number()
+            Domains::best_execution_chain_number()
         }
 
         fn oldest_receipt_number() -> NumberFor<Block> {
-            Executor::oldest_receipt_number()
+            Domains::oldest_receipt_number()
         }
 
         fn maximum_receipt_drift() -> NumberFor<Block> {

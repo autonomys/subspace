@@ -25,7 +25,7 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 hex-literal = { version = "0.3.3", optional = true }
 orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../orml/vesting" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
+pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../pallet-grandpa-finality-verifier" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
@@ -84,7 +84,7 @@ std = [
 	"frame-system-rpc-runtime-api/std",
 	"orml-vesting/std",
 	"pallet-balances/std",
-	"pallet-executor/std",
+	"pallet-domains/std",
 	"pallet-feeds/std",
 	"pallet-grandpa-finality-verifier/std",
 	"pallet-object-store/std",

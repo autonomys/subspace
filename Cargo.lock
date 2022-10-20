@@ -814,7 +814,7 @@ dependencies = [
  "futures-timer",
  "merkletree",
  "pallet-balances",
- "pallet-executor",
+ "pallet-domains",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
@@ -4513,7 +4513,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-executor"
+name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
  "frame-support",
@@ -8191,7 +8191,7 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
- "pallet-executor",
+ "pallet-domains",
  "pallet-feeds",
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
@@ -8347,7 +8347,7 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
- "pallet-executor",
+ "pallet-domains",
  "pallet-feeds",
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",

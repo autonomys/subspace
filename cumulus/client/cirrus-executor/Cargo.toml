@@ -48,7 +48,7 @@ subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primiti
 [dev-dependencies]
 cirrus-test-service = { path = "../../test/service" }
 pallet-balances = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-pallet-executor = { path = "../../../crates/pallet-executor" }
+pallet-domains = { path = "../../../crates/pallet-domains" }
 sc-cli = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 sc-service = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 sc-transaction-pool = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
