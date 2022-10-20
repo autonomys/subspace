@@ -21,7 +21,8 @@ use crate::well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use schnorrkel::vrf::{VRFOutput, VRFProof};
+use schnorrkel::vrf::{VRFOutput, VRFProof, VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
+use schnorrkel::SignatureResult;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
@@ -34,14 +35,17 @@ use sp_std::borrow::Cow;
 use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
 
-const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
-
 /// Key type for Executor.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
+
+const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
+
+const ELECTION_RANDOMNESS_CONTEXT: &[u8] = b"election_randomness_context";
+
+type ElectionRandomness = [u8; core::mem::size_of::<u128>()];
 
 mod app {
     use super::KEY_TYPE;
@@ -59,13 +63,13 @@ pub type ExecutorSignature = app::Signature;
 pub type ExecutorPair = app::Pair;
 
 /// An executor authority identifier.
-pub type ExecutorId = app::Public;
+pub type ExecutorPublicKey = app::Public;
 
 /// A type that implements `BoundToRuntimeAppPublic`, used for executor signing key.
 pub struct ExecutorKey;
 
 impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
-    type Public = ExecutorId;
+    type Public = ExecutorPublicKey;
 }
 
 /// Stake weight in the domain bundle election.
@@ -117,19 +121,30 @@ impl<Hash: Encode> BundleHeader<Hash> {
     }
 }
 
+fn derive_election_randomness(
+    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    public_key: &ExecutorPublicKey,
+    slot_randomness: &Blake2b256Hash,
+) -> SignatureResult<ElectionRandomness> {
+    let in_out = VRFOutput(vrf_output).attach_input_hash(
+        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
+        make_local_randomness_transcript(slot_randomness),
+    )?;
+
+    Ok(in_out.make_bytes(ELECTION_RANDOMNESS_CONTEXT))
+}
+
 /// Returns the solution for the challenge of producing a bundle.
-pub fn derive_bundle_election_solution(domain_id: DomainId, vrf_output: &[u8]) -> u128 {
-    let local_domain_randomness = blake2b_256_hash_list(&[&domain_id.to_le_bytes(), vrf_output]);
+pub fn derive_bundle_election_solution(
+    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    public_key: &ExecutorPublicKey,
+    slot_randomness: &Blake2b256Hash,
+) -> SignatureResult<u128> {
+    let election_randomness = derive_election_randomness(vrf_output, public_key, slot_randomness)?;
 
-    let election_solution = u128::from_le_bytes(
-        local_domain_randomness
-            .split_at(core::mem::size_of::<u128>())
-            .0
-            .try_into()
-            .expect("Local domain randomness must fit into u128; qed"),
-    );
+    let election_solution = u128::from_le_bytes(election_randomness);
 
-    election_solution
+    Ok(election_solution)
 }
 
 /// Returns the election threshold based on the stake weight proportion and slot probability.
@@ -211,7 +226,7 @@ pub mod well_known_keys {
 /// Parameters for the bundle election.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleElectionParams {
-    pub authorities: Vec<(ExecutorId, StakeWeight)>,
+    pub authorities: Vec<(ExecutorPublicKey, StakeWeight)>,
     pub total_stake_weight: StakeWeight,
     pub slot_probability: (u64, u64),
 }
@@ -226,12 +241,12 @@ pub enum VrfProofError {
 
 /// Verify the vrf proof generated in the bundle election.
 pub fn verify_vrf_proof(
-    public_key: &[u8],
+    public_key: &ExecutorPublicKey,
     vrf_output: &[u8],
     vrf_proof: &[u8],
     slot_randomness: &Blake2b256Hash,
 ) -> Result<(), VrfProofError> {
-    let public_key = schnorrkel::PublicKey::from_bytes(public_key)
+    let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())
         .map_err(|_| VrfProofError::VrfSignatureConstructionError)?;
 
     public_key
@@ -271,7 +286,7 @@ pub fn read_bundle_election_params(
 
     let authorities =
         read_value(&AUTHORITIES)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
-    let authorities: Vec<(ExecutorId, StakeWeight)> =
+    let authorities: Vec<(ExecutorPublicKey, StakeWeight)> =
         Decode::decode(&mut authorities.as_slice())
             .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
@@ -294,14 +309,15 @@ pub fn read_bundle_election_params(
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ProofOfElection {
+    // TODO: remove it once confirmed useless.
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
-    pub vrf_output: Vec<u8>,
+    pub vrf_output: [u8; VRF_OUTPUT_LENGTH],
     /// VRF proof.
-    pub vrf_proof: Vec<u8>,
+    pub vrf_proof: [u8; VRF_PROOF_LENGTH],
     /// VRF public key.
-    pub vrf_public_key: Vec<u8>,
+    pub executor_public_key: ExecutorPublicKey,
     /// Slot randomness.
     pub slot_randomness: Blake2b256Hash,
     /// State root corresponding to the storage proof above.
@@ -311,12 +327,13 @@ pub struct ProofOfElection {
 }
 
 impl ProofOfElection {
-    pub fn dummy() -> Self {
+    #[cfg(feature = "std")]
+    pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id: DomainId::default(),
-            vrf_output: Vec::new(),
-            vrf_proof: Vec::new(),
-            vrf_public_key: Vec::new(),
+            vrf_output: [0u8; VRF_OUTPUT_LENGTH],
+            vrf_proof: [0u8; VRF_PROOF_LENGTH],
+            executor_public_key,
             slot_randomness: Blake2b256Hash::default(),
             state_root: H256::default(),
             storage_proof: StorageProof::empty(),
@@ -382,8 +399,6 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     pub proof_of_election: ProofOfElection,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
-    /// Signer of the signature.
-    pub signer: ExecutorId,
 }
 
 /// [`SignedBundle`] with opaque extrinsic.
@@ -408,7 +423,6 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
             bundle: self.bundle.into_opaque_bundle(),
             proof_of_election: self.proof_of_election,
             signature: self.signature,
-            signer: self.signer,
         }
     }
 }
@@ -432,27 +446,6 @@ impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
     ExecutionReceipt<Number, Hash, SecondaryHash>
 {
     /// Returns the hash of this execution receipt.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
-}
-
-// TODO: Remove this when the bundle gossip is disabled.
-/// Signed version of [`ExecutionReceipt`] which will be gossiped over the executors network.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SignedExecutionReceipt<Number, Hash, SecondaryHash> {
-    /// Execution receipt
-    pub execution_receipt: ExecutionReceipt<Number, Hash, SecondaryHash>,
-    /// Signature of the execution receipt.
-    pub signature: ExecutorSignature,
-    /// Signer of the signature.
-    pub signer: ExecutorId,
-}
-
-impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
-    SignedExecutionReceipt<Number, Hash, SecondaryHash>
-{
-    /// Returns the hash of signed execution receipt.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
@@ -672,7 +665,7 @@ sp_api::decl_runtime_apis! {
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
 
         /// Returns the authority id of current executor.
-        fn executor_id() -> ExecutorId;
+        fn executor_id() -> ExecutorPublicKey;
 
         /// Returns the best execution chain number.
         fn best_execution_chain_number() -> NumberFor<Block>;

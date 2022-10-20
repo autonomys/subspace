@@ -29,7 +29,7 @@ pub use pallet::*;
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
-    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof,
+    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, FraudProof,
     InvalidTransactionCode, InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
@@ -44,8 +44,8 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_executor::{
-        BundleEquivocationProof, ExecutionReceipt, ExecutorId, FraudProof, InvalidTransactionCode,
-        InvalidTransactionProof, SignedOpaqueBundle,
+        BundleEquivocationProof, ExecutionReceipt, ExecutorPublicKey, FraudProof,
+        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
         BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
@@ -284,10 +284,11 @@ mod pallet {
         }
     }
 
-    /// A tuple of (stable_executor_id, executor_signing_key).
+    /// A tuple of (stable_executor_account_id, executor_public_key).
     #[pallet::storage]
     #[pallet::getter(fn executor)]
-    pub(super) type Executor<T: Config> = StorageValue<_, (T::AccountId, ExecutorId), OptionQuery>;
+    pub(super) type Executor<T: Config> =
+        StorageValue<_, (T::AccountId, ExecutorPublicKey), OptionQuery>;
 
     /// Map of block number to block hash.
     ///
@@ -343,7 +344,7 @@ mod pallet {
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
-        pub executor: Option<(T::AccountId, ExecutorId)>,
+        pub executor: Option<(T::AccountId, ExecutorPublicKey)>,
     }
 
     #[cfg(feature = "std")]
@@ -596,21 +597,18 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle_election(
-        executor_id: &ExecutorId,
-        proof_of_election: &ProofOfElection,
-    ) -> Result<(), BundleError> {
+    fn validate_bundle_election(proof_of_election: &ProofOfElection) -> Result<(), BundleError> {
         let ProofOfElection {
-            domain_id,
+            domain_id: _,
             vrf_output,
             vrf_proof,
-            vrf_public_key,
+            executor_public_key,
             slot_randomness,
             state_root,
             storage_proof,
         } = proof_of_election;
 
-        verify_vrf_proof(vrf_public_key, vrf_output, vrf_proof, slot_randomness)
+        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, slot_randomness)
             .map_err(|_| BundleError::BadVrfProof)?;
 
         // TODO: verify `state_root` is valid.
@@ -625,7 +623,7 @@ impl<T: Config> Pallet<T> {
         let stake_weight = authorities
             .iter()
             .find_map(|(authority, weight)| {
-                if authority == executor_id {
+                if authority == executor_public_key {
                     Some(weight)
                 } else {
                     None
@@ -633,7 +631,9 @@ impl<T: Config> Pallet<T> {
             })
             .ok_or(BundleError::AuthorityNotFound)?;
 
-        let election_solution = derive_bundle_election_solution(*domain_id, vrf_output);
+        let election_solution =
+            derive_bundle_election_solution(*vrf_output, executor_public_key, slot_randomness)
+                .map_err(|_| BundleError::BadVrfProof)?;
 
         let threshold = calculate_bundle_election_threshold(
             *stake_weight,
@@ -710,14 +710,16 @@ impl<T: Config> Pallet<T> {
             bundle,
             proof_of_election,
             signature,
-            signer,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), BundleError> {
-        if !signer.verify(&bundle.hash(), signature) {
+        if !proof_of_election
+            .executor_public_key
+            .verify(&bundle.hash(), signature)
+        {
             return Err(BundleError::BadSignature);
         }
 
-        Self::validate_bundle_election(signer, proof_of_election)?;
+        Self::validate_bundle_election(proof_of_election)?;
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 

@@ -26,7 +26,7 @@ use cirrus_runtime::{
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
-use sp_executor::ExecutorId;
+use sp_executor::ExecutorPublicKey;
 use subspace_runtime_primitives::SSC;
 
 pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
@@ -48,7 +48,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Alice"),
                     1_000 * SSC,
                     get_account_id_from_seed("Alice"),
-                    get_public_key_from_seed::<ExecutorId>("Alice"),
+                    get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
                 )],
             )
         },
@@ -88,7 +88,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Alice"),
                     1_000 * SSC,
                     get_account_id_from_seed("Alice"),
-                    get_public_key_from_seed::<ExecutorId>("Alice"),
+                    get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
                 )],
             )
         },
@@ -124,7 +124,7 @@ pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Alice"),
                     1_000 * SSC,
                     get_account_id_from_seed("Alice"),
-                    get_public_key_from_seed::<ExecutorId>("Alice"),
+                    get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
                 )],
             )
         },
@@ -144,7 +144,7 @@ pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
 
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
-    executors: Vec<(AccountId, Balance, AccountId, ExecutorId)>,
+    executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {

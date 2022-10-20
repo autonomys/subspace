@@ -12,7 +12,7 @@ use sp_core::H256;
 use sp_executor::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorId, ExecutorSignature,
+    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
     ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
@@ -176,7 +176,7 @@ where
 
         let best_hash = self.client.info().best_hash;
 
-        if let Some((executor_id, proof_of_election)) =
+        if let Some(proof_of_election) =
             self.solve_bundle_election_challenge(best_hash, slot_randomness)?
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
@@ -184,8 +184,8 @@ where
             let to_sign = bundle.hash();
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
-                ExecutorId::ID,
-                &executor_id.clone().into(),
+                ExecutorPublicKey::ID,
+                &proof_of_election.executor_public_key.clone().into(),
                 to_sign.as_ref(),
             ) {
                 Ok(Some(signature)) => {
@@ -199,7 +199,6 @@ where
                                 )))
                             },
                         )?,
-                        signer: executor_id,
                     };
 
                     // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
@@ -225,8 +224,7 @@ where
         &self,
         best_hash: Block::Hash,
         slot_randomness: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<(ExecutorId, ProofOfElection)>> {
-        // TODO: calculate the threshold, local_solution and then compare them to see if the solution is valid.
+    ) -> sp_blockchain::Result<Option<ProofOfElection>> {
         let best_block_id = BlockId::Hash(best_hash);
 
         let BundleElectionParams {
@@ -252,7 +250,7 @@ where
         for (authority_id, stake_weight) in authorities {
             if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
                 &*self.keystore,
-                ExecutorId::ID,
+                ExecutorPublicKey::ID,
                 authority_id.as_ref(),
                 transcript_data.clone(),
             ) {
@@ -260,9 +258,15 @@ where
                 const SYSTEM_DOMAIN_ID: u64 = 0;
 
                 let election_solution = derive_bundle_election_solution(
-                    SYSTEM_DOMAIN_ID,
-                    vrf_signature.output.as_bytes(),
-                );
+                    vrf_signature.output.to_bytes(),
+                    &authority_id,
+                    &slot_randomness,
+                )
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to derive bundle election solution: {err}",
+                    )))
+                })?;
 
                 let threshold = calculate_bundle_election_threshold(
                     stake_weight,
@@ -291,25 +295,17 @@ where
                             )))
                         })?;
 
-                    // TODO: vrf_public_key and authority_id are essentially the same, merge them?
-                    let vrf_public_key = schnorrkel::PublicKey::from_bytes(authority_id.as_ref())
-                        .map_err(|err| {
-                        sp_blockchain::Error::Application(Box::from(format!(
-                            "Failed to convert ExecutorId to schnorrkel::PublicKey: {err}",
-                        )))
-                    })?;
-
                     let proof_of_election = ProofOfElection {
                         domain_id: SYSTEM_DOMAIN_ID,
-                        vrf_output: vrf_signature.output.to_bytes().to_vec(),
-                        vrf_proof: vrf_signature.proof.to_bytes().to_vec(),
-                        vrf_public_key: vrf_public_key.to_bytes().to_vec(),
+                        vrf_output: vrf_signature.output.to_bytes(),
+                        vrf_proof: vrf_signature.proof.to_bytes(),
+                        executor_public_key: authority_id,
                         slot_randomness,
                         state_root,
                         storage_proof,
                     };
 
-                    return Ok(Some((authority_id, proof_of_election)));
+                    return Ok(Some(proof_of_election));
                 }
             }
         }

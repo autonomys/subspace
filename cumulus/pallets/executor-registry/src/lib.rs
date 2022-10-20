@@ -23,7 +23,7 @@ mod tests;
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_arithmetic::Percent;
-use sp_executor::ExecutorId;
+use sp_executor::ExecutorPublicKey;
 use sp_runtime::BoundedVec;
 
 type BalanceOf<T> =
@@ -40,7 +40,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
-    use sp_executor::ExecutorId;
+    use sp_executor::ExecutorPublicKey;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
         MaybeSerializeDeserialize, Zero,
@@ -131,7 +131,7 @@ mod pallet {
     #[scale_info(skip_type_params(T))]
     pub struct ExecutorConfig<T: Config> {
         /// Executor's signing key.
-        pub public_key: ExecutorId,
+        pub public_key: ExecutorPublicKey,
 
         /// Address for receiving the execution reward.
         pub reward_address: T::AccountId,
@@ -155,7 +155,7 @@ mod pallet {
         #[pallet::weight(10_000)]
         pub fn register(
             origin: OriginFor<T>,
-            public_key: ExecutorId,
+            public_key: ExecutorPublicKey,
             reward_address: T::AccountId,
             is_active: bool,
             stake: BalanceOf<T>,
@@ -433,7 +433,10 @@ mod pallet {
         /// It won't take effect until next epoch.
         // TODO: proper weight
         #[pallet::weight(10_000)]
-        pub fn update_public_key(origin: OriginFor<T>, next_key: ExecutorId) -> DispatchResult {
+        pub fn update_public_key(
+            origin: OriginFor<T>,
+            next_key: ExecutorPublicKey,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             ensure!(
@@ -478,7 +481,7 @@ mod pallet {
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
         <T as frame_system::Config>::AccountId,
-        ExecutorId,
+        ExecutorPublicKey,
     );
 
     #[pallet::genesis_config]
@@ -510,7 +513,7 @@ mod pallet {
             );
 
             let mut authorities = Vec::new();
-            for (executor, initial_stake, reward_address, executor_id) in self.executors.clone() {
+            for (executor, initial_stake, reward_address, public_key) in self.executors.clone() {
                 assert!(
                     initial_stake >= T::MinExecutorStake::get()
                         && initial_stake <= T::MaxExecutorStake::get(),
@@ -523,14 +526,14 @@ mod pallet {
 
                 Pallet::<T>::apply_register(
                     &executor,
-                    executor_id.clone(),
+                    public_key.clone(),
                     reward_address,
                     true,
                     initial_stake,
                 );
 
                 let stake_weight: T::StakeWeight = initial_stake.into();
-                authorities.push((executor_id, stake_weight));
+                authorities.push((public_key, stake_weight));
             }
 
             let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
@@ -621,7 +624,7 @@ mod pallet {
         /// An executor updated its public key.
         PublicKeyUpdated {
             who: T::AccountId,
-            next_key: ExecutorId,
+            next_key: ExecutorPublicKey,
         },
 
         /// An executor updated its reward address.
@@ -716,18 +719,21 @@ mod pallet {
     /// Pending executor public key for the next epoch.
     #[pallet::storage]
     pub(super) type NextKey<T: Config> =
-        StorageMap<_, Twox64Concat, T::AccountId, ExecutorId, OptionQuery>;
+        StorageMap<_, Twox64Concat, T::AccountId, ExecutorPublicKey, OptionQuery>;
 
     /// A map tracking the owner of current and next key of each executor.
     #[pallet::storage]
     pub(super) type KeyOwner<T: Config> =
-        StorageMap<_, Twox64Concat, ExecutorId, T::AccountId, OptionQuery>;
+        StorageMap<_, Twox64Concat, ExecutorPublicKey, T::AccountId, OptionQuery>;
 
     /// Current epoch executor authorities.
     #[pallet::storage]
     #[pallet::getter(fn authorities)]
-    pub(super) type Authorities<T: Config> =
-        StorageValue<_, BoundedVec<(ExecutorId, T::StakeWeight), T::MaxExecutors>, ValueQuery>;
+    pub(super) type Authorities<T: Config> = StorageValue<
+        _,
+        BoundedVec<(ExecutorPublicKey, T::StakeWeight), T::MaxExecutors>,
+        ValueQuery,
+    >;
 
     /// Total stake weight of authorities.
     #[pallet::storage]
@@ -749,7 +755,7 @@ impl<T: Config> Pallet<T> {
 
     fn apply_register(
         who: &T::AccountId,
-        public_key: ExecutorId,
+        public_key: ExecutorPublicKey,
         reward_address: T::AccountId,
         is_active: bool,
         stake: BalanceOf<T>,

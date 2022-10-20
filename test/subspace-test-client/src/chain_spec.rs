@@ -2,7 +2,7 @@
 
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_executor::ExecutorId;
+use sp_executor::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
@@ -57,7 +57,7 @@ pub fn subspace_local_testnet_config() -> TestChainSpec {
                 vec![],
                 (
                     get_account_id_from_seed("Alice"),
-                    get_from_seed::<ExecutorId>("Alice"),
+                    get_from_seed::<ExecutorPublicKey>("Alice"),
                 ),
             )
         },
@@ -77,7 +77,7 @@ fn create_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-    executor_authority: (AccountId, ExecutorId),
+    executor_authority: (AccountId, ExecutorPublicKey),
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
