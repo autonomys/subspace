@@ -15,7 +15,7 @@ use sc_transaction_pool_api::{
 };
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
-use sp_executor::ExecutorApi;
+use sp_domains::ExecutorApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
 use sp_runtime::transaction_validity::{
@@ -65,7 +65,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     fn new(
@@ -106,7 +107,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -160,7 +162,7 @@ where
                                         Err(err) => {
                                             tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
                                             Err(TxPoolError::InvalidTransaction(
-                                                sp_executor::InvalidTransactionCode::FraudProof.into(),
+                                                sp_domains::InvalidTransactionCode::FraudProof.into(),
                                             )
                                             .into())
                                         }
@@ -267,7 +269,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -414,7 +417,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, cirrus_primitives::Hash>,
+    Client::Api:
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();

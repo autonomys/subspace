@@ -19,15 +19,15 @@
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
-use cirrus_runtime::{
-    AccountId, Balance, BalancesConfig, ExecutorRegistryConfig, GenesisConfig, SystemConfig,
-    WASM_BINARY,
-};
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
-use sp_executor::ExecutorPublicKey;
+use sp_domains::ExecutorPublicKey;
 use subspace_runtime_primitives::SSC;
+use system_domain_runtime::{
+    AccountId, Balance, BalancesConfig, ExecutorRegistryConfig, GenesisConfig, SystemConfig,
+    WASM_BINARY,
+};
 
 pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(

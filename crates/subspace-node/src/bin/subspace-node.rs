@@ -16,7 +16,6 @@
 
 //! Subspace node implementation.
 
-use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -30,6 +29,7 @@ use std::any::TypeId;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration};
+use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
 /// Secondary executor instance.
 pub struct SecondaryExecutorDispatch;
@@ -41,11 +41,11 @@ impl NativeExecutionDispatch for SecondaryExecutorDispatch {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        cirrus_runtime::api::dispatch(method, data)
+        system_domain_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        cirrus_runtime::native_version()
+        system_domain_runtime::native_version()
     }
 }
 
@@ -423,13 +423,13 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                    let secondary_chain_node_fut = cirrus_node::service::new_full::<
+                    let secondary_chain_node_fut = domain_service::new_full::<
                         _,
                         _,
                         _,
                         _,
                         _,
-                        cirrus_runtime::RuntimeApi,
+                        system_domain_runtime::RuntimeApi,
                         SecondaryExecutorDispatch,
                     >(
                         secondary_chain_config,

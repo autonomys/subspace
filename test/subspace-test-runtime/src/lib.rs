@@ -49,7 +49,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
-use sp_executor::{
+use sp_domains::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
     SignedOpaqueBundle,
 };
@@ -471,9 +471,9 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
 }
 
-impl pallet_executor::Config for Runtime {
+impl pallet_domains::Config for Runtime {
     type Event = Event;
-    type SecondaryHash = cirrus_primitives::Hash;
+    type SecondaryHash = system_runtime_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -598,7 +598,7 @@ construct_runtime!(
         Feeds: pallet_feeds = 6,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
         ObjectStore: pallet_object_store = 10,
-        Executor: pallet_executor = 11,
+        Domains: pallet_domains = 11,
 
         Vesting: orml_vesting = 7,
 
@@ -815,11 +815,11 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 
 fn extract_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+            if let Call::Domains(pallet_domains::Call::submit_transaction_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -833,11 +833,11 @@ fn extract_bundles(
 
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, cirrus_primitives::Hash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, system_runtime_primitives::Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_transaction_bundle {
+            if let Call::Domains(pallet_domains::Call::submit_transaction_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -854,7 +854,7 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Executor(pallet_executor::Call::submit_fraud_proof { fraud_proof }) =
+            if let Call::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
                 uxt.function
             {
                 Some(fraud_proof)
@@ -1057,34 +1057,34 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_executor::ExecutorApi<Block, cirrus_primitives::Hash> for Runtime {
-        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>) {
-            Executor::submit_transaction_bundle_unsigned(opaque_bundle)
+    impl sp_domains::ExecutorApi<Block, system_runtime_primitives::Hash> for Runtime {
+        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>) {
+            Domains::submit_transaction_bundle_unsigned(opaque_bundle)
         }
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
-            Executor::submit_fraud_proof_unsigned(fraud_proof)
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
             bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
         ) {
-            Executor::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
+            Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
 
         fn submit_invalid_transaction_proof_unsigned(
             invalid_transaction_proof: InvalidTransactionProof,
         ) {
-            Executor::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
+            Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
             extract_bundles(extrinsics)
         }
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, cirrus_primitives::Hash>> {
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
             extract_receipts(extrinsics)
         }
 
@@ -1100,18 +1100,12 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn executor_id() -> sp_executor::ExecutorPublicKey {
-            Executor::executor()
-                .map(|(_account_id, executor_id)| executor_id)
-                .expect("Executor must be provided; qed")
-        }
-
         fn best_execution_chain_number() -> NumberFor<Block> {
-            Executor::best_execution_chain_number()
+            Domains::best_execution_chain_number()
         }
 
         fn oldest_receipt_number() -> NumberFor<Block> {
-            Executor::oldest_receipt_number()
+            Domains::oldest_receipt_number()
         }
 
         fn maximum_receipt_drift() -> NumberFor<Block> {

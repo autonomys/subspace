@@ -2,12 +2,11 @@
 
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_executor::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, ExecutorConfig, GenesisConfig, SubspaceConfig, SudoConfig,
-    SystemConfig, VestingConfig, SSC, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, SSC, WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
@@ -55,10 +54,6 @@ pub fn subspace_local_testnet_config() -> TestChainSpec {
                     (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
                 ],
                 vec![],
-                (
-                    get_account_id_from_seed("Alice"),
-                    get_from_seed::<ExecutorPublicKey>("Alice"),
-                ),
             )
         },
         vec![],
@@ -77,7 +72,6 @@ fn create_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-    executor_authority: (AccountId, ExecutorPublicKey),
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -96,8 +90,5 @@ fn create_genesis_config(
             allow_authoring_by: AllowAuthoringBy::Anyone,
         },
         vesting: VestingConfig { vesting },
-        executor: ExecutorConfig {
-            executor: Some(executor_authority),
-        },
     }
 }

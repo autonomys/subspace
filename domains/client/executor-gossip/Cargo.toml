@@ -1,0 +1,20 @@
+[package]
+name = "cirrus-client-executor-gossip"
+version = "0.1.0"
+authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+# Substrate dependencies
+sc-network = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sc-network-gossip = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sc-utils = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+
+futures = "0.3.21"
+parity-scale-codec = { version = "3.1.5", features = ["derive"] }
+parking_lot = "0.12.1"
+tracing = "0.1.36"
+
+sp-domains = { path = "../../../crates/sp-domains" }

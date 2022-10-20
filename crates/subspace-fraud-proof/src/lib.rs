@@ -16,7 +16,7 @@ use sc_client_api::backend;
 use sp_api::{ProvideRuntimeApi, StateBackend, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
-use sp_executor::{ExecutionPhase, ExecutorApi, FraudProof, VerificationError};
+use sp_domains::{ExecutionPhase, ExecutorApi, FraudProof, VerificationError};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::{TrieBackend, TrieBackendStorage};
@@ -291,7 +291,7 @@ where
 /// Verify fraud proof.
 pub trait VerifyFraudProof {
     /// Verifies fraud proof.
-    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError>;
+    fn verify_fraud_proof(&self, proof: &sp_domains::FraudProof) -> Result<(), VerificationError>;
 }
 
 impl<PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof
@@ -305,7 +305,7 @@ where
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode + Send + Sync,
 {
-    fn verify_fraud_proof(&self, proof: &sp_executor::FraudProof) -> Result<(), VerificationError> {
+    fn verify_fraud_proof(&self, proof: &sp_domains::FraudProof) -> Result<(), VerificationError> {
         self.verify(proof)
     }
 }
