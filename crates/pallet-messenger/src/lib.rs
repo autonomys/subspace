@@ -25,9 +25,11 @@ mod mock;
 mod tests;
 
 mod messages;
+mod relayer;
 mod verification;
 
 use codec::{Decode, Encode};
+use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -87,6 +89,8 @@ pub enum OutboxMessageResult {
 }
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
+pub(crate) type BalanceOf<T> =
+    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 #[frame_support::pallet]
 mod pallet {
@@ -94,12 +98,14 @@ mod pallet {
         CrossDomainMessage, Message, Payload, ProtocolMessageRequest, RequestResponse,
         VersionedPayload,
     };
+    use crate::relayer::{RelayerId, RelayerInfo};
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        Channel, ChannelId, ChannelState, InitiateChannelParams, MessageId, Nonce,
+        BalanceOf, Channel, ChannelId, ChannelState, InitiateChannelParams, MessageId, Nonce,
         OutboxMessageResult, StateRootOf, U256,
     };
     use frame_support::pallet_prelude::*;
+    use frame_support::traits::ReservableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
@@ -119,6 +125,12 @@ mod pallet {
         fn get_endpoint_response_handler(
             endpoint: &Endpoint,
         ) -> Option<Box<dyn EndpointHandler<Self::DomainId, MessageId>>>;
+        /// Currency type pallet uses for fees and deposits.
+        type Currency: ReservableCurrency<Self::AccountId>;
+        /// Maximum number of relayers that can join this domain.
+        type MaximumRelayers: Get<u32>;
+        /// Relayer deposit to become a relayer for this Domain.
+        type RelayerDeposit: Get<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -186,6 +198,20 @@ mod pallet {
         OptionQuery,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn relayers_info)]
+    pub(super) type RelayersInfo<T: Config> =
+        StorageMap<_, Identity, RelayerId<T>, RelayerInfo<T::AccountId, BalanceOf<T>>, OptionQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn relayers)]
+    pub(super) type Relayers<T: Config> =
+        StorageValue<_, BoundedVec<RelayerId<T>, T::MaximumRelayers>, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn next_relayer_idx)]
+    pub(super) type NextRelayerIdx<T: Config> = StorageValue<_, u32, ValueQuery>;
+
     /// `pallet-messenger` events
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -219,6 +245,7 @@ mod pallet {
             domain_id: T::DomainId,
             channel_id: ChannelId,
             nonce: Nonce,
+            relayer_id: RelayerId<T>,
         },
 
         /// Emits when a message response is available for Outbox message.
@@ -230,7 +257,7 @@ mod pallet {
             nonce: Nonce,
         },
 
-        /// Emits outbox message event.
+        /// Emits outbox message result.
         OutboxMessageResult {
             domain_id: T::DomainId,
             channel_id: ChannelId,
@@ -252,6 +279,23 @@ mod pallet {
             /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
+            relayer_id: RelayerId<T>,
+        },
+
+        /// Emits when a relayer successfully joins the relayer set.
+        RelayerJoined {
+            /// Owner who controls the relayer.
+            owner: T::AccountId,
+            /// Relayer address to which rewards are paid.
+            relayer_id: RelayerId<T>,
+        },
+
+        /// Emits when a relayer exists the relayer set.
+        RelayerExited {
+            /// Owner who controls the relayer.
+            owner: T::AccountId,
+            /// Relayer address which exited the set.
+            relayer_id: RelayerId<T>,
         },
     }
 
@@ -331,6 +375,21 @@ mod pallet {
 
         /// Emits when there is no message available for the given nonce.
         MissingMessage,
+
+        /// Emits when relayer tries to re-join the relayers.
+        AlreadyRelayer,
+
+        /// Emits when a non relayer tries to do relayers specific actions.
+        NotRelayer,
+
+        /// Emits when there is mismatch between caller and relayer owner.
+        NotOwner,
+
+        /// Emits when a relayer tries to join when total relayers already reached maximum count.
+        MaximumRelayerCount,
+
+        /// Emits when there are no relayers to relay messages between domains.
+        NoRelayersToAssign,
     }
 
     #[pallet::call]
@@ -406,6 +465,22 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::process_outbox_message_responses(msg.src_domain_id, msg.channel_id)?;
+            Ok(())
+        }
+
+        /// Declare the desire to become a relayer for this domain by reserving the relayer deposit.
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::do_join_relayer_set(who, relayer_id)?;
+            Ok(())
+        }
+
+        /// Declare the desire to exit relaying for this domain.
+        #[pallet::weight((10_000, Pays::No))]
+        pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::do_exit_relayer_set(who, relayer_id)?;
             Ok(())
         }
     }

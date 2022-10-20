@@ -2,17 +2,20 @@ use crate::messages::{
     CrossDomainMessage, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use crate::mock::domain_a::{
-    new_test_ext as new_domain_a_ext, Event, Messenger, Origin, Runtime, System,
+    new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
+    RELAYER_ID,
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
     DomainId, TestExternalities,
 };
+use crate::relayer::RelayerInfo;
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
 use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
     InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
+use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
@@ -61,6 +64,7 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
         domain_id,
         channel_id,
         nonce: Nonce::zero(),
+        relayer_id: RELAYER_ID,
     }));
 }
 
@@ -96,6 +100,7 @@ fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonc
         domain_id,
         channel_id,
         nonce: Nonce::one(),
+        relayer_id: RELAYER_ID,
     }));
 }
 
@@ -305,6 +310,7 @@ fn send_message_between_domains(
                 domain_id: domain_b_id,
                 channel_id,
                 nonce: Nonce::one(),
+                relayer_id: RELAYER_ID,
             },
         ));
     });
@@ -474,6 +480,7 @@ fn channel_relay_request_and_response(
             domain_id: domain_a_id,
             channel_id,
             nonce,
+            relayer_id: domain_b::RELAYER_ID,
         }));
 
         let response =
@@ -604,6 +611,7 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
             domain_id: domain_b::SelfDomainId::get(),
             channel_id: U256::zero(),
             nonce: U256::one(),
+            relayer_id: RELAYER_ID,
         }));
         assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
         assert!(domain_a::Transporter::outgoing_transfers(
@@ -662,6 +670,7 @@ fn verify_transfer_on_domain(
             domain_id: domain_a::SelfDomainId::get(),
             channel_id: U256::zero(),
             nonce: U256::one(),
+            relayer_id: domain_b::RELAYER_ID,
         }));
         assert_eq!(domain_b::Balances::free_balance(&account_id), 1500);
     })
@@ -732,5 +741,121 @@ fn test_transport_funds_between_domains_failed_no_open_channel() {
             500,
         );
         assert_err!(res, crate::Error::<domain_a::Runtime>::NoOpenChannel);
+    });
+}
+
+#[test]
+fn test_join_relayer_low_balance() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    // account with no balance
+    let account_id = 2;
+    let relayer_id = 100;
+
+    domain_a_test_ext.execute_with(|| {
+        let res =
+            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        assert_err!(
+            res,
+            pallet_balances::Error::<domain_a::Runtime>::InsufficientBalance
+        );
+    });
+}
+
+#[test]
+fn test_join_relayer_set() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    // account with balance
+    let account_id = 1;
+    let relayer_id = 100;
+
+    domain_a_test_ext.execute_with(|| {
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 1000);
+        let res =
+            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        assert_ok!(res);
+        assert_eq!(
+            domain_a::Messenger::relayers_info(relayer_id).unwrap(),
+            RelayerInfo {
+                owner: account_id,
+                deposit_reserved: RelayerDeposit::get()
+            }
+        );
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+
+        // cannot rejoin again
+        let res =
+            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        assert_err!(res, crate::Error::<domain_a::Runtime>::AlreadyRelayer);
+
+        // get relayer, idx should increment
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, RELAYER_ID);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+
+        // get next relayer, idx should go beyond bound
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, relayer_id);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 2);
+
+        // get relayer should be back within bound and not skipped
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, RELAYER_ID);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+    });
+}
+
+#[test]
+fn test_exit_relayer_set() {
+    let mut domain_a_test_ext = domain_a::new_test_ext();
+    // account with balance
+    let account_id = 1;
+    let relayer_id_1 = 100;
+    let relayer_id_2 = 101;
+    let relayer_id_3 = 102;
+
+    domain_a_test_ext.execute_with(|| {
+        domain_a::Balances::make_free_balance_be(&account_id, 2000);
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 2000);
+        for relayer in [relayer_id_1, relayer_id_2, relayer_id_3] {
+            let res = domain_a::Messenger::join_relayer_set(
+                domain_a::Origin::signed(account_id),
+                relayer,
+            );
+            assert_ok!(res);
+            assert_eq!(
+                domain_a::Messenger::relayers_info(relayer).unwrap(),
+                RelayerInfo {
+                    owner: account_id,
+                    deposit_reserved: RelayerDeposit::get()
+                }
+            );
+        }
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, RELAYER_ID);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, relayer_id_1);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 2);
+
+        // relayer_1 exits
+        let res = domain_a::Messenger::exit_relayer_set(
+            domain_a::Origin::signed(account_id),
+            relayer_id_1,
+        );
+        assert_ok!(res);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+
+        // relayer_3 exits
+        let res = domain_a::Messenger::exit_relayer_set(
+            domain_a::Origin::signed(account_id),
+            relayer_id_3,
+        );
+        assert_ok!(res);
+        assert_eq!(domain_a::Messenger::next_relayer_idx(), 1);
+        let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
+        assert_eq!(assigned_relayer_id, relayer_id_2);
     });
 }
