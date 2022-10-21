@@ -7,7 +7,7 @@ use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
-use crate::single_disk_plot::plotting::{plot_sector, PlottingStatus};
+use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
@@ -664,7 +664,7 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
-                            match handle.block_on(plot_sector(
+                            if let Err(error) = handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
                                 |piece_index| rpc_client.get_piece(piece_index),
@@ -672,17 +672,21 @@ impl SingleDiskPlot {
                                 &farmer_protocol_info,
                                 io::Cursor::new(sector),
                                 io::Cursor::new(sector_metadata),
-                            ))? {
-                                PlottingStatus::PlottedSuccessfully => {
-                                    let mut metadata_header = metadata_header.lock();
-                                    metadata_header.sector_count += 1;
-                                    metadata_header_mmap
-                                        .copy_from_slice(metadata_header.encode().as_slice());
-                                }
-                                PlottingStatus::Cancelled => {
-                                    return;
+                            )) {
+                                match error {
+                                    PlotSectorError::Cancelled => {
+                                        return;
+                                    }
+                                    PlotSectorError::Plotting(error) => {
+                                        Err(error)?;
+                                    }
                                 }
                             }
+
+                            let mut metadata_header = metadata_header.lock();
+                            metadata_header.sector_count += 1;
+                            metadata_header_mmap
+                                .copy_from_slice(metadata_header.encode().as_slice());
                         }
                     };
 

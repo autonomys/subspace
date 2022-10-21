@@ -10,14 +10,18 @@ use subspace_core_primitives::{
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
+use thiserror::Error;
 use tracing::debug;
 
 /// Plotting status
-pub enum PlottingStatus {
-    /// Sector was plotted successfully
-    PlottedSuccessfully,
+#[derive(Debug, Error)]
+pub enum PlotSectorError {
     /// Plotting was cancelled
+    #[error("Plotting was cancelled")]
     Cancelled,
+    /// Plotting failed
+    #[error("Plotting failed: {0}")]
+    Plotting(#[from] PlottingError),
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
@@ -33,7 +37,7 @@ pub async fn plot_sector<GP, GPF, S, SM>(
     farmer_protocol_info: &FarmerProtocolInfo,
     mut sector: S,
     mut sector_metadata: SM,
-) -> Result<PlottingStatus, PlottingError>
+) -> Result<(), PlotSectorError>
 where
     GP: Fn(PieceIndex) -> GPF,
     GPF: Future<Output = Result<Option<Piece>, Box<dyn std::error::Error + Send + Sync + 'static>>>,
@@ -57,7 +61,7 @@ where
                 %sector_index,
                 "Plotting was cancelled, interrupting plotting"
             );
-            return Ok(PlottingStatus::Cancelled);
+            return Err(PlotSectorError::Cancelled);
         }
         let piece_index = sector_id.derive_piece_index(
             piece_offset as PieceIndex,
@@ -93,16 +97,18 @@ where
                     });
             });
 
-        sector.write_all(&piece)?;
+        sector.write_all(&piece).map_err(PlottingError::Io)?;
     }
 
-    sector_metadata.write_all(
-        &SectorMetadata {
-            total_pieces: farmer_protocol_info.total_pieces,
-            expires_at,
-        }
-        .encode(),
-    )?;
+    sector_metadata
+        .write_all(
+            &SectorMetadata {
+                total_pieces: farmer_protocol_info.total_pieces,
+                expires_at,
+            }
+            .encode(),
+        )
+        .map_err(PlottingError::Io)?;
 
-    Ok(PlottingStatus::PlottedSuccessfully)
+    Ok(())
 }
