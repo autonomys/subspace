@@ -1,13 +1,13 @@
 use crate::verification::Proof;
 use crate::{
-    BalanceOf, ChannelId, Channels, Config, Error, Event, Inbox, InboxResponses,
+    BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, Inbox, InboxResponses,
     InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use scale_info::TypeInfo;
 use sp_messenger::endpoint::{EndpointRequest, EndpointResponse};
-use sp_runtime::traits::Get;
+use sp_runtime::traits::{CheckedMul, Get};
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 
 /// Defines protocol requests performed on domains.
@@ -131,20 +131,25 @@ impl<T: Config> Pallet<T> {
 
     /// Removes messages responses from Inbox responses as the src_domain signalled that responses are delivered.
     /// all the messages with nonce <= latest_confirmed_nonce are deleted.
-    fn clean_delivered_message_responses(
+    fn distribute_rewards_for_delivered_message_responses(
         dst_domain_id: T::DomainId,
         channel_id: ChannelId,
         latest_confirmed_nonce: Option<Nonce>,
-    ) {
+        fee_model: &FeeModel<BalanceOf<T>>,
+    ) -> DispatchResult {
         let mut current_nonce = latest_confirmed_nonce;
+
         while let Some(nonce) = current_nonce {
-            // fail if we have cleared all the messages
+            // for every inbox response we take, distribute the reward to the relayers.
             if InboxResponses::<T>::take((dst_domain_id, channel_id, nonce)).is_none() {
-                return;
+                return Ok(());
             }
 
+            Self::distribute_reward_to_relayers(fee_model.inbox_fee.relayer_pool_fee)?;
             current_nonce = nonce.checked_sub(Nonce::one())
         }
+
+        Ok(())
     }
 
     /// Process the incoming messages from given domain_id and channel_id.
@@ -152,9 +157,9 @@ impl<T: Config> Pallet<T> {
         dst_domain_id: T::DomainId,
         channel_id: ChannelId,
     ) -> DispatchResult {
-        let mut next_inbox_nonce = Channels::<T>::get(dst_domain_id, channel_id)
-            .ok_or(Error::<T>::MissingChannel)?
-            .next_inbox_nonce;
+        let channel =
+            Channels::<T>::get(dst_domain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
+        let mut next_inbox_nonce = channel.next_inbox_nonce;
 
         // TODO(ved): maybe a bound of number of messages to process in a single call?
         let mut messages_processed = 0;
@@ -219,12 +224,14 @@ impl<T: Config> Pallet<T> {
                 .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
             messages_processed += 1;
 
+            // reward relayers for relaying message responses to src_domain.
             // clean any delivered inbox responses
-            Self::clean_delivered_message_responses(
+            Self::distribute_rewards_for_delivered_message_responses(
                 dst_domain_id,
                 channel_id,
                 msg.last_delivered_message_response_nonce,
-            )
+                &channel.fee,
+            )?;
         }
 
         if messages_processed > 0 {
@@ -279,16 +286,16 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         // fetch the next message response nonce to process
         // starts with nonce 0
-        let mut last_message_response_nonce = Channels::<T>::get(dst_domain_id, channel_id)
-            .ok_or(Error::<T>::MissingChannel)?
-            .latest_response_received_message_nonce;
+        let channel =
+            Channels::<T>::get(dst_domain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
+        let mut last_message_response_nonce = channel.latest_response_received_message_nonce;
 
         let mut next_message_response_nonce = last_message_response_nonce
             .and_then(|nonce| nonce.checked_add(Nonce::one()))
             .unwrap_or(Nonce::zero());
 
         // TODO(ved): maybe a bound of number of message responses to process in a single call?
-        let mut messages_processed = 0;
+        let mut messages_processed = 0u32;
         while let Some(resp_msg) =
             OutboxResponses::<T>::take((dst_domain_id, channel_id, next_message_response_nonce))
         {
@@ -355,6 +362,13 @@ impl<T: Config> Pallet<T> {
         }
 
         if messages_processed > 0 {
+            // distribute rewards to relayers for relaying the outbox messages.
+            let reward = BalanceOf::<T>::from(messages_processed)
+                .checked_mul(&channel.fee.outbox_fee.relayer_pool_fee)
+                .ok_or(ArithmeticError::Overflow)?;
+
+            Self::distribute_reward_to_relayers(reward)?;
+
             Channels::<T>::mutate(
                 dst_domain_id,
                 channel_id,

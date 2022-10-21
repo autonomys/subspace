@@ -1,10 +1,10 @@
-use crate::{BalanceOf, Config, Pallet};
+use crate::{BalanceOf, Config, Pallet, Relayers};
 use codec::{Decode, Encode};
 use frame_support::traits::ExistenceRequirement::AllowDeath;
-use frame_support::traits::{Currency, WithdrawReasons};
+use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
 use frame_support::PalletId;
 use scale_info::TypeInfo;
-use sp_runtime::traits::{AccountIdConversion, CheckedAdd};
+use sp_runtime::traits::{AccountIdConversion, CheckedAdd, CheckedDiv, CheckedSub};
 use sp_runtime::{ArithmeticError, DispatchResult};
 
 /// Messenger Id used to store deposits and fees.
@@ -86,6 +86,45 @@ impl<T: Config> Pallet<T> {
 
         let msngr_acc_id = Self::messenger_account_id();
         T::Currency::deposit_creating(&msngr_acc_id, fee);
+        Ok(())
+    }
+
+    /// Distribute the rewards to the relayers.
+    /// Operation is no-op if there is not enough balance to pay.
+    /// Operation is no-op if there are no relayers.
+    pub(crate) fn distribute_reward_to_relayers(reward: BalanceOf<T>) -> DispatchResult {
+        let relayers = Relayers::<T>::get();
+        let relayer_count: BalanceOf<T> = (relayers.len() as u32).into();
+        let reward_per_relayer = match reward.checked_div(&relayer_count) {
+            // no relayers yet.
+            None => return Ok(()),
+            Some(reward) => reward,
+        };
+
+        // ensure we have enough to pay but maintain minimum existential deposit
+        let msngr_acc_id = Self::messenger_account_id();
+        let free_balance = match T::Currency::free_balance(&msngr_acc_id)
+            .checked_sub(&T::Currency::minimum_balance())
+        {
+            // do not have enough to pay relayers
+            None => return Ok(()),
+            Some(bal) => bal,
+        };
+
+        if free_balance <= reward {
+            return Ok(());
+        }
+
+        // distribute reward to relayers
+        for relayer in relayers.into_iter() {
+            // ensure msngr account is still kept alive after transfer.
+            T::Currency::transfer(
+                &msngr_acc_id,
+                &relayer,
+                reward_per_relayer,
+                ExistenceRequirement::KeepAlive,
+            )?;
+        }
         Ok(())
     }
 }
