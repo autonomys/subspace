@@ -103,6 +103,8 @@ mod pallet {
         BadSignature,
         /// Invalid vrf proof.
         BadVrfProof,
+        /// Failed to derive the bundle election solution.
+        FailedToDeriveBundleElectionSolution,
         /// Can not retrieve the state needed from the storage proof.
         BadStorageProof,
         /// Bundle author is not found in the authority set.
@@ -570,16 +572,16 @@ impl<T: Config> Pallet<T> {
 
     fn validate_bundle_election(proof_of_election: &ProofOfElection) -> Result<(), BundleError> {
         let ProofOfElection {
-            domain_id: _,
+            domain_id,
             vrf_output,
             vrf_proof,
             executor_public_key,
-            slot_randomness,
+            global_challenge,
             state_root,
             storage_proof,
         } = proof_of_election;
 
-        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, slot_randomness)
+        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, global_challenge)
             .map_err(|_| BundleError::BadVrfProof)?;
 
         // TODO: verify `state_root` is valid.
@@ -602,9 +604,13 @@ impl<T: Config> Pallet<T> {
             })
             .ok_or(BundleError::AuthorityNotFound)?;
 
-        let election_solution =
-            derive_bundle_election_solution(*vrf_output, executor_public_key, slot_randomness)
-                .map_err(|_| BundleError::BadVrfProof)?;
+        let election_solution = derive_bundle_election_solution(
+            *domain_id,
+            *vrf_output,
+            executor_public_key,
+            global_challenge,
+        )
+        .map_err(|_| BundleError::FailedToDeriveBundleElectionSolution)?;
 
         let threshold = calculate_bundle_election_threshold(
             *stake_weight,

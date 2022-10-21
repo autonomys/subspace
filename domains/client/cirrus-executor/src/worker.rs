@@ -46,10 +46,8 @@ const LOG_TARGET: &str = "executor-worker";
 pub(super) struct ExecutorSlotInfo {
     /// Slot
     pub(super) slot: Slot,
-    /// Slot randomness
-    ///
-    /// Currently, `global_challenge` is used as the slot randomness.
-    pub(super) slot_randomness: Blake2b256Hash,
+    /// Global challenge
+    pub(super) global_challenge: Blake2b256Hash,
 }
 
 /// An event telling the `Overseer` on the particular block
@@ -174,7 +172,7 @@ pub(super) async fn start_worker<
         Box::pin(
             new_slot_notification_stream.map(|(slot, global_challenge)| ExecutorSlotInfo {
                 slot,
-                slot_randomness: global_challenge,
+                global_challenge,
             }),
         ),
     );

@@ -35,6 +35,7 @@ use sp_std::borrow::Cow;
 use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
+use subspace_core_primitives::crypto::blake2b_256_hash_list;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::AccountId;
 
@@ -43,9 +44,9 @@ const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
 
-const ELECTION_RANDOMNESS_CONTEXT: &[u8] = b"election_randomness_context";
+const LOCAL_RANDOMNESS_CONTEXT: &[u8] = b"bundle_election_local_randomness_context";
 
-type ElectionRandomness = [u8; core::mem::size_of::<u128>()];
+type LocalRandomness = [u8; core::mem::size_of::<u128>()];
 
 mod app {
     use super::KEY_TYPE;
@@ -121,28 +122,37 @@ impl<Hash: Encode> BundleHeader<Hash> {
     }
 }
 
-fn derive_election_randomness(
+fn derive_local_randomness(
     vrf_output: [u8; VRF_OUTPUT_LENGTH],
     public_key: &ExecutorPublicKey,
-    slot_randomness: &Blake2b256Hash,
-) -> SignatureResult<ElectionRandomness> {
+    global_challenge: &Blake2b256Hash,
+) -> SignatureResult<LocalRandomness> {
     let in_out = VRFOutput(vrf_output).attach_input_hash(
         &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
-        make_local_randomness_transcript(slot_randomness),
+        make_local_randomness_transcript(global_challenge),
     )?;
 
-    Ok(in_out.make_bytes(ELECTION_RANDOMNESS_CONTEXT))
+    Ok(in_out.make_bytes(LOCAL_RANDOMNESS_CONTEXT))
 }
 
-/// Returns the solution for the challenge of producing a bundle.
+/// Returns the domain-specific solution for the challenge of producing a bundle.
 pub fn derive_bundle_election_solution(
+    domain_id: DomainId,
     vrf_output: [u8; VRF_OUTPUT_LENGTH],
     public_key: &ExecutorPublicKey,
-    slot_randomness: &Blake2b256Hash,
+    global_challenge: &Blake2b256Hash,
 ) -> SignatureResult<u128> {
-    let election_randomness = derive_election_randomness(vrf_output, public_key, slot_randomness)?;
+    let local_randomness = derive_local_randomness(vrf_output, public_key, global_challenge)?;
+    let local_domain_randomness =
+        blake2b_256_hash_list(&[&domain_id.to_le_bytes(), &local_randomness]);
 
-    let election_solution = u128::from_le_bytes(election_randomness);
+    let election_solution = u128::from_le_bytes(
+        local_domain_randomness
+            .split_at(core::mem::size_of::<u128>())
+            .0
+            .try_into()
+            .expect("Local domain randomness must fit into u128; qed"),
+    );
 
     Ok(election_solution)
 }
@@ -170,22 +180,22 @@ pub fn is_election_solution_within_threshold(election_solution: u128, threshold:
 }
 
 /// Make a VRF transcript.
-pub fn make_local_randomness_transcript(slot_randomness: &Blake2b256Hash) -> Transcript {
+pub fn make_local_randomness_transcript(global_challenge: &Blake2b256Hash) -> Transcript {
     let mut transcript = Transcript::new(VRF_TRANSCRIPT_LABEL);
-    transcript.append_message(b"slot randomness", slot_randomness);
+    transcript.append_message(b"global challenge", global_challenge);
     transcript
 }
 
 /// Make a VRF transcript data.
 #[cfg(feature = "std")]
 pub fn make_local_randomness_transcript_data(
-    slot_randomness: &Blake2b256Hash,
+    global_challenge: &Blake2b256Hash,
 ) -> VRFTranscriptData {
     VRFTranscriptData {
         label: VRF_TRANSCRIPT_LABEL,
         items: vec![(
-            "slot randomness",
-            VRFTranscriptValue::Bytes(slot_randomness.to_vec()),
+            "global challenge",
+            VRFTranscriptValue::Bytes(global_challenge.to_vec()),
         )],
     }
 }
@@ -244,14 +254,14 @@ pub fn verify_vrf_proof(
     public_key: &ExecutorPublicKey,
     vrf_output: &[u8],
     vrf_proof: &[u8],
-    slot_randomness: &Blake2b256Hash,
+    global_challenge: &Blake2b256Hash,
 ) -> Result<(), VrfProofError> {
     let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())
         .map_err(|_| VrfProofError::VrfSignatureConstructionError)?;
 
     public_key
         .vrf_verify(
-            make_local_randomness_transcript(slot_randomness),
+            make_local_randomness_transcript(global_challenge),
             &VRFOutput::from_bytes(vrf_output)
                 .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
             &VRFProof::from_bytes(vrf_proof)
@@ -309,7 +319,6 @@ pub fn read_bundle_election_params(
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ProofOfElection {
-    // TODO: remove it once confirmed useless.
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
@@ -318,8 +327,8 @@ pub struct ProofOfElection {
     pub vrf_proof: [u8; VRF_PROOF_LENGTH],
     /// VRF public key.
     pub executor_public_key: ExecutorPublicKey,
-    /// Slot randomness.
-    pub slot_randomness: Blake2b256Hash,
+    /// Global challenge.
+    pub global_challenge: Blake2b256Hash,
     /// State root corresponding to the storage proof above.
     pub state_root: H256,
     /// Storage proof for the bundle election state.
@@ -334,7 +343,7 @@ impl ProofOfElection {
             vrf_output: [0u8; VRF_OUTPUT_LENGTH],
             vrf_proof: [0u8; VRF_PROOF_LENGTH],
             executor_public_key,
-            slot_randomness: Blake2b256Hash::default(),
+            global_challenge: Blake2b256Hash::default(),
             state_root: H256::default(),
             storage_proof: StorageProof::empty(),
         }
