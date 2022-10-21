@@ -100,16 +100,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("memory", |b| {
         b.iter(|| {
-            black_box(
-                create_solution(
-                    &keypair,
-                    eligible_sector.clone(),
-                    reward_address,
-                    &farmer_protocol_info,
-                    sector_metadata.as_slice(),
-                )
-                .unwrap(),
+            create_solution(
+                black_box(&keypair),
+                black_box(eligible_sector.clone()),
+                black_box(reward_address),
+                black_box(&farmer_protocol_info),
+                black_box(sector_metadata.as_slice()),
             )
+            .unwrap();
         })
     });
 
@@ -146,16 +144,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             let start = Instant::now();
             for _i in 0..iters {
                 for metadata in sector_metadata_mmap.chunks_exact(SectorMetadata::encoded_size()) {
-                    black_box(
-                        create_solution(
-                            &keypair,
-                            eligible_sector.clone(),
-                            reward_address,
-                            &farmer_protocol_info,
-                            metadata,
-                        )
-                        .unwrap(),
-                    );
+                    create_solution(
+                        black_box(&keypair),
+                        black_box(eligible_sector.clone()),
+                        black_box(reward_address),
+                        black_box(&farmer_protocol_info),
+                        black_box(metadata),
+                    )
+                    .unwrap();
                 }
             }
             start.elapsed()

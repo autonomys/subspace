@@ -56,18 +56,16 @@ fn criterion_benchmark(c: &mut Criterion) {
     )));
     group.bench_function("no-writes-single-thread", |b| {
         b.iter(|| {
-            black_box(
-                block_on(plot_sector(
-                    &public_key,
-                    sector_index,
-                    &get_piece,
-                    &cancelled,
-                    &farmer_protocol_info,
-                    io::sink(),
-                    io::sink(),
-                ))
-                .unwrap(),
-            )
+            block_on(plot_sector(
+                black_box(&public_key),
+                black_box(sector_index),
+                black_box(&get_piece),
+                black_box(&cancelled),
+                black_box(&farmer_protocol_info),
+                black_box(io::sink()),
+                black_box(io::sink()),
+            ))
+            .unwrap();
         })
     });
 
@@ -81,18 +79,16 @@ fn criterion_benchmark(c: &mut Criterion) {
             let start = Instant::now();
             for _i in 0..iters {
                 sectors.par_iter().for_each(|&sector_index| {
-                    black_box(
-                        block_on(plot_sector(
-                            &public_key,
-                            sector_index,
-                            &get_piece,
-                            &cancelled,
-                            &farmer_protocol_info,
-                            io::sink(),
-                            io::sink(),
-                        ))
-                        .unwrap(),
-                    );
+                    block_on(plot_sector(
+                        black_box(&public_key),
+                        black_box(sector_index),
+                        black_box(&get_piece),
+                        black_box(&cancelled),
+                        black_box(&farmer_protocol_info),
+                        black_box(io::sink()),
+                        black_box(io::sink()),
+                    ))
+                    .unwrap();
                 });
             }
             start.elapsed()

@@ -84,17 +84,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("memory", |b| {
         b.iter(|| {
-            black_box(
-                audit_sector(
-                    &public_key,
-                    sector_index,
-                    &farmer_protocol_info,
-                    &global_challenge,
-                    solution_range,
-                    io::Cursor::new(&plotted_sector),
-                )
-                .unwrap(),
+            audit_sector(
+                black_box(&public_key),
+                black_box(sector_index),
+                black_box(&farmer_protocol_info),
+                black_box(&global_challenge),
+                black_box(solution_range),
+                black_box(io::Cursor::new(&plotted_sector)),
             )
+            .unwrap();
         })
     });
 
@@ -133,17 +131,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     .enumerate()
                     .map(|(sector_index, sector)| (sector_index as u64, sector))
                 {
-                    black_box(
-                        audit_sector(
-                            &public_key,
-                            sector_index,
-                            &farmer_protocol_info,
-                            &global_challenge,
-                            solution_range,
-                            io::Cursor::new(sector),
-                        )
-                        .unwrap(),
-                    );
+                    audit_sector(
+                        black_box(&public_key),
+                        black_box(sector_index),
+                        black_box(&farmer_protocol_info),
+                        black_box(&global_challenge),
+                        black_box(solution_range),
+                        black_box(io::Cursor::new(sector)),
+                    )
+                    .unwrap();
                 }
             }
             start.elapsed()
