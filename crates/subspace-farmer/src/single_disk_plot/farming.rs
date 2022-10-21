@@ -35,78 +35,73 @@ pub struct EligibleSector {
     pub audit_piece_offset: u64,
 }
 
-/// Create solution for eligible sector
-pub fn create_solution<SM>(
-    keypair: &Keypair,
-    mut eligible_sector: EligibleSector,
-    reward_address: PublicKey,
-    farmer_protocol_info: &FarmerProtocolInfo,
-    sector_metadata: SM,
-) -> Result<Option<Solution<PublicKey, PublicKey>>, FarmingError>
-where
-    SM: io::Read,
-{
-    let sector_metadata = SectorMetadata::decode(&mut IoReader(sector_metadata))
-        .map_err(|error| FarmingError::FailedToDecodeMetadata { error })?;
+impl EligibleSector {
+    /// Create solution for eligible sector
+    pub fn try_into_solution<SM>(
+        mut self,
+        keypair: &Keypair,
+        reward_address: PublicKey,
+        farmer_protocol_info: &FarmerProtocolInfo,
+        sector_metadata: SM,
+    ) -> Result<Option<Solution<PublicKey, PublicKey>>, FarmingError>
+    where
+        SM: io::Read,
+    {
+        let sector_metadata = SectorMetadata::decode(&mut IoReader(sector_metadata))
+            .map_err(|error| FarmingError::FailedToDecodeMetadata { error })?;
 
-    // Decode piece
-    let (record, witness_bytes) = eligible_sector
-        .encoded_piece
-        .split_at_mut(farmer_protocol_info.record_size.get() as usize);
-    let piece_witness = match Witness::try_from_bytes(
-        (&*witness_bytes).try_into().expect(
+        // Decode piece
+        let (record, witness_bytes) = self
+            .encoded_piece
+            .split_at_mut(farmer_protocol_info.record_size.get() as usize);
+        let piece_witness = match Witness::try_from_bytes((&*witness_bytes).try_into().expect(
             "Witness must have correct size unless implementation is broken in a big way; qed",
-        ),
-    ) {
-        Ok(piece_witness) => piece_witness,
-        Err(error) => {
-            let piece_index = eligible_sector.sector_id.derive_piece_index(
-                eligible_sector.audit_piece_offset,
-                sector_metadata.total_pieces,
-            );
-            let audit_piece_bytes_offset = eligible_sector.audit_piece_offset * PIECE_SIZE as u64;
-            error!(
-                ?error,
-                sector_id = ?eligible_sector.sector_id,
-                %audit_piece_bytes_offset,
-                %piece_index,
-                "Failed to decode witness for piece, likely caused by on-disk data corruption"
-            );
-            return Ok(None);
-        }
-    };
-    // TODO: Extract encoding into separate function reusable in
-    //  farmer and otherwise
-    record
-        .view_bits_mut::<Lsb0>()
-        .chunks_mut(farmer_protocol_info.space_l.get() as usize)
-        .enumerate()
-        .for_each(|(chunk_index, bits)| {
-            // Derive one-time pad
-            let mut otp = derive_chunk_otp(
-                &eligible_sector.sector_id,
-                witness_bytes,
-                chunk_index as u32,
-            );
-            // XOR chunk bit by bit with one-time pad
-            bits.iter_mut()
-                .zip(otp.view_bits_mut::<Lsb0>().iter())
-                .for_each(|(mut a, b)| {
-                    *a ^= *b;
-                });
-        });
+        )) {
+            Ok(piece_witness) => piece_witness,
+            Err(error) => {
+                let piece_index = self
+                    .sector_id
+                    .derive_piece_index(self.audit_piece_offset, sector_metadata.total_pieces);
+                let audit_piece_bytes_offset = self.audit_piece_offset * PIECE_SIZE as u64;
+                error!(
+                    ?error,
+                    sector_id = ?self.sector_id,
+                    %audit_piece_bytes_offset,
+                    %piece_index,
+                    "Failed to decode witness for piece, likely caused by on-disk data corruption"
+                );
+                return Ok(None);
+            }
+        };
+        // TODO: Extract encoding into separate function reusable in
+        //  farmer and otherwise
+        record
+            .view_bits_mut::<Lsb0>()
+            .chunks_mut(farmer_protocol_info.space_l.get() as usize)
+            .enumerate()
+            .for_each(|(chunk_index, bits)| {
+                // Derive one-time pad
+                let mut otp = derive_chunk_otp(&self.sector_id, witness_bytes, chunk_index as u32);
+                // XOR chunk bit by bit with one-time pad
+                bits.iter_mut()
+                    .zip(otp.view_bits_mut::<Lsb0>().iter())
+                    .for_each(|(mut a, b)| {
+                        *a ^= *b;
+                    });
+            });
 
-    Ok(Some(Solution {
-        public_key: PublicKey::from(keypair.public.to_bytes()),
-        reward_address,
-        sector_index: eligible_sector.sector_index,
-        total_pieces: sector_metadata.total_pieces,
-        piece_offset: eligible_sector.audit_piece_offset,
-        piece_record_hash: blake2b_256_254_hash(record),
-        piece_witness,
-        chunk: eligible_sector.chunk,
-        chunk_signature: create_chunk_signature(keypair, &eligible_sector.chunk),
-    }))
+        Ok(Some(Solution {
+            public_key: PublicKey::from(keypair.public.to_bytes()),
+            reward_address,
+            sector_index: self.sector_index,
+            total_pieces: sector_metadata.total_pieces,
+            piece_offset: self.audit_piece_offset,
+            piece_record_hash: blake2b_256_254_hash(record),
+            piece_witness,
+            chunk: self.chunk,
+            chunk_signature: create_chunk_signature(keypair, &self.chunk),
+        }))
+    }
 }
 
 /// Audit a single sector

@@ -16,7 +16,7 @@ use subspace_core_primitives::{
     RECORD_SIZE,
 };
 use subspace_farmer::file_ext::FileExt;
-use subspace_farmer::single_disk_plot::farming::{audit_sector, create_solution};
+use subspace_farmer::single_disk_plot::farming::audit_sector;
 use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_farmer::single_disk_plot::SectorMetadata;
 use subspace_rpc_primitives::FarmerProtocolInfo;
@@ -100,14 +100,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("memory", |b| {
         b.iter(|| {
-            create_solution(
-                black_box(&keypair),
-                black_box(eligible_sector.clone()),
-                black_box(reward_address),
-                black_box(&farmer_protocol_info),
-                black_box(sector_metadata.as_slice()),
-            )
-            .unwrap();
+            eligible_sector
+                .clone()
+                .try_into_solution(
+                    black_box(&keypair),
+                    black_box(reward_address),
+                    black_box(&farmer_protocol_info),
+                    black_box(sector_metadata.as_slice()),
+                )
+                .unwrap();
         })
     });
 
@@ -144,14 +145,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             let start = Instant::now();
             for _i in 0..iters {
                 for metadata in sector_metadata_mmap.chunks_exact(SectorMetadata::encoded_size()) {
-                    create_solution(
-                        black_box(&keypair),
-                        black_box(eligible_sector.clone()),
-                        black_box(reward_address),
-                        black_box(&farmer_protocol_info),
-                        black_box(metadata),
-                    )
-                    .unwrap();
+                    eligible_sector
+                        .clone()
+                        .try_into_solution(
+                            black_box(&keypair),
+                            black_box(reward_address),
+                            black_box(&farmer_protocol_info),
+                            black_box(metadata),
+                        )
+                        .unwrap();
                 }
             }
             start.elapsed()

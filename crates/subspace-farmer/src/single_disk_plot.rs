@@ -6,7 +6,7 @@ use crate::identity::Identity;
 use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
-use crate::single_disk_plot::farming::{audit_sector, create_solution};
+use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::plotting::{plot_sector, PlottingStatus};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
@@ -776,9 +776,8 @@ impl SingleDiskPlot {
                                     }
                                 };
 
-                                let solution = match create_solution(
+                                let solution = match eligible_sector.try_into_solution(
                                     &identity,
-                                    eligible_sector,
                                     reward_address,
                                     &farmer_protocol_info,
                                     sector_metadata,
