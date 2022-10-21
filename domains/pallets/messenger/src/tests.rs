@@ -7,7 +7,7 @@ use crate::mock::domain_a::{
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
-    DomainId, TestExternalities,
+    Balance, DomainId, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
@@ -26,6 +26,7 @@ use sp_runtime::traits::ValidateUnsigned;
 fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
     let params = InitiateChannelParams {
         max_outgoing_messages: 100,
+        fee_model: Default::default(),
     };
     assert_ok!(Messenger::initiate_channel(
         Origin::root(),
@@ -175,7 +176,7 @@ fn test_storage_proof_verification_invalid() {
         state_root: Default::default(),
         message_proof: storage_proof,
     };
-    let res: Result<Channel, VerificationError> =
+    let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, StorageKey(vec![]));
     assert_err!(res, VerificationError::InvalidProof);
 }
@@ -196,7 +197,7 @@ fn test_storage_proof_verification_missing_value() {
         state_root,
         message_proof: storage_proof,
     };
-    let res: Result<Channel, VerificationError> =
+    let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, storage_key);
     assert_err!(res, VerificationError::MissingValue);
 }
@@ -219,7 +220,7 @@ fn test_storage_proof_verification() {
         state_root,
         message_proof: storage_proof,
     };
-    let res: Result<Channel, VerificationError> =
+    let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, storage_key);
 
     assert!(res.is_ok());

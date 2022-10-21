@@ -24,10 +24,12 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+mod fees;
 mod messages;
 mod relayer;
 mod verification;
 
+use crate::fees::FeeModel;
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
 pub use pallet::*;
@@ -60,7 +62,7 @@ type MessageId = (ChannelId, Nonce);
 
 /// Channel describes a bridge to exchange messages between two domains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Channel {
+pub struct Channel<Balance> {
     /// Channel identifier.
     pub(crate) channel_id: ChannelId,
     /// State of the channel.
@@ -73,11 +75,14 @@ pub struct Channel {
     pub(crate) latest_response_received_message_nonce: Option<Nonce>,
     /// Maximum outgoing non-delivered messages.
     pub(crate) max_outgoing_messages: u32,
+    /// Fee model for this channel between domains.
+    pub(crate) fee: FeeModel<Balance>,
 }
 
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct InitiateChannelParams {
-    max_outgoing_messages: u32,
+pub struct InitiateChannelParams<Balance> {
+    pub(crate) max_outgoing_messages: u32,
+    pub(crate) fee_model: FeeModel<Balance>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -149,8 +154,15 @@ mod pallet {
     /// Key points to the foreign domain wrt own domain's storage name space
     #[pallet::storage]
     #[pallet::getter(fn channels)]
-    pub(super) type Channels<T: Config> =
-        StorageDoubleMap<_, Identity, T::DomainId, Identity, ChannelId, Channel, OptionQuery>;
+    pub(super) type Channels<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        T::DomainId,
+        Identity,
+        ChannelId,
+        Channel<BalanceOf<T>>,
+        OptionQuery,
+    >;
 
     /// Stores the incoming messages that are yet to be processed.
     /// Messages are processed in the inbox nonce order of domain channel.
@@ -160,7 +172,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -172,7 +184,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -184,7 +196,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -194,7 +206,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -402,7 +414,7 @@ mod pallet {
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_domain_id: T::DomainId,
-            params: InitiateChannelParams,
+            params: InitiateChannelParams<BalanceOf<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
             // TODO(ved): test validity of the domain
@@ -575,7 +587,7 @@ mod pallet {
 
         pub(crate) fn do_init_channel(
             dst_domain_id: T::DomainId,
-            init_params: InitiateChannelParams,
+            init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
             let channel_id = NextChannelId::<T>::get(dst_domain_id);
             let next_channel_id = channel_id
@@ -592,6 +604,7 @@ mod pallet {
                     next_outbox_nonce: Default::default(),
                     latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: init_params.max_outgoing_messages,
+                    fee: init_params.fee_model,
                 },
             );
 
@@ -605,7 +618,7 @@ mod pallet {
 
         pub(crate) fn do_validate_relay_message(
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<(Message<T::DomainId>, bool), TransactionValidityError> {
+        ) -> Result<(Message<T::DomainId, BalanceOf<T>>, bool), TransactionValidityError> {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 None => {
@@ -637,7 +650,7 @@ mod pallet {
         }
 
         pub(crate) fn pre_dispatch_relay_message(
-            msg: Message<T::DomainId>,
+            msg: Message<T::DomainId, BalanceOf<T>>,
             should_init_channel: bool,
         ) -> Result<(), TransactionValidityError> {
             if should_init_channel {
@@ -663,7 +676,7 @@ mod pallet {
 
         pub(crate) fn do_validate_relay_message_response(
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<Message<T::DomainId>, TransactionValidityError> {
+        ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
@@ -698,7 +711,7 @@ mod pallet {
         }
 
         pub(crate) fn pre_dispatch_relay_message_response(
-            msg: Message<T::DomainId>,
+            msg: Message<T::DomainId, BalanceOf<T>>,
         ) -> Result<(), TransactionValidityError> {
             Self::deposit_event(Event::OutboxMessageResponse {
                 domain_id: msg.src_domain_id,
@@ -714,7 +727,7 @@ mod pallet {
             next_nonce: Nonce,
             storage_key: StorageKey,
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<Message<T::DomainId>, TransactionValidityError> {
+        ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
             // fetch state roots from System domain tracker
             let state_roots = T::SystemDomainTracker::latest_state_roots();
             if !state_roots.contains(&xdm.proof.state_root) {
@@ -733,7 +746,7 @@ mod pallet {
 
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
-                Message<T::DomainId>,
+                Message<T::DomainId, BalanceOf<T>>,
             >(xdm.proof.clone(), storage_key)
             .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
 

@@ -1,7 +1,7 @@
 use crate::verification::Proof;
 use crate::{
-    ChannelId, Channels, Config, Error, Event, Inbox, InboxResponses, InitiateChannelParams, Nonce,
-    Outbox, OutboxMessageResult, OutboxResponses, Pallet,
+    BalanceOf, ChannelId, Channels, Config, Error, Event, Inbox, InboxResponses,
+    InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::ensure;
@@ -12,9 +12,9 @@ use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 
 /// Defines protocol requests performed on domains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum ProtocolMessageRequest {
+pub enum ProtocolMessageRequest<Balance> {
     /// Request to open a channel with foreign domain.
-    ChannelOpen(InitiateChannelParams),
+    ChannelOpen(InitiateChannelParams<Balance>),
     /// Request to close an open channel with foreign domain.
     ChannelClose,
 }
@@ -31,22 +31,22 @@ pub enum RequestResponse<Request, Response> {
 
 /// Payload of the message
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum Payload {
+pub enum Payload<Balance> {
     /// Protocol message.
-    Protocol(RequestResponse<ProtocolMessageRequest, ProtocolMessageResponse>),
+    Protocol(RequestResponse<ProtocolMessageRequest<Balance>, ProtocolMessageResponse>),
     /// Endpoint message.
     Endpoint(RequestResponse<EndpointRequest, EndpointResponse>),
 }
 
 /// Versioned message payload
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum VersionedPayload {
-    V0(Payload),
+pub enum VersionedPayload<Balance> {
+    V0(Payload<Balance>),
 }
 
 /// Message contains information to be sent to or received from another domain
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Message<DomainId> {
+pub struct Message<DomainId, Balance> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -56,7 +56,7 @@ pub struct Message<DomainId> {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Payload of the message
-    pub payload: VersionedPayload,
+    pub payload: VersionedPayload<Balance>,
     /// Last delivered message response nonce on src_domain.
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
@@ -82,7 +82,7 @@ impl<T: Config> Pallet<T> {
         src_domain_id: T::DomainId,
         dst_domain_id: T::DomainId,
         channel_id: ChannelId,
-        payload: VersionedPayload,
+        payload: VersionedPayload<BalanceOf<T>>,
     ) -> Result<Nonce, DispatchError> {
         Channels::<T>::try_mutate(
             dst_domain_id,
@@ -245,7 +245,7 @@ impl<T: Config> Pallet<T> {
     fn process_incoming_protocol_message_req(
         domain_id: T::DomainId,
         channel_id: ChannelId,
-        req: ProtocolMessageRequest,
+        req: ProtocolMessageRequest<BalanceOf<T>>,
     ) -> Result<(), DispatchError> {
         match req {
             ProtocolMessageRequest::ChannelOpen(_) => Self::do_open_channel(domain_id, channel_id),
@@ -256,7 +256,7 @@ impl<T: Config> Pallet<T> {
     fn process_incoming_protocol_message_response(
         domain_id: T::DomainId,
         channel_id: ChannelId,
-        req: ProtocolMessageRequest,
+        req: ProtocolMessageRequest<BalanceOf<T>>,
         resp: ProtocolMessageResponse,
     ) -> DispatchResult {
         match (req, resp) {
