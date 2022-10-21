@@ -7,7 +7,7 @@ use crate::mock::domain_a::{
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
-    Balance, DomainId, TestExternalities,
+    AccountId, Balance, DomainId, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
 use crate::verification::{Proof, StorageProofVerifier, VerificationError};
@@ -288,6 +288,7 @@ fn open_channel_between_domains(
 }
 
 fn send_message_between_domains(
+    sender: &AccountId,
     domain_a_test_ext: &mut TestExternalities,
     domain_b_test_ext: &mut TestExternalities,
     msg: EndpointPayload,
@@ -297,7 +298,8 @@ fn send_message_between_domains(
 
     // send message form outbox
     domain_a_test_ext.execute_with(|| {
-        let resp = <domain_a::Messenger as Sender<DomainId>>::send_message(
+        let resp = <domain_a::Messenger as Sender<AccountId, DomainId>>::send_message(
+            sender,
             domain_b_id,
             EndpointRequest {
                 src_endpoint: Endpoint::Id(0),
@@ -580,6 +582,7 @@ fn test_send_message_between_domains() {
 
     // send message
     send_message_between_domains(
+        &0,
         &mut domain_a_test_ext,
         &mut domain_b_test_ext,
         vec![1, 2, 3, 4],

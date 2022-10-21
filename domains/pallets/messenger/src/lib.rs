@@ -30,6 +30,7 @@ mod relayer;
 mod verification;
 
 use crate::fees::FeeModel;
+use crate::messages::Message;
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
 pub use pallet::*;
@@ -97,6 +98,11 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+pub(crate) struct ValidatedRelayMessage<DomainId, Balance> {
+    msg: Message<DomainId, Balance>,
+    should_init_channel: bool,
+}
+
 #[frame_support::pallet]
 mod pallet {
     use crate::messages::{
@@ -106,8 +112,8 @@ mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, InitiateChannelParams, MessageId, Nonce,
-        OutboxMessageResult, StateRootOf, U256,
+        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, InitiateChannelParams, MessageId,
+        Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
     use frame_support::traits::ReservableCurrency;
@@ -332,8 +338,11 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::relay_message { msg: xdm } => {
-                    let (msg, should_init_chanel) = Self::do_validate_relay_message(xdm)?;
-                    Self::pre_dispatch_relay_message(msg, should_init_chanel)
+                    let ValidatedRelayMessage {
+                        msg,
+                        should_init_channel,
+                    } = Self::do_validate_relay_message(xdm)?;
+                    Self::pre_dispatch_relay_message(msg, should_init_channel)
                 }
                 Call::relay_message_response { msg: xdm } => {
                     let msg = Self::do_validate_relay_message_response(xdm)?;
@@ -347,7 +356,10 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::relay_message { msg: xdm } => {
-                    let (msg, _should_init_chanel) = Self::do_validate_relay_message(xdm)?;
+                    let ValidatedRelayMessage {
+                        msg,
+                        should_init_channel: _,
+                    } = Self::do_validate_relay_message(xdm)?;
                     let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
                     unsigned_validity::<T>("MessengerInbox", provides_tag)
                 }
@@ -418,6 +430,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
             // TODO(ved): test validity of the domain
+            // TODO(ved): fee for channel open
 
             // initiate the channel config
             let channel_id = Self::do_init_channel(dst_domain_id, params)?;
@@ -497,15 +510,20 @@ mod pallet {
         }
     }
 
-    impl<T: Config> Sender<T::DomainId> for Pallet<T> {
+    impl<T: Config> Sender<T::AccountId, T::DomainId> for Pallet<T> {
         type MessageId = MessageId;
 
         fn send_message(
+            sender: &T::AccountId,
             dst_domain_id: T::DomainId,
             req: EndpointRequest,
         ) -> Result<Self::MessageId, DispatchError> {
-            let channel_id = Self::get_open_channel_for_domain(dst_domain_id)
+            let (channel_id, fee_model) = Self::get_open_channel_for_domain(dst_domain_id)
                 .ok_or(Error::<T>::NoOpenChannel)?;
+
+            // ensure fees are paid by the sender
+            Self::ensure_fees_for_outbox_message(sender, &fee_model)?;
+
             let nonce = Self::new_outbox_message(
                 T::SelfDomainId::get(),
                 dst_domain_id,
@@ -518,7 +536,9 @@ mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Returns the last open channel for a given domain.
-        fn get_open_channel_for_domain(dst_domain_id: T::DomainId) -> Option<ChannelId> {
+        fn get_open_channel_for_domain(
+            dst_domain_id: T::DomainId,
+        ) -> Option<(ChannelId, FeeModel<BalanceOf<T>>)> {
             let mut next_channel_id = NextChannelId::<T>::get(dst_domain_id);
 
             // loop through channels in descending order until open channel is found.
@@ -526,7 +546,7 @@ mod pallet {
             while let Some(channel_id) = next_channel_id.checked_sub(ChannelId::one()) {
                 if let Some(channel) = Channels::<T>::get(dst_domain_id, channel_id) {
                     if channel.state == ChannelState::Open {
-                        return Some(channel_id);
+                        return Some((channel_id, channel.fee));
                     }
                 }
 
@@ -618,13 +638,15 @@ mod pallet {
 
         pub(crate) fn do_validate_relay_message(
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<(Message<T::DomainId, BalanceOf<T>>, bool), TransactionValidityError> {
+        ) -> Result<ValidatedRelayMessage<T::DomainId, BalanceOf<T>>, TransactionValidityError>
+        {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 None => {
                     // if there is no channel config, this must the Channel open request.
                     // so nonce is 0
                     should_init_channel = true;
+                    // TODO(ved): collect fees to open channel
                     Nonce::zero()
                 }
                 Some(channel) => {
@@ -633,6 +655,12 @@ mod pallet {
                         channel.state == ChannelState::Open,
                         InvalidTransaction::Call
                     );
+
+                    // ensure the fees are deposited to the messenger account to pay
+                    // for relayer set.
+                    Self::ensure_fees_for_inbox_message(&channel.fee).map_err(|_| {
+                        TransactionValidityError::Invalid(InvalidTransaction::Payment)
+                    })?;
                     channel.next_inbox_nonce
                 }
             };
@@ -646,7 +674,10 @@ mod pallet {
 
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
-            Ok((msg, should_init_channel))
+            Ok(ValidatedRelayMessage {
+                msg,
+                should_init_channel,
+            })
         }
 
         pub(crate) fn pre_dispatch_relay_message(

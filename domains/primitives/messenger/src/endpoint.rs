@@ -30,11 +30,12 @@ pub struct EndpointRequest {
 pub type EndpointResponse = Result<EndpointPayload, DispatchError>;
 
 /// Sender provides abstraction on sending messages to other domains.
-pub trait Sender<DomainId> {
+pub trait Sender<AccountId, DomainId> {
     /// Unique Id of the message between dst_domain and src_domain.
     type MessageId: Parameter + Member + Copy;
     /// Sends a message to dst_domain_id.
     fn send_message(
+        sender: &AccountId,
         dst_domain_id: DomainId,
         req: EndpointRequest,
     ) -> Result<Self::MessageId, DispatchError>;
