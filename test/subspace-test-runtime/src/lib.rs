@@ -27,6 +27,7 @@ include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
+use core::num::NonZeroU64;
 use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
@@ -986,7 +987,7 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn total_pieces() -> u64 {
+        fn total_pieces() -> NonZeroU64 {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 

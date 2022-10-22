@@ -1,10 +1,14 @@
+pub mod farming;
+pub mod plotting;
+
 use crate::file_ext::FileExt;
 use crate::identity::Identity;
 use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
+use crate::single_disk_plot::farming::audit_sector;
+use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError};
 use crate::utils::JoinOnDrop;
-use bitvec::prelude::*;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use futures::channel::oneshot;
@@ -14,12 +18,11 @@ use memmap2::{MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU64};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,15 +30,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
-use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
-    plot_sector_size, Chunk, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, SegmentIndex,
-    Solution, PIECE_SIZE,
+    plot_sector_size, PieceIndex, PublicKey, SectorIndex, SegmentIndex, Solution, PIECE_SIZE,
 };
 use subspace_rpc_primitives::SolutionResponse;
-use subspace_solving::derive_chunk_otp;
-use subspace_verification::is_within_solution_range;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, info_span, trace, Instrument, Span};
@@ -245,16 +243,21 @@ impl PlotMetadataHeader {
     }
 }
 
+/// Metadata of the plotted sector
+#[doc(hidden)]
 #[derive(Debug, Encode, Decode)]
-struct SectorMetadata {
-    total_pieces: PieceIndex,
-    expires_at: SegmentIndex,
+pub struct SectorMetadata {
+    /// Total number of pieces in archived history of the blockchain as of sector creation
+    pub total_pieces: NonZeroU64,
+    /// Sector expiration, defined as sector of the archived history of the blockchain
+    pub expires_at: SegmentIndex,
 }
 
 impl SectorMetadata {
-    fn encoded_size() -> usize {
+    /// Size of encoded sector metadata
+    pub fn encoded_size() -> usize {
         let default = SectorMetadata {
-            total_pieces: 0,
+            total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             expires_at: 0,
         };
 
@@ -353,8 +356,11 @@ pub enum PlottingError {
         /// Piece index
         piece_index: PieceIndex,
         /// Lower-level error
-        error: rpc_client::Error,
+        error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
 }
 
 /// Errors that happen during farming
@@ -390,6 +396,9 @@ pub enum FarmingError {
         /// Lower-level error
         error: rpc_client::Error,
     },
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
 }
 
 /// Errors that happen in background tasks
@@ -573,8 +582,6 @@ impl SingleDiskPlot {
             (metadata_header, metadata_header_mmap)
         };
 
-        metadata_file.advise_random_access()?;
-
         let metadata_header = Arc::new(Mutex::new(metadata_header));
 
         let mut metadata_mmap_mut = unsafe {
@@ -591,7 +598,6 @@ impl SingleDiskPlot {
             .open(directory.join(Self::PLOT_FILE))?;
 
         plot_file.preallocate(plot_sector_size * target_sector_count)?;
-        plot_file.advise_random_access()?;
 
         let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
 
@@ -644,8 +650,7 @@ impl SingleDiskPlot {
                             });
 
                         // TODO: Concurrency
-                        'sector: for (sector_index, sector, sector_metadata) in plot_initial_sector
-                        {
+                        for (sector_index, sector, sector_metadata) in plot_initial_sector {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
@@ -653,110 +658,31 @@ impl SingleDiskPlot {
                                 );
                                 return;
                             }
-                            let sector_id = SectorId::new(&public_key, sector_index);
+
                             let farmer_protocol_info =
                                 handle.block_on(rpc_client.farmer_protocol_info()).map_err(
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
-                            let total_pieces: PieceIndex = farmer_protocol_info.total_pieces;
-                            // TODO: Consider adding number of pieces in a sector to protocol info
-                            //  explicitly and, ideally, we need to remove 2x replication
-                            //  expectation from other places too
-                            let current_segment_index = farmer_protocol_info.total_pieces
-                                / u64::from(farmer_protocol_info.recorded_history_segment_size)
-                                / u64::from(farmer_protocol_info.record_size.get())
-                                * 2;
-                            let expires_at =
-                                current_segment_index + farmer_protocol_info.sector_expiration;
 
-                            for (piece_offset, sector_piece) in
-                                sector.chunks_exact_mut(PIECE_SIZE).enumerate()
-                            {
-                                if shutting_down.load(Ordering::Acquire) {
-                                    debug!(
-                                        %sector_index,
-                                        "Instance is shutting down, interrupting plotting"
-                                    );
-                                    return;
+                            if let Err(error) = handle.block_on(plot_sector(
+                                &public_key,
+                                sector_index,
+                                |piece_index| rpc_client.get_piece(piece_index),
+                                &shutting_down,
+                                &farmer_protocol_info,
+                                io::Cursor::new(sector),
+                                io::Cursor::new(sector_metadata),
+                            )) {
+                                match error {
+                                    PlotSectorError::Cancelled => {
+                                        return;
+                                    }
+                                    PlotSectorError::Plotting(error) => {
+                                        Err(error)?;
+                                    }
                                 }
-                                let piece_index = match sector_id
-                                    .derive_piece_index(piece_offset as PieceIndex, total_pieces)
-                                {
-                                    Ok(piece_index) => piece_index,
-                                    Err(()) => {
-                                        error!(
-                                            "Total number of pieces received from node is 0, this \
-                                            should never happen! Aborting sector plotting."
-                                        );
-                                        break 'sector;
-                                    }
-                                };
-
-                                let mut piece: Piece = handle
-                                    .block_on(rpc_client.get_piece(piece_index))
-                                    .map_err(|error| PlottingError::FailedToRetrievePiece {
-                                        piece_index,
-                                        error,
-                                    })?
-                                    .ok_or(PlottingError::PieceNotFound { piece_index })?;
-
-                                let piece_witness = match Witness::try_from_bytes(
-                                    &piece[farmer_protocol_info.record_size.get() as usize..]
-                                        .try_into()
-                                        .expect(
-                                            "Witness must have correct size unless implementation \
-                                            is broken in a big way; qed",
-                                        ),
-                                ) {
-                                    Ok(piece_witness) => piece_witness,
-                                    Err(error) => {
-                                        // TODO: This will have to change once we pull pieces from
-                                        //  DSN
-                                        panic!(
-                                            "Failed to decode witness for piece {piece_index}, \
-                                            must be a bug on the node: {error:?}"
-                                        );
-                                    }
-                                };
-                                // TODO: We are skipping witness part of the piece or else it is not
-                                //  decodable
-                                // TODO: Last bits may not be encoded if record size is not multiple
-                                //  of `space_l`
-                                // Encode piece
-                                // TODO: Extract encoding into separate function reusable in
-                                //  farmer and otherwise
-                                piece[..farmer_protocol_info.record_size.get() as usize]
-                                    .view_bits_mut::<Lsb0>()
-                                    .chunks_mut(space_l.get() as usize)
-                                    .enumerate()
-                                    .par_bridge()
-                                    .for_each(|(chunk_index, bits)| {
-                                        // Derive one-time pad
-                                        let mut otp = derive_chunk_otp(
-                                            &sector_id,
-                                            &piece_witness,
-                                            chunk_index as u32,
-                                        );
-                                        // XOR chunk bit by bit with one-time pad
-                                        bits.iter_mut()
-                                            .zip(otp.view_bits_mut::<Lsb0>().iter())
-                                            .for_each(|(mut a, b)| {
-                                                *a ^= *b;
-                                            });
-                                    });
-
-                                sector_piece.copy_from_slice(&piece);
                             }
 
-                            // TODO: Invert table in future
-
-                            sector_metadata.copy_from_slice(
-                                &SectorMetadata {
-                                    total_pieces,
-                                    expires_at,
-                                }
-                                .encode(),
-                            );
                             let mut metadata_header = metadata_header.lock();
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
@@ -793,9 +719,6 @@ impl SingleDiskPlot {
                             .map_err(|error| FarmingError::FailedToGetFarmerProtocolInfo {
                                 error,
                             })?;
-                        let chunks_in_sector = u64::from(farmer_protocol_info.record_size.get())
-                            * u64::from(u8::BITS)
-                            / u64::from(space_l.get());
 
                         while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
                         {
@@ -805,9 +728,13 @@ impl SingleDiskPlot {
                             let plot_mmap = unsafe {
                                 MmapOptions::new()
                                     .len((plot_sector_size * sector_count) as usize)
-                                    .map_mut(&plot_file)
+                                    .map(&plot_file)
                                     .map_err(|error| FarmingError::FailedToMapPlot { error })?
                             };
+                            #[cfg(unix)]
+                            {
+                                plot_mmap.advise(memmap2::Advice::Random).unwrap();
+                            }
                             let metadata_mmap = unsafe {
                                 MmapOptions::new()
                                     .offset(RESERVED_PLOT_METADATA)
@@ -815,11 +742,14 @@ impl SingleDiskPlot {
                                     .map(&metadata_file)
                                     .map_err(|error| FarmingError::FailedToMapMetadata { error })?
                             };
+                            #[cfg(unix)]
+                            {
+                                metadata_mmap.advise(memmap2::Advice::Random).unwrap();
+                            }
                             let shutting_down = Arc::clone(&shutting_down);
 
                             let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-                            // TODO: This loop should happen in a blocking task
                             for (sector_index, sector, sector_metadata) in plot_mmap
                                 .chunks_exact(plot_sector_size as usize)
                                 .zip(metadata_mmap.chunks_exact(SectorMetadata::encoded_size()))
@@ -836,136 +766,36 @@ impl SingleDiskPlot {
                                     return;
                                 }
 
-                                let sector_id = SectorId::new(&public_key, sector_index);
-
-                                let local_challenge =
-                                    sector_id.derive_local_challenge(&slot_info.global_challenge);
-                                let audit_index: u64 = local_challenge % chunks_in_sector;
-                                let audit_piece_offset =
-                                    (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
-                                // Offset of the piece in sector (in bytes)
-                                let audit_piece_bytes_offset =
-                                    audit_piece_offset * PIECE_SIZE as u64;
-                                // Audit index (chunk) within corresponding piece
-                                let audit_index_within_piece =
-                                    audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
-                                let mut piece = Piece::try_from(
-                                    &sector[audit_piece_bytes_offset as usize..][..PIECE_SIZE],
-                                )
-                                .expect("Slice is guaranteed to have correct length; qed");
-
-                                let record_size = farmer_protocol_info.record_size.get() as usize;
-                                // TODO: We are skipping witness part of the piece or else it is not
-                                //  decodable
-                                let maybe_chunk = piece[..record_size]
-                                    .view_bits()
-                                    .chunks_exact(space_l.get() as usize)
-                                    .nth(audit_index_within_piece as usize);
-
-                                let chunk = match maybe_chunk {
-                                    Some(chunk) => Chunk::from(chunk),
+                                let eligible_sector = match audit_sector(
+                                    &public_key,
+                                    sector_index,
+                                    &farmer_protocol_info,
+                                    &slot_info.global_challenge,
+                                    slot_info.voting_solution_range,
+                                    io::Cursor::new(sector),
+                                )? {
+                                    Some(eligible_sector) => eligible_sector,
                                     None => {
-                                        // TODO: Record size is not multiple of `space_l`, last bits
-                                        //  were not encoded and should not be used for solving
                                         continue;
                                     }
                                 };
 
-                                // TODO: This just have 20 bits of entropy as input, should we add
-                                //  something else?
-                                let expanded_chunk = chunk.expand(local_challenge);
+                                let solution = match eligible_sector.try_into_solution(
+                                    &identity,
+                                    reward_address,
+                                    &farmer_protocol_info,
+                                    sector_metadata,
+                                )? {
+                                    Some(solution) => solution,
+                                    None => {
+                                        continue;
+                                    }
+                                };
 
-                                if is_within_solution_range(
-                                    local_challenge,
-                                    expanded_chunk,
-                                    slot_info.voting_solution_range,
-                                ) {
-                                    let sector_metadata =
-                                        SectorMetadata::decode(&mut &*sector_metadata).map_err(
-                                            |error| FarmingError::FailedToDecodeMetadata { error },
-                                        )?;
+                                debug!("Solution found");
+                                trace!(?solution, "Solution found");
 
-                                    debug!("Solution found");
-
-                                    let piece_witness = match Witness::try_from_bytes(
-                                        &piece[record_size..].try_into().expect(
-                                            "Witness must have correct size unless implementation \
-                                            is broken in a big way; qed",
-                                        ),
-                                    ) {
-                                        Ok(piece_witness) => piece_witness,
-                                        Err(error) => {
-                                            if let Ok(piece_index) = sector_id.derive_piece_index(
-                                                audit_piece_bytes_offset / PIECE_SIZE as u64,
-                                                sector_metadata.total_pieces,
-                                            ) {
-                                                error!(
-                                                    ?error,
-                                                    ?sector_id,
-                                                    %audit_piece_bytes_offset,
-                                                    %piece_index,
-                                                    "Failed to decode witness for piece, likely \
-                                                    caused by on-disk data corruption"
-                                                );
-                                            } else {
-                                                error!(
-                                                    ?sector_id,
-                                                    %audit_piece_bytes_offset,
-                                                    "Failed to decode witness for piece, likely \
-                                                    caused by on-disk data corruption"
-                                                );
-                                                error!(
-                                                    ?sector_id,
-                                                    %audit_piece_bytes_offset,
-                                                    "Total number of pieces in sector metadata is \
-                                                    0, this means on-disk data were corrupted or \
-                                                    severe implementation bug!"
-                                                );
-                                            }
-                                            continue;
-                                        }
-                                    };
-                                    // Decode piece
-                                    // TODO: Extract encoding into separate function reusable in
-                                    //  farmer and otherwise
-                                    piece[..record_size]
-                                        .view_bits_mut::<Lsb0>()
-                                        .chunks_mut(space_l.get() as usize)
-                                        .enumerate()
-                                        .par_bridge()
-                                        .for_each(|(chunk_index, bits)| {
-                                            // Derive one-time pad
-                                            let mut otp = derive_chunk_otp(
-                                                &sector_id,
-                                                &piece_witness,
-                                                chunk_index as u32,
-                                            );
-                                            // XOR chunk bit by bit with one-time pad
-                                            bits.iter_mut()
-                                                .zip(otp.view_bits_mut::<Lsb0>().iter())
-                                                .for_each(|(mut a, b)| {
-                                                    *a ^= *b;
-                                                });
-                                        });
-
-                                    let solution = Solution {
-                                        public_key,
-                                        reward_address,
-                                        sector_index,
-                                        total_pieces: sector_metadata.total_pieces,
-                                        piece_offset: audit_piece_offset,
-                                        piece_record_hash: blake2b_256_254_hash(
-                                            &piece[..record_size],
-                                        ),
-                                        piece_witness,
-                                        chunk,
-                                        chunk_signature: identity.create_chunk_signature(&chunk),
-                                    };
-
-                                    trace!(?solution, "Solution found");
-
-                                    solutions.push(solution);
-                                }
+                                solutions.push(solution);
                             }
 
                             handle

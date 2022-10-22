@@ -11,6 +11,10 @@ include = [
     "/README.md",
 ]
 
+[lib]
+# Necessary for CLI options to work on benches
+bench = false
+
 [dependencies]
 anyhow = "1.0.61"
 arc-swap = "1.5.1"
@@ -38,7 +42,6 @@ parity-db = "0.3.17"
 parity-scale-codec = "3.1.5"
 parking_lot = "0.12.1"
 rand = "0.8.5"
-rayon = "1.5.3"
 schnorrkel = "0.9.1"
 scopeguard = "1.1.0"
 serde = { version = "1.0.143", features = ["derive"] }
@@ -64,3 +67,19 @@ zeroize = "1.5.7"
 # The only triple tested and confirmed as working in `jemallocator` crate is `x86_64-unknown-linux-gnu`
 [target.'cfg(all(target_arch = "x86_64", target_vendor = "unknown", target_os = "linux", target_env = "gnu"))'.dependencies]
 jemallocator = "0.5.0"
+
+[dev-dependencies]
+criterion = "0.4.0"
+rayon = "1.5.3"
+
+[[bench]]
+name = "plotting"
+harness = false
+
+[[bench]]
+name = "auditing"
+harness = false
+
+[[bench]]
+name = "proving"
+harness = false

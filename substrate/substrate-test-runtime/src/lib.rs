@@ -25,6 +25,7 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
+use core::num::NonZeroU64;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU32, ConstU64, CrateVersion};
 use frame_support::weights::RuntimeDbWeight;
@@ -826,7 +827,7 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn total_pieces() -> u64 {
+                fn total_pieces() -> NonZeroU64 {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }
 
@@ -1074,7 +1075,7 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn total_pieces() -> u64 {
+                fn total_pieces() -> NonZeroU64 {
                     <pallet_subspace::Pallet<Runtime>>::total_pieces()
                 }
 

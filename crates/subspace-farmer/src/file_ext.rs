@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Result;
 
-pub(crate) trait FileExt {
+pub trait FileExt {
     /// Make sure file has specified number of bytes allocated for it
     fn preallocate(&self, len: u64) -> Result<()>;
 

@@ -186,9 +186,6 @@ pub enum Error<Header: HeaderT> {
     /// Solution is outside of solution range
     #[error("Solution is outside of solution range for slot {0}")]
     OutsideOfSolutionRange(Slot),
-    /// Solution is outside of max plot size
-    #[error("Solution is outside of max plot size {0}")]
-    OutsideOfMaxPlot(Slot),
     /// Invalid encoding of a piece
     #[error("Invalid encoding for slot {0}")]
     InvalidEncoding(Slot),
@@ -219,9 +216,6 @@ pub enum Error<Header: HeaderT> {
     /// Only root plot public key is allowed
     #[error("Only root plot public key is allowed")]
     OnlyRootPlotPublicKeyAllowed,
-    /// Total number of pieces can't be zero
-    #[error("Total number of pieces can't be zero")]
-    TotalNumberOfPiecesCantBeZero,
     /// Check inherents error
     #[error("Checking inherents failed: {0}")]
     CheckInherents(sp_inherents::Error),
@@ -922,12 +916,10 @@ where
 
         // TODO: Derive `pre_digest.solution.piece_offset` from local challenge instead
 
-        let piece_index = sector_id
-            .derive_piece_index(
-                pre_digest.solution.piece_offset,
-                pre_digest.solution.total_pieces,
-            )
-            .map_err(|()| Error::TotalNumberOfPiecesCantBeZero)?;
+        let piece_index = sector_id.derive_piece_index(
+            pre_digest.solution.piece_offset,
+            pre_digest.solution.total_pieces,
+        );
         let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
             .expect("Position within segment always fits into u32; qed");
         let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);

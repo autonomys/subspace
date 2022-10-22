@@ -33,6 +33,7 @@ use sp_core::H256;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
+use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
@@ -191,7 +192,7 @@ pub fn go_to_block(
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
-            total_pieces: 1,
+            total_pieces: NonZeroU64::new(1).unwrap(),
             piece_offset: 0,
             piece_record_hash: Default::default(),
             piece_witness: Default::default(),
@@ -269,7 +270,7 @@ pub fn generate_equivocation_proof(
                 public_key: public_key.clone(),
                 reward_address,
                 sector_index: 0,
-                total_pieces: 1,
+                total_pieces: NonZeroU64::new(1).unwrap(),
                 piece_offset,
                 piece_record_hash: Default::default(),
                 piece_witness: Default::default(),
@@ -368,7 +369,7 @@ pub fn create_signed_vote(
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
-            total_pieces: 1,
+            total_pieces: NonZeroU64::new(1).unwrap(),
             piece_offset: 0,
             piece_record_hash: blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]),
             piece_witness: Witness::try_from_bytes(
