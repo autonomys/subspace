@@ -1,6 +1,5 @@
 use crate::{ExecutionProver, ProofVerifier};
 use cirrus_block_builder::{BlockBuilder, RecordProof};
-use cirrus_primitives::{Hash, SecondaryApi};
 use cirrus_test_service::run_primary_chain_validator_node;
 use cirrus_test_service::runtime::Header;
 use cirrus_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
@@ -9,10 +8,11 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
-use sp_executor::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
+use sp_domains::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
+use system_runtime_primitives::{Hash, SystemDomainApi};
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]

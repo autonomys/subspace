@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use cirrus_runtime::GenesisConfig as ExecutionGenesisConfig;
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -26,6 +25,7 @@ use sc_subspace_chain_specs::ExecutionChainSpec;
 use serde_json::Value;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -49,7 +49,7 @@ pub struct SecondaryChainCli {
     pub base_path: Option<PathBuf>,
 
     /// Specification of the secondary chain derived from primary chain spec.
-    pub chain_spec: ExecutionChainSpec<ExecutionGenesisConfig>,
+    pub chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
 }
 
 impl SecondaryChainCli {
@@ -58,7 +58,7 @@ impl SecondaryChainCli {
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
         base_path: Option<PathBuf>,
-        chain_spec: ExecutionChainSpec<ExecutionGenesisConfig>,
+        chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
         secondary_chain_args: impl Iterator<Item = &'a String>,
     ) -> Self {
         Self {
@@ -124,7 +124,7 @@ impl SubstrateCli for SecondaryChainCli {
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &cirrus_runtime::VERSION
+        &system_domain_runtime::VERSION
     }
 }
 

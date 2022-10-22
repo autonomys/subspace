@@ -1,3 +1,4 @@
+use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
@@ -10,11 +11,10 @@ use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::IdentifyEvent;
-use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
-    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, QueryId,
-    QueryResult, Quorum,
+    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, PutRecordOk,
+    QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -41,15 +41,21 @@ enum QueryResultSender {
     Announce {
         sender: oneshot::Sender<bool>,
     },
+    PutValue {
+        sender: oneshot::Sender<bool>,
+    },
 }
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner {
+pub struct NodeRunner<RecordStore = CustomRecordStore>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     /// Should non-global addresses be added to the DHT?
     allow_non_globals_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior>,
+    swarm: Swarm<Behavior<RecordStore>>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -74,10 +80,13 @@ pub struct NodeRunner {
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig {
+pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     pub allow_non_globals_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
-    pub swarm: Swarm<Behavior>,
+    pub swarm: Swarm<Behavior<RecordStore>>,
     pub shared_weak: Weak<Shared>,
     pub next_random_query_interval: Duration,
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
@@ -86,9 +95,12 @@ pub(crate) struct NodeRunnerConfig {
     pub max_established_outgoing_connections: u32,
 }
 
-impl NodeRunner {
+impl<RecordStore> NodeRunner<RecordStore>
+where
+    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+{
     pub(crate) fn new(
-        NodeRunnerConfig {
+        NodeRunnerConfig::<RecordStore> {
             allow_non_globals_in_dht,
             command_receiver,
             swarm,
@@ -98,7 +110,7 @@ impl NodeRunner {
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
-        }: NodeRunnerConfig,
+        }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         Self {
             allow_non_globals_in_dht,
@@ -577,6 +589,30 @@ impl NodeRunner {
                     }
                 }
             }
+            KademliaEvent::OutboundQueryCompleted {
+                id,
+                result: QueryResult::PutRecord(result),
+                ..
+            } => {
+                if let Some(QueryResultSender::PutValue { sender }) =
+                    self.query_id_receivers.remove(&id)
+                {
+                    match result {
+                        Ok(PutRecordOk { key, .. }) => {
+                            trace!("Put record query for {} succeeded", hex::encode(&key),);
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(true);
+                        }
+                        Err(error) => {
+                            debug!(?error, "Put record query failed.",);
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(false);
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -614,6 +650,39 @@ impl NodeRunner {
                         sender: result_sender,
                     },
                 );
+            }
+            Command::PutValue {
+                key,
+                value,
+                result_sender,
+            } => {
+                let local_peer_id = *self.swarm.local_peer_id();
+
+                let record = Record {
+                    key: key.into(),
+                    value,
+                    publisher: Some(local_peer_id),
+                    expires: None, //TODO: set expiration time
+                };
+                let query_result = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .put_record(record, Quorum::One); //TODO: add replication factor
+
+                match query_result {
+                    Ok(query_id) => {
+                        self.query_id_receivers.insert(
+                            query_id,
+                            QueryResultSender::PutValue {
+                                sender: result_sender,
+                            },
+                        );
+                    }
+                    Err(err) => {
+                        warn!(?err, "Failed to put value.");
+                    }
+                }
             }
             Command::Subscribe {
                 topic,

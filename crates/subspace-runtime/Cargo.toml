@@ -16,8 +16,6 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-cirrus-primitives = { version = "0.1.0", default-features = false, path = "../../cumulus/primitives" }
-cirrus-runtime = { version = "0.1.0", default-features = false, path = "../../cumulus/runtime" }
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
 frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -25,7 +23,7 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 hex-literal = { version = "0.3.3", optional = true }
 orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../orml/vesting" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-pallet-executor = { version = "0.1.0", default-features = false, path = "../pallet-executor" }
+pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../pallet-grandpa-finality-verifier" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
@@ -44,7 +42,7 @@ sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "1a7c2
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sp-executor = { version = "0.1.0", default-features = false, path = "../sp-executor" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false, version = "4.0.0-dev"}
 sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -56,6 +54,8 @@ sp-version = { version = "5.0.0", default-features = false, git = "https://githu
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../subspace-verification" }
+system-domain-runtime = { version = "0.1.0", default-features = false, path = "../../domains/runtime/system" }
+system-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/system-runtime" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
@@ -75,8 +75,6 @@ hex-literal = { version = "0.3.3" }
 [features]
 default = ["std"]
 std = [
-	"cirrus-primitives/std",
-	"cirrus-runtime/std",
 	"codec/std",
 	"frame-executive/std",
 	"frame-support/std",
@@ -84,7 +82,7 @@ std = [
 	"frame-system-rpc-runtime-api/std",
 	"orml-vesting/std",
 	"pallet-balances/std",
-	"pallet-executor/std",
+	"pallet-domains/std",
 	"pallet-feeds/std",
 	"pallet-grandpa-finality-verifier/std",
 	"pallet-object-store/std",
@@ -104,7 +102,7 @@ std = [
 	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
 	"sp-core/std",
-	"sp-executor/std",
+	"sp-domains/std",
 	"sp-inherents/std",
 	"sp-objects/std",
 	"sp-offchain/std",
@@ -115,10 +113,11 @@ std = [
 	"sp-version/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
-	"subspace-verification/std"
+	"subspace-verification/std",
+	"system-domain-runtime/std",
+	"system-runtime-primitives/std",
 ]
 runtime-benchmarks = [
-	"cirrus-runtime/runtime-benchmarks",
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system-benchmarking",
@@ -129,5 +128,6 @@ runtime-benchmarks = [
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-utility/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
+	"system-domain-runtime/runtime-benchmarks",
 ]
 do-not-enforce-cost-of-storage = []

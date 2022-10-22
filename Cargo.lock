@@ -807,14 +807,13 @@ dependencies = [
  "blake2-rfc",
  "cirrus-block-builder",
  "cirrus-client-executor-gossip",
- "cirrus-primitives",
  "cirrus-test-service",
  "crossbeam",
  "futures 0.3.21",
  "futures-timer",
  "merkletree",
  "pallet-balances",
- "pallet-executor",
+ "pallet-domains",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
@@ -827,13 +826,14 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
+ "schnorrkel",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-keyring",
  "sp-keystore",
  "sp-runtime",
@@ -846,6 +846,7 @@ dependencies = [
  "subspace-test-service",
  "substrate-test-runtime-client",
  "substrate-test-utils",
+ "system-runtime-primitives",
  "thiserror",
  "tokio",
  "tracing",
@@ -862,59 +863,9 @@ dependencies = [
  "sc-network-gossip",
  "sc-utils",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-runtime",
  "tracing",
-]
-
-[[package]]
-name = "cirrus-node"
-version = "0.1.0"
-dependencies = [
- "cirrus-client-executor",
- "cirrus-client-executor-gossip",
- "cirrus-primitives",
- "cirrus-runtime",
- "clap",
- "cumulus-client-consensus-relay-chain",
- "frame-benchmarking",
- "frame-benchmarking-cli",
- "futures 0.3.21",
- "hex-literal",
- "jsonrpsee",
- "log",
- "pallet-transaction-payment-rpc",
- "sc-chain-spec",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-executor",
- "sc-network",
- "sc-rpc",
- "sc-rpc-api",
- "sc-service",
- "sc-telemetry",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sc-utils",
- "serde",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-slots",
- "sp-core",
- "sp-executor",
- "sp-inherents",
- "sp-keystore",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-transaction-pool",
- "subspace-core-primitives",
- "subspace-runtime-primitives",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
 ]
 
 [[package]]
@@ -939,57 +890,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-primitives"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "cirrus-runtime"
-version = "0.1.0"
-dependencies = [
- "cirrus-pallet-executive",
- "cirrus-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-executor",
- "sp-inherents",
- "sp-io",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-runtime-primitives",
- "subspace-wasm-tools",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "cirrus-test-runtime"
 version = "0.1.0"
 dependencies = [
  "cirrus-pallet-executive",
- "cirrus-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -998,6 +902,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -1005,7 +910,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-inherents",
  "sp-io",
  "sp-offchain",
@@ -1017,6 +922,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -1025,9 +931,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cirrus-client-executor",
- "cirrus-node",
  "cirrus-test-runtime",
  "cumulus-client-consensus-relay-chain",
+ "domain-service",
  "frame-system",
  "futures 0.3.21",
  "pallet-transaction-payment",
@@ -1044,6 +950,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
+ "sp-domains",
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
@@ -1673,6 +1580,56 @@ checksum = "c4d33be9473d06f75f58220f71f7a9317aca647dc061dbd3c361b0bef505fbea"
 dependencies = [
  "byteorder 1.4.3",
  "quick-error",
+]
+
+[[package]]
+name = "domain-service"
+version = "0.1.0"
+dependencies = [
+ "cirrus-client-executor",
+ "cirrus-client-executor-gossip",
+ "clap",
+ "cumulus-client-consensus-relay-chain",
+ "frame-benchmarking",
+ "frame-benchmarking-cli",
+ "futures 0.3.21",
+ "hex-literal",
+ "jsonrpsee",
+ "log",
+ "pallet-transaction-payment-rpc",
+ "sc-chain-spec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-executor",
+ "sc-network",
+ "sc-rpc",
+ "sc-rpc-api",
+ "sc-service",
+ "sc-telemetry",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "sc-utils",
+ "serde",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-slots",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-keystore",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-transaction-pool",
+ "subspace-core-primitives",
+ "subspace-runtime-primitives",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
+ "system-domain-runtime",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -4508,7 +4465,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-executor"
+name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
  "frame-support",
@@ -4517,7 +4474,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-io",
  "sp-runtime",
  "sp-std",
@@ -4535,9 +4492,10 @@ dependencies = [
  "scale-info",
  "sp-arithmetic",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-io",
  "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6039,7 +5997,7 @@ dependencies = [
  "sc-consensus",
  "sp-api",
  "sp-consensus",
- "sp-executor",
+ "sp-domains",
  "sp-runtime",
  "subspace-fraud-proof",
 ]
@@ -7432,15 +7390,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-executor"
+name = "sp-domains"
 version = "0.1.0"
 dependencies = [
+ "merlin 2.0.1",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "sp-api",
  "sp-application-crypto",
  "sp-consensus-slots",
  "sp-core",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
  "sp-std",
@@ -8065,7 +8026,6 @@ name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
  "cirrus-block-builder",
- "cirrus-primitives",
  "cirrus-test-service",
  "futures 0.3.21",
  "hash-db",
@@ -8078,12 +8038,13 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-keyring",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
  "substrate-test-utils",
+ "system-runtime-primitives",
  "tokio",
  "tracing",
 ]
@@ -8104,7 +8065,6 @@ dependencies = [
  "libp2p",
  "lru",
  "nohash-hasher",
- "once_cell",
  "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -8124,10 +8084,9 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
- "cirrus-node",
- "cirrus-runtime",
  "clap",
  "dirs",
+ "domain-service",
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.21",
@@ -8147,7 +8106,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -8156,6 +8115,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "substrate-build-script-utils",
+ "system-domain-runtime",
  "thiserror",
  "tokio",
 ]
@@ -8173,8 +8133,6 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
- "cirrus-runtime",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",
@@ -8184,7 +8142,7 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
- "pallet-executor",
+ "pallet-domains",
  "pallet-feeds",
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
@@ -8205,7 +8163,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
@@ -8219,6 +8177,8 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-domain-runtime",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8238,7 +8198,6 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
  "derive_more",
  "frame-support",
  "frame-system-rpc-runtime-api",
@@ -8273,7 +8232,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-objects",
  "sp-offchain",
  "sp-runtime",
@@ -8287,6 +8246,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "system-runtime-primitives",
  "thiserror",
  "tracing",
 ]
@@ -8316,7 +8276,6 @@ dependencies = [
  "sp-api",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -8331,7 +8290,6 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
- "cirrus-primitives",
  "cirrus-test-runtime",
  "frame-executive",
  "frame-support",
@@ -8340,7 +8298,7 @@ dependencies = [
  "hex-literal",
  "orml-vesting",
  "pallet-balances",
- "pallet-executor",
+ "pallet-domains",
  "pallet-feeds",
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
@@ -8359,7 +8317,7 @@ dependencies = [
  "sp-block-builder",
  "sp-consensus-subspace",
  "sp-core",
- "sp-executor",
+ "sp-domains",
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
@@ -8373,6 +8331,7 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8668,6 +8627,54 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "system-domain-runtime"
+version = "0.1.0"
+dependencies = [
+ "cirrus-pallet-executive",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-executor-registry",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "subspace-wasm-tools",
+ "substrate-wasm-builder",
+ "system-runtime-primitives",
+]
+
+[[package]]
+name = "system-runtime-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
