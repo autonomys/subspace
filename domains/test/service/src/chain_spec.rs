@@ -1,4 +1,4 @@
-//! Chain specification for the cirrus test runtime.
+//! Chain specification for the domain test runtime.
 
 use domain_test_runtime::{AccountId, Balance, Signature};
 use sc_service::ChainType;

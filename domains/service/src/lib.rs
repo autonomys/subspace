@@ -50,7 +50,7 @@ impl NativeExecutionDispatch for SystemDomainRuntimeExecutor {
     }
 }
 
-/// Cirrus-like full client.
+/// Domain full client.
 pub type FullClient<RuntimeApi, ExecutorDispatch> =
     TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
@@ -335,7 +335,7 @@ where
             executor: executor.clone(),
             bundle_receiver,
         });
-    spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
+    spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
 
     let new_full = NewFull {
         task_manager,

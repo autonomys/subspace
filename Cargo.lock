@@ -785,27 +785,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cirrus-pallet-executive"
-version = "0.1.0"
-dependencies = [
- "frame-executive",
- "frame-support",
- "frame-system",
- "hex-literal",
- "pallet-balances",
- "pallet-transaction-payment",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-inherents",
- "sp-io",
- "sp-runtime",
- "sp-std",
- "sp-tracing",
- "sp-version",
-]
-
-[[package]]
 name = "clap"
 version = "3.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1507,6 +1486,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-pallet-executive"
+version = "0.1.0"
+dependencies = [
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "hex-literal",
+ "pallet-balances",
+ "pallet-transaction-payment",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-inherents",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-tracing",
+ "sp-version",
+]
+
+[[package]]
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
@@ -1560,7 +1560,7 @@ dependencies = [
 name = "domain-test-runtime"
 version = "0.1.0"
 dependencies = [
- "cirrus-pallet-executive",
+ "domain-pallet-executive",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -8633,7 +8633,7 @@ dependencies = [
 name = "system-domain-runtime"
 version = "0.1.0"
 dependencies = [
- "cirrus-pallet-executive",
+ "domain-pallet-executive",
  "frame-benchmarking",
  "frame-support",
  "frame-system",

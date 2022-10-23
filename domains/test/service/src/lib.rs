@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Crate used for testing with Cirrus.
+//! Crate used for testing with Domain.
 
 #![warn(missing_docs)]
 
@@ -393,7 +393,7 @@ pub fn node_config(
     network_config.transport = TransportConfig::MemoryOnly;
 
     Ok(Configuration {
-        impl_name: "cirrus-test-node".to_string(),
+        impl_name: "domain-test-node".to_string(),
         impl_version: "0.1".to_string(),
         role,
         tokio_handle,

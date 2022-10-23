@@ -55,7 +55,7 @@ pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signatu
 pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExtra>;
 
 /// Executive: handles dispatch to the various modules.
-pub type Executive = cirrus_pallet_executive::Executive<
+pub type Executive = domain_pallet_executive::Executive<
     Runtime,
     Block,
     frame_system::ChainContext<Runtime>,
@@ -243,7 +243,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
-impl cirrus_pallet_executive::Config for Runtime {
+impl domain_pallet_executive::Config for Runtime {
     type Event = Event;
     type Call = Call;
 }
@@ -281,7 +281,7 @@ construct_runtime!(
     {
         // System support stuff.
         System: frame_system,
-        ExecutivePallet: cirrus_pallet_executive,
+        ExecutivePallet: domain_pallet_executive,
 
         // Monetary stuff.
         Balances: pallet_balances,
@@ -414,7 +414,7 @@ impl_runtime_apis! {
             // Use `set_code_without_checks` instead of `set_code` in the test environment.
             let set_code_call = frame_system::Call::set_code_without_checks { code };
             UncheckedExtrinsic::new_unsigned(
-                cirrus_pallet_executive::Call::sudo_unchecked_weight_unsigned {
+                domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
                     weight: 0
                 }.into()

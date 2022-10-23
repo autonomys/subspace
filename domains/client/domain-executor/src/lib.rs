@@ -103,9 +103,9 @@ use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 /// The logging target.
-const LOG_TARGET: &str = "cirrus::executor";
+const LOG_TARGET: &str = "domain::executor";
 
-/// The implementation of the Cirrus `Executor`.
+/// The implementation of the Domain `Executor`.
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
@@ -493,7 +493,7 @@ where
     }
 }
 
-/// Error type for cirrus gossip handling.
+/// Error type for domain gossip handling.
 #[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
     #[error("Bundle equivocation error")]
