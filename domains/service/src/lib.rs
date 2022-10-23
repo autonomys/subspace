@@ -308,7 +308,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
+    let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
     let executor = Executor::new(
         primary_chain_client,

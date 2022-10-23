@@ -311,7 +311,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     // able to be written to the database.
     alice.wait_for_blocks(1).await;
 
-    let create_and_send_submit_transaction_bundle = |primary_number: BlockNumber| {
+    let create_and_send_submit_bundle = |primary_number: BlockNumber| {
         let execution_receipt = crate::aux_schema::load_execution_receipt(
             &*alice.backend,
             alice.client.hash(primary_number).unwrap().unwrap(),
@@ -346,7 +346,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .into_signed_opaque_bundle();
 
         let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_transaction_bundle {
+            pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }
             .into(),
@@ -376,8 +376,8 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     };
 
     let (tx1, tx2) = futures::join!(
-        create_and_send_submit_transaction_bundle(1),
-        create_and_send_submit_transaction_bundle(2),
+        create_and_send_submit_bundle(1),
+        create_and_send_submit_bundle(2),
     );
     assert_eq!(vec![tx1.unwrap(), tx2.unwrap()], ready_txs());
 
@@ -403,17 +403,14 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
             .collect::<HashSet<_>>()
     };
     // best execution chain number is 2, receipt for #4 will be put into the futures queue.
-    let tx4 = create_and_send_submit_transaction_bundle(4)
+    let tx4 = create_and_send_submit_bundle(4)
         .await
         .expect("Submit a future receipt successfully");
     assert_eq!(HashSet::from([tx4]), future_txs());
 
     // max drift is 2, hence the max allowed receipt number is 2 + 2, 5 will be rejected as being
     // too far.
-    match create_and_send_submit_transaction_bundle(5)
-        .await
-        .unwrap_err()
-    {
+    match create_and_send_submit_bundle(5).await.unwrap_err() {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
         ) => assert_eq!(
@@ -423,7 +420,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         e => panic!("Unexpected error while submitting execution receipt: {e}"),
     }
 
-    let tx3 = create_and_send_submit_transaction_bundle(3)
+    let tx3 = create_and_send_submit_bundle(3)
         .await
         .expect("Submit receipt 3 successfully");
     // All future txs become ready once the required tx is ready.

@@ -364,7 +364,7 @@ where
 
     primary_chain_client
         .runtime_api()
-        .submit_transaction_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+        .submit_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
 
     Ok(())
 }
