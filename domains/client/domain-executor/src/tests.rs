@@ -1,6 +1,6 @@
-use cirrus_test_service::run_primary_chain_validator_node;
-use cirrus_test_service::runtime::{Header, UncheckedExtrinsic};
-use cirrus_test_service::Keyring::{Alice, Bob, Ferdie};
+use domain_test_service::run_primary_chain_validator_node;
+use domain_test_service::runtime::{Header, UncheckedExtrinsic};
+use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use codec::{Decode, Encode};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend, StateBackend};
 use sc_consensus::ForkChoiceStrategy;
@@ -33,13 +33,13 @@ async fn test_executor_full_node_catching_up() {
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Authority, false, false)
         .await;
 
     // Run Bob (a secondary chain full node)
-    let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
+    let bob = domain_test_service::TestNodeBuilder::new(tokio_handle, Bob)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Full, false, false)
         .await;
@@ -85,7 +85,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Authority, false, true)
         .await;
@@ -215,7 +215,7 @@ async fn set_new_code_should_work() {
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Authority, false, false)
         .await;
@@ -300,7 +300,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     // Run Alice (a secondary chain full node)
     // Run a full node deliberately in order to control the execution chain by
     // submitting the receipts manually later.
-    let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Full, false, false)
         .await;

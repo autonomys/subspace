@@ -64,8 +64,8 @@ sp-transaction-pool = { git = "https://github.com/subspace/substrate", rev = "1a
 
 # Cumulus dependencies
 cumulus-client-consensus-relay-chain = { path = "../client/consensus/relay-chain" }
-cirrus-client-executor = { path = "../client/cirrus-executor" }
-cirrus-client-executor-gossip = { path = "../client/executor-gossip" }
+domain-client-executor = { path = "../client/domain-executor" }
+domain-client-executor-gossip = { path = "../client/executor-gossip" }
 system-runtime-primitives = { path = "../primitives/system-runtime" }
 
 # Subspace dependencies

@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-test-service"
+name = "domain-test-service"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
@@ -39,10 +39,10 @@ sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa
 sp-timestamp = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 substrate-test-client = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
-cirrus-client-executor = { path = "../../client/cirrus-executor" }
-cirrus-test-runtime = { path = "../runtime" }
 cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
+domain-client-executor = { path = "../../client/domain-executor" }
 domain-service = { path = "../../service" }
+domain-test-runtime = { path = "../runtime" }
 
 sp-domains = { path = "../../../crates/sp-domains" }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives" }

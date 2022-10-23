@@ -55,7 +55,7 @@
 //! - Secondary chain, execution layer.
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
-//! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
+//! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
 #![feature(drain_filter)]
@@ -73,8 +73,8 @@ use crate::bundle_processor::BundleProcessor;
 use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::worker::BlockInfo;
-use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use codec::{Decode, Encode};
+use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};

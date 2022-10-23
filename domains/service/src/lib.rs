@@ -2,8 +2,8 @@
 
 mod rpc;
 
-use cirrus_client_executor::Executor;
-use cirrus_client_executor_gossip::ExecutorGossipParams;
+use domain_client_executor::Executor;
+use domain_client_executor_gossip::ExecutorGossipParams;
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -253,7 +253,7 @@ where
     secondary_chain_config
         .network
         .extra_sets
-        .push(cirrus_client_executor_gossip::executor_gossip_peers_set_config());
+        .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
     let params = new_partial(&secondary_chain_config)?;
 
@@ -330,7 +330,7 @@ where
     .await?;
 
     let executor_gossip =
-        cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
+        domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
             network: network.clone(),
             executor: executor.clone(),
             bundle_receiver,

@@ -3,8 +3,8 @@ resolver = "2"
 members = [
     "crates/*",
     "domains/client/block-builder",
-    "domains/client/cirrus-executor",
     "domains/client/consensus/relay-chain",
+    "domains/client/domain-executor",
     "domains/client/executor-gossip",
     "domains/pallets/*",
     "domains/primitives/*",

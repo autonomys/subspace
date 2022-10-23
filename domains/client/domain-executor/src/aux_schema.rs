@@ -375,7 +375,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cirrus_test_service::runtime::Block;
+    use domain_test_service::runtime::Block;
     use sc_client_api::backend::NewBlockState;
     use sc_client_api::{Backend, BlockImportOperation};
     use sp_core::hash::H256;
