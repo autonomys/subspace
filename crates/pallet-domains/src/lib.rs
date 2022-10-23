@@ -33,7 +33,7 @@ use sp_domains::{
     InvalidTransactionCode, InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
-use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
+use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
 use sp_std::vec::Vec;
 
@@ -48,10 +48,10 @@ mod pallet {
         InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
-        BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
+        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::SaturatedConversion;
     use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -201,8 +201,30 @@ mod pallet {
                 signed_opaque_bundle
             );
 
+            let oldest_receipt_number = OldestReceiptNumber::<T>::get();
+            let (_, mut best_number) = <ReceiptHead<T>>::get();
+
             for receipt in &signed_opaque_bundle.bundle.receipts {
-                Self::apply_execution_receipt(receipt);
+                // Ignore the receipt if it has already been pruned.
+                if receipt.primary_number < oldest_receipt_number {
+                    continue;
+                }
+
+                if receipt.primary_number <= best_number {
+                    // Either increase the vote for a known receipt or add a fork receipt at this height.
+                    Self::apply_non_new_best_receipt(receipt);
+                } else if receipt.primary_number == best_number + One::one() {
+                    Self::apply_new_best_receipt(receipt);
+                    best_number += One::one();
+                } else {
+                    // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
+                    //
+                    // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
+                    return Err(Error::<T>::Bundle(BundleError::Receipt(
+                        ExecutionReceiptError::MissingParent,
+                    ))
+                    .into());
+                }
             }
 
             Self::deposit_event(Event::BundleStored {
@@ -324,6 +346,10 @@ mod pallet {
     #[pallet::getter(fn receipt_head)]
     pub(super) type ReceiptHead<T: Config> = StorageValue<_, (T::Hash, T::BlockNumber), ValueQuery>;
 
+    /// Block number of the oldest receipt stored in the state.
+    #[pallet::storage]
+    pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
+
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -386,68 +412,21 @@ mod pallet {
                         }
                     }
 
-                    let mut builder = ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
+                    let receipt_numbers = signed_opaque_bundle
+                        .bundle
+                        .receipts
+                        .iter()
+                        .map(|r| r.primary_number)
+                        .collect::<Vec<_>>();
+
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         .priority(TransactionPriority::MAX)
                         .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
                         }))
-                        .propagate(true);
-
-                    for receipt in &signed_opaque_bundle.bundle.receipts {
-                        builder = builder.and_provides(receipt.primary_number);
-                    }
-
-                    let current_block_number = frame_system::Pallet::<T>::current_block_number();
-                    if current_block_number == One::one() {
-                        return builder.build();
-                    }
-
-                    // The receipt for a certain block can only exist in one bundle each time.
-                    //
-                    // TODO: Proper priority for `submit_transaction_bundle`.
-                    //
-                    // Consider this scenario: when a primary node is at #2, its tx pool has an
-                    // unsigned extrinsic `submit_transaction_bundle` with receipts {1} in it.
-                    // When this primary node proceeds to #3, this unsigned extrinsic remains,
-                    // but a new one with receipts {1, 2} is received too, at this point, due to
-                    // these two extrinsics provides the same tag (`1`), the tx pool will check
-                    // if the latter one need to replace the previous one, if we don't set a higher
-                    // priority for the extrinsic with receipts {1, 2}, it will be simply rejected
-                    // as too low priority. However, it makes more sense to replace the previous
-                    // one in this case or to have a better way of handling these extrinsics.
-                    //
-                    // #2: `submit_transaction_bundle` with receipts {1}
-                    // #3: `submit_transaction_bundle` with receipts {1, 2}
-                    //
-                    // Now the unthoughtful priority is caculated based on the assumption that an extrinsic
-                    // providing more receipts has a higher priority.
-                    let additional_priority = signed_opaque_bundle
-                        .bundle
-                        .receipts
-                        .iter()
-                        .map(|r| r.primary_number.saturated_into::<TransactionPriority>())
-                        .sum::<TransactionPriority>();
-                    builder = builder.priority(TransactionPriority::MAX / 2 + additional_priority);
-
-                    let first_primary_number = signed_opaque_bundle
-                        .bundle
-                        .receipts
-                        .get(0)
-                        .expect("Receipts in a bundle after Block #1 must be non-empty as checked above; qed")
-                        .primary_number;
-
-                    // primary_number is ensured to be larger than the best execution chain chain
-                    // number above.
-                    //
-                    // No requires if it's the next expected execution chain number.
-                    let (_, best_number) = <ReceiptHead<T>>::get();
-                    if first_primary_number == best_number + One::one() {
-                        builder.build()
-                    } else {
-                        builder
-                            .and_requires(first_primary_number - One::one())
-                            .build()
-                    }
+                        .and_provides(receipt_numbers)
+                        .propagate(true)
+                        .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
                     if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
@@ -533,7 +512,9 @@ impl<T: Config> Pallet<T> {
             trace: Vec::new(),
             trace_root: Default::default(),
         };
-        Self::apply_execution_receipt(&genesis_receipt);
+        Self::apply_new_best_receipt(&genesis_receipt);
+        // Explicitly initialize the oldest receipt number even not necessary as ValueQuery is used.
+        OldestReceiptNumber::<T>::put::<T::BlockNumber>(Zero::zero());
     }
 
     fn pre_dispatch_submit_bundle(
@@ -541,35 +522,37 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(), TransactionValidityError> {
         let execution_receipts = &signed_opaque_bundle.bundle.receipts;
 
-        let (_, mut best_number) = <ReceiptHead<T>>::get();
-
-        for execution_receipt in execution_receipts {
-            let primary_number = execution_receipt.primary_number;
-
-            // Ensure the block number of next execution receipt is `best_number + 1`.
-            if primary_number != best_number + One::one() {
-                if primary_number <= best_number {
-                    return Err(InvalidTransaction::Stale.into());
-                } else {
-                    return Err(InvalidTransaction::Future.into());
-                }
-            }
-
-            best_number += One::one();
+        if !execution_receipts
+            .iter()
+            .map(|r| r.primary_number)
+            .is_sorted()
+        {
+            return Err(TransactionValidityError::Invalid(
+                InvalidTransactionCode::ExecutionReceipt.into(),
+            ));
         }
 
-        // Ensure the parent receipt exists.
-        let first_primary_number = execution_receipts
-            .get(0)
-            .ok_or_else(|| {
-                TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
-            })?
-            .primary_number;
-        let parent_hash = <BlockHash<T>>::get(first_primary_number - One::one());
-        ensure!(
-            ReceiptVotes::<T>::iter_prefix(parent_hash).next().is_some(),
-            TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
-        );
+        let (_, mut best_number) = <ReceiptHead<T>>::get();
+
+        for receipt in execution_receipts {
+            // Non-best receipt
+            if receipt.primary_number <= best_number {
+                continue;
+            // New nest receipt.
+            } else if receipt.primary_number == best_number + One::one() {
+                if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
+                    return Err(TransactionValidityError::Invalid(
+                        InvalidTransactionCode::ExecutionReceipt.into(),
+                    ));
+                }
+                best_number += One::one();
+            // Missing receipt.
+            } else {
+                return Err(TransactionValidityError::Invalid(
+                    InvalidTransactionCode::ExecutionReceipt.into(),
+                ));
+            }
+        }
 
         Ok(())
     }
@@ -650,12 +633,6 @@ impl<T: Config> Pallet<T> {
 
         let (_, mut best_number) = <ReceiptHead<T>>::get();
 
-        if let Some(first_primary_number) = execution_receipts.get(0).map(|r| r.primary_number) {
-            if first_primary_number < best_number {
-                return Err(ExecutionReceiptError::Pruned);
-            }
-        }
-
         for execution_receipt in execution_receipts {
             // Due to `initialize_block` is skipped while calling the runtime api, the block
             // hash mapping for last block is unknown to the transaction pool, but this info
@@ -671,7 +648,7 @@ impl<T: Config> Pallet<T> {
                 return Err(ExecutionReceiptError::UnknownBlock);
             }
 
-            // Ensure the receipt is neither old nor too new.
+            // Ensure the receipt is not too new.
             let primary_number = execution_receipt.primary_number;
 
             if primary_number == current_block_number
@@ -748,14 +725,14 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn apply_execution_receipt(
+    fn apply_new_best_receipt(
         execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
         let receipt_hash = execution_receipt.hash();
 
-        // Apply the execution receipt.
+        // Apply the new best receipt.
         <Receipts<T>>::insert(receipt_hash, execution_receipt);
         <ReceiptHead<T>>::put((primary_hash, primary_number));
         <ReceiptVotes<T>>::mutate(primary_hash, receipt_hash, |count| {
@@ -770,12 +747,33 @@ impl<T: Config> Pallet<T> {
                         Receipts::<T>::remove(receipt_hash);
                     }
                 }
-            })
+            });
+            OldestReceiptNumber::<T>::put(to_prune + One::one());
         }
 
         Self::deposit_event(Event::NewExecutionReceipt {
             primary_number,
             primary_hash,
+        });
+    }
+
+    fn apply_non_new_best_receipt(
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+    ) {
+        let primary_hash = execution_receipt.primary_hash;
+        let primary_number = execution_receipt.primary_number;
+        let receipt_hash = execution_receipt.hash();
+
+        // Track the fork receipt if it's not seen before.
+        if !<Receipts<T>>::contains_key(receipt_hash) {
+            <Receipts<T>>::insert(receipt_hash, execution_receipt);
+            Self::deposit_event(Event::NewExecutionReceipt {
+                primary_number,
+                primary_hash,
+            });
+        }
+        <ReceiptVotes<T>>::mutate(primary_hash, receipt_hash, |count| {
+            *count += 1;
         });
     }
 }
