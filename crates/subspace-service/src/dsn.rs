@@ -1,5 +1,4 @@
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
@@ -7,10 +6,10 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    BootstrappedNetworkingParameters, CreationError, PieceByHashRequestHandler,
-    PieceByHashResponse, PieceKey, ToMultihash,
+    BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
+    MemoryRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{debug, error, info, trace, Instrument};
+use tracing::{info, trace, Instrument};
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -44,7 +43,9 @@ where
 
     trace!("Subspace networking starting.");
 
-    let networking_config = subspace_networking::Config {
+    let networking_config = subspace_networking::Config::<
+        CustomRecordStore<MemoryRecordStorage, MemoryProviderStorage>,
+    > {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.dsn_listen_on,
         allow_non_globals_in_dht: true,
@@ -62,6 +63,10 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
+        record_store: CustomRecordStore::new(
+            MemoryRecordStorage::default(),
+            MemoryProviderStorage::default(),
+        ),
         ..subspace_networking::Config::with_generated_keypair()
     };
 
@@ -87,52 +92,53 @@ where
     spawner.spawn_essential(
         "archiver",
         Some("subspace-networking"),
-        Box::pin(async move {
-            trace!("Subspace DSN archiver started.");
+        Box::pin(
+            async move {
+                trace!("Subspace DSN archiver started.");
 
-            let mut last_published_segment_index: Option<u64> = None;
-            while let Some(ArchivedSegmentNotification {
-                archived_segment, ..
-            }) = archived_segment_notification_stream.next().await
-            {
-                let segment_index = archived_segment.root_block.segment_index();
-                let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
-
-                // skip repeating publication
-                if let Some(last_published_segment_index) = last_published_segment_index {
-                    if last_published_segment_index == segment_index {
-                        debug!(?segment_index, "Archived segment skipped.");
-                        continue;
-                    }
-                }
-                let keys_iter = (first_piece_index..)
-                    .take(archived_segment.pieces.count())
-                    .map(PieceIndexHash::from_index)
-                    .map(|hash| hash.to_multihash());
-
-                //TODO: rewrite announcing to batches to limit simultaneous request number
-                let pieces_announcements = keys_iter
-                    .map(|key| node.start_announcing(key).boxed())
-                    .collect::<FuturesUnordered<_>>();
-
-                //TODO: ensure republication of failed announcements
-                //TODO: consider using a stream for the FuturesUnordered
-                match pieces_announcements
-                    .collect::<Vec<_>>()
-                    .await
-                    .iter()
-                    .find(|res| res.is_err())
+                let mut last_published_segment_index: Option<u64> = None;
+                while let Some(ArchivedSegmentNotification {
+                    archived_segment, ..
+                }) = archived_segment_notification_stream.next().await
                 {
-                    None => {
-                        trace!(?segment_index, "Archived segment published.");
+                    let segment_index = archived_segment.root_block.segment_index();
+                    let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
+
+                    info!(%segment_index, "Processing a segment.");
+
+                    // skip repeating publication
+                    if let Some(last_published_segment_index) = last_published_segment_index {
+                        if last_published_segment_index == segment_index {
+                            info!(?segment_index, "Archived segment skipped.");
+                            continue;
+                        }
                     }
-                    Some(err) => {
-                        error!(error = ?err, ?segment_index, "Failed to publish archived segment");
+                    let keys_iter = (first_piece_index..)
+                        .take(archived_segment.pieces.count())
+                        .map(|idx| (idx, PieceIndexHash::from_index(idx)))
+                        .map(|(idx, hash)| (idx, hash.to_multihash()));
+
+                    for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
+                        //TODO: restore annoucing after https://github.com/libp2p/rust-libp2p/issues/3048
+                        // trace!(?key, ?idx, "Announcing key...");
+                        //
+                        // let announcing_result = node.start_announcing(key).await;
+                        //
+                        // trace!(?key, "Announcing result: {:?}", announcing_result);
+
+                        let put_value_result = node.put_value(key, piece.to_vec()).await;
+
+                        trace!(?key, "Put value result: {:?}", put_value_result);
+
+                        //TODO: ensure republication of failed announcements
                     }
+
+                    last_published_segment_index = Some(segment_index);
+                    info!(%segment_index, "Segment processed.");
                 }
-                last_published_segment_index = Some(segment_index);
             }
-        }.in_current_span(),),
+            .in_current_span(),
+        ),
     );
 
     Ok(())
