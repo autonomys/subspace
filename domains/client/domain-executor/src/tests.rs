@@ -1,7 +1,7 @@
+use codec::{Decode, Encode};
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
-use codec::{Decode, Encode};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend, StateBackend};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;

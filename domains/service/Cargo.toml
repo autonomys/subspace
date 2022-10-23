@@ -63,7 +63,7 @@ sp-session = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa
 sp-transaction-pool = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 # Cumulus dependencies
-cumulus-client-consensus-relay-chain = { path = "../client/consensus/relay-chain" }
+domain-client-consensus-relay-chain = { path = "../client/consensus-relay-chain" }
 domain-client-executor = { path = "../client/domain-executor" }
 domain-client-executor-gossip = { path = "../client/executor-gossip" }
 system-runtime-primitives = { path = "../primitives/system-runtime" }

@@ -39,7 +39,7 @@ sp-runtime = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa
 sp-timestamp = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 substrate-test-client = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
-cumulus-client-consensus-relay-chain = { path = "../../client/consensus/relay-chain" }
+domain-client-consensus-relay-chain = { path = "../../client/consensus-relay-chain" }
 domain-client-executor = { path = "../../client/domain-executor" }
 domain-service = { path = "../../service" }
 domain-test-runtime = { path = "../runtime" }
