@@ -55,6 +55,9 @@ struct FarmingArgs {
     /// Disable farming
     #[clap(long)]
     disable_farming: bool,
+    /// Enable DSN and use DSN piece provider for plotting
+    #[clap(long)]
+    enable_dsn: bool,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]

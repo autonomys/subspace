@@ -1,11 +1,11 @@
 use crate::utils::shutdown_signal;
-use crate::{DiskFarm, FarmingArgs};
+use crate::{DiskFarm, FarmingArgs, Multiaddr};
 use anyhow::{anyhow, Result};
-use futures::future::select;
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
+use subspace_networking::{create, BootstrappedNetworkingParameters, Config, Node, NodeRunner};
 use tracing::info;
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
@@ -30,8 +30,10 @@ pub(crate) async fn farm_multi_disk(
         plot_size: _,
         disk_concurrency,
         disable_farming,
+        enable_dsn,
     } = farming_args;
 
+    let (node, node_runner) = configure_dsn(enable_dsn, listen_on, bootstrap_nodes).await?;
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -52,6 +54,7 @@ pub(crate) async fn farm_multi_disk(
             allocated_space: disk_farm.allocated_plotting_space,
             rpc_client,
             reward_address,
+            dsn_node: node.clone(),
         })?;
 
         single_disk_plots.push(single_disk_plot);
@@ -62,23 +65,57 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_plot| single_disk_plot.wait())
         .collect::<FuturesUnordered<_>>();
 
-    select(
-        Box::pin(async move {
+    futures::select!(
+        // Signal future
+        _ = Box::pin(async move {
             signal.await;
+        }).fuse() => {},
 
-            Ok(())
-        }),
-        Box::pin(async move {
+        // Plotting future
+        _ = Box::pin(async move {
             while let Some(result) = single_disk_plots_stream.next().await {
                 result?;
 
                 info!("Farm exited successfully");
             }
-
             anyhow::Ok(())
-        }),
-    )
-    .await
-    .factor_first()
-    .0
+        }).fuse() => {},
+
+        // Node runner future
+        _ = Box::pin(async move {
+            if let Some(mut node_runner) = node_runner{
+                node_runner.run().await;
+
+                info!("Node runner exited.")
+            } else {
+                futures::future::pending().await
+            }
+        }).fuse() => {},
+    );
+
+    anyhow::Ok(())
+}
+
+async fn configure_dsn(
+    enable_dsn: bool,
+    listen_on: Vec<Multiaddr>,
+    bootstrap_nodes: Vec<Multiaddr>,
+) -> Result<(Option<Node>, Option<NodeRunner>), anyhow::Error> {
+    if !enable_dsn {
+        info!("No DSN configured.");
+        return Ok((None, None));
+    }
+
+    let config = Config {
+        listen_on,
+        allow_non_globals_in_dht: true,
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
+            .boxed(),
+        ..Config::with_generated_keypair()
+    };
+
+    create(config)
+        .await
+        .map(|(node, node_runner)| (Some(node), Some(node_runner)))
+        .map_err(Into::into)
 }
