@@ -44,8 +44,8 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::{
-        BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
-        InvalidTransactionProof, SignedOpaqueBundle,
+        BundleEquivocationProof, ExecutionReceipt, ExecutorPublicKey, FraudProof,
+        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
         BlockNumberProvider, CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
@@ -172,8 +172,11 @@ mod pallet {
             primary_number: T::BlockNumber,
             primary_hash: T::Hash,
         },
-        /// A transaction bundle was included.
-        TransactionBundleStored { bundle_hash: H256 },
+        /// A domain bundle was included.
+        BundleStored {
+            bundle_hash: H256,
+            bundle_author: ExecutorPublicKey,
+        },
         /// A fraud proof was processed.
         FraudProofProcessed,
         /// A bundle equivocation proof was processed.
@@ -202,8 +205,9 @@ mod pallet {
                 Self::apply_execution_receipt(receipt);
             }
 
-            Self::deposit_event(Event::TransactionBundleStored {
+            Self::deposit_event(Event::BundleStored {
                 bundle_hash: signed_opaque_bundle.hash(),
+                bundle_author: signed_opaque_bundle.proof_of_election.executor_public_key,
             });
 
             Ok(())
