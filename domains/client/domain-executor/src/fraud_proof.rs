@@ -1,6 +1,6 @@
 use crate::TransactionFor;
-use cirrus_block_builder::{BlockBuilder, RecordProof};
 use codec::{Decode, Encode};
+use domain_block_builder::{BlockBuilder, RecordProof};
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;

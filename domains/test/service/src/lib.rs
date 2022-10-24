@@ -14,14 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Crate used for testing with Cirrus.
+//! Crate used for testing with Domain.
 
 #![warn(missing_docs)]
 
 pub mod chain_spec;
 
-use cirrus_test_runtime::opaque::Block;
-use cirrus_test_runtime::Hash;
+use domain_test_runtime::opaque::Block;
+use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
@@ -48,7 +48,7 @@ use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
-pub use cirrus_test_runtime as runtime;
+pub use domain_test_runtime as runtime;
 pub use sp_keyring::Sr25519Keyring as Keyring;
 
 /// The signature of the announce block fn.
@@ -61,7 +61,7 @@ pub type Backend = TFullBackend<Block>;
 pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 
 /// Secondary executor for the test service.
-pub type Executor = cirrus_client_executor::Executor<
+pub type Executor = domain_client_executor::Executor<
     Block,
     PBlock,
     Client,
@@ -78,11 +78,11 @@ impl sc_executor::NativeExecutionDispatch for RuntimeExecutor {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        cirrus_test_runtime::api::dispatch(method, data)
+        domain_test_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        cirrus_test_runtime::native_version()
+        domain_test_runtime::native_version()
     }
 }
 
@@ -142,7 +142,7 @@ async fn run_executor(
         _,
         _,
         _,
-        cirrus_test_runtime::RuntimeApi,
+        domain_test_runtime::RuntimeApi,
         RuntimeExecutor,
     >(
         secondary_chain_config,
@@ -393,7 +393,7 @@ pub fn node_config(
     network_config.transport = TransportConfig::MemoryOnly;
 
     Ok(Configuration {
-        impl_name: "cirrus-test-node".to_string(),
+        impl_name: "domain-test-node".to_string(),
         impl_version: "0.1".to_string(),
         role,
         tokio_handle,

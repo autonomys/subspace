@@ -1,7 +1,7 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::TransactionFor;
-use cirrus_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use codec::{Decode, Encode};
+use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;

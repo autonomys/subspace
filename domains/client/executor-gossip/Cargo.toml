@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-client-executor-gossip"
+name = "domain-client-executor-gossip"
 version = "0.1.0"
 authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
 edition = "2021"

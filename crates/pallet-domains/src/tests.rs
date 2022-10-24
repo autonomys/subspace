@@ -173,11 +173,11 @@ fn submit_execution_receipt_incrementally_should_work() {
             BlockHash::<Test>::insert((index + 1) as u64, block_hash);
 
             assert_ok!(pallet_domains::Pallet::<Test>::pre_dispatch(
-                &pallet_domains::Call::submit_transaction_bundle {
+                &pallet_domains::Call::submit_bundle {
                     signed_opaque_bundle: dummy_bundles[index].clone()
                 }
             ));
-            assert_ok!(Domains::submit_transaction_bundle(
+            assert_ok!(Domains::submit_bundle(
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
@@ -186,7 +186,7 @@ fn submit_execution_receipt_incrementally_should_work() {
         });
 
         assert!(Receipts::<Test>::get(receipt_hash(257)).is_none());
-        assert_ok!(Domains::submit_transaction_bundle(
+        assert_ok!(Domains::submit_bundle(
             Origin::none(),
             dummy_bundles[256].clone(),
         ));
@@ -199,15 +199,13 @@ fn submit_execution_receipt_incrementally_should_work() {
         assert!(Receipts::<Test>::get(receipt_hash(258)).is_none());
 
         assert_noop!(
-            pallet_domains::Pallet::<Test>::pre_dispatch(
-                &pallet_domains::Call::submit_transaction_bundle {
-                    signed_opaque_bundle: dummy_bundles[258].clone()
-                }
-            ),
+            pallet_domains::Pallet::<Test>::pre_dispatch(&pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle: dummy_bundles[258].clone()
+            }),
             TransactionValidityError::Invalid(InvalidTransaction::Future)
         );
 
-        assert_ok!(Domains::submit_transaction_bundle(
+        assert_ok!(Domains::submit_bundle(
             Origin::none(),
             dummy_bundles[257].clone(),
         ));
@@ -248,7 +246,7 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
         (0..255).for_each(|index| {
-            assert_ok!(Domains::submit_transaction_bundle(
+            assert_ok!(Domains::submit_bundle(
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
@@ -256,21 +254,21 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
-        assert_ok!(Domains::submit_transaction_bundle(
+        assert_ok!(Domains::submit_bundle(
             Origin::none(),
             dummy_bundles[255].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(0));
 
         assert!(BlockHash::<Test>::contains_key(1));
-        assert_ok!(Domains::submit_transaction_bundle(
+        assert_ok!(Domains::submit_bundle(
             Origin::none(),
             dummy_bundles[256].clone(),
         ));
         assert!(!BlockHash::<Test>::contains_key(1));
 
         assert!(BlockHash::<Test>::contains_key(2));
-        assert_ok!(Domains::submit_transaction_bundle(
+        assert_ok!(Domains::submit_bundle(
             Origin::none(),
             dummy_bundles[257].clone(),
         ));
@@ -324,20 +322,20 @@ fn submit_bundle_with_many_reeipts_should_work() {
         // in System has been removed.
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
-        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle1));
+        assert_ok!(Domains::submit_bundle(Origin::none(), bundle1));
         assert_eq!(Domains::best_execution_chain_number(), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
-        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle2));
+        assert_ok!(Domains::submit_bundle(Origin::none(), bundle2));
         assert!(!BlockHash::<Test>::contains_key(0));
 
         assert!(BlockHash::<Test>::contains_key(1));
-        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle3));
+        assert_ok!(Domains::submit_bundle(Origin::none(), bundle3));
         assert!(!BlockHash::<Test>::contains_key(1));
 
         assert!(BlockHash::<Test>::contains_key(2));
-        assert_ok!(Domains::submit_transaction_bundle(Origin::none(), bundle4));
+        assert_ok!(Domains::submit_bundle(Origin::none(), bundle4));
         assert!(!BlockHash::<Test>::contains_key(2));
         assert_eq!(Domains::finalized_receipt_number(), 2);
         assert_eq!(Domains::best_execution_chain_number(), 258);
@@ -368,7 +366,7 @@ fn submit_fraud_proof_should_work() {
             let block_hash = block_hashes[index];
             BlockHash::<Test>::insert((index + 1) as u64, block_hash);
 
-            assert_ok!(Domains::submit_transaction_bundle(
+            assert_ok!(Domains::submit_bundle(
                 Origin::none(),
                 dummy_bundles[index].clone(),
             ));
