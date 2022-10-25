@@ -200,7 +200,7 @@ impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
 }
 
 /// Memory based record storage.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct MemoryRecordStorage {
     // TODO: Optimize collection, introduce limits and TTL.
     records: HashMap<Key, Record>,
@@ -214,7 +214,11 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 
     fn put(&'a mut self, record: Record) -> store::Result<()> {
-        trace!("New record added: {:?}", record);
+        trace!(
+            "New record added: {:?}. Total records: {:?}",
+            record.key,
+            self.records.len() + 1
+        );
 
         self.records.insert(record.key.clone(), record);
 
@@ -237,7 +241,7 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
 }
 
 /// Defines a stub for record storage with all operations defaulted.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct NoRecordStorage;
 
 impl<'a> RecordStorage<'a> for NoRecordStorage {

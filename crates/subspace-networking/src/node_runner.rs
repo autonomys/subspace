@@ -566,8 +566,10 @@ where
             KademliaEvent::OutboundQueryCompleted {
                 id,
                 result: QueryResult::StartProviding(results),
-                ..
+                stats,
             } => {
+                trace!("Start providing stats: {:?}", stats);
+
                 if let Some(QueryResultSender::Announce { sender }) =
                     self.query_id_receivers.remove(&id)
                 {

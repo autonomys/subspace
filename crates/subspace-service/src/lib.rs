@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
+#![feature(type_changing_struct_update)]
 
 mod dsn;
 mod pool;
@@ -301,14 +302,6 @@ where
             }
         });
 
-    sc_consensus_subspace::start_subspace_archiver(
-        &subspace_link,
-        client.clone(),
-        telemetry.as_ref().map(|telemetry| telemetry.handle()),
-        &task_manager.spawn_essential_handle(),
-        config.role.is_authority(),
-    );
-
     let slot_duration = subspace_link.config().slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         block_import.clone(),
@@ -428,6 +421,14 @@ where
         )
         .await?;
     }
+
+    sc_consensus_subspace::start_subspace_archiver(
+        &subspace_link,
+        client.clone(),
+        telemetry.as_ref().map(|telemetry| telemetry.handle()),
+        &task_manager.spawn_essential_handle(),
+        config.role.is_authority(),
+    );
 
     let (network, system_rpc_tx, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
