@@ -103,6 +103,8 @@ mod pallet {
         BadSignature,
         /// Invalid vrf proof.
         BadVrfProof,
+        /// Failed to derive the bundle election solution.
+        FailedToDeriveBundleElectionSolution,
         /// Can not retrieve the state needed from the storage proof.
         BadStorageProof,
         /// Bundle author is not found in the authority set.
@@ -184,7 +186,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_transaction_bundle(
+        pub fn submit_bundle(
             origin: OriginFor<T>,
             signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
         ) -> DispatchResult {
@@ -352,9 +354,9 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_transaction_bundle {
+                Call::submit_bundle {
                     signed_opaque_bundle,
-                } => Self::pre_dispatch_transaction_bundle(signed_opaque_bundle),
+                } => Self::pre_dispatch_submit_bundle(signed_opaque_bundle),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -364,7 +366,7 @@ mod pallet {
 
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
-                Call::submit_transaction_bundle {
+                Call::submit_bundle {
                     signed_opaque_bundle,
                 } => {
                     if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
@@ -530,7 +532,7 @@ impl<T: Config> Pallet<T> {
         Self::apply_execution_receipt(&genesis_receipt);
     }
 
-    fn pre_dispatch_transaction_bundle(
+    fn pre_dispatch_submit_bundle(
         signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) -> Result<(), TransactionValidityError> {
         let execution_receipts = &signed_opaque_bundle.bundle.receipts;
@@ -570,16 +572,16 @@ impl<T: Config> Pallet<T> {
 
     fn validate_bundle_election(proof_of_election: &ProofOfElection) -> Result<(), BundleError> {
         let ProofOfElection {
-            domain_id: _,
+            domain_id,
             vrf_output,
             vrf_proof,
             executor_public_key,
-            slot_randomness,
+            global_challenge,
             state_root,
             storage_proof,
         } = proof_of_election;
 
-        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, slot_randomness)
+        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, global_challenge)
             .map_err(|_| BundleError::BadVrfProof)?;
 
         // TODO: verify `state_root` is valid.
@@ -602,9 +604,13 @@ impl<T: Config> Pallet<T> {
             })
             .ok_or(BundleError::AuthorityNotFound)?;
 
-        let election_solution =
-            derive_bundle_election_solution(*vrf_output, executor_public_key, slot_randomness)
-                .map_err(|_| BundleError::BadVrfProof)?;
+        let election_solution = derive_bundle_election_solution(
+            *domain_id,
+            *vrf_output,
+            executor_public_key,
+            global_challenge,
+        )
+        .map_err(|_| BundleError::FailedToDeriveBundleElectionSolution)?;
 
         let threshold = calculate_bundle_election_threshold(
             *stake_weight,
@@ -774,11 +780,11 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    /// Submits an unsigned extrinsic [`Call::submit_transaction_bundle`].
-    pub fn submit_transaction_bundle_unsigned(
+    /// Submits an unsigned extrinsic [`Call::submit_bundle`].
+    pub fn submit_bundle_unsigned(
         signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
     ) {
-        let call = Call::submit_transaction_bundle {
+        let call = Call::submit_bundle {
             signed_opaque_bundle,
         };
 

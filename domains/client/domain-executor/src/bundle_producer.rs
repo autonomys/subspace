@@ -103,7 +103,7 @@ where
     > {
         let ExecutorSlotInfo {
             slot,
-            slot_randomness,
+            global_challenge,
         } = slot_info;
 
         let parent_number = self.client.info().best_number;
@@ -177,7 +177,7 @@ where
         let best_hash = self.client.info().best_hash;
 
         if let Some(proof_of_election) =
-            self.solve_bundle_election_challenge(best_hash, slot_randomness)?
+            self.solve_bundle_election_challenge(best_hash, global_challenge)?
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
@@ -223,7 +223,7 @@ where
     fn solve_bundle_election_challenge(
         &self,
         best_hash: Block::Hash,
-        slot_randomness: Blake2b256Hash,
+        global_challenge: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<ProofOfElection>> {
         let best_block_id = BlockId::Hash(best_hash);
 
@@ -245,7 +245,7 @@ where
             "Total stake weight mismatches, which must be a bug in the runtime"
         );
 
-        let transcript_data = make_local_randomness_transcript_data(&slot_randomness);
+        let transcript_data = make_local_randomness_transcript_data(&global_challenge);
 
         for (authority_id, stake_weight) in authorities {
             if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
@@ -258,9 +258,10 @@ where
                 const SYSTEM_DOMAIN_ID: u64 = 0;
 
                 let election_solution = derive_bundle_election_solution(
+                    SYSTEM_DOMAIN_ID,
                     vrf_signature.output.to_bytes(),
                     &authority_id,
-                    &slot_randomness,
+                    &global_challenge,
                 )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
@@ -300,7 +301,7 @@ where
                         vrf_output: vrf_signature.output.to_bytes(),
                         vrf_proof: vrf_signature.proof.to_bytes(),
                         executor_public_key: authority_id,
-                        slot_randomness,
+                        global_challenge,
                         state_root,
                         storage_proof,
                     };

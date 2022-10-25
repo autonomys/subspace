@@ -55,7 +55,7 @@
 //! - Secondary chain, execution layer.
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
-//! [`BlockBuilder`]: ../cirrus_block_builder/struct.BlockBuilder.html
+//! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
 #![feature(drain_filter)]
@@ -73,8 +73,8 @@ use crate::bundle_processor::BundleProcessor;
 use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::worker::BlockInfo;
-use cirrus_client_executor_gossip::{Action, GossipMessageHandler};
 use codec::{Decode, Encode};
+use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -103,9 +103,9 @@ use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 /// The logging target.
-const LOG_TARGET: &str = "cirrus::executor";
+const LOG_TARGET: &str = "domain::executor";
 
-/// The implementation of the Cirrus `Executor`.
+/// The implementation of the Domain `Executor`.
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
@@ -493,7 +493,7 @@ where
     }
 }
 
-/// Error type for cirrus gossip handling.
+/// Error type for domain gossip handling.
 #[derive(Debug, thiserror::Error)]
 pub enum GossipMessageError {
     #[error("Bundle equivocation error")]

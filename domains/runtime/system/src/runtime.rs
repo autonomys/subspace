@@ -55,7 +55,7 @@ pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signatu
 pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExtra>;
 
 /// Executive: handles dispatch to the various modules.
-pub type Executive = cirrus_pallet_executive::Executive<
+pub type Executive = domain_pallet_executive::Executive<
     Runtime,
     Block,
     frame_system::ChainContext<Runtime>,
@@ -240,7 +240,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
-impl cirrus_pallet_executive::Config for Runtime {
+impl domain_pallet_executive::Config for Runtime {
     type Event = Event;
     type Call = Call;
 }
@@ -273,7 +273,7 @@ impl pallet_executor_registry::Config for Runtime {
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
-// NOTE: Currently cirrus runtime does not naturally support the pallets with inherent extrinsics.
+// NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
 construct_runtime!(
     pub struct Runtime where
         Block = Block,
@@ -282,7 +282,7 @@ construct_runtime!(
     {
         // System support stuff.
         System: frame_system = 0,
-        ExecutivePallet: cirrus_pallet_executive = 1,
+        ExecutivePallet: domain_pallet_executive = 1,
 
         // Monetary stuff.
         Balances: pallet_balances = 2,
@@ -414,7 +414,7 @@ impl_runtime_apis! {
             use codec::Encode;
             let set_code_call = frame_system::Call::set_code { code };
             UncheckedExtrinsic::new_unsigned(
-                cirrus_pallet_executive::Call::sudo_unchecked_weight_unsigned {
+                domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
                     weight: 0
                 }.into()

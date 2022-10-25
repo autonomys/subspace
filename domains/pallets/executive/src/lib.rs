@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # Cirrus Executive Module
+//! # Domain Executive Module
 //!
 //! This module is derived from frame_executive with some custom modifications for
 //! collecting the intermediate storage roots in the block execution required for
@@ -120,7 +120,7 @@ impl<T: Config> Pallet<T> {
 /// Same semantics with `frame_executive::Executive`.
 ///
 /// One extra generic parameter:
-/// - `ExecutiveConfig`: Something that implements `cirrus_pallet_executive::Config`.
+/// - `ExecutiveConfig`: Something that implements `domain_pallet_executive::Config`.
 pub struct Executive<
     System,
     Block,
@@ -389,7 +389,7 @@ where
         >::apply_extrinsic(uxt);
         // TODO: Critical!!! https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
         frame_support::log::info!(
-            target: "cirrus::runtime::executive",
+            target: "domain::runtime::executive",
             "[apply_extrinsic] after: {:?}",
             {
                 use codec::Decode;

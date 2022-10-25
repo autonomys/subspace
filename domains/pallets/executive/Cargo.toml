@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-pallet-executive"
+name = "domain-pallet-executive"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>", "Subspace Labs <admin@subspace.network>"]
 edition = "2021"
