@@ -111,7 +111,7 @@ impl<T: Config> Pallet<T> {
             Some(bal) => bal,
         };
 
-        if free_balance <= reward {
+        if free_balance < reward {
             return Ok(());
         }
 
