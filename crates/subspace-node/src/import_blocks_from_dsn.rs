@@ -31,7 +31,8 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::{multimess, BootstrappedNetworkingParameters, Config};
+use subspace_networking::utils::multihash;
+use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 type PieceIndex = u64;
 
@@ -162,7 +163,7 @@ where
             .map(|piece_position| {
                 let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
 
-                node.get_value(multimess::create_piece_index_fake_multihash(piece_index))
+                node.get_value(multihash::create_multihash_by_piece_index(piece_index))
             })
             .collect::<FuturesOrdered<_>>()
             .collect::<Vec<_>>()

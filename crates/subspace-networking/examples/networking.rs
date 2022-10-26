@@ -78,7 +78,10 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let key = subspace_networking::multimess::create_piece_multihash(&Blake2b256Hash::default(), 1);
+    let key = subspace_networking::utils::multihash::create_multihash_by_piece(
+        &Blake2b256Hash::default(),
+        1,
+    );
     println!("Get value result for:");
     println!("Key: {key:?}");
     let result = node_2.get_value(key).await;
