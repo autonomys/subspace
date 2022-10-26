@@ -318,7 +318,7 @@ pub fn read_bundle_election_params(
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection {
+pub struct ProofOfElection<SecondaryHash> {
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
@@ -330,12 +330,16 @@ pub struct ProofOfElection {
     /// Global challenge.
     pub global_challenge: Blake2b256Hash,
     /// State root corresponding to the storage proof above.
-    pub state_root: H256,
+    pub state_root: SecondaryHash,
     /// Storage proof for the bundle election state.
     pub storage_proof: StorageProof,
+    /// Number of the secondary block at which the proof of election was created.
+    pub block_number: BlockNumber,
+    /// Block hash corresponding to the `block_number` above.
+    pub block_hash: SecondaryHash,
 }
 
-impl ProofOfElection {
+impl<SecondaryHash: Default> ProofOfElection<SecondaryHash> {
     #[cfg(feature = "std")]
     pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
         Self {
@@ -344,8 +348,10 @@ impl ProofOfElection {
             vrf_proof: [0u8; VRF_PROOF_LENGTH],
             executor_public_key,
             global_challenge: Blake2b256Hash::default(),
-            state_root: H256::default(),
+            state_root: Default::default(),
             storage_proof: StorageProof::empty(),
+            block_number: Default::default(),
+            block_hash: Default::default(),
         }
     }
 }
@@ -405,7 +411,7 @@ pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
     /// The bundle header.
     pub bundle: Bundle<Extrinsic, Number, Hash, SecondaryHash>,
     /// Proof of bundle election.
-    pub proof_of_election: ProofOfElection,
+    pub proof_of_election: ProofOfElection<SecondaryHash>,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
 }

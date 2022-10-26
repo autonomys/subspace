@@ -87,7 +87,11 @@ fn create_dummy_receipt(
         primary_number,
         primary_hash,
         secondary_hash: H256::random(),
-        trace: Vec::new(),
+        trace: if primary_number == 0 {
+            Vec::new()
+        } else {
+            vec![H256::random(), H256::random()]
+        },
         trace_root: Default::default(),
     }
 }
