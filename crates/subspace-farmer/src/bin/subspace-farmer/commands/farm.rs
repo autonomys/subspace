@@ -5,8 +5,11 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
-use subspace_networking::{create, BootstrappedNetworkingParameters, Config, Node, NodeRunner};
-use tracing::info;
+use subspace_networking::{
+    create, BootstrappedNetworkingParameters, Config, Node, NodeRunner, PieceByHashRequestHandler,
+    PieceByHashResponse, PieceKey,
+};
+use tracing::{debug, info};
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -111,6 +114,18 @@ async fn configure_dsn(
         allow_non_globals_in_dht: true,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
+        request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
+            let result = if let PieceKey::Sector(_piece_index_hash) = req.key {
+                // TODO: Implement actual handler
+                None
+            } else {
+                debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
+
+                None
+            };
+
+            Some(PieceByHashResponse { piece: result })
+        })],
         ..Config::with_generated_keypair()
     };
 

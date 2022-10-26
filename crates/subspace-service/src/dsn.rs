@@ -9,7 +9,7 @@ use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     MemoryRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{info, trace, Instrument};
+use tracing::{debug, info, trace, Instrument};
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -57,7 +57,8 @@ where
             let result = if let PieceKey::PieceIndex(idx) = req.key {
                 piece_getter(&idx)
             } else {
-                // TODO: Report an error if we decide to support both key types
+                debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
+
                 None
             };
 

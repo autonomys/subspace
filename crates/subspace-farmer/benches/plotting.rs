@@ -13,6 +13,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     plot_sector_size, Piece, PublicKey, PIECES_IN_SEGMENT, RECORD_SIZE,
 };
+use subspace_farmer::single_disk_plot::piece_receiver::BenchPieceReceiver;
 use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 
@@ -39,7 +40,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
 
-    let get_piece = |_piece_index| async { Ok(Some(piece.clone())) };
     let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: Default::default(),
@@ -59,7 +59,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             block_on(plot_sector(
                 black_box(&public_key),
                 black_box(sector_index),
-                black_box(&get_piece),
+                black_box(&mut BenchPieceReceiver::new(piece.clone())),
                 black_box(&cancelled),
                 black_box(&farmer_protocol_info),
                 black_box(io::sink()),
@@ -82,7 +82,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     block_on(plot_sector(
                         black_box(&public_key),
                         black_box(sector_index),
-                        black_box(&get_piece),
+                        black_box(&mut BenchPieceReceiver::new(piece.clone())),
                         black_box(&cancelled),
                         black_box(&farmer_protocol_info),
                         black_box(io::sink()),

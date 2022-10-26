@@ -17,6 +17,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer::file_ext::FileExt;
 use subspace_farmer::single_disk_plot::farming::audit_sector;
+use subspace_farmer::single_disk_plot::piece_receiver::BenchPieceReceiver;
 use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_farmer::single_disk_plot::SectorMetadata;
 use subspace_rpc_primitives::FarmerProtocolInfo;
@@ -51,7 +52,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
 
-    let get_piece = |_piece_index| async { Ok(Some(piece.clone())) };
     let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: Default::default(),
@@ -74,7 +74,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         block_on(plot_sector(
             &public_key,
             sector_index,
-            &get_piece,
+            &mut BenchPieceReceiver::new(piece),
             &cancelled,
             &farmer_protocol_info,
             plotted_sector.as_mut_slice(),
