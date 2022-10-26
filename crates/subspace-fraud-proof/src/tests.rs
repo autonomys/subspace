@@ -1,9 +1,9 @@
 use crate::{ExecutionProver, ProofVerifier};
-use cirrus_block_builder::{BlockBuilder, RecordProof};
-use cirrus_test_service::run_primary_chain_validator_node;
-use cirrus_test_service::runtime::Header;
-use cirrus_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use codec::Encode;
+use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_test_service::run_primary_chain_validator_node;
+use domain_test_service::runtime::Header;
+use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
@@ -29,13 +29,13 @@ async fn execution_proof_creation_and_verification_should_work() {
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Authority, false, false)
         .await;
 
     // Run Bob (a secondary chain full node)
-    let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
+    let bob = domain_test_service::TestNodeBuilder::new(tokio_handle, Bob)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Full, false, false)
         .await;
@@ -43,30 +43,30 @@ async fn execution_proof_creation_and_verification_should_work() {
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
 
-    let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
+    let transfer_to_charlie = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
             value: 8,
         },
         Alice,
         false,
         0,
     );
-    let transfer_to_dave = cirrus_test_service::construct_extrinsic(
+    let transfer_to_dave = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: cirrus_test_service::runtime::Address::Id(Dave.public().into()),
+            dest: domain_test_service::runtime::Address::Id(Dave.public().into()),
             value: 8,
         },
         Alice,
         false,
         1,
     );
-    let transfer_to_charlie_again = cirrus_test_service::construct_extrinsic(
+    let transfer_to_charlie_again = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
             value: 88,
         },
         Alice,
@@ -362,13 +362,13 @@ async fn invalid_execution_proof_should_not_work() {
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = cirrus_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
+    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Authority, false, false)
         .await;
 
     // Run Bob (a secondary chain full node)
-    let bob = cirrus_test_service::TestNodeBuilder::new(tokio_handle, Bob)
+    let bob = domain_test_service::TestNodeBuilder::new(tokio_handle, Bob)
         .connect_to_primary_chain_node(&ferdie)
         .build(Role::Full, false, false)
         .await;
@@ -376,10 +376,10 @@ async fn invalid_execution_proof_should_not_work() {
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
 
-    let transfer_to_charlie = cirrus_test_service::construct_extrinsic(
+    let transfer_to_charlie = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
             value: 8,
         },
         Alice,
@@ -387,10 +387,10 @@ async fn invalid_execution_proof_should_not_work() {
         0,
     );
 
-    let transfer_to_charlie_again = cirrus_test_service::construct_extrinsic(
+    let transfer_to_charlie_again = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: cirrus_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
             value: 8,
         },
         Alice,

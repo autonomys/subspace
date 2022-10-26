@@ -19,12 +19,12 @@ use sp_runtime::app_crypto::UncheckedFrom;
 use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU64};
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
 use subspace_core_primitives::{
-    Chunk, Piece, PieceIndex, PublicKey, Randomness, RecordsRoot, SectorId, SegmentIndex, Solution,
+    Chunk, Piece, PublicKey, Randomness, RecordsRoot, SectorId, SegmentIndex, Solution,
     SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{
@@ -102,7 +102,7 @@ fn valid_header(
     let archived_segment = archived_segment(kzg.clone());
     let segment_index = archived_segment.root_block.segment_index();
     let records_root = archived_segment.root_block.records_root();
-    let total_pieces = archived_segment.pieces.count() as PieceIndex;
+    let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();
 
     // There may be no solution in the first sector, iterate until we get a solution
     for sector_index in 0.. {
@@ -114,9 +114,7 @@ fn valid_header(
         let audit_piece_bytes_offset = audit_piece_offset * PIECE_SIZE as u64;
         // Audit index (chunk) within corresponding piece
         let audit_index_within_piece = audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
-        let piece_index = sector_id
-            .derive_piece_index(audit_piece_offset, total_pieces)
-            .unwrap();
+        let piece_index = sector_id.derive_piece_index(audit_piece_offset, total_pieces);
         let mut piece = Piece::try_from(
             archived_segment
                 .pieces
@@ -125,20 +123,20 @@ fn valid_header(
                 .unwrap(),
         )
         .unwrap();
-        let piece_witness =
-            Witness::try_from_bytes(&piece[RECORD_SIZE as usize..].try_into().unwrap()).unwrap();
-        let piece_record_hash = blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]);
 
         // Encode piece
+        let (record, witness_bytes) = piece.split_at_mut(RECORD_SIZE as usize);
+        let piece_witness = Witness::try_from_bytes((&*witness_bytes).try_into().unwrap()).unwrap();
+        let piece_record_hash = blake2b_256_254_hash(record);
         // TODO: Extract encoding into separate function reusable in
         //  farmer and otherwise
-        piece[..RECORD_SIZE as usize]
+        record
             .view_bits_mut::<Lsb0>()
             .chunks_mut(space_l.get() as usize)
             .enumerate()
             .for_each(|(chunk_index, bits)| {
                 // Derive one-time pad
-                let mut otp = derive_chunk_otp(&sector_id, &piece_witness, chunk_index as u32);
+                let mut otp = derive_chunk_otp(&sector_id, witness_bytes, chunk_index as u32);
                 // XOR chunk bit by bit with one-time pad
                 bits.iter_mut()
                     .zip(otp.view_bits_mut::<Lsb0>().iter())

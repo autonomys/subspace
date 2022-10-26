@@ -208,18 +208,7 @@ where
             let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
             let piece_index =
-                match sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces) {
-                    Ok(piece_index) => piece_index,
-                    Err(()) => {
-                        warn!(
-                            target: "subspace",
-                            "Ignoring solution for slot {} provided by farmer due to zero total \
-                            pieces at which sector was supposedly created, which is impossible",
-                            slot,
-                        );
-                        continue;
-                    }
-                };
+                sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
             let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
             let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
                 .expect("Position within segment always fits into u32; qed");

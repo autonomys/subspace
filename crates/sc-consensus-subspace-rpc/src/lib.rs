@@ -48,8 +48,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordsRoot, SegmentIndex, Solution, PIECES_IN_SEGMENT,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
 };
 use subspace_rpc_primitives::{
     FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -200,10 +200,7 @@ where
                     ApiError::Application("Incorrect record_size set".to_string().into())
                 })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-                // Total pieces should never be zero. blockchain is always initialized with one segment.
-                total_pieces: runtime_api
-                    .total_pieces(&best_block_id)?
-                    .max(PIECES_IN_SEGMENT as u64),
+                total_pieces: runtime_api.total_pieces(&best_block_id)?,
                 // TODO: Fetch this from the runtime
                 space_l: NonZeroU16::new(20).expect("Not zero; qed"),
                 // TODO: Fetch this from the runtime

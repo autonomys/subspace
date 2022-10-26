@@ -25,8 +25,8 @@ sp-trie = { version = "6.0.0", git = "https://github.com/subspace/substrate", re
 tracing = "0.1.36"
 
 [dev-dependencies]
-cirrus-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
-cirrus-test-service = { version = "0.1.0", path = "../../domains/test/service" }
+domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
+domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
 futures = "0.3.21"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }

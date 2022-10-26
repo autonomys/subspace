@@ -1,5 +1,5 @@
 [package]
-name = "cirrus-client-executor"
+name = "domain-client-executor"
 version = "0.1.0"
 authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
@@ -37,8 +37,8 @@ tracing = "0.1.36"
 thiserror = "1.0.32"
 tokio = { version = "1.20.1", features = ["macros"] }
 
-cirrus-block-builder = { path = "../block-builder" }
-cirrus-client-executor-gossip = { path = "../executor-gossip" }
+domain-block-builder = { path = "../block-builder" }
+domain-client-executor-gossip = { path = "../executor-gossip" }
 sp-domains = { path = "../../../crates/sp-domains" }
 subspace-fraud-proof = { path = "../../../crates/subspace-fraud-proof" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }
@@ -46,7 +46,7 @@ subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primiti
 system-runtime-primitives = { path = "../../primitives/system-runtime" }
 
 [dev-dependencies]
-cirrus-test-service = { path = "../../test/service" }
+domain-test-service = { path = "../../test/service" }
 pallet-balances = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 pallet-domains = { path = "../../../crates/pallet-domains" }
 sc-cli = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }

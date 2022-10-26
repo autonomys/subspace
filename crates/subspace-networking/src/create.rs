@@ -30,7 +30,7 @@ use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
-use subspace_core_primitives::crypto;
+use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
 use tracing::info;
 
@@ -124,13 +124,15 @@ impl Config {
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_protocol_name(KADEMLIA_PROTOCOL)
+            .set_max_packet_size(2 * PIECE_SIZE)
             // Providers' settings
             .set_provider_record_ttl(Some(Duration::from_secs(KADEMLIA_PROVIDER_TTL_IN_SECS)))
             .set_provider_publication_interval(Some(Duration::from_secs(
                 KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS,
             )))
             // Ignore any puts
-            .set_record_filtering(KademliaStoreInserts::FilterBoth)
+            // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
+            .set_record_filtering(KademliaStoreInserts::Unfiltered)
             .set_kbucket_inserts(KademliaBucketInserts::Manual);
 
         let mut yamux_config = YamuxConfig::default();

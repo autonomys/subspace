@@ -31,7 +31,8 @@
 //! are `target ± ½ * solution range` (while also handing overflow/underflow) when interpreted as
 //! 64-bit unsigned integers.
 
-mod file_ext;
+#[doc(hidden)]
+pub mod file_ext;
 pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub mod reward_signing;

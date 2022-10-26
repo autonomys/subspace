@@ -36,6 +36,7 @@ pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+use core::num::NonZeroU64;
 use core::time::Duration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
@@ -527,7 +528,7 @@ fn extract_bundles(
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Domains(pallet_domains::Call::submit_transaction_bundle {
+            if let Call::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -545,7 +546,7 @@ fn extract_receipts(
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Domains(pallet_domains::Call::submit_transaction_bundle {
+            if let Call::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -694,7 +695,7 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn total_pieces() -> u64 {
+        fn total_pieces() -> NonZeroU64 {
             <pallet_subspace::Pallet<Runtime>>::total_pieces()
         }
 
@@ -766,8 +767,8 @@ impl_runtime_apis! {
     }
 
     impl sp_domains::ExecutorApi<Block, system_runtime_primitives::Hash> for Runtime {
-        fn submit_transaction_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>) {
-            Domains::submit_transaction_bundle_unsigned(opaque_bundle)
+        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>) {
+            Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {

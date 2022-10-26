@@ -2,8 +2,8 @@
 
 mod rpc;
 
-use cirrus_client_executor::Executor;
-use cirrus_client_executor_gossip::ExecutorGossipParams;
+use domain_client_executor::Executor;
+use domain_client_executor_gossip::ExecutorGossipParams;
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -50,7 +50,7 @@ impl NativeExecutionDispatch for SystemDomainRuntimeExecutor {
     }
 }
 
-/// Cirrus-like full client.
+/// Domain full client.
 pub type FullClient<RuntimeApi, ExecutorDispatch> =
     TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
@@ -132,7 +132,7 @@ where
         client.clone(),
     );
 
-    let import_queue = cumulus_client_consensus_relay_chain::import_queue(
+    let import_queue = domain_client_consensus_relay_chain::import_queue(
         client.clone(),
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
@@ -253,7 +253,7 @@ where
     secondary_chain_config
         .network
         .extra_sets
-        .push(cirrus_client_executor_gossip::executor_gossip_peers_set_config());
+        .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
     let params = new_partial(&secondary_chain_config)?;
 
@@ -308,7 +308,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("transaction_bundle_stream");
+    let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
     let executor = Executor::new(
         primary_chain_client,
@@ -330,12 +330,12 @@ where
     .await?;
 
     let executor_gossip =
-        cirrus_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
+        domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
             network: network.clone(),
             executor: executor.clone(),
             bundle_receiver,
         });
-    spawn_essential.spawn_essential_blocking("cirrus-gossip", None, Box::pin(executor_gossip));
+    spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
 
     let new_full = NewFull {
         task_manager,
