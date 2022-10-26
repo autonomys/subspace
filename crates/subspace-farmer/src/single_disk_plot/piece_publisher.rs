@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
@@ -11,13 +12,13 @@ use tracing::{debug, error, trace};
 const PUBLISH_PIECE_BY_SECTOR_WAITING_DURATION_IN_SECS: u64 = 1;
 
 // Piece-by-sector DSN publishing helper.
-pub(crate) struct PieceSectorPublisher<'a> {
+pub(crate) struct PieceSectorPublisher {
     dsn_node: Node,
-    cancelled: &'a AtomicBool,
+    cancelled: Arc<AtomicBool>,
 }
 
-impl<'a> PieceSectorPublisher<'a> {
-    pub(crate) fn new(dsn_node: Node, cancelled: &'a AtomicBool) -> Self {
+impl PieceSectorPublisher {
+    pub(crate) fn new(dsn_node: Node, cancelled: Arc<AtomicBool>) -> Self {
         Self {
             dsn_node,
             cancelled,

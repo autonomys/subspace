@@ -17,10 +17,12 @@ use subspace_core_primitives::{
 };
 use subspace_farmer::file_ext::FileExt;
 use subspace_farmer::single_disk_plot::farming::audit_sector;
-use subspace_farmer::single_disk_plot::piece_receiver::BenchPieceReceiver;
 use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_farmer::single_disk_plot::SectorMetadata;
 use subspace_rpc_primitives::FarmerProtocolInfo;
+use utils::BenchPieceReceiver;
+
+mod utils;
 
 // This is helpful for overriding locally for benching different parameters
 pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;

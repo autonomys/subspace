@@ -632,6 +632,9 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
+                let piece_publisher = dsn_node.as_ref().map(|dsn_node| {
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone())
+                });
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -703,10 +706,7 @@ impl SingleDiskPlot {
                                 .copy_from_slice(metadata_header.encode().as_slice());
 
                             // Publish pieces-by-sector if we use DSN
-                            if let Some(ref dsn_node) = dsn_node {
-                                let piece_publisher =
-                                    PieceSectorPublisher::new(dsn_node.clone(), &shutting_down);
-
+                            if let Some(ref piece_publisher) = piece_publisher {
                                 let publishing_result = handle.block_on(
                                     piece_publisher
                                         .publish_pieces(piece_receiver.registered_piece_indexes()),

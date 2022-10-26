@@ -9,7 +9,7 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, PieceByHashRequest, PieceKey, ToMultihash};
 use tokio::time::sleep;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// Defines a duration between get_piece calls.
 const GET_PIECE_WAITING_DURATION_IN_SECS: u64 = 1;
@@ -20,26 +20,6 @@ pub trait PieceReceiver {
         &mut self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
-
-#[async_trait]
-impl PieceReceiver for BenchPieceReceiver {
-    async fn get_piece(
-        &mut self,
-        _piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(Some(self.piece.clone()))
-    }
-}
-
-pub struct BenchPieceReceiver {
-    piece: Piece,
-}
-
-impl BenchPieceReceiver {
-    pub fn new(piece: Piece) -> Self {
-        Self { piece }
-    }
 }
 
 // Temporary struct serving pieces from different providers using configuration arguments.
@@ -226,6 +206,8 @@ impl<'a, RC: RpcClient> PieceReceiver for MultiChannelPieceReceiver<'a, RC> {
                 if let Some(piece) = self.get_piece_from_archival_storage(piece_index).await {
                     return Ok(Some(piece));
                 }
+
+                warn!(%piece_index, "Couldn't get a piece from DSN. Starting a new attempt...");
 
                 sleep(Duration::from_secs(GET_PIECE_WAITING_DURATION_IN_SECS)).await;
             }
