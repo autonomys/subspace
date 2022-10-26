@@ -53,8 +53,10 @@ pub struct Transfer<DomainId, AccountId, Balance> {
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-type MessageIdOf<T> =
-    <<T as Config>::Sender as sp_messenger::endpoint::Sender<<T as Config>::DomainId>>::MessageId;
+type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<
+    <T as frame_system::Config>::AccountId,
+    <T as Config>::DomainId,
+>>::MessageId;
 
 #[frame_support::pallet]
 mod pallet {
@@ -86,7 +88,7 @@ mod pallet {
         type Currency: Currency<Self::AccountId>;
 
         /// Sender used to transfer funds.
-        type Sender: Sender<Self::DomainId>;
+        type Sender: Sender<Self::AccountId, Self::DomainId>;
     }
 
     /// Pallet transporter to move funds between domains.
@@ -189,13 +191,14 @@ mod pallet {
                 amount,
                 sender: Location {
                     domain_id: T::SelfDomainId::get(),
-                    account_id: sender,
+                    account_id: sender.clone(),
                 },
                 receiver: dst_location,
             };
 
             // send message
             let message_id = T::Sender::send_message(
+                &sender,
                 dst_domain_id,
                 EndpointRequest {
                     src_endpoint: Endpoint::Id(T::SelfEndpointId::get()),
