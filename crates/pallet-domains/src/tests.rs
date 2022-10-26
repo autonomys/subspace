@@ -1,15 +1,15 @@
-use crate::{self as pallet_domains, BlockHash, ReceiptVotes, Receipts};
+use crate::{self as pallet_domains, BlockHash, OldestReceiptNumber, ReceiptVotes, Receipts};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
 use sp_domains::{
     Bundle, BundleHeader, ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof,
-    ProofOfElection, SignedOpaqueBundle,
+    InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
-use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
+use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_trie::StorageProof;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -202,7 +202,7 @@ fn submit_execution_receipt_incrementally_should_work() {
             pallet_domains::Pallet::<Test>::pre_dispatch(&pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle: dummy_bundles[258].clone()
             }),
-            TransactionValidityError::Invalid(InvalidTransaction::Future)
+            TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
         );
 
         assert_ok!(Domains::submit_bundle(
@@ -329,14 +329,17 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert!(BlockHash::<Test>::contains_key(0));
         assert_ok!(Domains::submit_bundle(Origin::none(), bundle2));
         assert!(!BlockHash::<Test>::contains_key(0));
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 1);
 
         assert!(BlockHash::<Test>::contains_key(1));
         assert_ok!(Domains::submit_bundle(Origin::none(), bundle3));
         assert!(!BlockHash::<Test>::contains_key(1));
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 2);
 
         assert!(BlockHash::<Test>::contains_key(2));
         assert_ok!(Domains::submit_bundle(Origin::none(), bundle4));
         assert!(!BlockHash::<Test>::contains_key(2));
+        assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
         assert_eq!(Domains::finalized_receipt_number(), 2);
         assert_eq!(Domains::best_execution_chain_number(), 258);
     });
