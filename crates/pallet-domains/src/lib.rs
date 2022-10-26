@@ -51,7 +51,6 @@ mod pallet {
         CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
     use sp_std::fmt::Debug;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -412,19 +411,12 @@ mod pallet {
                         }
                     }
 
-                    let receipt_numbers = signed_opaque_bundle
-                        .bundle
-                        .receipts
-                        .iter()
-                        .map(|r| r.primary_number)
-                        .collect::<Vec<_>>();
-
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
                         .priority(TransactionPriority::MAX)
                         .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
                             panic!("Block number always fits in TransactionLongevity; qed")
                         }))
-                        .and_provides(receipt_numbers)
+                        .and_provides(signed_opaque_bundle.hash())
                         .propagate(true)
                         .build()
                 }
@@ -537,6 +529,11 @@ impl<T: Config> Pallet<T> {
         for receipt in execution_receipts {
             // Non-best receipt
             if receipt.primary_number <= best_number {
+                if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
+                    return Err(TransactionValidityError::Invalid(
+                        InvalidTransactionCode::ExecutionReceipt.into(),
+                    ));
+                }
                 continue;
             // New nest receipt.
             } else if receipt.primary_number == best_number + One::one() {
