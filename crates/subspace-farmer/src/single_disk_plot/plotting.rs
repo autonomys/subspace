@@ -1,13 +1,11 @@
+use crate::single_disk_plot::piece_receiver::PieceReceiver;
 use crate::single_disk_plot::{PlottingError, SectorMetadata};
 use bitvec::order::Lsb0;
 use bitvec::prelude::*;
 use parity_scale_codec::Encode;
-use std::future::Future;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use subspace_core_primitives::{
-    plot_sector_size, Piece, PieceIndex, PublicKey, SectorId, PIECE_SIZE,
-};
+use subspace_core_primitives::{plot_sector_size, PieceIndex, PublicKey, SectorId, PIECE_SIZE};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
 use thiserror::Error;
@@ -29,18 +27,17 @@ pub enum PlotSectorError {
 ///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
-pub async fn plot_sector<GP, GPF, S, SM>(
+pub async fn plot_sector<PR, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
-    get_piece: GP,
+    piece_receiver: &mut PR,
     cancelled: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
     mut sector: S,
     mut sector_metadata: SM,
 ) -> Result<(), PlotSectorError>
 where
-    GP: Fn(PieceIndex) -> GPF,
-    GPF: Future<Output = Result<Option<Piece>, Box<dyn std::error::Error + Send + Sync + 'static>>>,
+    PR: PieceReceiver,
     S: io::Write,
     SM: io::Write,
 {
@@ -68,7 +65,8 @@ where
             farmer_protocol_info.total_pieces,
         );
 
-        let mut piece = get_piece(piece_index)
+        let mut piece = piece_receiver
+            .get_piece(piece_index)
             .await
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;

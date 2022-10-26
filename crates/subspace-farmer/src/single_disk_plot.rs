@@ -1,4 +1,6 @@
 pub mod farming;
+pub mod piece_publisher;
+pub mod piece_receiver;
 pub mod plotting;
 
 use crate::file_ext::FileExt;
@@ -7,6 +9,7 @@ use crate::reward_signing::reward_signing;
 use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
+use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
@@ -18,6 +21,7 @@ use memmap2::{MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use piece_receiver::MultiChannelPieceReceiver;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -27,14 +31,13 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::{
-    plot_sector_size, Piece, PieceIndex, PieceIndexHash, PublicKey, SectorIndex, SegmentIndex,
-    Solution, PIECE_SIZE,
+    plot_sector_size, PieceIndex, PublicKey, SectorIndex, SegmentIndex, Solution, PIECE_SIZE,
 };
-use subspace_networking::{Node, ToMultihash};
+use subspace_networking::Node;
 use subspace_rpc_primitives::SolutionResponse;
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -47,9 +50,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
-
-/// Defines a duration between get_piece calls.
-const GET_PIECE_WAITING_DURATION_IN_SECS: u64 = 1;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -632,6 +632,9 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
+                let piece_publisher = dsn_node.as_ref().map(|dsn_node| {
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone())
+                });
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -672,13 +675,16 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
-                            let piece_getter =
-                                ConfiguredPieceGetter::new(rpc_client.clone(), dsn_node.clone());
+                            let mut piece_receiver = MultiChannelPieceReceiver::new(
+                                rpc_client.clone(),
+                                dsn_node.clone(),
+                                &shutting_down,
+                            );
 
                             if let Err(error) = handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
-                                |piece_index| piece_getter.get_piece(piece_index),
+                                &mut piece_receiver,
                                 &shutting_down,
                                 &farmer_protocol_info,
                                 io::Cursor::new(sector),
@@ -698,6 +704,19 @@ impl SingleDiskPlot {
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
+
+                            // Publish pieces-by-sector if we use DSN
+                            if let Some(ref piece_publisher) = piece_publisher {
+                                let publishing_result = handle.block_on(
+                                    piece_publisher
+                                        .publish_pieces(piece_receiver.registered_piece_indexes()),
+                                );
+
+                                // cancelled
+                                if publishing_result.is_err() {
+                                    return;
+                                }
+                            }
                         }
                     };
 
@@ -919,82 +938,5 @@ impl SingleDiskPlot {
             single_disk_plot_info_path.display()
         );
         fs::remove_file(single_disk_plot_info_path)
-    }
-}
-
-// Temporary struct serving pieces from different providers using configuration arguments.
-struct ConfiguredPieceGetter<RC: RpcClient> {
-    rpc_client: RC,
-    dsn_node: Option<Node>,
-}
-
-impl<RC: RpcClient> ConfiguredPieceGetter<RC> {
-    pub(crate) fn new(rpc_client: RC, dsn_node: Option<Node>) -> Self {
-        Self {
-            rpc_client,
-            dsn_node,
-        }
-    }
-
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn std::error::Error + Send + Sync + 'static>>
-    where
-        RC: RpcClient,
-    {
-        trace!(%piece_index, "Piece request. DSN={:?}", self.dsn_node.is_some());
-
-        if let Some(ref dsn_node) = self.dsn_node {
-            // while we get a valid piece
-            loop {
-                let key = PieceIndexHash::from_index(piece_index).to_multihash();
-
-                let piece_result = dsn_node.get_value(key).await;
-
-                match piece_result {
-                    Ok(Some(piece)) => {
-                        trace!(?key, "get_value returned a piece");
-
-                        return Ok(Some(piece.try_into()?));
-                    }
-                    Ok(None) => {
-                        info!(?key, "get_value returned no piece");
-                    }
-                    Err(err) => {
-                        error!(?key, ?err, "get_value returned an error");
-                    }
-                }
-
-                // TODO: uncomment on fixing https://github.com/libp2p/rust-libp2p/issues/3048
-                // let providers_result = dsn_node.get_providers(key).await;
-                //
-                // info!(?key, "get_providers result: {:?}", providers_result);
-                //
-                // for provider in providers_result? {
-                //     let response_result = dsn_node
-                //         .send_generic_request(
-                //             provider,
-                //             PieceByHashRequest {
-                //                 key: PieceKey::PieceIndex(piece_index),
-                //             },
-                //         )
-                //         .await;
-                //
-                //     info!(
-                //         ?key,
-                //         "send_generic_request for PieceByHashRequest result: {:?}", response_result
-                //     );
-                //
-                //     if let Some(piece) = response_result?.piece {
-                //         return Ok(Some(piece));
-                //     }
-                // }
-
-                tokio::time::sleep(Duration::from_secs(GET_PIECE_WAITING_DURATION_IN_SECS)).await;
-            }
-        } else {
-            self.rpc_client.get_piece(piece_index).await
-        }
     }
 }
