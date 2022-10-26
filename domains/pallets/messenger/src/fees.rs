@@ -34,6 +34,20 @@ pub struct FeeModel<Balance> {
     pub inbox_fee: ExecutionFee<Balance>,
 }
 
+impl<Balance: CheckedAdd> FeeModel<Balance> {
+    fn outbox_fee(&self) -> Option<Balance> {
+        self.outbox_fee
+            .compute_fee
+            .checked_add(&self.outbox_fee.relayer_pool_fee)
+    }
+
+    fn inbox_fee(&self) -> Option<Balance> {
+        self.inbox_fee
+            .compute_fee
+            .checked_add(&self.inbox_fee.relayer_pool_fee)
+    }
+}
+
 impl<T: Config> Pallet<T> {
     /// Returns the account_id to holds fees and and acts as treasury for messenger.
     pub(crate) fn messenger_account_id() -> T::AccountId {
@@ -41,51 +55,36 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Ensures the fees from the sender per FeeModel provided for a single request for a response.
+    #[inline]
     pub(crate) fn ensure_fees_for_outbox_message(
         sender: &T::AccountId,
         fee_model: &FeeModel<BalanceOf<T>>,
     ) -> DispatchResult {
         let msgr_acc_id = Self::messenger_account_id();
-
         // reserve outbox fee by transferring it to the messenger account.
         // we will use the funds to pay the relayers once the response is received.
-        let fee = fee_model
-            .outbox_fee
-            .relayer_pool_fee
-            .checked_add(&fee_model.outbox_fee.compute_fee)
-            .ok_or(ArithmeticError::Overflow)?;
-
-        T::Currency::transfer(sender, &msgr_acc_id, fee, AllowDeath)?;
-
+        let outbox_fee = fee_model.outbox_fee().ok_or(ArithmeticError::Overflow)?;
+        T::Currency::transfer(sender, &msgr_acc_id, outbox_fee, AllowDeath)?;
         // burn the fees that need to be paid on the dst_domain
-        let fee = fee_model
-            .inbox_fee
-            .compute_fee
-            .checked_add(&fee_model.inbox_fee.relayer_pool_fee)
-            .ok_or(ArithmeticError::Overflow)?;
+        let inbox_fee = fee_model.inbox_fee().ok_or(ArithmeticError::Overflow)?;
         T::Currency::withdraw(
             sender,
-            fee,
+            inbox_fee,
             WithdrawReasons::TRANSACTION_PAYMENT,
             AllowDeath,
         )?;
-
         Ok(())
     }
 
     /// Ensures the fee paid by the sender on the src_domain are minted here and paid to
     /// relayer set when the acknowledgments are received.
+    #[inline]
     pub(crate) fn ensure_fees_for_inbox_message(
         fee_model: &FeeModel<BalanceOf<T>>,
     ) -> DispatchResult {
-        let fee = fee_model
-            .inbox_fee
-            .compute_fee
-            .checked_add(&fee_model.inbox_fee.relayer_pool_fee)
-            .ok_or(ArithmeticError::Overflow)?;
-
+        let inbox_fee = fee_model.inbox_fee().ok_or(ArithmeticError::Overflow)?;
         let msngr_acc_id = Self::messenger_account_id();
-        T::Currency::deposit_creating(&msngr_acc_id, fee);
+        T::Currency::deposit_creating(&msngr_acc_id, inbox_fee);
         Ok(())
     }
 
@@ -103,15 +102,11 @@ impl<T: Config> Pallet<T> {
 
         // ensure we have enough to pay but maintain minimum existential deposit
         let msngr_acc_id = Self::messenger_account_id();
-        let free_balance = match T::Currency::free_balance(&msngr_acc_id)
+        if !T::Currency::free_balance(&msngr_acc_id)
             .checked_sub(&T::Currency::minimum_balance())
+            .map(|usable| usable >= reward)
+            .unwrap_or(false)
         {
-            // do not have enough to pay relayers
-            None => return Ok(()),
-            Some(bal) => bal,
-        };
-
-        if free_balance < reward {
             return Ok(());
         }
 
