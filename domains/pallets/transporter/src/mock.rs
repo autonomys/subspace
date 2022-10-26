@@ -77,10 +77,11 @@ parameter_types! {
 
 #[derive(Debug)]
 pub struct MockMessenger {}
-impl Sender<DomainId> for MockMessenger {
+impl Sender<AccountId, DomainId> for MockMessenger {
     type MessageId = u64;
 
     fn send_message(
+        _sender: &AccountId,
         _dst_domain_id: DomainId,
         _req: EndpointRequest,
     ) -> Result<Self::MessageId, DispatchError> {

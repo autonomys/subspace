@@ -24,10 +24,13 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+mod fees;
 mod messages;
 mod relayer;
 mod verification;
 
+use crate::fees::FeeModel;
+use crate::messages::Message;
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
 pub use pallet::*;
@@ -60,7 +63,7 @@ type MessageId = (ChannelId, Nonce);
 
 /// Channel describes a bridge to exchange messages between two domains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Channel {
+pub struct Channel<Balance> {
     /// Channel identifier.
     pub(crate) channel_id: ChannelId,
     /// State of the channel.
@@ -73,11 +76,14 @@ pub struct Channel {
     pub(crate) latest_response_received_message_nonce: Option<Nonce>,
     /// Maximum outgoing non-delivered messages.
     pub(crate) max_outgoing_messages: u32,
+    /// Fee model for this channel between domains.
+    pub(crate) fee: FeeModel<Balance>,
 }
 
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct InitiateChannelParams {
-    max_outgoing_messages: u32,
+pub struct InitiateChannelParams<Balance> {
+    pub(crate) max_outgoing_messages: u32,
+    pub(crate) fee_model: FeeModel<Balance>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -92,6 +98,11 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+pub(crate) struct ValidatedRelayMessage<DomainId, Balance> {
+    msg: Message<DomainId, Balance>,
+    should_init_channel: bool,
+}
+
 #[frame_support::pallet]
 mod pallet {
     use crate::messages::{
@@ -101,8 +112,8 @@ mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, InitiateChannelParams, MessageId, Nonce,
-        OutboxMessageResult, StateRootOf, U256,
+        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, InitiateChannelParams, MessageId,
+        Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
     use frame_support::traits::ReservableCurrency;
@@ -149,8 +160,15 @@ mod pallet {
     /// Key points to the foreign domain wrt own domain's storage name space
     #[pallet::storage]
     #[pallet::getter(fn channels)]
-    pub(super) type Channels<T: Config> =
-        StorageDoubleMap<_, Identity, T::DomainId, Identity, ChannelId, Channel, OptionQuery>;
+    pub(super) type Channels<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        T::DomainId,
+        Identity,
+        ChannelId,
+        Channel<BalanceOf<T>>,
+        OptionQuery,
+    >;
 
     /// Stores the incoming messages that are yet to be processed.
     /// Messages are processed in the inbox nonce order of domain channel.
@@ -160,7 +178,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -172,7 +190,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -184,7 +202,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -194,7 +212,7 @@ mod pallet {
         _,
         Identity,
         (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId>,
+        Message<T::DomainId, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -320,8 +338,11 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::relay_message { msg: xdm } => {
-                    let (msg, should_init_chanel) = Self::do_validate_relay_message(xdm)?;
-                    Self::pre_dispatch_relay_message(msg, should_init_chanel)
+                    let ValidatedRelayMessage {
+                        msg,
+                        should_init_channel,
+                    } = Self::do_validate_relay_message(xdm)?;
+                    Self::pre_dispatch_relay_message(msg, should_init_channel)
                 }
                 Call::relay_message_response { msg: xdm } => {
                     let msg = Self::do_validate_relay_message_response(xdm)?;
@@ -335,7 +356,10 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::relay_message { msg: xdm } => {
-                    let (msg, _should_init_chanel) = Self::do_validate_relay_message(xdm)?;
+                    let ValidatedRelayMessage {
+                        msg,
+                        should_init_channel: _,
+                    } = Self::do_validate_relay_message(xdm)?;
                     let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
                     unsigned_validity::<T>("MessengerInbox", provides_tag)
                 }
@@ -402,10 +426,11 @@ mod pallet {
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_domain_id: T::DomainId,
-            params: InitiateChannelParams,
+            params: InitiateChannelParams<BalanceOf<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
             // TODO(ved): test validity of the domain
+            // TODO(ved): fee for channel open
 
             // initiate the channel config
             let channel_id = Self::do_init_channel(dst_domain_id, params)?;
@@ -485,15 +510,20 @@ mod pallet {
         }
     }
 
-    impl<T: Config> Sender<T::DomainId> for Pallet<T> {
+    impl<T: Config> Sender<T::AccountId, T::DomainId> for Pallet<T> {
         type MessageId = MessageId;
 
         fn send_message(
+            sender: &T::AccountId,
             dst_domain_id: T::DomainId,
             req: EndpointRequest,
         ) -> Result<Self::MessageId, DispatchError> {
-            let channel_id = Self::get_open_channel_for_domain(dst_domain_id)
+            let (channel_id, fee_model) = Self::get_open_channel_for_domain(dst_domain_id)
                 .ok_or(Error::<T>::NoOpenChannel)?;
+
+            // ensure fees are paid by the sender
+            Self::ensure_fees_for_outbox_message(sender, &fee_model)?;
+
             let nonce = Self::new_outbox_message(
                 T::SelfDomainId::get(),
                 dst_domain_id,
@@ -506,7 +536,9 @@ mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Returns the last open channel for a given domain.
-        fn get_open_channel_for_domain(dst_domain_id: T::DomainId) -> Option<ChannelId> {
+        fn get_open_channel_for_domain(
+            dst_domain_id: T::DomainId,
+        ) -> Option<(ChannelId, FeeModel<BalanceOf<T>>)> {
             let mut next_channel_id = NextChannelId::<T>::get(dst_domain_id);
 
             // loop through channels in descending order until open channel is found.
@@ -514,7 +546,7 @@ mod pallet {
             while let Some(channel_id) = next_channel_id.checked_sub(ChannelId::one()) {
                 if let Some(channel) = Channels::<T>::get(dst_domain_id, channel_id) {
                     if channel.state == ChannelState::Open {
-                        return Some(channel_id);
+                        return Some((channel_id, channel.fee));
                     }
                 }
 
@@ -575,7 +607,7 @@ mod pallet {
 
         pub(crate) fn do_init_channel(
             dst_domain_id: T::DomainId,
-            init_params: InitiateChannelParams,
+            init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
             let channel_id = NextChannelId::<T>::get(dst_domain_id);
             let next_channel_id = channel_id
@@ -592,6 +624,7 @@ mod pallet {
                     next_outbox_nonce: Default::default(),
                     latest_response_received_message_nonce: Default::default(),
                     max_outgoing_messages: init_params.max_outgoing_messages,
+                    fee: init_params.fee_model,
                 },
             );
 
@@ -605,13 +638,15 @@ mod pallet {
 
         pub(crate) fn do_validate_relay_message(
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<(Message<T::DomainId>, bool), TransactionValidityError> {
+        ) -> Result<ValidatedRelayMessage<T::DomainId, BalanceOf<T>>, TransactionValidityError>
+        {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 None => {
                     // if there is no channel config, this must the Channel open request.
                     // so nonce is 0
                     should_init_channel = true;
+                    // TODO(ved): collect fees to open channel
                     Nonce::zero()
                 }
                 Some(channel) => {
@@ -620,6 +655,12 @@ mod pallet {
                         channel.state == ChannelState::Open,
                         InvalidTransaction::Call
                     );
+
+                    // ensure the fees are deposited to the messenger account to pay
+                    // for relayer set.
+                    Self::ensure_fees_for_inbox_message(&channel.fee).map_err(|_| {
+                        TransactionValidityError::Invalid(InvalidTransaction::Payment)
+                    })?;
                     channel.next_inbox_nonce
                 }
             };
@@ -633,11 +674,14 @@ mod pallet {
 
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
-            Ok((msg, should_init_channel))
+            Ok(ValidatedRelayMessage {
+                msg,
+                should_init_channel,
+            })
         }
 
         pub(crate) fn pre_dispatch_relay_message(
-            msg: Message<T::DomainId>,
+            msg: Message<T::DomainId, BalanceOf<T>>,
             should_init_channel: bool,
         ) -> Result<(), TransactionValidityError> {
             if should_init_channel {
@@ -663,7 +707,7 @@ mod pallet {
 
         pub(crate) fn do_validate_relay_message_response(
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<Message<T::DomainId>, TransactionValidityError> {
+        ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
@@ -698,7 +742,7 @@ mod pallet {
         }
 
         pub(crate) fn pre_dispatch_relay_message_response(
-            msg: Message<T::DomainId>,
+            msg: Message<T::DomainId, BalanceOf<T>>,
         ) -> Result<(), TransactionValidityError> {
             Self::deposit_event(Event::OutboxMessageResponse {
                 domain_id: msg.src_domain_id,
@@ -714,7 +758,7 @@ mod pallet {
             next_nonce: Nonce,
             storage_key: StorageKey,
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<Message<T::DomainId>, TransactionValidityError> {
+        ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
             // fetch state roots from System domain tracker
             let state_roots = T::SystemDomainTracker::latest_state_roots();
             if !state_roots.contains(&xdm.proof.state_root) {
@@ -733,7 +777,7 @@ mod pallet {
 
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
-                Message<T::DomainId>,
+                Message<T::DomainId, BalanceOf<T>>,
             >(xdm.proof.clone(), storage_key)
             .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
 
