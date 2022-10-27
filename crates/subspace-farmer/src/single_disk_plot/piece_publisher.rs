@@ -48,6 +48,7 @@ impl PieceSectorPublisher {
                     .to_multihash_by_code(MultihashCode::Sector);
 
                 // TODO: rework to piece announcing (pull-model) after fixing
+                // TODO: as an alternative - support multiple PeerID via CRDT-structure
                 // https://github.com/libp2p/rust-libp2p/issues/3048
                 let result = self
                     .dsn_node

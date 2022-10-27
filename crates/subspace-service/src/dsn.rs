@@ -6,10 +6,13 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    MemoryRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    BootstrappedNetworkingParameters, CreationError, CustomRecordStore,
+    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, MemoryRecordStorage,
+    PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
+
+const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -44,7 +47,10 @@ where
     trace!("Subspace networking starting.");
 
     let networking_config = subspace_networking::Config::<
-        CustomRecordStore<MemoryRecordStorage, MemoryProviderStorage>,
+        CustomRecordStore<
+            LimitedSizeRecordStorageWrapper<MemoryRecordStorage>,
+            MemoryProviderStorage,
+        >,
     > {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.dsn_listen_on,
@@ -65,7 +71,10 @@ where
             Some(PieceByHashResponse { piece: result })
         })],
         record_store: CustomRecordStore::new(
-            MemoryRecordStorage::default(),
+            LimitedSizeRecordStorageWrapper::new(
+                MemoryRecordStorage::default(),
+                MAX_KADEMLIA_RECORDS_NUMBER,
+            ),
             MemoryProviderStorage::default(),
         ),
         ..subspace_networking::Config::with_generated_keypair()
