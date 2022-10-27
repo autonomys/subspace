@@ -1,6 +1,7 @@
 use crate::endpoint::{EndpointRequest, EndpointResponse};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::traits::CheckedAdd;
 use sp_runtime::DispatchError;
@@ -135,4 +136,26 @@ pub struct CrossDomainMessage<DomainId, StateRoot> {
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
     pub proof: Proof<StateRoot>,
+}
+
+/// Relayer message with storage key to generate storage proof using the backend.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq)]
+pub struct RelayerMessageWithStorageKey<DomainId> {
+    /// Domain which initiated this message.
+    pub src_domain_id: DomainId,
+    /// Domain this message is intended for.
+    pub dst_domain_id: DomainId,
+    /// ChannelId the message was sent through.
+    pub channel_id: ChannelId,
+    /// Message nonce within the channel.
+    pub nonce: Nonce,
+    /// Storage key to generate proof for using proof backend.
+    pub storage_key: StorageKey,
+}
+
+/// Set of messages with storage keys to be relayed by a given relayer.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq)]
+pub struct RelayerMessagesWithStorageKey<DomainId> {
+    pub outbox: Vec<RelayerMessageWithStorageKey<DomainId>>,
+    pub inbox_responses: Vec<RelayerMessageWithStorageKey<DomainId>>,
 }

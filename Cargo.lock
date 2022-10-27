@@ -7561,6 +7561,7 @@ dependencies = [
  "frame-support",
  "parity-scale-codec",
  "scale-info",
+ "sp-api",
  "sp-runtime",
  "sp-trie",
 ]

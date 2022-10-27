@@ -68,6 +68,17 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeMode
         nonce: Nonce::zero(),
         relayer_id: RELAYER_ID,
     }));
+
+    // check outbox relayer storage key generation
+    let messages_with_keys = domain_a::Messenger::relayer_assigned_messages(domain_a::RELAYER_ID);
+    assert_eq!(messages_with_keys.outbox.len(), 1);
+    assert_eq!(messages_with_keys.inbox_responses.len(), 0);
+    let expected_key =
+        Outbox::<domain_a::Runtime>::hashed_key_for((domain_id, channel_id, Nonce::zero()));
+    assert_eq!(
+        messages_with_keys.outbox[0].storage_key,
+        StorageKey(expected_key)
+    );
 }
 
 fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonce: Option<Nonce>) {
@@ -266,6 +277,21 @@ fn open_channel_between_domains(
             domain_id: domain_a_id,
             channel_id,
         }));
+
+        // check inbox response storage key generation
+        let messages_with_keys =
+            domain_b::Messenger::relayer_assigned_messages(domain_b::RELAYER_ID);
+        assert_eq!(messages_with_keys.outbox.len(), 0);
+        assert_eq!(messages_with_keys.inbox_responses.len(), 1);
+        let expected_key = InboxResponses::<domain_b::Runtime>::hashed_key_for((
+            domain_a_id,
+            channel_id,
+            Nonce::zero(),
+        ));
+        assert_eq!(
+            messages_with_keys.inbox_responses[0].storage_key,
+            StorageKey(expected_key)
+        );
     });
 
     // check channel state be open on domain_a

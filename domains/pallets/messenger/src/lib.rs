@@ -91,7 +91,7 @@ mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
+        relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
@@ -212,6 +212,11 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn next_relayer_idx)]
     pub(super) type NextRelayerIdx<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn relayer_messages)]
+    pub(super) type RelayerMessages<T: Config> =
+        StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages<T::DomainId>, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -397,6 +402,17 @@ mod pallet {
 
         /// Emits when there are no relayers to relay messages between domains.
         NoRelayersToAssign,
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
+            let results = RelayerMessages::<T>::clear(u32::MAX, None);
+            let db_weight = T::DbWeight::get();
+            db_weight
+                .reads(results.loops as Weight)
+                .saturating_add(db_weight.writes(1))
+        }
     }
 
     #[pallet::call]

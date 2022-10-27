@@ -1,6 +1,6 @@
 use crate::{
     BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, Inbox, InboxResponses, Nonce,
-    Outbox, OutboxMessageResult, OutboxResponses, Pallet,
+    Outbox, OutboxMessageResult, OutboxResponses, Pallet, RelayerMessages,
 };
 use frame_support::ensure;
 use sp_messenger::messages::{
@@ -50,6 +50,13 @@ impl<T: Config> Pallet<T> {
 
                 // get next relayer
                 let relayer_id = Self::next_relayer()?;
+                RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
+                    let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+                    messages
+                        .outbox
+                        .push((dst_domain_id, (channel_id, next_outbox_nonce)));
+                    *maybe_messages = Some(messages)
+                });
 
                 // emit event to notify relayer
                 Self::deposit_event(Event::OutboxMessage {
@@ -145,6 +152,13 @@ impl<T: Config> Pallet<T> {
 
             // get the next relayer
             let relayer_id = Self::next_relayer()?;
+            RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
+                let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+                messages
+                    .inbox_responses
+                    .push((dst_domain_id, (channel_id, next_inbox_nonce)));
+                *maybe_messages = Some(messages)
+            });
 
             Self::deposit_event(Event::InboxMessageResponse {
                 domain_id: dst_domain_id,
