@@ -15,6 +15,9 @@ use subspace_core_primitives::{
 };
 use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_rpc_primitives::FarmerProtocolInfo;
+use utils::BenchPieceReceiver;
+
+mod utils;
 
 // This is helpful for overriding locally for benching different parameters
 const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
@@ -39,7 +42,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
 
-    let get_piece = |_piece_index| async { Ok(Some(piece.clone())) };
     let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         genesis_hash: Default::default(),
@@ -59,7 +61,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             block_on(plot_sector(
                 black_box(&public_key),
                 black_box(sector_index),
-                black_box(&get_piece),
+                black_box(&mut BenchPieceReceiver::new(piece.clone())),
                 black_box(&cancelled),
                 black_box(&farmer_protocol_info),
                 black_box(io::sink()),
@@ -82,7 +84,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     block_on(plot_sector(
                         black_box(&public_key),
                         black_box(sector_index),
-                        black_box(&get_piece),
+                        black_box(&mut BenchPieceReceiver::new(piece.clone())),
                         black_box(&cancelled),
                         black_box(&farmer_protocol_info),
                         black_box(io::sink()),

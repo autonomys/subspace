@@ -8,10 +8,11 @@ use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 
 //TODO: rename all module names if we keep this enum
-#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Eq, PartialEq, Copy, Encode, Decode)]
 pub enum PieceKey {
     PieceIndex(PieceIndex),
     PieceIndexHash(PieceIndexHash),
+    Sector(PieceIndexHash),
 }
 
 /// Piece-by-hash protocol request.

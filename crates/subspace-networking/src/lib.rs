@@ -19,13 +19,12 @@
 
 mod behavior;
 mod create;
-pub mod multimess;
 mod node;
 mod node_runner;
 mod request_handlers;
 mod request_responses;
 mod shared;
-mod utils;
+pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
     BootstrappedNetworkingParameters, NetworkingParametersManager,
@@ -54,4 +53,4 @@ pub use request_handlers::piece_by_key::{
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
-pub use utils::ToMultihash;
+pub use utils::multihash::ToMultihash;
