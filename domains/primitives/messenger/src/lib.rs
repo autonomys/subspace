@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod endpoint;
+pub mod messages;
 
 /// A trait used by domains to track and fetch info about system domain.
 pub trait SystemDomainTracker<StateRoot> {

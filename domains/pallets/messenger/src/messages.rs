@@ -1,80 +1,14 @@
-use crate::verification::Proof;
 use crate::{
-    BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, Inbox, InboxResponses,
-    InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, Pallet,
+    BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, Inbox, InboxResponses, Nonce,
+    Outbox, OutboxMessageResult, OutboxResponses, Pallet,
 };
-use codec::{Decode, Encode};
 use frame_support::ensure;
-use scale_info::TypeInfo;
-use sp_messenger::endpoint::{EndpointRequest, EndpointResponse};
+use sp_messenger::messages::{
+    Message, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
+    VersionedPayload,
+};
 use sp_runtime::traits::{CheckedMul, Get};
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
-
-/// Defines protocol requests performed on domains.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum ProtocolMessageRequest<Balance> {
-    /// Request to open a channel with foreign domain.
-    ChannelOpen(InitiateChannelParams<Balance>),
-    /// Request to close an open channel with foreign domain.
-    ChannelClose,
-}
-
-/// Defines protocol requests performed on domains.
-pub type ProtocolMessageResponse = Result<(), DispatchError>;
-
-/// Protocol message that encompasses  request or its response.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum RequestResponse<Request, Response> {
-    Request(Request),
-    Response(Response),
-}
-
-/// Payload of the message
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum Payload<Balance> {
-    /// Protocol message.
-    Protocol(RequestResponse<ProtocolMessageRequest<Balance>, ProtocolMessageResponse>),
-    /// Endpoint message.
-    Endpoint(RequestResponse<EndpointRequest, EndpointResponse>),
-}
-
-/// Versioned message payload
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub enum VersionedPayload<Balance> {
-    V0(Payload<Balance>),
-}
-
-/// Message contains information to be sent to or received from another domain
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Message<DomainId, Balance> {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
-    /// ChannelId the message was sent through.
-    pub channel_id: ChannelId,
-    /// Message nonce within the channel.
-    pub nonce: Nonce,
-    /// Payload of the message
-    pub payload: VersionedPayload<Balance>,
-    /// Last delivered message response nonce on src_domain.
-    pub last_delivered_message_response_nonce: Option<Nonce>,
-}
-
-/// Cross Domain message contains Message and its proof on src_domain.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<DomainId, StateRoot> {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
-    /// ChannelId the message was sent through.
-    pub channel_id: ChannelId,
-    /// Message nonce within the channel.
-    pub nonce: Nonce,
-    /// Proof of message processed on src_domain.
-    pub proof: Proof<StateRoot>,
-}
 
 impl<T: Config> Pallet<T> {
     /// Takes a new message destined for dst_domain and adds the message to the outbox.

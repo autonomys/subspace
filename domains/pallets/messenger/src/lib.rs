@@ -29,13 +29,12 @@ mod messages;
 mod relayer;
 mod verification;
 
-use crate::fees::FeeModel;
-use crate::messages::Message;
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
+use sp_messenger::messages::{ChannelId, FeeModel, Message, Nonce};
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
 
@@ -50,16 +49,6 @@ pub enum ChannelState {
     /// Channel is closed and do not send or receive messages.
     Closed,
 }
-
-/// Channel identity.
-pub type ChannelId = U256;
-
-/// Nonce used as an identifier and ordering of messages within a channel.
-/// Nonce is always increasing.
-pub type Nonce = U256;
-
-/// Unique Id of a message between two domains.
-type MessageId = (ChannelId, Nonce);
 
 /// Channel describes a bridge to exchange messages between two domains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -78,12 +67,6 @@ pub struct Channel<Balance> {
     pub(crate) max_outgoing_messages: u32,
     /// Fee model for this channel between domains.
     pub(crate) fee: FeeModel<Balance>,
-}
-
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct InitiateChannelParams<Balance> {
-    pub(crate) max_outgoing_messages: u32,
-    pub(crate) fee_model: FeeModel<Balance>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -105,21 +88,21 @@ pub(crate) struct ValidatedRelayMessage<DomainId, Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::messages::{
-        CrossDomainMessage, Message, Payload, ProtocolMessageRequest, RequestResponse,
-        VersionedPayload,
-    };
     use crate::relayer::{RelayerId, RelayerInfo};
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, InitiateChannelParams, MessageId,
-        Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
+        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
+        StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
     use frame_support::traits::ReservableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::messages::{
+        CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
+        ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    };
     use sp_messenger::SystemDomainTracker as SystemDomainTrackerT;
     use sp_runtime::ArithmeticError;
 

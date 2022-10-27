@@ -1,7 +1,3 @@
-use crate::fees::ExecutionFee;
-use crate::messages::{
-    CrossDomainMessage, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
-};
 use crate::mock::domain_a::{
     new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
     RELAYER_ID,
@@ -11,10 +7,10 @@ use crate::mock::{
     AccountId, Balance, DomainId, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
-use crate::verification::{Proof, StorageProofVerifier, VerificationError};
+use crate::verification::{StorageProofVerifier, VerificationError};
 use crate::{
-    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses,
-    InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
+    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
+    Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
 use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
@@ -22,6 +18,10 @@ use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
+    ProtocolMessageRequest, RequestResponse, VersionedPayload,
+};
 use sp_runtime::traits::ValidateUnsigned;
 
 fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
