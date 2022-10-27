@@ -106,25 +106,30 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace X-Net 1 Execution",
+        "Subspace X-Net 2 Execution",
         // ID
-        "subspace_x_net_1a_execution",
+        "subspace_x_net_2a_execution",
         ChainType::Local,
         move || {
             testnet_genesis(
                 vec![
-                    // Same with the Sudo account on primary chain.
-                    AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
-                        .expect("Wrong root account address"),
+                    // Genesis executor
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
                 ],
                 vec![(
-                    get_account_id_from_seed("Alice"),
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
                     1_000 * SSC,
-                    get_account_id_from_seed("Alice"),
-                    get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
+                    AccountId::from_ss58check("5FsxcczkSUnpqhcSgugPZsSghxrcKx5UEsRKL5WyPTL6SAxB")
+                        .expect("Wrong executor reward address"),
+                    ExecutorPublicKey::from_ss58check(
+                        "5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx",
+                    )
+                    .expect("Wrong executor public key"),
                 )],
             )
         },
@@ -133,7 +138,7 @@ pub fn x_net_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-x-net-1a-execution"),
+        Some("subspace-x-net-2a-execution"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -157,7 +162,7 @@ fn testnet_genesis(
             balances: endowed_accounts
                 .iter()
                 .cloned()
-                .map(|k| (k, 1_000 * SSC))
+                .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
         executor_registry: ExecutorRegistryConfig {
