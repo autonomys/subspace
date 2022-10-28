@@ -10,10 +10,11 @@ use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
-use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError};
+use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
+use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -421,6 +422,14 @@ pub enum BackgroundTaskError {
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
 
+type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+type Handler<A> = Bag<HandlerFn<A>, A>;
+
+#[derive(Default, Debug)]
+struct Handlers {
+    sector_plotted: Handler<PlottedSector>,
+}
+
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 ///
@@ -430,6 +439,7 @@ pub struct SingleDiskPlot {
     id: SingleDiskPlotId,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
+    handlers: Arc<Handlers>,
     _plotting_join_handle: JoinOnDrop,
     _farming_join_handle: JoinOnDrop,
     shutting_down: Arc<AtomicBool>,
@@ -622,6 +632,7 @@ impl SingleDiskPlot {
             Ok(())
         }));
 
+        let handlers = Arc::<Handlers>::default();
         let shutting_down = Arc::new(AtomicBool::new(false));
 
         let plotting_join_handle = thread::Builder::new()
@@ -629,6 +640,7 @@ impl SingleDiskPlot {
             .spawn({
                 let handle = handle.clone();
                 let metadata_header = Arc::clone(&metadata_header);
+                let handlers = Arc::clone(&handlers);
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
@@ -681,7 +693,7 @@ impl SingleDiskPlot {
                                 &shutting_down,
                             );
 
-                            if let Err(error) = handle.block_on(plot_sector(
+                            let plotted_sector = match handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
                                 &mut piece_receiver,
@@ -690,20 +702,19 @@ impl SingleDiskPlot {
                                 io::Cursor::new(sector),
                                 io::Cursor::new(sector_metadata),
                             )) {
-                                match error {
-                                    PlotSectorError::Cancelled => {
-                                        return;
-                                    }
-                                    PlotSectorError::Plotting(error) => {
-                                        Err(error)?;
-                                    }
+                                Ok(plotted_sector) => plotted_sector,
+                                Err(PlotSectorError::Cancelled) => {
+                                    return;
                                 }
-                            }
+                                Err(PlotSectorError::Plotting(error)) => Err(error)?,
+                            };
 
                             let mut metadata_header = metadata_header.lock();
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
+
+                            handlers.sector_plotted.call_simple(&plotted_sector);
 
                             // Publish pieces-by-sector if we use DSN
                             if let Some(ref piece_publisher) = piece_publisher {
@@ -860,6 +871,7 @@ impl SingleDiskPlot {
             id: single_disk_plot_id,
             span: Span::current(),
             tasks,
+            handlers,
             _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
             _farming_join_handle: JoinOnDrop::new(farming_join_handle),
             shutting_down,
@@ -889,6 +901,11 @@ impl SingleDiskPlot {
     /// ID of this farm
     pub fn id(&self) -> &SingleDiskPlotId {
         &self.id
+    }
+
+    /// Subscribe to sector plotting notification
+    pub fn on_sector_plotted(&self, callback: HandlerFn<PlottedSector>) -> HandlerId {
+        self.handlers.sector_plotted.add(callback)
     }
 
     /// Wait for background threads to exit or return an error

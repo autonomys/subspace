@@ -7,7 +7,8 @@ use std::io::SeekFrom;
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::{
-    Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, Solution, SolutionRange, PIECE_SIZE,
+    Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
+    PIECE_SIZE,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_chunk_signature, derive_chunk_otp};
@@ -20,7 +21,7 @@ pub struct EligibleSector {
     /// Sector ID
     pub sector_id: SectorId,
     /// Sector index
-    pub sector_index: u64,
+    pub sector_index: SectorIndex,
     /// Derived local challenge
     pub local_challenge: SolutionRange,
     /// Audit index corresponding to the challenge used
