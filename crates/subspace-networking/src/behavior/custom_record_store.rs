@@ -9,6 +9,7 @@ use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 use std::iter::IntoIterator;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
@@ -472,8 +473,8 @@ pub struct LimitedSizeRecordStorageWrapper<RC = MemoryRecordStorage> {
 }
 
 impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC> {
-    pub fn new(record_store: RC, max_items_limit: usize) -> Self {
-        let mut fifo_keys = CircularBuffer::new(max_items_limit);
+    pub fn new(record_store: RC, max_items_limit: NonZeroUsize) -> Self {
+        let mut fifo_keys = CircularBuffer::new(max_items_limit.get());
 
         // Initial cache loading.
         for rec in record_store.records() {

@@ -366,6 +366,7 @@ fn main() -> Result<(), Error> {
                             keypair: network_keypair,
                             dsn_listen_on: cli.dsn_listen_on,
                             dsn_bootstrap_node: cli.dsn_bootstrap_node,
+                            record_cache_size: cli.dsn_record_cache_size,
                         })
                     };
 

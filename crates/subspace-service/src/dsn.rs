@@ -2,6 +2,7 @@ use futures::StreamExt;
 use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
@@ -27,6 +28,9 @@ pub struct DsnConfig {
 
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
+
+    /// Kademlia cache size (in items)
+    pub record_cache_size: usize,
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
@@ -43,6 +47,11 @@ where
 {
     let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
+
+    let record_size = NonZeroUsize::new(dsn_config.record_cache_size).unwrap_or(
+        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
+            .expect("We don't expect an error on manually set value."),
+    );
 
     trace!("Subspace networking starting.");
 
@@ -71,10 +80,7 @@ where
             Some(PieceByHashResponse { piece: result })
         })],
         record_store: CustomRecordStore::new(
-            LimitedSizeRecordStorageWrapper::new(
-                MemoryRecordStorage::default(),
-                MAX_KADEMLIA_RECORDS_NUMBER,
-            ),
+            LimitedSizeRecordStorageWrapper::new(MemoryRecordStorage::default(), record_size),
             MemoryProviderStorage::default(),
         ),
         ..subspace_networking::Config::with_generated_keypair()

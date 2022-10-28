@@ -184,6 +184,10 @@ pub struct Cli {
     #[clap(long)]
     pub dsn_bootstrap_node: Vec<Multiaddr>,
 
+    /// DSN configuration argument: record cache size in items.
+    #[clap(long, default_value_t = 32768)]
+    pub dsn_record_cache_size: usize,
+
     /// Secondary chain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
