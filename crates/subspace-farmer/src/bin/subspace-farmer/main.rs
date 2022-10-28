@@ -1,3 +1,5 @@
+#![feature(type_changing_struct_update)]
+
 mod commands;
 mod ss58;
 mod utils;
@@ -33,13 +35,6 @@ static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 struct FarmingArgs {
-    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[clap(long)]
-    bootstrap_nodes: Vec<Multiaddr>,
-    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
-    /// multiple are supported.
-    #[clap(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
-    listen_on: Vec<Multiaddr>,
     /// WebSocket RPC URL of the Subspace node to connect to
     #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
     node_rpc_url: String,
@@ -55,9 +50,23 @@ struct FarmingArgs {
     /// Disable farming
     #[clap(long)]
     disable_farming: bool,
+    /* ****** DSN parameters ******/
     /// Enable DSN and use DSN piece provider for plotting
     #[clap(long)]
     enable_dsn: bool,
+    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
+    #[clap(long)]
+    bootstrap_nodes: Vec<Multiaddr>,
+    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
+    /// multiple are supported.
+    #[clap(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
+    listen_on: Vec<Multiaddr>,
+    /// Record cache size in items.
+    #[clap(long, default_value_t = 32768)]
+    record_cache_size: usize,
+    /// Record cache DB path.
+    #[clap(long)]
+    record_cache_db_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]

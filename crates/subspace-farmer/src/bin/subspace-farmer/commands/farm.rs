@@ -3,13 +3,25 @@ use crate::{DiskFarm, FarmingArgs, Multiaddr};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::str::FromStr;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
 use subspace_networking::{
-    create, BootstrappedNetworkingParameters, Config, Node, NodeRunner, PieceByHashRequestHandler,
-    PieceByHashResponse, PieceKey,
+    create, BootstrappedNetworkingParameters, Config, CustomRecordStore,
+    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
+    ParityDbRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
 };
-use tracing::{debug, info};
+use tracing::{debug, error, info};
+
+const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
+
+// Type alias for currently configured Kademlia's custom record store.
+type ConfiguredRecordStore = CustomRecordStore<
+    LimitedSizeRecordStorageWrapper<ParityDbRecordStorage>,
+    MemoryProviderStorage,
+>;
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -34,9 +46,18 @@ pub(crate) async fn farm_multi_disk(
         disk_concurrency,
         disable_farming,
         enable_dsn,
+        record_cache_size,
+        record_cache_db_path,
     } = farming_args;
 
-    let (node, node_runner) = configure_dsn(enable_dsn, listen_on, bootstrap_nodes).await?;
+    let (node, node_runner) = configure_dsn(
+        enable_dsn,
+        listen_on,
+        bootstrap_nodes,
+        record_cache_size,
+        record_cache_db_path,
+    )
+    .await?;
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -103,13 +124,43 @@ async fn configure_dsn(
     enable_dsn: bool,
     listen_on: Vec<Multiaddr>,
     bootstrap_nodes: Vec<Multiaddr>,
-) -> Result<(Option<Node>, Option<NodeRunner>), anyhow::Error> {
+    record_cache_size: usize,
+    record_cache_db_path: Option<String>,
+) -> Result<(Option<Node>, Option<NodeRunner<ConfiguredRecordStore>>), anyhow::Error> {
     if !enable_dsn {
         info!("No DSN configured.");
         return Ok((None, None));
     }
 
-    let config = Config {
+    let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
+        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
+            .expect("We don't expect an error on manually set value."),
+    );
+
+    let record_cache_db_path = record_cache_db_path
+        .and_then(|path| {
+            let path_result = PathBuf::from_str(&path);
+
+            if let Err(ref err) = path_result {
+                error!(
+                    ?err,
+                    "Invalid record cache DB path. Temp directory used instead."
+                );
+            }
+
+            path_result.ok()
+        })
+        .unwrap_or_else(std::env::temp_dir)
+        .join("subspace_records_cache_db")
+        .into_boxed_path();
+
+    info!(
+        ?record_cache_db_path,
+        ?record_cache_size,
+        "Record cache DB configured."
+    );
+
+    let config = Config::<ConfiguredRecordStore> {
         listen_on,
         allow_non_globals_in_dht: true,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
@@ -126,10 +177,18 @@ async fn configure_dsn(
 
             Some(PieceByHashResponse { piece: result })
         })],
+        record_store: CustomRecordStore::new(
+            LimitedSizeRecordStorageWrapper::new(
+                ParityDbRecordStorage::new(&record_cache_db_path)
+                    .map_err(|err| anyhow::anyhow!(err.to_string()))?,
+                record_cache_size,
+            ),
+            MemoryProviderStorage::default(),
+        ),
         ..Config::with_generated_keypair()
     };
 
-    create(config)
+    create::<ConfiguredRecordStore>(config)
         .await
         .map(|(node, node_runner)| (Some(node), Some(node_runner)))
         .map_err(Into::into)

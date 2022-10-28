@@ -13,7 +13,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 const PARITY_DB_COLUMN_NAME: u8 = 0;
 
@@ -481,7 +481,11 @@ impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC> {
             let _ = fifo_keys.add(rec.key.clone());
         }
 
-        trace!(size = fifo_keys.size(), "Record cache loaded.");
+        if fifo_keys.size() > 0 {
+            info!(size = fifo_keys.size(), "Record cache loaded.");
+        } else {
+            info!("New record cache initialized.");
+        }
 
         Self {
             inner: record_store,
