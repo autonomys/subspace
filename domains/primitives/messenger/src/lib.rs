@@ -21,7 +21,7 @@ pub mod endpoint;
 pub mod messages;
 
 use codec::{Decode, Encode};
-use messages::RelayerMessagesWithStorageKey;
+use messages::{CrossDomainMessage, RelayerMessagesWithStorageKey};
 
 /// A trait used by domains to track and fetch info about system domain.
 pub trait SystemDomainTracker<StateRoot> {
@@ -39,5 +39,15 @@ sp_api::decl_runtime_apis! {
         /// Returns all the outbox and inbox responses this relayer is assigned to deliver.
         /// Storage key is used to generate the storage proof for the message.
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey<DomainId>;
+
+        /// Submits outbox message to the dst_domain as an unsigned extrinsic.
+        fn submit_outbox_message_unsigned(
+            msg: CrossDomainMessage<DomainId, Block::Hash>,
+        );
+
+        /// Submits inbox response message to the dst_domain as an unsigned extrinsic.
+        fn submit_inbox_response_message_unsigned(
+            msg: CrossDomainMessage<DomainId, Block::Hash>,
+        );
     }
 }
