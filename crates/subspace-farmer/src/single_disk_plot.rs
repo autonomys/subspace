@@ -687,7 +687,7 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
-                            let mut piece_receiver = MultiChannelPieceReceiver::new(
+                            let piece_receiver = MultiChannelPieceReceiver::new(
                                 rpc_client.clone(),
                                 dsn_node.clone(),
                                 &shutting_down,
@@ -696,7 +696,7 @@ impl SingleDiskPlot {
                             let plotted_sector = match handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
-                                &mut piece_receiver,
+                                &piece_receiver,
                                 &shutting_down,
                                 &farmer_protocol_info,
                                 io::Cursor::new(sector),
@@ -716,11 +716,11 @@ impl SingleDiskPlot {
 
                             handlers.sector_plotted.call_simple(&plotted_sector);
 
+                            // TODO: Migrate this over to using `on_sector_plotted` instead
                             // Publish pieces-by-sector if we use DSN
                             if let Some(ref piece_publisher) = piece_publisher {
                                 let publishing_result = handle.block_on(
-                                    piece_publisher
-                                        .publish_pieces(piece_receiver.registered_piece_indexes()),
+                                    piece_publisher.publish_pieces(plotted_sector.piece_indexes),
                                 );
 
                                 // cancelled

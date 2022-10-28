@@ -44,7 +44,7 @@ pub enum PlotSectorError {
 pub async fn plot_sector<PR, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
-    piece_receiver: &mut PR,
+    piece_receiver: &PR,
     cancelled: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
     mut sector_output: S,
