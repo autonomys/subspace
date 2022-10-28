@@ -1,5 +1,6 @@
 pub mod farming;
 pub mod piece_publisher;
+pub mod piece_reader;
 pub mod piece_receiver;
 pub mod plotting;
 
@@ -10,6 +11,7 @@ use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
+use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
 use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
@@ -18,7 +20,7 @@ use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use memmap2::{MmapMut, MmapOptions};
+use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -36,7 +38,8 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::{
-    plot_sector_size, PieceIndex, PublicKey, SectorIndex, SegmentIndex, Solution, PIECE_SIZE,
+    plot_sector_size, PieceIndex, PublicKey, SectorId, SectorIndex, SegmentIndex, Solution,
+    PIECE_SIZE,
 };
 use subspace_networking::Node;
 use subspace_rpc_primitives::SolutionResponse;
@@ -436,17 +439,24 @@ struct Handlers {
 /// Plot starts operating during creation and doesn't stop until dropped (or error happens).
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskPlot {
-    id: SingleDiskPlotId,
+    single_disk_plot_info: SingleDiskPlotInfo,
+    /// All sector metadata file region is mapped, not just plotted sectors!
+    sector_metadata_mmap: Mmap,
+    metadata_header: Arc<Mutex<PlotMetadataHeader>>,
+    plot_sector_size: u64,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
+    piece_reader: PieceReader,
     _plotting_join_handle: JoinOnDrop,
     _farming_join_handle: JoinOnDrop,
+    _reading_join_handle: JoinOnDrop,
     shutting_down: Arc<AtomicBool>,
 }
 
 impl Drop for SingleDiskPlot {
     fn drop(&mut self) {
+        self.piece_reader.close_all_readers();
         self.shutting_down.store(true, Ordering::SeqCst);
     }
 }
@@ -486,6 +496,7 @@ impl SingleDiskPlot {
                 .block_on(rpc_client.farmer_protocol_info())
                 .map_err(SingleDiskPlotError::NodeRpcError)
         })?;
+        let record_size = farmer_protocol_info.record_size;
         // TODO: In case `space_l` changes on the fly, code below will break horribly
         let space_l = farmer_protocol_info.space_l;
         let plot_sector_size = plot_sector_size(space_l);
@@ -741,9 +752,27 @@ impl SingleDiskPlot {
                 }
             })?;
 
+        let global_plot_mmap = unsafe {
+            MmapOptions::new()
+                .len((plot_sector_size * target_sector_count) as usize)
+                .map(&plot_file)?
+        };
+        #[cfg(unix)]
+        {
+            global_plot_mmap.advise(memmap2::Advice::Random).unwrap();
+        }
+        let global_sector_metadata_mmap = unsafe {
+            MmapOptions::new()
+                .offset(RESERVED_PLOT_METADATA)
+                .len(SectorMetadata::encoded_size() * target_sector_count as usize)
+                .map(&metadata_file)?
+        };
+
         let farming_join_handle = thread::Builder::new()
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
+                let handle = handle.clone();
+                let metadata_header = Arc::clone(&metadata_header);
                 let shutting_down = Arc::clone(&shutting_down);
                 let identity = identity.clone();
                 let rpc_client = rpc_client.clone();
@@ -860,6 +889,58 @@ impl SingleDiskPlot {
                 }
             })?;
 
+        let (piece_reader, mut read_piece_receiver) = PieceReader::new();
+
+        let reading_join_handle = thread::Builder::new()
+            .name(format!("r-{single_disk_plot_id}"))
+            .spawn({
+                let metadata_header = Arc::clone(&metadata_header);
+                let shutting_down = Arc::clone(&shutting_down);
+
+                move || {
+                    let _tokio_handle_guard = handle.enter();
+                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
+                    let _span_guard = span.enter();
+
+                    while let Some(read_piece_request) = handle.block_on(read_piece_receiver.next())
+                    {
+                        let ReadPieceRequest {
+                            sector_index,
+                            piece_offset,
+                            response_sender,
+                        } = read_piece_request;
+
+                        if shutting_down.load(Ordering::Acquire) {
+                            debug!(
+                                %sector_index,
+                                %piece_offset,
+                                "Instance is shutting down, interrupting piece reading"
+                            );
+                            return;
+                        }
+
+                        if response_sender.is_canceled() {
+                            continue;
+                        }
+
+                        let maybe_piece = read_piece(
+                            sector_index,
+                            piece_offset,
+                            metadata_header.lock().sector_count,
+                            &public_key,
+                            first_sector_index,
+                            plot_sector_size,
+                            record_size,
+                            space_l,
+                            &global_plot_mmap,
+                        );
+
+                        // Doesn't matter if receiver still cares about it
+                        let _ = response_sender.send(maybe_piece);
+                    }
+                }
+            })?;
+
         tasks.push(Box::pin(async move {
             // TODO: Error handling here
             reward_signing(rpc_client, identity).await.unwrap().await;
@@ -868,12 +949,17 @@ impl SingleDiskPlot {
         }));
 
         let farm = Self {
-            id: single_disk_plot_id,
+            single_disk_plot_info,
+            sector_metadata_mmap: global_sector_metadata_mmap,
+            metadata_header,
+            plot_sector_size,
             span: Span::current(),
             tasks,
             handlers,
+            piece_reader,
             _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
             _farming_join_handle: JoinOnDrop::new(farming_join_handle),
+            _reading_join_handle: JoinOnDrop::new(reading_join_handle),
             shutting_down,
         };
 
@@ -900,7 +986,56 @@ impl SingleDiskPlot {
 
     /// ID of this farm
     pub fn id(&self) -> &SingleDiskPlotId {
-        &self.id
+        self.single_disk_plot_info.id()
+    }
+
+    /// Number of sectors successfully plotted so far
+    pub fn plotted_sectors_count(&self) -> u64 {
+        self.metadata_header.lock().sector_count
+    }
+
+    /// Read information about sectors plotted thus far
+    pub fn plotted_sectors(
+        &self,
+    ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
+        let public_key = self.single_disk_plot_info.public_key();
+        let first_sector_index = self.single_disk_plot_info.first_sector_index();
+        let sector_count = self.metadata_header.lock().sector_count;
+        let pieces_in_sector = self.plot_sector_size as usize / PIECE_SIZE;
+
+        (first_sector_index..)
+            .into_iter()
+            .zip(
+                self.sector_metadata_mmap
+                    .chunks_exact(SectorMetadata::encoded_size()),
+            )
+            .take(sector_count as usize)
+            .map(move |(sector_index, mut sector_metadata)| {
+                let sector_metadata = SectorMetadata::decode(&mut sector_metadata)?;
+                let sector_id = SectorId::new(public_key, sector_index);
+
+                let piece_indexes = (0u64..)
+                    .take(pieces_in_sector)
+                    .map(|piece_offset| {
+                        sector_id.derive_piece_index(
+                            piece_offset as PieceIndex,
+                            sector_metadata.total_pieces,
+                        )
+                    })
+                    .collect();
+
+                Ok(PlottedSector {
+                    sector_id,
+                    sector_index,
+                    sector_metadata,
+                    piece_indexes,
+                })
+            })
+    }
+
+    /// Get piece reader to read plot pieces later
+    pub fn piece_reader(&self) -> PieceReader {
+        self.piece_reader.clone()
     }
 
     /// Subscribe to sector plotting notification
