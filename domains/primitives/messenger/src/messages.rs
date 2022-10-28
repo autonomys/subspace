@@ -159,3 +159,18 @@ pub struct RelayerMessagesWithStorageKey<DomainId> {
     pub outbox: Vec<RelayerMessageWithStorageKey<DomainId>>,
     pub inbox_responses: Vec<RelayerMessageWithStorageKey<DomainId>>,
 }
+
+impl<DomainId, StateRoot> CrossDomainMessage<DomainId, StateRoot> {
+    pub fn from_relayer_msg_with_proof(
+        r_msg: RelayerMessageWithStorageKey<DomainId>,
+        proof: Proof<StateRoot>,
+    ) -> Self {
+        CrossDomainMessage {
+            src_domain_id: r_msg.src_domain_id,
+            dst_domain_id: r_msg.dst_domain_id,
+            channel_id: r_msg.channel_id,
+            nonce: r_msg.nonce,
+            proof,
+        }
+    }
+}

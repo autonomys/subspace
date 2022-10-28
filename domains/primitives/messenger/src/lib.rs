@@ -31,7 +31,7 @@ pub trait SystemDomainTracker<StateRoot> {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    pub trait MessageRelayerApi<RelayerId, DomainId>
+    pub trait RelayerApi<RelayerId, DomainId>
     where
         RelayerId: Encode + Decode,
         DomainId: Encode + Decode
