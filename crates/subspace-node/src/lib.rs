@@ -229,8 +229,8 @@ impl SubstrateCli for Cli {
         let mut chain_spec = match id {
             "gemini-2a" => chain_spec::gemini_2a()?,
             "gemini-2a-compiled" => chain_spec::gemini_2a_compiled()?,
-            "x-net-1" => chain_spec::x_net_config()?,
-            "x-net-1-compiled" => chain_spec::x_net_config_compiled()?,
+            "x-net-2" => chain_spec::x_net_2_config()?,
+            "x-net-2-compiled" => chain_spec::x_net_2_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
             "" | "local" => chain_spec::local_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,

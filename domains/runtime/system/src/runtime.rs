@@ -91,8 +91,8 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace-executor"),
-    impl_name: create_runtime_str!("subspace-executor"),
+    spec_name: create_runtime_str!("subspace-system-domain"),
+    impl_name: create_runtime_str!("subspace-system-domain"),
     authoring_version: 0,
     spec_version: 0,
     impl_version: 0,
@@ -247,7 +247,7 @@ impl domain_pallet_executive::Config for Runtime {
 
 parameter_types! {
     // TODO: proper parameters
-    pub const MinExecutorStake: Balance = 10 * SSC;
+    pub const MinExecutorStake: Balance = SSC;
     pub const MaxExecutorStake: Balance = 1000 * SSC;
     pub const MinExecutors: u32 = 1;
     pub const MaxExecutors: u32 = 10;
