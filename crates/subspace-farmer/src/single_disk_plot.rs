@@ -45,6 +45,7 @@ use subspace_networking::Node;
 use subspace_rpc_primitives::SolutionResponse;
 use thiserror::Error;
 use tokio::runtime::Handle;
+use tokio::sync::broadcast;
 use tracing::{debug, error, info, info_span, trace, Instrument, Span};
 use ulid::Ulid;
 
@@ -451,13 +452,18 @@ pub struct SingleDiskPlot {
     _plotting_join_handle: JoinOnDrop,
     _farming_join_handle: JoinOnDrop,
     _reading_join_handle: JoinOnDrop,
+    /// Sender that will be used to signal to background threads that they should start
+    start_sender: Option<broadcast::Sender<()>>,
     shutting_down: Arc<AtomicBool>,
 }
 
 impl Drop for SingleDiskPlot {
     fn drop(&mut self) {
         self.piece_reader.close_all_readers();
+        // Make background threads that are doing something exit as soon as possible
         self.shutting_down.store(true, Ordering::SeqCst);
+        // Make background threads that are waiting to do something exit immediately
+        self.start_sender.take();
     }
 }
 
@@ -644,6 +650,7 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
+        let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let shutting_down = Arc::new(AtomicBool::new(false));
 
         let plotting_join_handle = thread::Builder::new()
@@ -663,6 +670,11 @@ impl SingleDiskPlot {
                     let _tokio_handle_guard = handle.enter();
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
+
+                    if handle.block_on(start_receiver.recv()).is_err() {
+                        // Dropped before starting
+                        return;
+                    }
 
                     // Initial plotting
                     let initial_plotting_result = try {
@@ -773,6 +785,7 @@ impl SingleDiskPlot {
             .spawn({
                 let handle = handle.clone();
                 let metadata_header = Arc::clone(&metadata_header);
+                let mut start_receiver = start_sender.subscribe();
                 let shutting_down = Arc::clone(&shutting_down);
                 let identity = identity.clone();
                 let rpc_client = rpc_client.clone();
@@ -781,6 +794,11 @@ impl SingleDiskPlot {
                     let _tokio_handle_guard = handle.enter();
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
+
+                    if handle.block_on(start_receiver.recv()).is_err() {
+                        // Dropped before starting
+                        return;
+                    }
 
                     let farming_result = try {
                         info!("Subscribing to slot info notifications");
@@ -960,6 +978,7 @@ impl SingleDiskPlot {
             _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
             _farming_join_handle: JoinOnDrop::new(farming_join_handle),
             _reading_join_handle: JoinOnDrop::new(reading_join_handle),
+            start_sender: Some(start_sender),
             shutting_down,
         };
 
@@ -1043,8 +1062,13 @@ impl SingleDiskPlot {
         self.handlers.sector_plotted.add(callback)
     }
 
-    /// Wait for background threads to exit or return an error
-    pub async fn wait(mut self) -> anyhow::Result<()> {
+    /// Run and wait for background threads to exit or return an error
+    pub async fn run(mut self) -> anyhow::Result<()> {
+        if let Some(start_sender) = self.start_sender.take() {
+            // Do not care if anyone is listening on the other side
+            let _ = start_sender.send(());
+        }
+
         while let Some(result) = self.tasks.next().instrument(self.span.clone()).await {
             result?;
         }

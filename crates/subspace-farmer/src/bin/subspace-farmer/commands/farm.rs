@@ -65,7 +65,7 @@ pub(crate) async fn farm_multi_disk(
 
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
-        .map(|single_disk_plot| single_disk_plot.wait())
+        .map(|single_disk_plot| single_disk_plot.run())
         .collect::<FuturesUnordered<_>>();
 
     futures::select!(
