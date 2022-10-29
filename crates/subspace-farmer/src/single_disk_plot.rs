@@ -771,7 +771,7 @@ impl SingleDiskPlot {
         };
         #[cfg(unix)]
         {
-            global_plot_mmap.advise(memmap2::Advice::Random).unwrap();
+            global_plot_mmap.advise(memmap2::Advice::Random)?;
         }
         let global_sector_metadata_mmap = unsafe {
             MmapOptions::new()
@@ -821,7 +821,9 @@ impl SingleDiskPlot {
                             };
                             #[cfg(unix)]
                             {
-                                plot_mmap.advise(memmap2::Advice::Random).unwrap();
+                                plot_mmap
+                                    .advise(memmap2::Advice::Random)
+                                    .map_err(FarmingError::Io)?;
                             }
                             let metadata_mmap = unsafe {
                                 MmapOptions::new()
@@ -832,7 +834,9 @@ impl SingleDiskPlot {
                             };
                             #[cfg(unix)]
                             {
-                                metadata_mmap.advise(memmap2::Advice::Random).unwrap();
+                                metadata_mmap
+                                    .advise(memmap2::Advice::Random)
+                                    .map_err(FarmingError::Io)?;
                             }
                             let shutting_down = Arc::clone(&shutting_down);
 
