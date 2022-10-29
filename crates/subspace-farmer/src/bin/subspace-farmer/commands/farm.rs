@@ -15,7 +15,7 @@ use subspace_networking::{
     PieceByHashResponse, PieceKey,
 };
 use tokio::runtime::Handle;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -232,11 +232,35 @@ async fn configure_dsn(
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
             let result = if let PieceKey::Sector(piece_index_hash) = req.key {
                 let (mut reader, piece_details) = {
-                    let readers_and_pieces = weak_readers_and_pieces.upgrade()?;
+                    let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
+                        Some(readers_and_pieces) => readers_and_pieces,
+                        None => {
+                            debug!("A readers and pieces are already dropped");
+                            return None;
+                        }
+                    };
                     let readers_and_pieces = readers_and_pieces.lock();
-                    let readers_and_pieces = readers_and_pieces.as_ref()?;
+                    let readers_and_pieces = match readers_and_pieces.as_ref() {
+                        Some(readers_and_pieces) => readers_and_pieces,
+                        None => {
+                            debug!(
+                                ?piece_index_hash,
+                                "Readers and pieces are not initialized yet"
+                            );
+                            return None;
+                        }
+                    };
                     let piece_details =
-                        readers_and_pieces.pieces.get(&piece_index_hash).copied()?;
+                        match readers_and_pieces.pieces.get(&piece_index_hash).copied() {
+                            Some(piece_details) => piece_details,
+                            None => {
+                                trace!(
+                                    ?piece_index_hash,
+                                    "Piece is not stored in any of the local plots"
+                                );
+                                return None;
+                            }
+                        };
                     let reader = readers_and_pieces
                         .readers
                         .get(piece_details.plot_offset)

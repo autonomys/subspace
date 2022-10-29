@@ -61,14 +61,17 @@ pub(super) fn read_piece(
     space_l: NonZeroU16,
     global_plot: &[u8],
 ) -> Option<Piece> {
+    if sector_index < first_sector_index {
+        return None;
+    }
     let sector_offset = sector_index - first_sector_index;
     // Sector must be plotted
     if sector_offset <= sector_count {
-        None?;
+        return None;
     }
     // Piece must be within sector
     if piece_offset >= plot_sector_size / PIECE_SIZE as u64 {
-        None?;
+        return None;
     }
     let sector_bytes = &global_plot[(sector_offset * plot_sector_size) as usize..];
     let piece_bytes = &sector_bytes[piece_offset as usize * PIECE_SIZE..][..PIECE_SIZE];
