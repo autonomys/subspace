@@ -245,9 +245,12 @@ async fn configure_dsn(
                     (reader, piece_details)
                 };
 
-                handle.block_on(
-                    reader.read_piece(piece_details.sector_index, piece_details.piece_offset),
-                )
+                let handle = handle.clone();
+                tokio::task::block_in_place(move || {
+                    handle.block_on(
+                        reader.read_piece(piece_details.sector_index, piece_details.piece_offset),
+                    )
+                })
             } else {
                 debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
 
