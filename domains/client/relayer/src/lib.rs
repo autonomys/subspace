@@ -87,16 +87,12 @@ where
                 };
             let msg = CrossDomainMessage::from_relayer_msg_with_proof(msg, proof);
             let (dst_domain, msg_id) = (msg.dst_domain_id, (msg.channel_id, msg.nonce));
-            match submitter(msg).map_err(|_| Error::SubmitUnsignedExtrinsic) {
-                Ok(_) => {}
-                Err(_) => {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        "Failed to submit message: {:?} to domain: {:?}",
-                        msg_id,
-                        dst_domain,
-                    );
-                }
+            if let Err(err) = submitter(msg) {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    ?err,
+                    "Failed to submit message: {msg_id:?} to domain: {dst_domain:?}",
+                );
             }
         }
 
@@ -106,19 +102,16 @@ where
     fn submit_unsigned_messages(&self, block_id: &BlockId<Block>) -> Result<(), Error> {
         let best_block_id = BlockId::Hash(self.domain_client.info().best_hash);
         let api = self.domain_client.runtime_api();
-        // get assigned messages
         let assigned_messages: RelayerMessagesWithStorageKey<DomainId> = api
             .relayer_assigned_messages(block_id, self.relayer_id.clone())
             .map_err(|_| Error::FetchAssignedMessages)?;
 
-        // construct storage proof for each outbox message and submit
         self.construct_cross_domain_message_and_submit(
             block_id,
             assigned_messages.outbox,
             |msg| api.submit_outbox_message_unsigned(&best_block_id, msg),
         )?;
 
-        // construct storage proof for each inbox response message and submit
         self.construct_cross_domain_message_and_submit(
             block_id,
             assigned_messages.inbox_responses,
