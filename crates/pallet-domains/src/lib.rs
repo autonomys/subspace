@@ -26,6 +26,7 @@ use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
+use sp_core::H256;
 use sp_domains::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
@@ -102,6 +103,12 @@ mod pallet {
         BadSignature,
         /// Invalid vrf proof.
         BadVrfProof,
+        /// Can not verify the state root as the receipt is not been on the primary chain.
+        StateRootUnverifiable,
+        /// Invalid state root in the proof of election.
+        BadStateRoot,
+        /// The type of state root is not H256.
+        StateRootNotH256,
         /// Failed to derive the bundle election solution.
         FailedToDeriveBundleElectionSolution,
         /// Can not retrieve the state needed from the storage proof.
@@ -340,6 +347,20 @@ mod pallet {
     pub(super) type ReceiptVotes<T: Config> =
         StorageDoubleMap<_, Twox64Concat, T::Hash, Blake2_128Concat, H256, u32, ValueQuery>;
 
+    /// Mapping for tracking the secondary state roots.
+    ///
+    /// (secondary_block_number, secondary_block_hash, secondary_state_root)
+    #[pallet::storage]
+    pub(super) type StateRoots<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        T::BlockNumber,
+        Blake2_128Concat,
+        T::SecondaryHash,
+        T::SecondaryHash,
+        OptionQuery,
+    >;
+
     /// A pair of (block_hash, block_number) of the latest execution receipt.
     #[pallet::storage]
     #[pallet::getter(fn receipt_head)]
@@ -554,7 +575,10 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle_election(proof_of_election: &ProofOfElection) -> Result<(), BundleError> {
+    fn validate_bundle_election(
+        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
+        proof_of_election: &ProofOfElection<T::SecondaryHash>,
+    ) -> Result<(), BundleError> {
         let ProofOfElection {
             domain_id,
             vrf_output,
@@ -563,18 +587,47 @@ impl<T: Config> Pallet<T> {
             global_challenge,
             state_root,
             storage_proof,
+            block_number,
+            block_hash,
         } = proof_of_election;
 
         verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, global_challenge)
             .map_err(|_| BundleError::BadVrfProof)?;
 
-        // TODO: verify `state_root` is valid.
+        if !block_number.is_zero() {
+            let block_number = T::BlockNumber::from(*block_number);
+
+            let maybe_state_root = receipts.iter().find_map(|receipt| {
+                receipt.trace.last().and_then(|state_root| {
+                    if (receipt.primary_number, receipt.secondary_hash)
+                        == (block_number, *block_hash)
+                    {
+                        Some(*state_root)
+                    } else {
+                        None
+                    }
+                })
+            });
+
+            let expected_state_root = match maybe_state_root {
+                Some(v) => v,
+                None => StateRoots::<T>::get(block_number, block_hash)
+                    .ok_or(BundleError::StateRootUnverifiable)?,
+            };
+
+            if expected_state_root != *state_root {
+                return Err(BundleError::BadStateRoot);
+            }
+        }
+
+        let state_root = H256::decode(&mut state_root.encode().as_slice())
+            .map_err(|_| BundleError::StateRootNotH256)?;
 
         let BundleElectionParams {
             authorities,
             total_stake_weight,
             slot_probability,
-        } = read_bundle_election_params(storage_proof.clone(), state_root)
+        } = read_bundle_election_params(storage_proof.clone(), &state_root)
             .map_err(|_| BundleError::BadStorageProof)?;
 
         let stake_weight = authorities
@@ -674,7 +727,7 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        Self::validate_bundle_election(proof_of_election)?;
+        Self::validate_bundle_election(&bundle.receipts, proof_of_election)?;
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
@@ -736,6 +789,15 @@ impl<T: Config> Pallet<T> {
             *count += 1;
         });
 
+        if !primary_number.is_zero() {
+            let state_root = execution_receipt
+                .trace
+                .last()
+                .expect("There are at least 2 elements in trace after the genesis block; qed");
+
+            <StateRoots<T>>::insert(primary_number, execution_receipt.secondary_hash, state_root);
+        }
+
         // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
             BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
@@ -746,6 +808,7 @@ impl<T: Config> Pallet<T> {
                 }
             });
             OldestReceiptNumber::<T>::put(to_prune + One::one());
+            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
         }
 
         Self::deposit_event(Event::NewExecutionReceipt {
@@ -764,6 +827,18 @@ impl<T: Config> Pallet<T> {
         // Track the fork receipt if it's not seen before.
         if !<Receipts<T>>::contains_key(receipt_hash) {
             <Receipts<T>>::insert(receipt_hash, execution_receipt);
+            if !primary_number.is_zero() {
+                let state_root = execution_receipt
+                    .trace
+                    .last()
+                    .expect("There are at least 2 elements in trace after the genesis block; qed");
+
+                <StateRoots<T>>::insert(
+                    primary_number,
+                    execution_receipt.secondary_hash,
+                    state_root,
+                );
+            }
             Self::deposit_event(Event::NewExecutionReceipt {
                 primary_number,
                 primary_hash,
