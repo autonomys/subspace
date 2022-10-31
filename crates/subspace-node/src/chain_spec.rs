@@ -63,7 +63,7 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 ];
 
 /// Additional subspace specific genesis parameters.
-struct GenesisParams {
+pub struct GenesisParams {
     enable_rewards: bool,
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
@@ -358,7 +358,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
 }
 
 /// Configure initial storage state for FRAME modules.
-fn subspace_genesis_config(
+pub fn subspace_genesis_config(
     wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,

@@ -16,8 +16,8 @@
 
 //! Subspace Node library.
 
-mod chain_spec;
-mod chain_spec_utils;
+pub mod chain_spec;
+pub mod chain_spec_utils;
 mod import_blocks_from_dsn;
 mod secondary_chain;
 
