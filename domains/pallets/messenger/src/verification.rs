@@ -3,7 +3,8 @@ use frame_support::PalletError;
 use hash_db::Hasher;
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
-use sp_trie::{read_trie_value, LayoutV1, StorageProof};
+use sp_messenger::messages::Proof;
+use sp_trie::{read_trie_value, LayoutV1};
 use std::marker::PhantomData;
 
 /// Verification error.
@@ -35,14 +36,4 @@ impl<H: Hasher> StorageProofVerifier<H> {
 
         Ok(decoded)
     }
-}
-
-/// Proof combines the storage proofs to validate messages.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Proof<StateRoot> {
-    pub state_root: StateRoot,
-    /// Storage proof that src_domain state_root is registered on System domain
-    // TODO(ved): add system domain proof when store is available
-    /// Storage proof that message is processed on src_domain.
-    pub message_proof: StorageProof,
 }

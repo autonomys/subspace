@@ -18,9 +18,36 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod endpoint;
+pub mod messages;
+
+use codec::{Decode, Encode};
+use messages::{CrossDomainMessage, RelayerMessagesWithStorageKey};
 
 /// A trait used by domains to track and fetch info about system domain.
 pub trait SystemDomainTracker<StateRoot> {
     /// Get the latest state roots of the K-deep System domain blocks.
     fn latest_state_roots() -> Vec<StateRoot>;
+}
+
+sp_api::decl_runtime_apis! {
+    /// Api useful for relayers to fetch messages and submit transactions.
+    pub trait RelayerApi<RelayerId, DomainId>
+    where
+        RelayerId: Encode + Decode,
+        DomainId: Encode + Decode
+    {
+        /// Returns all the outbox and inbox responses this relayer is assigned to deliver.
+        /// Storage key is used to generate the storage proof for the message.
+        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey<DomainId>;
+
+        /// Submits outbox message to the dst_domain as an unsigned extrinsic.
+        fn submit_outbox_message_unsigned(
+            msg: CrossDomainMessage<DomainId, Block::Hash>,
+        );
+
+        /// Submits inbox response message to the dst_domain as an unsigned extrinsic.
+        fn submit_inbox_response_message_unsigned(
+            msg: CrossDomainMessage<DomainId, Block::Hash>,
+        );
+    }
 }

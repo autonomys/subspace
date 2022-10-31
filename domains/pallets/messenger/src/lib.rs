@@ -29,13 +29,13 @@ mod messages;
 mod relayer;
 mod verification;
 
-use crate::fees::FeeModel;
-use crate::messages::Message;
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
+use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
+use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, Nonce};
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
 
@@ -50,16 +50,6 @@ pub enum ChannelState {
     /// Channel is closed and do not send or receive messages.
     Closed,
 }
-
-/// Channel identity.
-pub type ChannelId = U256;
-
-/// Nonce used as an identifier and ordering of messages within a channel.
-/// Nonce is always increasing.
-pub type Nonce = U256;
-
-/// Unique Id of a message between two domains.
-type MessageId = (ChannelId, Nonce);
 
 /// Channel describes a bridge to exchange messages between two domains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -78,12 +68,6 @@ pub struct Channel<Balance> {
     pub(crate) max_outgoing_messages: u32,
     /// Fee model for this channel between domains.
     pub(crate) fee: FeeModel<Balance>,
-}
-
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
-pub struct InitiateChannelParams<Balance> {
-    pub(crate) max_outgoing_messages: u32,
-    pub(crate) fee_model: FeeModel<Balance>,
 }
 
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
@@ -105,21 +89,21 @@ pub(crate) struct ValidatedRelayMessage<DomainId, Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::messages::{
-        CrossDomainMessage, Message, Payload, ProtocolMessageRequest, RequestResponse,
-        VersionedPayload,
-    };
     use crate::relayer::{RelayerId, RelayerInfo};
     use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
-        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, InitiateChannelParams, MessageId,
-        Nonce, OutboxMessageResult, StateRootOf, ValidatedRelayMessage, U256,
+        relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
+        StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
     use frame_support::traits::ReservableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::messages::{
+        CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
+        ProtocolMessageRequest, RequestResponse, VersionedPayload,
+    };
     use sp_messenger::SystemDomainTracker as SystemDomainTrackerT;
     use sp_runtime::ArithmeticError;
 
@@ -229,6 +213,11 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn next_relayer_idx)]
     pub(super) type NextRelayerIdx<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn relayer_messages)]
+    pub(super) type RelayerMessages<T: Config> =
+        StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages<T::DomainId>, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -414,6 +403,17 @@ mod pallet {
 
         /// Emits when there are no relayers to relay messages between domains.
         NoRelayersToAssign,
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
+            let results = RelayerMessages::<T>::clear(u32::MAX, None);
+            let db_weight = T::DbWeight::get();
+            db_weight
+                .reads(results.loops as Weight)
+                .saturating_add(db_weight.writes(1))
+        }
     }
 
     #[pallet::call]
@@ -782,6 +782,43 @@ mod pallet {
             .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
 
             Ok(msg)
+        }
+    }
+}
+
+impl<T> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
+    pub fn submit_outbox_message_unsigned(msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>) {
+        let call = Call::relay_message { msg };
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(target: "runtime::messenger", "Submitted outbox message");
+            }
+            Err(()) => {
+                log::error!(
+                    target: "runtime::messenger",
+                    "Error submitting outbox message",
+                );
+            }
+        }
+    }
+
+    pub fn submit_inbox_response_message_unsigned(
+        msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+    ) {
+        let call = Call::relay_message_response { msg };
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(target: "runtime::messenger", "Submitted inbox response message");
+            }
+            Err(()) => {
+                log::error!(
+                    target: "runtime::messenger",
+                    "Error submitting inbox response message",
+                );
+            }
         }
     }
 }

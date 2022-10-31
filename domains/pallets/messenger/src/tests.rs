@@ -1,7 +1,3 @@
-use crate::fees::ExecutionFee;
-use crate::messages::{
-    CrossDomainMessage, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
-};
 use crate::mock::domain_a::{
     new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
     RELAYER_ID,
@@ -11,10 +7,10 @@ use crate::mock::{
     AccountId, Balance, DomainId, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
-use crate::verification::{Proof, StorageProofVerifier, VerificationError};
+use crate::verification::{StorageProofVerifier, VerificationError};
 use crate::{
-    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses,
-    InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
+    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
+    Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
 use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
@@ -22,6 +18,10 @@ use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
+    ProtocolMessageRequest, RequestResponse, VersionedPayload,
+};
 use sp_runtime::traits::ValidateUnsigned;
 
 fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
@@ -68,6 +68,17 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeMode
         nonce: Nonce::zero(),
         relayer_id: RELAYER_ID,
     }));
+
+    // check outbox relayer storage key generation
+    let messages_with_keys = domain_a::Messenger::relayer_assigned_messages(domain_a::RELAYER_ID);
+    assert_eq!(messages_with_keys.outbox.len(), 1);
+    assert_eq!(messages_with_keys.inbox_responses.len(), 0);
+    let expected_key =
+        Outbox::<domain_a::Runtime>::hashed_key_for((domain_id, channel_id, Nonce::zero()));
+    assert_eq!(
+        messages_with_keys.outbox[0].storage_key,
+        StorageKey(expected_key)
+    );
 }
 
 fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonce: Option<Nonce>) {
@@ -266,6 +277,21 @@ fn open_channel_between_domains(
             domain_id: domain_a_id,
             channel_id,
         }));
+
+        // check inbox response storage key generation
+        let messages_with_keys =
+            domain_b::Messenger::relayer_assigned_messages(domain_b::RELAYER_ID);
+        assert_eq!(messages_with_keys.outbox.len(), 0);
+        assert_eq!(messages_with_keys.inbox_responses.len(), 1);
+        let expected_key = InboxResponses::<domain_b::Runtime>::hashed_key_for((
+            domain_a_id,
+            channel_id,
+            Nonce::zero(),
+        ));
+        assert_eq!(
+            messages_with_keys.inbox_responses[0].storage_key,
+            StorageKey(expected_key)
+        );
     });
 
     // check channel state be open on domain_a
