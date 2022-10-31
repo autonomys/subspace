@@ -91,6 +91,8 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_plot| single_disk_plot.piece_reader())
         .collect::<Vec<_>>();
 
+    debug!("Collecting already plotted pieces");
+
     // Collect already plotted pieces
     let plotted_pieces: HashMap<PieceIndexHash, PieceDetails> = single_disk_plots
         .iter()
@@ -130,6 +132,8 @@ pub(crate) async fn farm_multi_disk(
         })
         // We implicitly ignore duplicates here, reading just from one of the plots
         .collect();
+
+    debug!("Finished collecting already plotted pieces");
 
     readers_and_pieces.lock().replace(ReadersAndPieces {
         readers: piece_readers,

@@ -4,6 +4,7 @@ use futures::SinkExt;
 use std::num::{NonZeroU16, NonZeroU32};
 use subspace_core_primitives::{Piece, PublicKey, SectorId, SectorIndex, PIECE_SIZE};
 use subspace_solving::derive_chunk_otp;
+use tracing::warn;
 
 #[derive(Debug)]
 pub(super) struct ReadPieceRequest {
@@ -62,15 +63,36 @@ pub(super) fn read_piece(
     global_plot: &[u8],
 ) -> Option<Piece> {
     if sector_index < first_sector_index {
+        warn!(
+            %sector_index,
+            %piece_offset,
+            %sector_count,
+            %first_sector_index,
+            "Incorrect first sector index"
+        );
         return None;
     }
     let sector_offset = sector_index - first_sector_index;
     // Sector must be plotted
-    if sector_offset <= sector_count {
+    if sector_offset >= sector_count {
+        warn!(
+            %sector_index,
+            %piece_offset,
+            %sector_count,
+            %first_sector_index,
+            "Incorrect sector offset"
+        );
         return None;
     }
     // Piece must be within sector
     if piece_offset >= plot_sector_size / PIECE_SIZE as u64 {
+        warn!(
+            %sector_index,
+            %piece_offset,
+            %sector_count,
+            %first_sector_index,
+            "Incorrect piece offset"
+        );
         return None;
     }
     let sector_bytes = &global_plot[(sector_offset * plot_sector_size) as usize..];

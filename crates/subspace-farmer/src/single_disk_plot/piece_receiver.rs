@@ -100,7 +100,7 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
                     }
                 }
                 Ok(None) => {
-                    info!(%piece_index,?key, "get_value returned no piece");
+                    debug!(%piece_index,?key, "get_value returned no piece");
                 }
                 Err(err) => {
                     error!(%piece_index,?key, ?err, "get_value returned an error");
