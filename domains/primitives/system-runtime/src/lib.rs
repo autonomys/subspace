@@ -46,6 +46,12 @@ pub type BlockNumber = u32;
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
 
+/// The type of the DomainId we use for mapping with domains.
+pub type DomainId = u64;
+
+/// The type we use to represent relayer id. This is same as account Id.
+pub type RelayerId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
+
 /// Extracts the signer from an unchecked extrinsic.
 ///
 /// Used by executor to extract the optional signer when shuffling the extrinsics.

@@ -1,10 +1,14 @@
 //! Relayer specific functionality
-
 use crate::{
-    Config, Decode, Encode, Error, Event, NextRelayerIdx, Pallet, Relayers, RelayersInfo, TypeInfo,
+    Config, Decode, Encode, Error, Event, InboxResponses, NextRelayerIdx, Outbox, Pallet,
+    RelayerMessages as RelayerMessageStore, Relayers, RelayersInfo, TypeInfo,
 };
 use frame_support::ensure;
 use frame_support::traits::ReservableCurrency;
+use sp_core::storage::StorageKey;
+use sp_messenger::messages::{
+    MessageId, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
+};
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 
@@ -18,6 +22,13 @@ pub struct RelayerInfo<AccountId, Balance> {
     pub owner: AccountId,
     /// Amount deposited to become a relayer.
     pub deposit_reserved: Balance,
+}
+
+/// Set of messages to be relayed by a given relayer.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct RelayerMessages<DomainId> {
+    pub outbox: Vec<(DomainId, MessageId)>,
+    pub inbox_responses: Vec<(DomainId, MessageId)>,
 }
 
 impl<T: Config> Pallet<T> {
@@ -121,5 +132,53 @@ impl<T: Config> Pallet<T> {
             relayer_id,
         });
         Ok(())
+    }
+
+    pub fn relayer_assigned_messages(
+        relayer_id: RelayerId<T>,
+    ) -> RelayerMessagesWithStorageKey<T::DomainId> {
+        let assigned_messages = match RelayerMessageStore::<T>::get(relayer_id) {
+            None => return Default::default(),
+            Some(messages) => messages,
+        };
+
+        let mut messages_with_storage_key = RelayerMessagesWithStorageKey::default();
+
+        // create storage keys for inbox responses
+        assigned_messages.inbox_responses.into_iter().for_each(
+            |(domain_id, (channel_id, nonce))| {
+                let key = InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
+                let storage_key = StorageKey(key);
+                messages_with_storage_key
+                    .inbox_responses
+                    .push(RelayerMessageWithStorageKey {
+                        src_domain_id: T::SelfDomainId::get(),
+                        dst_domain_id: domain_id,
+                        channel_id,
+                        nonce,
+                        storage_key,
+                    })
+            },
+        );
+
+        // create storage keys for outbox
+        assigned_messages
+            .outbox
+            .into_iter()
+            .for_each(|(domain_id, (channel_id, nonce))| {
+                let key = Outbox::<T>::hashed_key_for((domain_id, channel_id, nonce));
+                let storage_key = StorageKey(key);
+                messages_with_storage_key
+                    .outbox
+                    .push(RelayerMessageWithStorageKey {
+                        src_domain_id: T::SelfDomainId::get(),
+                        dst_domain_id: domain_id,
+                        channel_id,
+                        nonce,
+                        storage_key,
+                    })
+            });
+
+        messages_with_storage_key
     }
 }

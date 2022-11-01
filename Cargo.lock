@@ -1486,6 +1486,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-client-message-relayer"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.21",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-client-api",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-utils",
+ "sp-api",
+ "sp-core",
+ "sp-messenger",
+ "sp-runtime",
+ "system-runtime-primitives",
+ "tracing",
+]
+
+[[package]]
 name = "domain-pallet-executive"
 version = "0.1.0"
 dependencies = [
@@ -7545,7 +7564,9 @@ dependencies = [
  "frame-support",
  "parity-scale-codec",
  "scale-info",
+ "sp-api",
  "sp-runtime",
+ "sp-trie",
 ]
 
 [[package]]
