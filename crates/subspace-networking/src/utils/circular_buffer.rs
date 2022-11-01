@@ -75,7 +75,7 @@ pub trait IsQueue<T: Clone> {
 /// # Examples
 ///
 /// ```
-/// # use queues::*;
+/// # use subspace_networking::utils::circular_buffer::*;
 /// # fn main() {
 /// let mut cbuf = CircularBuffer::<isize>::new(3);
 /// let mut cbuf_def = CircularBuffer::with_default(3, 0isize);
@@ -109,7 +109,7 @@ impl<T: Clone> CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::*;
+    /// # use subspace_networking::utils::circular_buffer::*;
     /// let cbuf: CircularBuffer<isize> = CircularBuffer::new(3);
     /// assert_eq!(cbuf.size(), 0);
     /// assert_eq!(cbuf.capacity(), 3);
@@ -130,7 +130,7 @@ impl<T: Clone> CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::*;
+    /// # use subspace_networking::utils::circular_buffer::*;
     /// let cbuf_def = CircularBuffer::with_default(3, -1isize);
     /// assert_eq!(cbuf_def.size(), 3);
     /// assert_eq!(cbuf_def.capacity(), 3);
@@ -154,7 +154,7 @@ impl<T: Clone> CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::CircularBuffer;
+    /// # use subspace_networking::utils::circular_buffer::CircularBuffer;
     /// let mut cbuf: CircularBuffer<isize> = CircularBuffer::new(3);
     /// assert_eq!(cbuf.capacity(), 3);
     /// ```
@@ -177,7 +177,7 @@ impl<T: Clone + PartialEq> IsQueue<T> for CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::*;
+    /// # use subspace_networking::utils::circular_buffer::*;
     /// let mut cbuf: CircularBuffer<isize> = CircularBuffer::new(3);
     /// let mut cbuf_def = CircularBuffer::with_default(3, 5isize);
     /// assert_eq!(cbuf.add(42), Ok(None));
@@ -209,7 +209,7 @@ impl<T: Clone + PartialEq> IsQueue<T> for CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::*;
+    /// # use subspace_networking::utils::circular_buffer::*;
     /// let mut cbuf: CircularBuffer<isize> = CircularBuffer::new(3);
     /// cbuf.add(42);
     /// assert_eq!(cbuf.remove(), Ok(42));
@@ -242,7 +242,7 @@ impl<T: Clone + PartialEq> IsQueue<T> for CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::*;
+    /// # use subspace_networking::utils::circular_buffer::*;
     /// let mut cbuf: CircularBuffer<isize> = CircularBuffer::new(3);
     /// cbuf.add(42);
     /// assert_eq!(cbuf.peek(), Ok(42));
@@ -264,7 +264,7 @@ impl<T: Clone + PartialEq> IsQueue<T> for CircularBuffer<T> {
     /// # Examples
     ///
     /// ```
-    /// # use queues::*;
+    /// # use subspace_networking::utils::circular_buffer::*;
     /// let mut cbuf: CircularBuffer<isize> = CircularBuffer::new(3);
     /// assert_eq!(cbuf.size(), 0);
     /// cbuf.add(42);

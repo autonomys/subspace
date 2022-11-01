@@ -50,7 +50,14 @@ struct FarmingArgs {
     /// Disable farming
     #[clap(long)]
     disable_farming: bool,
-    /* ****** DSN parameters ******/
+    /// DSN parameters
+    #[clap(flatten)]
+    dsn: DsnArgs,
+}
+
+/// Arguments for DSN
+#[derive(Debug, Parser)]
+struct DsnArgs {
     /// Enable DSN and use DSN piece provider for plotting
     #[clap(long)]
     enable_dsn: bool,

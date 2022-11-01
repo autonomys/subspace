@@ -1,4 +1,4 @@
-pub(crate) mod circular_buffer;
+pub mod circular_buffer;
 pub mod multihash;
 #[cfg(test)]
 mod tests;

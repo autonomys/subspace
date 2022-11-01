@@ -45,11 +45,13 @@ const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
 // The default maximum incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_TTL_IN_SECS: u64 = 86400; /* 1 day */
+const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: u64 = 3600; /* 1 hour */
+const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
+    Some(Duration::from_secs(3600)); /* 1 hour */
 // Defines a republication interval for item providers in Kademlia network.
-const KADEMLIA_RECORD_REPUBLICATION_INTERVAL_IN_SECS: u64 = 4 * 3600; /* 4 hour */
+const KADEMLIA_RECORD_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
+    Some(Duration::from_secs(4 * 3600)); /* 4 hour */
 // Object replication factor. It must consider different peer types with no record stores.
 const KADEMLIA_RECORD_REPLICATION_FACTOR: NonZeroUsize =
     NonZeroUsize::new(10).expect("Manually set value should be > 0");
@@ -143,14 +145,10 @@ impl Config {
             // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
             .set_record_filtering(KademliaStoreInserts::Unfiltered)
             // Providers' settings
-            .set_provider_record_ttl(Some(Duration::from_secs(KADEMLIA_PROVIDER_TTL_IN_SECS)))
-            .set_provider_publication_interval(Some(Duration::from_secs(
-                KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS,
-            )))
+            .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
+            .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)
             // Records' settings
-            .set_publication_interval(Some(Duration::from_secs(
-                KADEMLIA_RECORD_REPUBLICATION_INTERVAL_IN_SECS,
-            )))
+            .set_publication_interval(KADEMLIA_RECORD_REPUBLICATION_INTERVAL_IN_SECS)
             // Our records don't expire.
             .set_record_ttl(None)
             .set_replication_interval(None);

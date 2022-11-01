@@ -1,5 +1,5 @@
 use crate::utils::shutdown_signal;
-use crate::{DiskFarm, FarmingArgs, Multiaddr};
+use crate::{DiskFarm, DsnArgs, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -38,26 +38,15 @@ pub(crate) async fn farm_multi_disk(
     // TODO: Use variables and remove this suppression
     #[allow(unused_variables)]
     let FarmingArgs {
-        bootstrap_nodes,
-        listen_on,
         node_rpc_url,
         reward_address,
         plot_size: _,
         disk_concurrency,
         disable_farming,
-        enable_dsn,
-        record_cache_size,
-        record_cache_db_path,
+        dsn,
     } = farming_args;
 
-    let (node, node_runner) = configure_dsn(
-        enable_dsn,
-        listen_on,
-        bootstrap_nodes,
-        record_cache_size,
-        record_cache_db_path,
-    )
-    .await?;
+    let (node, node_runner) = configure_dsn(dsn).await?;
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -121,11 +110,13 @@ pub(crate) async fn farm_multi_disk(
 }
 
 async fn configure_dsn(
-    enable_dsn: bool,
-    listen_on: Vec<Multiaddr>,
-    bootstrap_nodes: Vec<Multiaddr>,
-    record_cache_size: usize,
-    record_cache_db_path: Option<String>,
+    DsnArgs {
+        enable_dsn,
+        listen_on,
+        bootstrap_nodes,
+        record_cache_size,
+        record_cache_db_path,
+    }: DsnArgs,
 ) -> Result<(Option<Node>, Option<NodeRunner<ConfiguredRecordStore>>), anyhow::Error> {
     if !enable_dsn {
         info!("No DSN configured.");
@@ -138,7 +129,7 @@ async fn configure_dsn(
     );
 
     let record_cache_db_path = record_cache_db_path
-        .and_then(|path| {
+        .map(|path| {
             let path_result = PathBuf::from_str(&path);
 
             if let Err(ref err) = path_result {
@@ -148,10 +139,11 @@ async fn configure_dsn(
                 );
             }
 
-            path_result.ok()
+            path_result
         })
+        .transpose()?
         .unwrap_or_else(std::env::temp_dir)
-        .join("subspace_records_cache_db")
+        .join("records_cache_db")
         .into_boxed_path();
 
     info!(
