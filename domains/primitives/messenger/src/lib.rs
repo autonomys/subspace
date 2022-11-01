@@ -31,13 +31,17 @@ pub trait SystemDomainTracker<StateRoot> {
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    pub trait RelayerApi<RelayerId, DomainId>
+    pub trait RelayerApi<RelayerId, DomainId, BlockNumber>
     where
         RelayerId: Encode + Decode,
-        DomainId: Encode + Decode
+        DomainId: Encode + Decode,
+        BlockNumber: Encode + Decode
     {
         /// Returns the the domain_id of the Runtime.
         fn domain_id() -> DomainId;
+
+        /// Returns the confirmation depth to relay message
+        fn relay_confirmation_depth() -> BlockNumber;
 
         /// Returns all the outbox and inbox responses this relayer is assigned to deliver.
         /// Storage key is used to generate the storage proof for the message.
