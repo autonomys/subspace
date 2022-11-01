@@ -1,6 +1,10 @@
 // TODO(ved): remove once the code is connected.
 #![allow(dead_code)]
-use sc_client_api::{HeaderBackend, ProofProvider, StorageKey};
+
+mod worker;
+
+use parity_scale_codec::{Decode, Encode};
+use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey};
 use sp_api::{ProvideRuntimeApi, StateBackend};
 use sp_messenger::messages::{
     CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
@@ -30,12 +34,17 @@ enum Error {
     FetchAssignedMessages,
     /// Emits when failed to submit an unsigned extrinsic.
     SubmitUnsignedExtrinsic,
+    /// Emits when failed to store the processed block id.
+    StoreProcessedBlockId,
+    /// Emits when unable to fetch domain_id.
+    UnableToFetchDomainId,
 }
 
 impl<Client, Block> Relayer<Client, Block>
 where
     Block: BlockT,
     Client: HeaderBackend<Block>
+        + AuxStore
         + StateBackend<<Block::Header as HeaderT>::Hashing>
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
@@ -102,6 +111,10 @@ where
     fn submit_unsigned_messages(&self, block_id: &BlockId<Block>) -> Result<(), Error> {
         let best_block_id = BlockId::Hash(self.domain_client.info().best_hash);
         let api = self.domain_client.runtime_api();
+        let domain_id = api
+            .domain_id(&best_block_id)
+            .map_err(|_| Error::UnableToFetchDomainId)?;
+
         let assigned_messages: RelayerMessagesWithStorageKey<DomainId> = api
             .relayer_assigned_messages(block_id, self.relayer_id.clone())
             .map_err(|_| Error::FetchAssignedMessages)?;
@@ -118,6 +131,37 @@ where
             |msg| api.submit_inbox_response_message_unsigned(&best_block_id, msg),
         )?;
 
+        // store processed block id for the domain_id
+        self.store_last_processed_block(domain_id, block_id)?;
         Ok(())
+    }
+
+    fn last_processed_block_key(domain_id: DomainId) -> Vec<u8> {
+        (b"message_relayer_last_processed_block", domain_id).encode()
+    }
+
+    fn fetch_last_processed_block(&self, domain_id: DomainId) -> Option<BlockId<Block>> {
+        let encoded = self
+            .domain_client
+            .get_aux(&Self::last_processed_block_key(domain_id))
+            .ok()??;
+
+        BlockId::decode(&mut encoded.as_ref()).ok()
+    }
+
+    fn store_last_processed_block(
+        &self,
+        domain_id: DomainId,
+        block_id: &BlockId<Block>,
+    ) -> Result<(), Error> {
+        self.domain_client
+            .insert_aux(
+                &[(
+                    Self::last_processed_block_key(domain_id).as_ref(),
+                    block_id.encode().as_ref(),
+                )],
+                &[],
+            )
+            .map_err(|_| Error::StoreProcessedBlockId)
     }
 }

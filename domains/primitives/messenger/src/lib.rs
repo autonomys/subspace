@@ -36,6 +36,9 @@ sp_api::decl_runtime_apis! {
         RelayerId: Encode + Decode,
         DomainId: Encode + Decode
     {
+        /// Returns the the domain_id of the Runtime.
+        fn domain_id() -> DomainId;
+
         /// Returns all the outbox and inbox responses this relayer is assigned to deliver.
         /// Storage key is used to generate the storage proof for the message.
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey<DomainId>;
