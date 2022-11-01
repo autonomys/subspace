@@ -526,7 +526,7 @@ pub type PieceIndex = u64;
 pub type SectorIndex = u64;
 
 /// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(Blake2b256Hash);
 

@@ -51,6 +51,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         space_l: NonZeroU16::new(20).unwrap(),
         sector_expiration: 1,
     };
+    let piece_receiver = BenchPieceReceiver::new(piece);
 
     let mut group = c.benchmark_group("sector-plotting");
     group.throughput(Throughput::Bytes(plot_sector_size(
@@ -61,7 +62,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             block_on(plot_sector(
                 black_box(&public_key),
                 black_box(sector_index),
-                black_box(&mut BenchPieceReceiver::new(piece.clone())),
+                black_box(&piece_receiver),
                 black_box(&cancelled),
                 black_box(&farmer_protocol_info),
                 black_box(io::sink()),
@@ -84,7 +85,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     block_on(plot_sector(
                         black_box(&public_key),
                         black_box(sector_index),
-                        black_box(&mut BenchPieceReceiver::new(piece.clone())),
+                        black_box(&piece_receiver),
                         black_box(&cancelled),
                         black_box(&farmer_protocol_info),
                         black_box(io::sink()),

@@ -10,7 +10,7 @@ pub struct BenchPieceReceiver {
 #[async_trait]
 impl PieceReceiver for BenchPieceReceiver {
     async fn get_piece(
-        &mut self,
+        &self,
         _piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         Ok(Some(self.piece.clone()))
