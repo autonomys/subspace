@@ -71,9 +71,6 @@ struct DsnArgs {
     /// Record cache size in items.
     #[clap(long, default_value_t = 32768)]
     record_cache_size: usize,
-    /// Record cache DB path.
-    #[clap(long)]
-    record_cache_db_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
@@ -191,13 +188,11 @@ impl FromStr for DiskFarm {
 struct Command {
     #[clap(subcommand)]
     subcommand: Subcommand,
-    /// Base path for data storage instead of platform-specific default
+    /// Base path for data storage.
     #[clap(
         long,
         default_value_os_t = utils::default_base_path(),
         value_hint = ValueHint::FilePath,
-        conflicts_with = "farm",
-        conflicts_with = "tmp"
     )]
     base_path: PathBuf,
     /// Specify single plot located at specified path, can be specified multiple times to use
@@ -293,7 +288,7 @@ async fn main() -> Result<()> {
                 }
 
                 vec![DiskFarm {
-                    directory: base_path,
+                    directory: base_path.clone(),
                     allocated_plotting_space: get_usable_plot_space(plot_size),
                 }]
             } else {
@@ -306,7 +301,7 @@ async fn main() -> Result<()> {
                 command.farm
             };
 
-            commands::farm_multi_disk(disk_farms, farming_args).await?;
+            commands::farm_multi_disk(base_path, disk_farms, farming_args).await?;
         }
         Subcommand::Info => {
             let disk_farms = if command.farm.is_empty() {

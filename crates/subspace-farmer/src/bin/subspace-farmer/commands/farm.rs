@@ -5,7 +5,6 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::str::FromStr;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
 use subspace_networking::{
@@ -13,7 +12,7 @@ use subspace_networking::{
     LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
     ParityDbRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
@@ -26,6 +25,7 @@ type ConfiguredRecordStore = CustomRecordStore<
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm_multi_disk(
+    base_path: PathBuf,
     disk_farms: Vec<DiskFarm>,
     farming_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
@@ -46,7 +46,7 @@ pub(crate) async fn farm_multi_disk(
         dsn,
     } = farming_args;
 
-    let (node, node_runner) = configure_dsn(dsn).await?;
+    let (node, node_runner) = configure_dsn(base_path, dsn).await?;
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -110,12 +110,12 @@ pub(crate) async fn farm_multi_disk(
 }
 
 async fn configure_dsn(
+    base_path: PathBuf,
     DsnArgs {
         enable_dsn,
         listen_on,
         bootstrap_nodes,
         record_cache_size,
-        record_cache_db_path,
     }: DsnArgs,
 ) -> Result<(Option<Node>, Option<NodeRunner<ConfiguredRecordStore>>), anyhow::Error> {
     if !enable_dsn {
@@ -128,23 +128,7 @@ async fn configure_dsn(
             .expect("We don't expect an error on manually set value."),
     );
 
-    let record_cache_db_path = record_cache_db_path
-        .map(|path| {
-            let path_result = PathBuf::from_str(&path);
-
-            if let Err(ref err) = path_result {
-                error!(
-                    ?err,
-                    "Invalid record cache DB path. Temp directory used instead."
-                );
-            }
-
-            path_result
-        })
-        .transpose()?
-        .unwrap_or_else(std::env::temp_dir)
-        .join("records_cache_db")
-        .into_boxed_path();
+    let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
 
     info!(
         ?record_cache_db_path,
