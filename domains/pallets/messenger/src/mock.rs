@@ -136,7 +136,7 @@ macro_rules! impl_runtime {
         pub const USER_INITIAL_BALANCE: Balance = 1000;
         pub const RELAYER_OWNER_ACCOUNT: AccountId = 200;
         pub const RELAYER_BALANCE: Balance = 1000;
-        pub const RELAYER_ID: RelayerId<$runtime> = 200;
+        pub const RELAYER_ID: RelayerId<$runtime> = 300;
 
         pub fn new_test_ext() -> TestExternalities {
            let mut t = frame_system::GenesisConfig::default()

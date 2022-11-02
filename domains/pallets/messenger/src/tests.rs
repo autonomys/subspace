@@ -1,19 +1,16 @@
-use crate::messages::{
-    CrossDomainMessage, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
-};
 use crate::mock::domain_a::{
     new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
     RELAYER_ID,
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
-    DomainId, TestExternalities,
+    AccountId, Balance, DomainId, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
-use crate::verification::{Proof, StorageProofVerifier, VerificationError};
+use crate::verification::{StorageProofVerifier, VerificationError};
 use crate::{
-    Channel, ChannelId, ChannelState, Channels, Error, Inbox, InboxResponses,
-    InitiateChannelParams, Nonce, Outbox, OutboxMessageResult, OutboxResponses, U256,
+    Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
+    Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
 use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
@@ -21,11 +18,16 @@ use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
+    ProtocolMessageRequest, RequestResponse, VersionedPayload,
+};
 use sp_runtime::traits::ValidateUnsigned;
 
-fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
+fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
     let params = InitiateChannelParams {
         max_outgoing_messages: 100,
+        fee_model,
     };
     assert_ok!(Messenger::initiate_channel(
         Origin::root(),
@@ -66,6 +68,17 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId) {
         nonce: Nonce::zero(),
         relayer_id: RELAYER_ID,
     }));
+
+    // check outbox relayer storage key generation
+    let messages_with_keys = domain_a::Messenger::relayer_assigned_messages(domain_a::RELAYER_ID);
+    assert_eq!(messages_with_keys.outbox.len(), 1);
+    assert_eq!(messages_with_keys.inbox_responses.len(), 0);
+    let expected_key =
+        Outbox::<domain_a::Runtime>::hashed_key_for((domain_id, channel_id, Nonce::zero()));
+    assert_eq!(
+        messages_with_keys.outbox[0].storage_key,
+        StorageKey(expected_key)
+    );
 }
 
 fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonce: Option<Nonce>) {
@@ -109,7 +122,7 @@ fn test_initiate_channel() {
     new_domain_a_ext().execute_with(|| {
         let domain_id = 1;
         let channel_id = U256::zero();
-        create_channel(domain_id, channel_id)
+        create_channel(domain_id, channel_id, Default::default())
     });
 }
 
@@ -130,7 +143,7 @@ fn test_close_not_open_channel() {
     new_domain_a_ext().execute_with(|| {
         let domain_id = 1;
         let channel_id = U256::zero();
-        create_channel(domain_id, channel_id);
+        create_channel(domain_id, channel_id, Default::default());
         assert_err!(
             Messenger::close_channel(Origin::root(), domain_id, channel_id,),
             Error::<Runtime>::InvalidChannelState
@@ -143,7 +156,7 @@ fn test_close_open_channel() {
     new_domain_a_ext().execute_with(|| {
         let domain_id = 1;
         let channel_id = U256::zero();
-        create_channel(domain_id, channel_id);
+        create_channel(domain_id, channel_id, Default::default());
 
         // open channel
         assert_ok!(Messenger::do_open_channel(domain_id, channel_id));
@@ -165,7 +178,7 @@ fn test_storage_proof_verification_invalid() {
     let domain_id = 1;
     let channel_id = U256::zero();
     t.execute_with(|| {
-        create_channel(domain_id, channel_id);
+        create_channel(domain_id, channel_id, Default::default());
         assert_ok!(Messenger::do_open_channel(domain_id, channel_id));
     });
 
@@ -175,7 +188,7 @@ fn test_storage_proof_verification_invalid() {
         state_root: Default::default(),
         message_proof: storage_proof,
     };
-    let res: Result<Channel, VerificationError> =
+    let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, StorageKey(vec![]));
     assert_err!(res, VerificationError::InvalidProof);
 }
@@ -186,7 +199,7 @@ fn test_storage_proof_verification_missing_value() {
     let domain_id = 1;
     let channel_id = U256::zero();
     t.execute_with(|| {
-        create_channel(domain_id, channel_id);
+        create_channel(domain_id, channel_id, Default::default());
         assert_ok!(Messenger::do_open_channel(domain_id, channel_id));
     });
 
@@ -196,7 +209,7 @@ fn test_storage_proof_verification_missing_value() {
         state_root,
         message_proof: storage_proof,
     };
-    let res: Result<Channel, VerificationError> =
+    let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, storage_key);
     assert_err!(res, VerificationError::MissingValue);
 }
@@ -208,7 +221,7 @@ fn test_storage_proof_verification() {
     let channel_id = U256::zero();
     let mut expected_channel = None;
     t.execute_with(|| {
-        create_channel(domain_id, channel_id);
+        create_channel(domain_id, channel_id, Default::default());
         assert_ok!(Messenger::do_open_channel(domain_id, channel_id));
         expected_channel = Channels::<Runtime>::get(domain_id, channel_id);
     });
@@ -219,7 +232,7 @@ fn test_storage_proof_verification() {
         state_root,
         message_proof: storage_proof,
     };
-    let res: Result<Channel, VerificationError> =
+    let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, storage_key);
 
     assert!(res.is_ok());
@@ -229,6 +242,7 @@ fn test_storage_proof_verification() {
 fn open_channel_between_domains(
     domain_a_test_ext: &mut TestExternalities,
     domain_b_test_ext: &mut TestExternalities,
+    fee_model: FeeModel<Balance>,
 ) -> ChannelId {
     let domain_a_id = domain_a::SelfDomainId::get();
     let domain_b_id = domain_b::SelfDomainId::get();
@@ -236,7 +250,7 @@ fn open_channel_between_domains(
     // initiate channel open on domain_a
     let channel_id = domain_a_test_ext.execute_with(|| -> ChannelId {
         let channel_id = U256::zero();
-        create_channel(domain_b_id, channel_id);
+        create_channel(domain_b_id, channel_id, fee_model);
         channel_id
     });
 
@@ -263,6 +277,21 @@ fn open_channel_between_domains(
             domain_id: domain_a_id,
             channel_id,
         }));
+
+        // check inbox response storage key generation
+        let messages_with_keys =
+            domain_b::Messenger::relayer_assigned_messages(domain_b::RELAYER_ID);
+        assert_eq!(messages_with_keys.outbox.len(), 0);
+        assert_eq!(messages_with_keys.inbox_responses.len(), 1);
+        let expected_key = InboxResponses::<domain_b::Runtime>::hashed_key_for((
+            domain_a_id,
+            channel_id,
+            Nonce::zero(),
+        ));
+        assert_eq!(
+            messages_with_keys.inbox_responses[0].storage_key,
+            StorageKey(expected_key)
+        );
     });
 
     // check channel state be open on domain_a
@@ -287,6 +316,7 @@ fn open_channel_between_domains(
 }
 
 fn send_message_between_domains(
+    sender: &AccountId,
     domain_a_test_ext: &mut TestExternalities,
     domain_b_test_ext: &mut TestExternalities,
     msg: EndpointPayload,
@@ -296,7 +326,8 @@ fn send_message_between_domains(
 
     // send message form outbox
     domain_a_test_ext.execute_with(|| {
-        let resp = <domain_a::Messenger as Sender<DomainId>>::send_message(
+        let resp = <domain_a::Messenger as Sender<AccountId, DomainId>>::send_message(
+            sender,
             domain_b_id,
             EndpointRequest {
                 src_endpoint: Endpoint::Id(0),
@@ -554,7 +585,11 @@ fn test_open_channel_between_domains() {
     let mut domain_b_test_ext = domain_b::new_test_ext();
     // open channel between domain_a and domain_b
     // domain_a initiates the channel open
-    open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+    open_channel_between_domains(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        Default::default(),
+    );
 }
 
 #[test]
@@ -563,7 +598,11 @@ fn test_close_channel_between_domains() {
     let mut domain_b_test_ext = domain_b::new_test_ext();
     // open channel between domain_a and domain_b
     // domain_a initiates the channel open
-    let channel_id = open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+    let channel_id = open_channel_between_domains(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        Default::default(),
+    );
 
     // close open channel
     close_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext, channel_id)
@@ -575,10 +614,15 @@ fn test_send_message_between_domains() {
     let mut domain_b_test_ext = domain_b::new_test_ext();
     // open channel between domain_a and domain_b
     // domain_a initiates the channel open
-    let channel_id = open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+    let channel_id = open_channel_between_domains(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        Default::default(),
+    );
 
     // send message
     send_message_between_domains(
+        &0,
         &mut domain_a_test_ext,
         &mut domain_b_test_ext,
         vec![1, 2, 3, 4],
@@ -613,7 +657,20 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
             nonce: U256::one(),
             relayer_id: RELAYER_ID,
         }));
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+        let fee_model = domain_b::Messenger::channels(domain_b::SelfDomainId::get(), U256::zero())
+            .unwrap_or_default()
+            .fee;
+        let fees = fee_model.inbox_fee.relayer_pool_fee
+            + fee_model.inbox_fee.compute_fee
+            + fee_model.outbox_fee.compute_fee
+            + fee_model.outbox_fee.relayer_pool_fee;
+
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 500 - fees);
+        // source domain take 2 fees and dst_domain takes 2
+        assert_eq!(
+            domain_a::Balances::free_balance(&domain_a::Messenger::messenger_account_id()),
+            fee_model.outbox_fee.compute_fee + fee_model.outbox_fee.relayer_pool_fee
+        );
         assert!(domain_a::Transporter::outgoing_transfers(
             domain_b::SelfDomainId::get(),
             (U256::zero(), U256::one())
@@ -626,7 +683,7 @@ fn verify_transfer_on_domain(
     domain_a_ext: &mut TestExternalities,
     domain_b_ext: &mut TestExternalities,
 ) {
-    // this account should have 500 balance
+    // this account should have 496 balance with 1 fee left
     // domain a should have
     //   a successful event
     //   reduced balance
@@ -646,7 +703,13 @@ fn verify_transfer_on_domain(
             channel_id: U256::zero(),
             nonce: U256::one(),
         }));
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+        assert_eq!(domain_a::Balances::free_balance(&account_id), 496);
+        assert_eq!(
+            domain_a::Balances::free_balance(&domain_a::Messenger::messenger_account_id()),
+            1
+        );
+        let relayer_a_balance = domain_a::Balances::free_balance(domain_a::RELAYER_ID);
+        assert_eq!(relayer_a_balance, 1);
         assert!(domain_a::Transporter::outgoing_transfers(
             domain_b::SelfDomainId::get(),
             (U256::zero(), U256::one())
@@ -673,6 +736,12 @@ fn verify_transfer_on_domain(
             relayer_id: domain_b::RELAYER_ID,
         }));
         assert_eq!(domain_b::Balances::free_balance(&account_id), 1500);
+        assert_eq!(
+            domain_b::Balances::free_balance(&domain_b::Messenger::messenger_account_id()),
+            1
+        );
+        let relayer_b_balance = domain_b::Balances::free_balance(domain_b::RELAYER_ID);
+        assert_eq!(relayer_b_balance, 1);
     })
 }
 
@@ -680,9 +749,30 @@ fn verify_transfer_on_domain(
 fn test_transport_funds_between_domains() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     let mut domain_b_test_ext = domain_b::new_test_ext();
+    // pre check
+    let relayer_a_balance = domain_a_test_ext
+        .execute_with(|| -> Balance { domain_a::Balances::free_balance(domain_a::RELAYER_ID) });
+    let relayer_b_balance = domain_b_test_ext
+        .execute_with(|| -> Balance { domain_b::Balances::free_balance(domain_b::RELAYER_ID) });
+    assert_eq!(relayer_a_balance, 0);
+    assert_eq!(relayer_b_balance, 0);
+
     // open channel between domain_a and domain_b
     // domain_a initiates the channel open
-    let channel_id = open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+    let channel_id = open_channel_between_domains(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        FeeModel {
+            outbox_fee: ExecutionFee {
+                relayer_pool_fee: 1,
+                compute_fee: 1,
+            },
+            inbox_fee: ExecutionFee {
+                relayer_pool_fee: 1,
+                compute_fee: 1,
+            },
+        },
+    );
 
     // initiate transfer
     initiate_transfer_on_domain(&mut domain_a_test_ext);
@@ -705,7 +795,11 @@ fn test_transport_funds_between_domains_failed_low_balance() {
     let mut domain_b_test_ext = domain_b::new_test_ext();
     // open channel between domain_a and domain_b
     // domain_a initiates the channel open
-    open_channel_between_domains(&mut domain_a_test_ext, &mut domain_b_test_ext);
+    open_channel_between_domains(
+        &mut domain_a_test_ext,
+        &mut domain_b_test_ext,
+        Default::default(),
+    );
 
     // initiate transfer
     let account_id = 100;

@@ -5,11 +5,25 @@ use bitvec::prelude::*;
 use parity_scale_codec::Encode;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use subspace_core_primitives::{plot_sector_size, PieceIndex, PublicKey, SectorId, PIECE_SIZE};
+use subspace_core_primitives::{
+    plot_sector_size, PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE,
+};
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
 use thiserror::Error;
 use tracing::debug;
+
+/// Information about sector that was plotted
+pub struct PlottedSector {
+    /// Sector ID
+    pub sector_id: SectorId,
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Sector metadata
+    pub sector_metadata: SectorMetadata,
+    /// Indexes of pieces that were plotted
+    pub piece_indexes: Vec<PieceIndex>,
+}
 
 /// Plotting status
 #[derive(Debug, Error)]
@@ -30,12 +44,12 @@ pub enum PlotSectorError {
 pub async fn plot_sector<PR, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
-    piece_receiver: &mut PR,
+    piece_receiver: &PR,
     cancelled: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
-    mut sector: S,
-    mut sector_metadata: SM,
-) -> Result<(), PlotSectorError>
+    mut sector_output: S,
+    mut sector_metadata_output: SM,
+) -> Result<PlottedSector, PlotSectorError>
 where
     PR: PieceReceiver,
     S: io::Write,
@@ -52,7 +66,17 @@ where
         * 2;
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
-    for piece_offset in (0u64..).take(plot_sector_size as usize / PIECE_SIZE) {
+    let piece_indexes: Vec<PieceIndex> = (0u64..)
+        .take(plot_sector_size as usize / PIECE_SIZE)
+        .map(|piece_offset| {
+            sector_id.derive_piece_index(
+                piece_offset as PieceIndex,
+                farmer_protocol_info.total_pieces,
+            )
+        })
+        .collect();
+
+    for piece_index in piece_indexes.iter().copied() {
         if cancelled.load(Ordering::Acquire) {
             debug!(
                 %sector_index,
@@ -60,10 +84,6 @@ where
             );
             return Err(PlotSectorError::Cancelled);
         }
-        let piece_index = sector_id.derive_piece_index(
-            piece_offset as PieceIndex,
-            farmer_protocol_info.total_pieces,
-        );
 
         let mut piece = piece_receiver
             .get_piece(piece_index)
@@ -95,18 +115,22 @@ where
                     });
             });
 
-        sector.write_all(&piece).map_err(PlottingError::Io)?;
+        sector_output.write_all(&piece).map_err(PlottingError::Io)?;
     }
 
-    sector_metadata
-        .write_all(
-            &SectorMetadata {
-                total_pieces: farmer_protocol_info.total_pieces,
-                expires_at,
-            }
-            .encode(),
-        )
+    let sector_metadata = SectorMetadata {
+        total_pieces: farmer_protocol_info.total_pieces,
+        expires_at,
+    };
+
+    sector_metadata_output
+        .write_all(&sector_metadata.encode())
         .map_err(PlottingError::Io)?;
 
-    Ok(())
+    Ok(PlottedSector {
+        sector_id,
+        sector_index,
+        sector_metadata,
+        piece_indexes,
+    })
 }

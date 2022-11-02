@@ -7,7 +7,6 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_core::H256;
 use sp_domains::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
@@ -174,11 +173,7 @@ where
             extrinsics,
         };
 
-        let best_hash = self.client.info().best_hash;
-
-        if let Some(proof_of_election) =
-            self.solve_bundle_election_challenge(best_hash, global_challenge)?
-        {
+        if let Some(proof_of_election) = self.solve_bundle_election_challenge(global_challenge)? {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
             let to_sign = bundle.hash();
@@ -222,9 +217,11 @@ where
 
     fn solve_bundle_election_challenge(
         &self,
-        best_hash: Block::Hash,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection>> {
+    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
+        let best_hash = self.client.info().best_hash;
+        let best_number = self.client.info().best_number;
+
         let best_block_id = BlockId::Hash(best_hash);
 
         let BundleElectionParams {
@@ -289,12 +286,10 @@ where
                         .header(best_block_id)?
                         .expect("Best block header must exist; qed")
                         .state_root();
-                    let state_root =
-                        H256::decode(&mut state_root.encode().as_slice()).map_err(|err| {
-                            sp_blockchain::Error::Application(Box::from(format!(
-                                "Failed to decode state root({state_root:?}) into H256: {err}",
-                            )))
-                        })?;
+
+                    let best_number: BlockNumber = best_number
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
 
                     let proof_of_election = ProofOfElection {
                         domain_id: SYSTEM_DOMAIN_ID,
@@ -304,6 +299,8 @@ where
                         global_challenge,
                         state_root,
                         storage_proof,
+                        block_number: best_number,
+                        block_hash: best_hash,
                     };
 
                     return Ok(Some(proof_of_election));

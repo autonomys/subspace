@@ -1,6 +1,5 @@
 use crate::RpcClient;
 use async_trait::async_trait;
-use std::collections::HashSet;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -17,7 +16,7 @@ const GET_PIECE_WAITING_DURATION_IN_SECS: u64 = 1;
 #[async_trait]
 pub trait PieceReceiver {
     async fn get_piece(
-        &mut self,
+        &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
 }
@@ -27,7 +26,6 @@ pub(crate) struct MultiChannelPieceReceiver<'a, RC: RpcClient> {
     rpc_client: RC,
     dsn_node: Option<Node>,
     cancelled: &'a AtomicBool,
-    registered_piece_indexes: HashSet<PieceIndex>,
 }
 
 impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
@@ -36,12 +34,7 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
             rpc_client,
             dsn_node,
             cancelled,
-            registered_piece_indexes: HashSet::new(),
         }
-    }
-
-    pub(crate) fn registered_piece_indexes(&self) -> Vec<PieceIndex> {
-        self.registered_piece_indexes.iter().cloned().collect()
     }
 
     fn check_cancellation(&self) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
@@ -52,10 +45,6 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
         }
 
         Ok(())
-    }
-
-    fn register_piece_index(&mut self, piece_index: PieceIndex) {
-        self.registered_piece_indexes.insert(piece_index);
     }
 
     // restore after fixing https://github.com/libp2p/rust-libp2p/issues/3048
@@ -111,7 +100,7 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
                     }
                 }
                 Ok(None) => {
-                    info!(%piece_index,?key, "get_value returned no piece");
+                    debug!(%piece_index,?key, "get_value returned no piece");
                 }
                 Err(err) => {
                     error!(%piece_index,?key, ?err, "get_value returned an error");
@@ -184,15 +173,13 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
 #[async_trait]
 impl<'a, RC: RpcClient> PieceReceiver for MultiChannelPieceReceiver<'a, RC> {
     async fn get_piece(
-        &mut self,
+        &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>
     where
         RC: RpcClient,
     {
         trace!(%piece_index, "Piece request. DSN={:?}", self.dsn_node.is_some());
-
-        self.register_piece_index(piece_index);
 
         if self.dsn_node.is_some() {
             // until we get a valid piece
