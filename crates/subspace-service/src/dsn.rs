@@ -1,19 +1,19 @@
+mod piece_record_store;
+
+use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
 use futures::StreamExt;
 use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
+use sc_piece_cache::AuxPieceCache;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    BootstrappedNetworkingParameters, CreationError, CustomRecordStore,
-    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, MemoryRecordStorage,
+    BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
-
-const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -28,18 +28,17 @@ pub struct DsnConfig {
 
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
-
-    /// Kademlia cache size (in items)
-    pub record_cache_size: usize,
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
 /// pub-sub protocol.
-pub async fn start_dsn_node<Block, Spawner>(
+pub async fn start_dsn_node<Block, Spawner, AS: sc_client_api::AuxStore + Sync + Send + 'static>(
     subspace_link: &SubspaceLink<Block>,
     dsn_config: DsnConfig,
     spawner: Spawner,
+    piece_cache: AuxPieceCache<AS>,
     piece_getter: PieceGetter,
+    segment_index_getter: SegmentIndexGetter,
 ) -> Result<(), CreationError>
 where
     Block: BlockT,
@@ -48,18 +47,12 @@ where
     let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
 
-    let record_size = NonZeroUsize::new(dsn_config.record_cache_size).unwrap_or(
-        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
-            .expect("We don't expect an error on manually set value."),
-    );
+    let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
 
     trace!("Subspace networking starting.");
 
     let networking_config = subspace_networking::Config::<
-        CustomRecordStore<
-            LimitedSizeRecordStorageWrapper<MemoryRecordStorage>,
-            MemoryProviderStorage,
-        >,
+        CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>,
     > {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.dsn_listen_on,
@@ -79,10 +72,7 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(
-            LimitedSizeRecordStorageWrapper::new(MemoryRecordStorage::default(), record_size),
-            MemoryProviderStorage::default(),
-        ),
+        record_store: CustomRecordStore::new(record_storage, MemoryProviderStorage::default()),
         ..subspace_networking::Config::with_generated_keypair()
     };
 
