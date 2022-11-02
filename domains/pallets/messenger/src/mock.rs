@@ -16,7 +16,7 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{mock_system_domain_tracker, DomainId, TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
+        use crate::mock::{mock_domain_tracker, DomainId, TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
         use frame_support::parameter_types;
         use frame_support::pallet_prelude::PhantomData;
         use sp_core::H256;
@@ -38,7 +38,7 @@ macro_rules! impl_runtime {
                 UncheckedExtrinsic = UncheckedExtrinsic,
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                SystemDomainTracker: mock_system_domain_tracker::{Pallet, Storage},
+                DomainTracker: mock_domain_tracker::{Pallet, Storage},
                 Messenger: crate::{Pallet, Call, Event<T>},
                 Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
                 Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
@@ -77,7 +77,7 @@ macro_rules! impl_runtime {
             pub const ExistentialDeposit: u64 = 1;
         }
 
-        impl mock_system_domain_tracker::Config for $runtime {}
+        impl mock_domain_tracker::Config for $runtime {}
 
         parameter_types! {
             pub const SelfDomainId: DomainId = $domain_id;
@@ -89,7 +89,7 @@ macro_rules! impl_runtime {
             type Event = Event;
             type DomainId = DomainId;
             type SelfDomainId = SelfDomainId;
-            type SystemDomainTracker = SystemDomainTracker;
+            type DomainTracker = DomainTracker;
             type MaximumRelayers = MaximumRelayers;
             type Currency = Balances;
             type RelayerDeposit = RelayerDeposit;
@@ -202,10 +202,12 @@ pub(crate) mod domain_b {
 }
 
 #[frame_support::pallet]
-pub(crate) mod mock_system_domain_tracker {
+pub(crate) mod mock_domain_tracker {
+    use crate::mock::DomainId;
     use frame_support::pallet_prelude::*;
+    use sp_core::storage::StorageKey;
     use sp_core::H256;
-    use sp_messenger::SystemDomainTracker as SystemDomainTrackerT;
+    use sp_messenger::DomainTracker;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
@@ -219,9 +221,21 @@ pub(crate) mod mock_system_domain_tracker {
     #[pallet::storage]
     pub(super) type StateRoot<T: Config> = StorageValue<_, H256, ValueQuery>;
 
-    impl<T: Config> SystemDomainTrackerT<H256> for Pallet<T> {
-        fn latest_state_roots() -> Vec<H256> {
+    impl<T: Config> DomainTracker<DomainId, H256> for Pallet<T> {
+        fn is_system_domain(domain_id: DomainId) -> bool {
+            domain_id <= 100
+        }
+
+        fn system_domain_state_roots() -> Vec<H256> {
             vec![StateRoot::<T>::get()]
+        }
+
+        fn domain_state_root_storage_key(_domain_id: DomainId) -> StorageKey {
+            todo!()
+        }
+
+        fn is_core_domain(domain_id: DomainId) -> bool {
+            domain_id > 100 && domain_id <= 1000
         }
     }
 

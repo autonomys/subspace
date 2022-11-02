@@ -120,7 +120,7 @@ fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonc
 #[test]
 fn test_initiate_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 1;
+        let domain_id = 2;
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default())
     });
@@ -129,7 +129,7 @@ fn test_initiate_channel() {
 #[test]
 fn test_close_missing_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 1;
+        let domain_id = 2;
         let channel_id = U256::zero();
         assert_err!(
             Messenger::close_channel(Origin::root(), domain_id, channel_id,),
@@ -141,7 +141,7 @@ fn test_close_missing_channel() {
 #[test]
 fn test_close_not_open_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 1;
+        let domain_id = 2;
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default());
         assert_err!(
@@ -154,7 +154,7 @@ fn test_close_not_open_channel() {
 #[test]
 fn test_close_open_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 1;
+        let domain_id = 2;
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default());
 
@@ -175,7 +175,7 @@ fn test_close_open_channel() {
 #[test]
 fn test_storage_proof_verification_invalid() {
     let mut t = new_domain_a_ext();
-    let domain_id = 1;
+    let domain_id = 2;
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id, Default::default());
@@ -186,17 +186,22 @@ fn test_storage_proof_verification_invalid() {
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
     let proof = Proof {
         state_root: Default::default(),
+        core_domain_proof: None,
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, StorageKey(vec![]));
+        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+            &proof.state_root,
+            proof.message_proof,
+            StorageKey(vec![]),
+        );
     assert_err!(res, VerificationError::InvalidProof);
 }
 
 #[test]
 fn test_storage_proof_verification_missing_value() {
     let mut t = new_domain_a_ext();
-    let domain_id = 1;
+    let domain_id = 2;
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id, Default::default());
@@ -207,17 +212,22 @@ fn test_storage_proof_verification_missing_value() {
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, U256::one());
     let proof = Proof {
         state_root,
+        core_domain_proof: None,
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, storage_key);
+        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+            &proof.state_root,
+            proof.message_proof,
+            storage_key,
+        );
     assert_err!(res, VerificationError::MissingValue);
 }
 
 #[test]
 fn test_storage_proof_verification() {
     let mut t = new_domain_a_ext();
-    let domain_id = 1;
+    let domain_id = 2;
     let channel_id = U256::zero();
     let mut expected_channel = None;
     t.execute_with(|| {
@@ -230,10 +240,15 @@ fn test_storage_proof_verification() {
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
     let proof = Proof {
         state_root,
+        core_domain_proof: None,
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(proof, storage_key);
+        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+            &proof.state_root,
+            proof.message_proof,
+            storage_key,
+        );
 
     assert!(res.is_ok());
     assert_eq!(res.unwrap(), expected_channel.unwrap())
@@ -479,12 +494,13 @@ fn channel_relay_request_and_response(
         nonce,
         proof: Proof {
             state_root,
+            core_domain_proof: None,
             message_proof,
         },
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
-        domain_b::SystemDomainTracker::set_state_root(xdm.proof.state_root);
+        domain_b::DomainTracker::set_state_root(xdm.proof.state_root);
 
         // validate the message
         let pre_check =
@@ -542,11 +558,12 @@ fn channel_relay_request_and_response(
         nonce,
         proof: Proof {
             state_root,
+            core_domain_proof: None,
             message_proof,
         },
     };
     domain_a_test_ext.execute_with(|| {
-        domain_a::SystemDomainTracker::set_state_root(xdm.proof.state_root);
+        domain_a::DomainTracker::set_state_root(xdm.proof.state_root);
 
         // validate message response
         let pre_check = crate::Pallet::<domain_a::Runtime>::pre_dispatch(

@@ -104,7 +104,7 @@ mod pallet {
         CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::SystemDomainTracker as SystemDomainTrackerT;
+    use sp_messenger::DomainTracker as DomainTrackerT;
     use sp_runtime::ArithmeticError;
 
     #[pallet::config]
@@ -115,7 +115,7 @@ mod pallet {
         /// Gets the domain_id that is treated as src_domain for outgoing messages.
         type SelfDomainId: Get<Self::DomainId>;
         /// System domain tracker.
-        type SystemDomainTracker: SystemDomainTrackerT<StateRootOf<Self>>;
+        type DomainTracker: DomainTrackerT<Self::DomainId, StateRootOf<Self>>;
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_response_handler(
             endpoint: &Endpoint,
@@ -382,6 +382,9 @@ mod pallet {
 
         /// Emits when the message payload is invalid.
         InvalidMessagePayload,
+
+        /// Emits when the message destination is not valid.
+        InvalidMessageDestination,
 
         /// Emits when the message verification failed.
         MessageVerification(VerificationError),
@@ -760,12 +763,40 @@ mod pallet {
             xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
         ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
             // fetch state roots from System domain tracker
-            let state_roots = T::SystemDomainTracker::latest_state_roots();
+            let state_roots = T::DomainTracker::system_domain_state_roots();
             if !state_roots.contains(&xdm.proof.state_root) {
                 return Err(TransactionValidityError::Invalid(
                     InvalidTransaction::BadProof,
                 ));
             }
+
+            // verify intermediate core domain proof and retrieve state root of the message.
+            let core_domain_state_root_proof = xdm.proof.core_domain_proof.clone();
+            let state_root = {
+                // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
+                if T::DomainTracker::is_system_domain(xdm.src_domain_id)
+                    && xdm.proof.core_domain_proof.is_none()
+                {
+                    Ok(xdm.proof.state_root)
+                }
+                // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
+                else if T::DomainTracker::is_core_domain(xdm.src_domain_id)
+                    && core_domain_state_root_proof.is_some()
+                {
+                    let core_domain_state_root_key =
+                        T::DomainTracker::domain_state_root_storage_key(xdm.src_domain_id);
+                    StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
+                        &xdm.proof.state_root,
+                        core_domain_state_root_proof.expect("checked for existence value above"),
+                        core_domain_state_root_key,
+                    )
+                    .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))
+                } else {
+                    Err(TransactionValidityError::Invalid(
+                        InvalidTransaction::BadProof,
+                    ))
+                }
+            }?;
 
             // channel should be either already be created or match the next channelId for domain.
             let next_channel_id = NextChannelId::<T>::get(xdm.dst_domain_id);
@@ -778,7 +809,7 @@ mod pallet {
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
                 Message<T::DomainId, BalanceOf<T>>,
-            >(xdm.proof.clone(), storage_key)
+            >(&state_root, xdm.proof.message_proof.clone(), storage_key)
             .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
 
             Ok(msg)
