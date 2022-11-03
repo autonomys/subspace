@@ -17,6 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(test)]
+mod tests;
+
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
