@@ -17,9 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::traits::{Currency, LockIdentifier};
+use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
-use sp_domains::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -88,6 +88,27 @@ mod pallet {
         pub min_operator_stake: Balance,
     }
 
+    /// Domain id for the next domain.
+    #[pallet::storage]
+    pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
+
+    /// (domain_id, domain_creator, deposit)
+    #[pallet::storage]
+    pub(super) type DomainCreators<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        T::AccountId,
+        BalanceOf<T>,
+        OptionQuery,
+    >;
+
+    /// A map tracking all the non-system domains.
+    #[pallet::storage]
+    pub(super) type Domains<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T::Hash, BalanceOf<T>>, OptionQuery>;
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
@@ -100,7 +121,16 @@ mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // TODO: impl
+            Self::can_create_domain(&who, deposit, &domain_config)?;
+
+            let domain_id = Self::apply_create_domain(&who, deposit, &domain_config);
+
+            Self::deposit_event(Event::<T>::NewDomain {
+                creator: who,
+                domain_id,
+                deposit,
+                domain_config,
+            });
 
             Ok(())
         }
@@ -214,11 +244,32 @@ mod pallet {
     }
 
     #[pallet::error]
-    pub enum Error<T> {}
+    pub enum Error<T> {
+        /// The amount of deposit is smaller than the `T::MinDomainDeposit` bound.
+        DepositTooSmall,
+
+        /// The amount of deposit is larger than the `T::MaxDomainDeposit` bound.
+        DepositTooLarge,
+
+        /// Account does not have enough balance.
+        InsufficientBalance,
+
+        /// The minimum executor stake value in the domain config is lower than the global
+        /// requirement `T::MinDomainOperatorStake`.
+        OperatorStakeThresholdTooLow,
+    }
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
+        /// A new domain was created.
+        NewDomain {
+            creator: T::AccountId,
+            domain_id: DomainId,
+            deposit: BalanceOf<T>,
+            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+        },
+
         FraudProofProcessed,
 
         BundleEquivocationProofProcessed,
@@ -323,6 +374,46 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    fn can_create_domain(
+        who: &T::AccountId,
+        deposit: BalanceOf<T>,
+        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+    ) -> Result<(), Error<T>> {
+        if deposit < T::MinDomainDeposit::get() {
+            return Err(Error::<T>::DepositTooSmall);
+        }
+
+        if deposit > T::MaxDomainDeposit::get() {
+            return Err(Error::<T>::DepositTooLarge);
+        }
+
+        if T::Currency::free_balance(who) < deposit {
+            return Err(Error::<T>::InsufficientBalance);
+        }
+
+        if domain_config.min_operator_stake < T::MinDomainOperatorStake::get() {
+            return Err(Error::<T>::OperatorStakeThresholdTooLow);
+        }
+
+        Ok(())
+    }
+
+    fn apply_create_domain(
+        who: &T::AccountId,
+        deposit: BalanceOf<T>,
+        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+    ) -> DomainId {
+        T::Currency::set_lock(DOMAIN_LOCK_ID, who, deposit, WithdrawReasons::all());
+
+        let domain_id = NextDomainId::<T>::get();
+
+        Domains::<T>::insert(domain_id, &domain_config);
+        DomainCreators::<T>::insert(domain_id, &who, deposit);
+        NextDomainId::<T>::put(domain_id + 1);
+
+        domain_id
+    }
+
     // TODO: Verify fraud_proof.
     fn validate_fraud_proof(_fraud_proof: &FraudProof) -> Result<(), Error<T>> {
         Ok(())
