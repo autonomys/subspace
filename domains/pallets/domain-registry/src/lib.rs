@@ -20,30 +20,42 @@
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
+use sp_runtime::traits::Zero;
+use sp_runtime::Percent;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
+// TODO: Move to an appropriate place when using it.
+/// Executor registry interface.
+pub trait ExecutorRegistry<AccountId, Balance> {
+    /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not an executor.
+    fn executor_stake(who: &AccountId) -> Option<Balance>;
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::BalanceOf;
+    use super::{BalanceOf, ExecutorRegistry};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
-    use sp_arithmetic::Percent;
     use sp_domains::{
         BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionCode,
         InvalidTransactionProof,
     };
     use sp_runtime::traits::Zero;
+    use sp_runtime::Percent;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
+
+        /// Interface to access the executor info.
+        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>>;
 
         /// Minimum amount of deposit to create a domain.
         #[pallet::constant]
@@ -109,6 +121,18 @@ mod pallet {
     pub(super) type Domains<T: Config> =
         StorageMap<_, Twox64Concat, DomainId, DomainConfig<T::Hash, BalanceOf<T>>, OptionQuery>;
 
+    /// (executor, domain_id, allocated_stake_proportion)
+    #[pallet::storage]
+    pub(super) type DomainOperators<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        T::AccountId,
+        Twox64Concat,
+        DomainId,
+        Percent,
+        OptionQuery,
+    >;
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
@@ -163,7 +187,11 @@ mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // TODO: impl
+            if !to_stake.is_zero() {
+                Self::can_stake_on_domain(&who, domain_id, to_stake)?;
+
+                Self::do_domain_stake_update(who, domain_id, to_stake)?;
+            }
 
             Ok(())
         }
@@ -178,7 +206,11 @@ mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // TODO: impl
+            if !new_stake.is_zero() {
+                Self::can_stake_on_domain(&who, domain_id, new_stake)?;
+
+                Self::do_domain_stake_update(who, domain_id, new_stake)?;
+            }
 
             Ok(())
         }
@@ -257,6 +289,21 @@ mod pallet {
         /// The minimum executor stake value in the domain config is lower than the global
         /// requirement `T::MinDomainOperatorStake`.
         OperatorStakeThresholdTooLow,
+
+        /// Account is not an executor.
+        NotExecutor,
+
+        /// Account is not an operator of a domain.
+        NotOperator,
+
+        /// Domain does not exist for the given domain id.
+        InvalidDomainId,
+
+        /// The amount of allocated stake is smaller than the minimum value.
+        OperatorStakeTooSmall,
+
+        /// Domain stake allocation exceeds the maximum available value.
+        StakeAllocationTooLarge,
     }
 
     #[pallet::event]
@@ -268,6 +315,20 @@ mod pallet {
             domain_id: DomainId,
             deposit: BalanceOf<T>,
             domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+        },
+
+        /// A new domain operator.
+        NewDomainOperator {
+            who: T::AccountId,
+            domain_id: DomainId,
+            stake: Percent,
+        },
+
+        /// Domain operator updated its stake allocation on this domain.
+        DomainStakeUpdated {
+            who: T::AccountId,
+            domain_id: DomainId,
+            new_stake: Percent,
         },
 
         FraudProofProcessed,
@@ -412,6 +473,61 @@ impl<T: Config> Pallet<T> {
         NextDomainId::<T>::put(domain_id + 1);
 
         domain_id
+    }
+
+    fn can_stake_on_domain(
+        who: &T::AccountId,
+        domain_id: DomainId,
+        to_stake: Percent,
+    ) -> Result<(), Error<T>> {
+        let stake_amount =
+            T::ExecutorRegistry::executor_stake(who).ok_or(Error::<T>::NotExecutor)?;
+
+        let min_stake = Domains::<T>::get(domain_id)
+            .map(|domain_config| domain_config.min_operator_stake)
+            .ok_or(Error::<T>::InvalidDomainId)?;
+
+        if to_stake.mul_floor(stake_amount) < min_stake {
+            return Err(Error::<T>::OperatorStakeTooSmall);
+        }
+
+        // Exclude the potential existing stake allocation on this domain.
+        let already_allocated: Percent = DomainOperators::<T>::iter_prefix(&who)
+            .filter_map(|(id, value)| if domain_id == id { None } else { Some(value) })
+            .fold(Zero::zero(), |acc, x| acc + x);
+
+        let available_stake = Percent::one() - already_allocated;
+        if to_stake > available_stake {
+            return Err(Error::<T>::StakeAllocationTooLarge);
+        }
+
+        Ok(())
+    }
+
+    fn do_domain_stake_update(
+        who: T::AccountId,
+        domain_id: DomainId,
+        new_stake: Percent,
+    ) -> Result<(), Error<T>> {
+        DomainOperators::<T>::mutate_exists(who.clone(), domain_id, |maybe_stake| {
+            let old_stake = maybe_stake.replace(new_stake);
+
+            if old_stake.is_some() {
+                Self::deposit_event(Event::<T>::DomainStakeUpdated {
+                    who,
+                    domain_id,
+                    new_stake,
+                });
+            } else {
+                Self::deposit_event(Event::<T>::NewDomainOperator {
+                    who,
+                    domain_id,
+                    stake: new_stake,
+                });
+            }
+
+            Ok(())
+        })
     }
 
     // TODO: Verify fraud_proof.
