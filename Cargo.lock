@@ -4486,6 +4486,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-domain-tracker"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domain-tracker",
+ "sp-io",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-std",
+ "system-runtime-primitives",
+]
+
+[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
@@ -4568,6 +4586,7 @@ dependencies = [
  "hex",
  "log",
  "pallet-balances",
+ "pallet-domain-tracker",
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
@@ -7408,6 +7427,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "sp-domain-tracker"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-inherents",
 ]
 
 [[package]]

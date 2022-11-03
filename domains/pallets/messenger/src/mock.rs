@@ -16,7 +16,7 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{mock_domain_tracker, DomainId, TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
+        use crate::mock::{DomainId, TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
         use frame_support::parameter_types;
         use frame_support::pallet_prelude::PhantomData;
         use sp_core::H256;
@@ -38,7 +38,7 @@ macro_rules! impl_runtime {
                 UncheckedExtrinsic = UncheckedExtrinsic,
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                DomainTracker: mock_domain_tracker::{Pallet, Storage},
+                DomainTracker: pallet_domain_tracker::{Pallet, Call, Storage, Event<T>},
                 Messenger: crate::{Pallet, Call, Event<T>},
                 Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
                 Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
@@ -77,7 +77,14 @@ macro_rules! impl_runtime {
             pub const ExistentialDeposit: u64 = 1;
         }
 
-        impl mock_domain_tracker::Config for $runtime {}
+        parameter_types! {
+            pub const StateRootsBound: u32 = 2;
+        }
+
+        impl pallet_domain_tracker::Config for $runtime {
+            type Event = Event;
+            type StateRootsBound = StateRootsBound;
+        }
 
         parameter_types! {
             pub const SelfDomainId: DomainId = $domain_id;
@@ -199,51 +206,6 @@ pub(crate) mod domain_a {
 
 pub(crate) mod domain_b {
     impl_runtime!(Runtime, 2);
-}
-
-#[frame_support::pallet]
-pub(crate) mod mock_domain_tracker {
-    use crate::mock::DomainId;
-    use frame_support::pallet_prelude::*;
-    use sp_core::storage::StorageKey;
-    use sp_core::H256;
-    use sp_messenger::DomainTracker;
-
-    #[pallet::config]
-    pub trait Config: frame_system::Config {}
-
-    /// Pallet messenger used to communicate between domains and other blockchains.
-    #[pallet::pallet]
-    #[pallet::generate_store(pub (super) trait Store)]
-    #[pallet::without_storage_info]
-    pub struct Pallet<T>(_);
-
-    #[pallet::storage]
-    pub(super) type StateRoot<T: Config> = StorageValue<_, H256, ValueQuery>;
-
-    impl<T: Config> DomainTracker<DomainId, H256> for Pallet<T> {
-        fn is_system_domain(domain_id: DomainId) -> bool {
-            domain_id <= 100
-        }
-
-        fn system_domain_state_roots() -> Vec<H256> {
-            vec![StateRoot::<T>::get()]
-        }
-
-        fn domain_state_root_storage_key(_domain_id: DomainId) -> StorageKey {
-            todo!()
-        }
-
-        fn is_core_domain(domain_id: DomainId) -> bool {
-            domain_id > 100 && domain_id <= 1000
-        }
-    }
-
-    impl<T: Config> Pallet<T> {
-        pub fn set_state_root(state_root: H256) {
-            StateRoot::<T>::put(state_root)
-        }
-    }
 }
 
 fn storage_proof_for_key<T: Config>(
