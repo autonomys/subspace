@@ -365,6 +365,9 @@ mod pallet {
     /// `pallet-messenger` errors
     #[pallet::error]
     pub enum Error<T> {
+        /// Emits when the domain is neither core domain nor a system domain.
+        InvalidDomain,
+
         /// Emits when there is no channel for a given Channel ID.
         MissingChannel,
 
@@ -432,7 +435,6 @@ mod pallet {
             params: InitiateChannelParams<BalanceOf<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
-            // TODO(ved): test validity of the domain
             // TODO(ved): fee for channel open
 
             // initiate the channel config
@@ -612,6 +614,13 @@ mod pallet {
             dst_domain_id: T::DomainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
+            // ensure domain is either system domain or core domain
+            ensure!(
+                T::DomainTracker::is_core_domain(dst_domain_id)
+                    || T::DomainTracker::is_system_domain(dst_domain_id),
+                Error::<T>::InvalidDomain,
+            );
+
             let channel_id = NextChannelId::<T>::get(dst_domain_id);
             let next_channel_id = channel_id
                 .checked_add(U256::one())
