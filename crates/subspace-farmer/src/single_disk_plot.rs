@@ -45,7 +45,7 @@ use subspace_networking::Node;
 use subspace_rpc_primitives::SolutionResponse;
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use tracing::{debug, error, info, info_span, trace, Instrument, Span};
 use ulid::Ulid;
 
@@ -434,6 +434,16 @@ struct Handlers {
     sector_plotted: Handler<PlottedSector>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PlottingProgress {
+    /// Number of sectors from which we started plotting
+    pub starting_sector: u64,
+    /// Current number of sectors
+    pub current_sector: u64,
+    /// Total number of sectors on disk
+    pub total_sectors: u64,
+}
+
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 ///
@@ -455,6 +465,7 @@ pub struct SingleDiskPlot {
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
     shutting_down: Arc<AtomicBool>,
+    initial_plotting_progress_receiver: watch::Receiver<PlottingProgress>,
 }
 
 impl Drop for SingleDiskPlot {
@@ -617,8 +628,6 @@ impl SingleDiskPlot {
             (metadata_header, metadata_header_mmap)
         };
 
-        let metadata_header = Arc::new(Mutex::new(metadata_header));
-
         let mut metadata_mmap_mut = unsafe {
             MmapOptions::new()
                 .offset(RESERVED_PLOT_METADATA)
@@ -649,8 +658,18 @@ impl SingleDiskPlot {
             Ok(())
         }));
 
+        let plotting_progress = PlottingProgress {
+            starting_sector: metadata_header.sector_count,
+            current_sector: metadata_header.sector_count,
+            total_sectors: plot_mmap_mut.len() as u64 / plot_sector_size,
+        };
+
+        let metadata_header = Arc::new(Mutex::new(metadata_header));
+
         let handlers = Arc::<Handlers>::default();
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
+        let (initial_plotting_progress_sender, initial_plotting_progress_receiver) =
+            watch::channel::<PlottingProgress>(plotting_progress);
         let shutting_down = Arc::new(AtomicBool::new(false));
 
         let plotting_join_handle = thread::Builder::new()
@@ -736,6 +755,10 @@ impl SingleDiskPlot {
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
+                            let _ = initial_plotting_progress_sender.send(PlottingProgress {
+                                current_sector: metadata_header.sector_count,
+                                ..plotting_progress
+                            });
 
                             handlers.sector_plotted.call_simple(&plotted_sector);
 
@@ -984,9 +1007,15 @@ impl SingleDiskPlot {
             _reading_join_handle: JoinOnDrop::new(reading_join_handle),
             start_sender: Some(start_sender),
             shutting_down,
+            initial_plotting_progress_receiver,
         };
 
         Ok(farm)
+    }
+
+    /// Subscribe to receive initial plotting progress updates
+    pub fn subscribe_initial_plotting_progress(&self) -> watch::Receiver<PlottingProgress> {
+        self.initial_plotting_progress_receiver.clone()
     }
 
     /// Collect summary of single disk plot for presentational purposes
