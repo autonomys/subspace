@@ -69,6 +69,8 @@ mod pallet {
         ///
         /// This is global, each domain can have its own minimum stake requirement
         /// but must be no less than this value.
+        // TODO: When an executor decreases its stake in pallet-executor-registry, we should ensure
+        // the new stake amount still meets the operator stake threshold on all domains he stakes.
         #[pallet::constant]
         type MinDomainOperatorStake: Get<BalanceOf<Self>>;
     }
@@ -170,6 +172,11 @@ mod pallet {
         ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
+            ensure!(
+                Domains::<T>::contains_key(domain_id),
+                Error::<T>::InvalidDomainId
+            );
+
             // TODO: Check if the origin account is allowed to update the config.
 
             // TODO: validate domain_config and deposit an event DomainConfigUpdated
@@ -224,7 +231,23 @@ mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // TODO: impl
+            ensure!(
+                Domains::<T>::contains_key(domain_id),
+                Error::<T>::InvalidDomainId
+            );
+
+            // TODO: may also have a min_domain_operators constraint?
+
+            DomainOperators::<T>::mutate_exists(who.clone(), domain_id, |maybe_stake| {
+                let old_stake = maybe_stake.take();
+
+                if old_stake.is_some() {
+                    Self::deposit_event(Event::<T>::DomainOperatorDeregistered { who, domain_id });
+                    Ok(())
+                } else {
+                    Err(Error::<T>::NotOperator)
+                }
+            })?;
 
             Ok(())
         }
@@ -329,6 +352,12 @@ mod pallet {
             who: T::AccountId,
             domain_id: DomainId,
             new_stake: Percent,
+        },
+
+        /// A domain operator was deregistered.
+        DomainOperatorDeregistered {
+            who: T::AccountId,
+            domain_id: DomainId,
         },
 
         FraudProofProcessed,
