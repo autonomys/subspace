@@ -298,6 +298,49 @@ mod pallet {
         }
     }
 
+    type GenesisDomainInfo<T> = (
+        <T as frame_system::Config>::AccountId,
+        BalanceOf<T>,
+        DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>>,
+        <T as frame_system::Config>::AccountId,
+        Percent,
+    );
+
+    #[pallet::genesis_config]
+    pub struct GenesisConfig<T: Config> {
+        pub domains: Vec<GenesisDomainInfo<T>>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
+                domains: Vec::new(),
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            for (creator, deposit, domain_config, domain_operator, operator_stake) in &self.domains
+            {
+                Pallet::<T>::can_create_domain(creator, *deposit, domain_config)
+                    .expect("Cannot create genesis domain");
+                let domain_id = Pallet::<T>::apply_create_domain(creator, *deposit, domain_config);
+
+                Pallet::<T>::can_stake_on_domain(domain_operator, domain_id, *operator_stake)
+                    .expect("Cannot register genesis domain operator");
+                Pallet::<T>::do_domain_stake_update(
+                    domain_operator.clone(),
+                    domain_id,
+                    *operator_stake,
+                )
+                .expect("Failed to apply the genesis domain operator registration");
+            }
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// The amount of deposit is smaller than the `T::MinDomainDeposit` bound.
