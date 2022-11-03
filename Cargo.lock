@@ -4484,6 +4484,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-domain-registry"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "pallet-executor-registry",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-domains",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
