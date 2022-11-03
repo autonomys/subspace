@@ -36,7 +36,7 @@ pub enum Error {
     /// Emits when failed to submit an unsigned extrinsic.
     SubmitUnsignedExtrinsic,
     /// Emits when failed to store the processed block id.
-    StoreProcessedBlockId,
+    StoreRelayedBlockId,
     /// Emits when failed to fetch stored processed block id.
     UnableToFetchProcessedBlockId,
     /// Emits when unable to fetch domain_id.
@@ -171,20 +171,20 @@ where
         Ok(())
     }
 
-    fn last_processed_block_key(domain_id: DomainId) -> Vec<u8> {
+    fn last_relayed_block_key(domain_id: DomainId) -> Vec<u8> {
         (b"message_relayer_last_processed_block_of_domain", domain_id).encode()
     }
 
-    fn fetch_last_processed_block(&self, domain_id: DomainId) -> Option<BlockId<Block>> {
+    fn fetch_last_relayed_block(&self, domain_id: DomainId) -> Option<BlockId<Block>> {
         let encoded = self
             .domain_client
-            .get_aux(&Self::last_processed_block_key(domain_id))
+            .get_aux(&Self::last_relayed_block_key(domain_id))
             .ok()??;
 
         BlockId::decode(&mut encoded.as_ref()).ok()
     }
 
-    pub(crate) fn store_last_processed_block(
+    pub(crate) fn store_last_relayed_block(
         &self,
         domain_id: DomainId,
         block_id: BlockId<Block>,
@@ -192,11 +192,11 @@ where
         self.domain_client
             .insert_aux(
                 &[(
-                    Self::last_processed_block_key(domain_id).as_ref(),
+                    Self::last_relayed_block_key(domain_id).as_ref(),
                     block_id.encode().as_ref(),
                 )],
                 &[],
             )
-            .map_err(|_| Error::StoreProcessedBlockId)
+            .map_err(|_| Error::StoreRelayedBlockId)
     }
 }

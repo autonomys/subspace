@@ -1,8 +1,6 @@
 use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, StateBackend};
-use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
-use sc_consensus::ForkChoiceStrategy;
 use sp_api::ProvideRuntimeApi;
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
@@ -24,7 +22,7 @@ where
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, DomainId, NumberFor<Block>>,
-    SDBI: Stream<Item = (NumberFor<Block>, ForkChoiceStrategy, mpsc::Sender<()>)> + Unpin,
+    SDBI: Stream<Item = NumberFor<Block>> + Unpin,
 {
     let relayer = Relayer {
         domain_client: system_domain_client,
@@ -33,8 +31,8 @@ where
     };
     let domain_id = relayer.domain_id()?;
     let relay_confirmation_depth = relayer.relay_confirmation_depth()?;
-    let maybe_last_processed_block = relayer.fetch_last_processed_block(domain_id);
-    let mut process_block_from = match maybe_last_processed_block {
+    let maybe_last_relayed_block = relayer.fetch_last_relayed_block(domain_id);
+    let mut relay_block_from = match maybe_last_relayed_block {
         None => Zero::zero(),
         Some(block_id) => {
             let last_block_number = relayer
@@ -52,9 +50,8 @@ where
     // then fetch new messages assigned to to relayer from system domain
     // construct proof of each message to be relayed
     // submit XDM as unsigned extrinsic.
-    while let Some((block_number, _, sender)) = system_domain_block_import.next().await {
-        drop(sender);
-        let process_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
+    while let Some(block_number) = system_domain_block_import.next().await {
+        let relay_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
                 continue;
@@ -62,11 +59,11 @@ where
             Some(confirmed_block) => confirmed_block,
         };
 
-        while process_block_from <= process_block_until {
-            let block_id = BlockId::Number(process_block_from);
+        while relay_block_from <= relay_block_until {
+            let block_id = BlockId::Number(relay_block_from);
             relayer.submit_unsigned_messages(block_id)?;
-            relayer.store_last_processed_block(domain_id, block_id)?;
-            process_block_from = process_block_from
+            relayer.store_last_relayed_block(domain_id, block_id)?;
+            relay_block_from = relay_block_from
                 .checked_add(&One::one())
                 .ok_or(ArithmeticError::Overflow)?;
         }
