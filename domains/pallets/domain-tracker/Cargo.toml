@@ -1,12 +1,12 @@
 [package]
-name = "pallet-messenger"
+name = "pallet-domain-tracker"
 version = "0.1.0"
 authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
-description = "Subspace node pallet for cross domain and cross chain messaging"
+description = "Subspace node pallet to track domain specific details like state root."
 include = [
   "/src",
   "/Cargo.toml",
@@ -17,22 +17,17 @@ include = [
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-hash-db = { version = "0.15.2", default-features = false }
-hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
-log = { version = "0.4.17", default-features = false }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 sp-core = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-domain-tracker = { version = "0.1.0", default-features = false, path = "../../primitives/domain-tracker" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-std = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sp-trie = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+system-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../primitives/system-runtime" }
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-pallet-domain-tracker = { version = "0.1.0", path = "../domain-tracker" }
-pallet-transporter = { version = "0.1.0", path = "../transporter" }
 sp-io = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sp-state-machine = { version = "0.12.0", git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 [features]
 default = ["std"]
@@ -40,14 +35,12 @@ std = [
   "codec/std",
   "frame-support/std",
   "frame-system/std",
-  "hash-db/std",
-  "hex/std",
-  "log/std",
   "scale-info/std",
   "sp-core/std",
+  "sp-domain-tracker/std",
   "sp-messenger/std",
   "sp-runtime/std",
   "sp-std/std",
-  "sp-trie/std",
+  "system-runtime-primitives/std"
 ]
 try-runtime = ["frame-support/try-runtime"]
