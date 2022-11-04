@@ -228,8 +228,6 @@ mod pallet {
             message_id: MessageIdOf<T>,
             req: EndpointRequest,
         ) -> EndpointResponse {
-            //TODO(ved): check if we allow messages from src_domain
-
             // ensure message is not from the self
             ensure!(
                 T::SelfDomainId::get() != src_domain_id,

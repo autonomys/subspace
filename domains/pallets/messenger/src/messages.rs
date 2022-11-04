@@ -18,6 +18,12 @@ impl<T: Config> Pallet<T> {
         channel_id: ChannelId,
         payload: VersionedPayload<BalanceOf<T>>,
     ) -> Result<Nonce, DispatchError> {
+        // ensure message is not meant to self.
+        ensure!(
+            src_domain_id != dst_domain_id,
+            Error::<T>::InvalidMessageDestination
+        );
+
         Channels::<T>::try_mutate(
             dst_domain_id,
             channel_id,
