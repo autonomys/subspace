@@ -71,7 +71,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         block_on(plot_sector(
             &public_key,
             sector_index,
-            &mut BenchPieceReceiver::new(piece),
+            &BenchPieceReceiver::new(piece),
             &cancelled,
             &farmer_protocol_info,
             plotted_sector.as_mut_slice(),

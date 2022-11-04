@@ -1,5 +1,6 @@
 pub mod farming;
 pub mod piece_publisher;
+pub mod piece_reader;
 pub mod piece_receiver;
 pub mod plotting;
 
@@ -10,14 +11,16 @@ use crate::rpc_client;
 use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
-use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError};
+use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
+use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
+use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use memmap2::{MmapMut, MmapOptions};
+use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -35,12 +38,14 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::{
-    plot_sector_size, PieceIndex, PublicKey, SectorIndex, SegmentIndex, Solution, PIECE_SIZE,
+    plot_sector_size, PieceIndex, PublicKey, SectorId, SectorIndex, SegmentIndex, Solution,
+    PIECE_SIZE,
 };
 use subspace_networking::Node;
 use subspace_rpc_primitives::SolutionResponse;
 use thiserror::Error;
 use tokio::runtime::Handle;
+use tokio::sync::broadcast;
 use tracing::{debug, error, info, info_span, trace, Instrument, Span};
 use ulid::Ulid;
 
@@ -421,23 +426,44 @@ pub enum BackgroundTaskError {
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
 
+type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+type Handler<A> = Bag<HandlerFn<A>, A>;
+
+#[derive(Default, Debug)]
+struct Handlers {
+    sector_plotted: Handler<PlottedSector>,
+}
+
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 ///
 /// Plot starts operating during creation and doesn't stop until dropped (or error happens).
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskPlot {
-    id: SingleDiskPlotId,
+    single_disk_plot_info: SingleDiskPlotInfo,
+    /// All sector metadata file region is mapped, not just plotted sectors!
+    sector_metadata_mmap: Mmap,
+    metadata_header: Arc<Mutex<PlotMetadataHeader>>,
+    plot_sector_size: u64,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
+    handlers: Arc<Handlers>,
+    piece_reader: PieceReader,
     _plotting_join_handle: JoinOnDrop,
     _farming_join_handle: JoinOnDrop,
+    _reading_join_handle: JoinOnDrop,
+    /// Sender that will be used to signal to background threads that they should start
+    start_sender: Option<broadcast::Sender<()>>,
     shutting_down: Arc<AtomicBool>,
 }
 
 impl Drop for SingleDiskPlot {
     fn drop(&mut self) {
+        self.piece_reader.close_all_readers();
+        // Make background threads that are doing something exit as soon as possible
         self.shutting_down.store(true, Ordering::SeqCst);
+        // Make background threads that are waiting to do something exit immediately
+        self.start_sender.take();
     }
 }
 
@@ -476,6 +502,7 @@ impl SingleDiskPlot {
                 .block_on(rpc_client.farmer_protocol_info())
                 .map_err(SingleDiskPlotError::NodeRpcError)
         })?;
+        let record_size = farmer_protocol_info.record_size;
         // TODO: In case `space_l` changes on the fly, code below will break horribly
         let space_l = farmer_protocol_info.space_l;
         let plot_sector_size = plot_sector_size(space_l);
@@ -622,6 +649,8 @@ impl SingleDiskPlot {
             Ok(())
         }));
 
+        let handlers = Arc::<Handlers>::default();
+        let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let shutting_down = Arc::new(AtomicBool::new(false));
 
         let plotting_join_handle = thread::Builder::new()
@@ -629,6 +658,7 @@ impl SingleDiskPlot {
             .spawn({
                 let handle = handle.clone();
                 let metadata_header = Arc::clone(&metadata_header);
+                let handlers = Arc::clone(&handlers);
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
@@ -640,6 +670,11 @@ impl SingleDiskPlot {
                     let _tokio_handle_guard = handle.enter();
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
+
+                    if handle.block_on(start_receiver.recv()).is_err() {
+                        // Dropped before starting
+                        return;
+                    }
 
                     // Initial plotting
                     let initial_plotting_result = try {
@@ -675,41 +710,40 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
-                            let mut piece_receiver = MultiChannelPieceReceiver::new(
+                            let piece_receiver = MultiChannelPieceReceiver::new(
                                 rpc_client.clone(),
                                 dsn_node.clone(),
                                 &shutting_down,
                             );
 
-                            if let Err(error) = handle.block_on(plot_sector(
+                            let plotted_sector = match handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
-                                &mut piece_receiver,
+                                &piece_receiver,
                                 &shutting_down,
                                 &farmer_protocol_info,
                                 io::Cursor::new(sector),
                                 io::Cursor::new(sector_metadata),
                             )) {
-                                match error {
-                                    PlotSectorError::Cancelled => {
-                                        return;
-                                    }
-                                    PlotSectorError::Plotting(error) => {
-                                        Err(error)?;
-                                    }
+                                Ok(plotted_sector) => plotted_sector,
+                                Err(PlotSectorError::Cancelled) => {
+                                    return;
                                 }
-                            }
+                                Err(PlotSectorError::Plotting(error)) => Err(error)?,
+                            };
 
                             let mut metadata_header = metadata_header.lock();
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
                                 .copy_from_slice(metadata_header.encode().as_slice());
 
+                            handlers.sector_plotted.call_simple(&plotted_sector);
+
+                            // TODO: Migrate this over to using `on_sector_plotted` instead
                             // Publish pieces-by-sector if we use DSN
                             if let Some(ref piece_publisher) = piece_publisher {
                                 let publishing_result = handle.block_on(
-                                    piece_publisher
-                                        .publish_pieces(piece_receiver.registered_piece_indexes()),
+                                    piece_publisher.publish_pieces(plotted_sector.piece_indexes),
                                 );
 
                                 // cancelled
@@ -730,9 +764,28 @@ impl SingleDiskPlot {
                 }
             })?;
 
+        let global_plot_mmap = unsafe {
+            MmapOptions::new()
+                .len((plot_sector_size * target_sector_count) as usize)
+                .map(&plot_file)?
+        };
+        #[cfg(unix)]
+        {
+            global_plot_mmap.advise(memmap2::Advice::Random)?;
+        }
+        let global_sector_metadata_mmap = unsafe {
+            MmapOptions::new()
+                .offset(RESERVED_PLOT_METADATA)
+                .len(SectorMetadata::encoded_size() * target_sector_count as usize)
+                .map(&metadata_file)?
+        };
+
         let farming_join_handle = thread::Builder::new()
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
+                let handle = handle.clone();
+                let metadata_header = Arc::clone(&metadata_header);
+                let mut start_receiver = start_sender.subscribe();
                 let shutting_down = Arc::clone(&shutting_down);
                 let identity = identity.clone();
                 let rpc_client = rpc_client.clone();
@@ -741,6 +794,11 @@ impl SingleDiskPlot {
                     let _tokio_handle_guard = handle.enter();
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
+
+                    if handle.block_on(start_receiver.recv()).is_err() {
+                        // Dropped before starting
+                        return;
+                    }
 
                     let farming_result = try {
                         info!("Subscribing to slot info notifications");
@@ -763,7 +821,9 @@ impl SingleDiskPlot {
                             };
                             #[cfg(unix)]
                             {
-                                plot_mmap.advise(memmap2::Advice::Random).unwrap();
+                                plot_mmap
+                                    .advise(memmap2::Advice::Random)
+                                    .map_err(FarmingError::Io)?;
                             }
                             let metadata_mmap = unsafe {
                                 MmapOptions::new()
@@ -774,7 +834,9 @@ impl SingleDiskPlot {
                             };
                             #[cfg(unix)]
                             {
-                                metadata_mmap.advise(memmap2::Advice::Random).unwrap();
+                                metadata_mmap
+                                    .advise(memmap2::Advice::Random)
+                                    .map_err(FarmingError::Io)?;
                             }
                             let shutting_down = Arc::clone(&shutting_down);
 
@@ -849,6 +911,58 @@ impl SingleDiskPlot {
                 }
             })?;
 
+        let (piece_reader, mut read_piece_receiver) = PieceReader::new();
+
+        let reading_join_handle = thread::Builder::new()
+            .name(format!("r-{single_disk_plot_id}"))
+            .spawn({
+                let metadata_header = Arc::clone(&metadata_header);
+                let shutting_down = Arc::clone(&shutting_down);
+
+                move || {
+                    let _tokio_handle_guard = handle.enter();
+                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
+                    let _span_guard = span.enter();
+
+                    while let Some(read_piece_request) = handle.block_on(read_piece_receiver.next())
+                    {
+                        let ReadPieceRequest {
+                            sector_index,
+                            piece_offset,
+                            response_sender,
+                        } = read_piece_request;
+
+                        if shutting_down.load(Ordering::Acquire) {
+                            debug!(
+                                %sector_index,
+                                %piece_offset,
+                                "Instance is shutting down, interrupting piece reading"
+                            );
+                            return;
+                        }
+
+                        if response_sender.is_canceled() {
+                            continue;
+                        }
+
+                        let maybe_piece = read_piece(
+                            sector_index,
+                            piece_offset,
+                            metadata_header.lock().sector_count,
+                            &public_key,
+                            first_sector_index,
+                            plot_sector_size,
+                            record_size,
+                            space_l,
+                            &global_plot_mmap,
+                        );
+
+                        // Doesn't matter if receiver still cares about it
+                        let _ = response_sender.send(maybe_piece);
+                    }
+                }
+            })?;
+
         tasks.push(Box::pin(async move {
             // TODO: Error handling here
             reward_signing(rpc_client, identity).await.unwrap().await;
@@ -857,11 +971,18 @@ impl SingleDiskPlot {
         }));
 
         let farm = Self {
-            id: single_disk_plot_id,
+            single_disk_plot_info,
+            sector_metadata_mmap: global_sector_metadata_mmap,
+            metadata_header,
+            plot_sector_size,
             span: Span::current(),
             tasks,
+            handlers,
+            piece_reader,
             _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
             _farming_join_handle: JoinOnDrop::new(farming_join_handle),
+            _reading_join_handle: JoinOnDrop::new(reading_join_handle),
+            start_sender: Some(start_sender),
             shutting_down,
         };
 
@@ -888,11 +1009,70 @@ impl SingleDiskPlot {
 
     /// ID of this farm
     pub fn id(&self) -> &SingleDiskPlotId {
-        &self.id
+        self.single_disk_plot_info.id()
     }
 
-    /// Wait for background threads to exit or return an error
-    pub async fn wait(mut self) -> anyhow::Result<()> {
+    /// Number of sectors successfully plotted so far
+    pub fn plotted_sectors_count(&self) -> u64 {
+        self.metadata_header.lock().sector_count
+    }
+
+    /// Read information about sectors plotted thus far
+    pub fn plotted_sectors(
+        &self,
+    ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
+        let public_key = self.single_disk_plot_info.public_key();
+        let first_sector_index = self.single_disk_plot_info.first_sector_index();
+        let sector_count = self.metadata_header.lock().sector_count;
+        let pieces_in_sector = self.plot_sector_size as usize / PIECE_SIZE;
+
+        (first_sector_index..)
+            .into_iter()
+            .zip(
+                self.sector_metadata_mmap
+                    .chunks_exact(SectorMetadata::encoded_size()),
+            )
+            .take(sector_count as usize)
+            .map(move |(sector_index, mut sector_metadata)| {
+                let sector_metadata = SectorMetadata::decode(&mut sector_metadata)?;
+                let sector_id = SectorId::new(public_key, sector_index);
+
+                let piece_indexes = (0u64..)
+                    .take(pieces_in_sector)
+                    .map(|piece_offset| {
+                        sector_id.derive_piece_index(
+                            piece_offset as PieceIndex,
+                            sector_metadata.total_pieces,
+                        )
+                    })
+                    .collect();
+
+                Ok(PlottedSector {
+                    sector_id,
+                    sector_index,
+                    sector_metadata,
+                    piece_indexes,
+                })
+            })
+    }
+
+    /// Get piece reader to read plot pieces later
+    pub fn piece_reader(&self) -> PieceReader {
+        self.piece_reader.clone()
+    }
+
+    /// Subscribe to sector plotting notification
+    pub fn on_sector_plotted(&self, callback: HandlerFn<PlottedSector>) -> HandlerId {
+        self.handlers.sector_plotted.add(callback)
+    }
+
+    /// Run and wait for background threads to exit or return an error
+    pub async fn run(mut self) -> anyhow::Result<()> {
+        if let Some(start_sender) = self.start_sender.take() {
+            // Do not care if anyone is listening on the other side
+            let _ = start_sender.send(());
+        }
+
         while let Some(result) = self.tasks.next().instrument(self.span.clone()).await {
             result?;
         }
