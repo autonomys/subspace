@@ -7970,6 +7970,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "blake2-rfc",
+ "criterion",
  "derive_more",
  "dusk-bls12_381",
  "dusk-bytes",
