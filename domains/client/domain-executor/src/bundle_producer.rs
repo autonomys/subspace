@@ -252,10 +252,10 @@ where
                 transcript_data.clone(),
             ) {
                 // TODO: specify domain_id properly.
-                const SYSTEM_DOMAIN_ID: u64 = 0;
+                const SYSTEM_DOMAIN_ID: u32 = 0;
 
                 let election_solution = derive_bundle_election_solution(
-                    SYSTEM_DOMAIN_ID,
+                    SYSTEM_DOMAIN_ID.into(),
                     vrf_signature.output.to_bytes(),
                     &authority_id,
                     &global_challenge,
@@ -292,7 +292,7 @@ where
                         .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
 
                     let proof_of_election = ProofOfElection {
-                        domain_id: SYSTEM_DOMAIN_ID,
+                        domain_id: SYSTEM_DOMAIN_ID.into(),
                         vrf_output: vrf_signature.output.to_bytes(),
                         vrf_proof: vrf_signature.proof.to_bytes(),
                         executor_public_key: authority_id,

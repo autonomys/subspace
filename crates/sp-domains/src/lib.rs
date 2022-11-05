@@ -78,9 +78,71 @@ impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
 /// Derived from the Balance and can't be smaller than u128.
 pub type StakeWeight = u128;
 
-/// Unique identifier for each domain.
-// TODO: unify the DomainId usage across the codebase.
-pub type DomainId = u64;
+/// Unique identifier of a domain.
+#[derive(
+    Clone, Copy, Debug, Hash, Default, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, TypeInfo,
+)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub struct DomainId(u32);
+
+impl From<u32> for DomainId {
+    fn from(x: u32) -> Self {
+        Self(x)
+    }
+}
+
+impl From<DomainId> for u32 {
+    fn from(domain_id: DomainId) -> Self {
+        domain_id.0
+    }
+}
+
+impl core::ops::Add<u32> for DomainId {
+    type Output = Self;
+
+    fn add(self, other: u32) -> Self {
+        Self(self.0 + other)
+    }
+}
+
+impl core::ops::Sub<u32> for DomainId {
+    type Output = Self;
+
+    fn sub(self, other: u32) -> Self {
+        Self(self.0 - other)
+    }
+}
+
+// TODO: confirm the range of different domain types.
+const CORE_DOMAIN_ID_START: u32 = 100;
+const OPEN_DOMAIN_ID_START: u32 = 1000;
+
+impl DomainId {
+    /// Creates a [`DomainId`].
+    pub const fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// Returns `true` if a domain is a system domain.
+    pub fn is_system(&self) -> bool {
+        self.0 < CORE_DOMAIN_ID_START
+    }
+
+    /// Returns `true` if a domain is a core domain.
+    pub fn is_core(&self) -> bool {
+        self.0 >= CORE_DOMAIN_ID_START && self.0 < OPEN_DOMAIN_ID_START
+    }
+
+    /// Returns `true` if a domain is an open domain.
+    pub fn is_open(&self) -> bool {
+        self.0 >= OPEN_DOMAIN_ID_START
+    }
+
+    /// Converts the inner integer to little-endian bytes.
+    pub fn to_le_bytes(&self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
+}
 
 /// Domain configuration.
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]

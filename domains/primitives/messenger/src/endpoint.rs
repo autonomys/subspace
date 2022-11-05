@@ -1,6 +1,7 @@
 use codec::{Decode, Encode};
 use frame_support::Parameter;
 use scale_info::TypeInfo;
+use sp_domains::DomainId;
 use sp_runtime::traits::Member;
 use sp_runtime::{DispatchError, DispatchResult};
 
@@ -30,7 +31,7 @@ pub struct EndpointRequest {
 pub type EndpointResponse = Result<EndpointPayload, DispatchError>;
 
 /// Sender provides abstraction on sending messages to other domains.
-pub trait Sender<AccountId, DomainId> {
+pub trait Sender<AccountId> {
     /// Unique Id of the message between dst_domain and src_domain.
     type MessageId: Parameter + Member + Copy;
     /// Sends a message to dst_domain_id.
@@ -44,7 +45,7 @@ pub trait Sender<AccountId, DomainId> {
 /// Handler to
 ///  - handle message request from other domains.
 ///  - handle requested message responses from other domains.
-pub trait EndpointHandler<DomainId, MessageId> {
+pub trait EndpointHandler<MessageId> {
     /// Triggered by pallet-messenger when a new inbox message is received and bound for this handler.
     fn message(
         &self,

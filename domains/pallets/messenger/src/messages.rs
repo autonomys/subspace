@@ -3,6 +3,7 @@ use crate::{
     Outbox, OutboxMessageResult, OutboxResponses, Pallet, RelayerMessages,
 };
 use frame_support::ensure;
+use sp_domains::DomainId;
 use sp_messenger::messages::{
     Message, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
     VersionedPayload,
@@ -13,8 +14,8 @@ use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 impl<T: Config> Pallet<T> {
     /// Takes a new message destined for dst_domain and adds the message to the outbox.
     pub(crate) fn new_outbox_message(
-        src_domain_id: T::DomainId,
-        dst_domain_id: T::DomainId,
+        src_domain_id: DomainId,
+        dst_domain_id: DomainId,
         channel_id: ChannelId,
         payload: VersionedPayload<BalanceOf<T>>,
     ) -> Result<Nonce, DispatchError> {
@@ -79,7 +80,7 @@ impl<T: Config> Pallet<T> {
     /// Removes messages responses from Inbox responses as the src_domain signalled that responses are delivered.
     /// all the messages with nonce <= latest_confirmed_nonce are deleted.
     fn distribute_rewards_for_delivered_message_responses(
-        dst_domain_id: T::DomainId,
+        dst_domain_id: DomainId,
         channel_id: ChannelId,
         latest_confirmed_nonce: Option<Nonce>,
         fee_model: &FeeModel<BalanceOf<T>>,
@@ -101,7 +102,7 @@ impl<T: Config> Pallet<T> {
 
     /// Process the incoming messages from given domain_id and channel_id.
     pub(crate) fn process_inbox_messages(
-        dst_domain_id: T::DomainId,
+        dst_domain_id: DomainId,
         channel_id: ChannelId,
     ) -> DispatchResult {
         let channel =
@@ -204,7 +205,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn process_incoming_protocol_message_req(
-        domain_id: T::DomainId,
+        domain_id: DomainId,
         channel_id: ChannelId,
         req: ProtocolMessageRequest<BalanceOf<T>>,
     ) -> Result<(), DispatchError> {
@@ -215,7 +216,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn process_incoming_protocol_message_response(
-        domain_id: T::DomainId,
+        domain_id: DomainId,
         channel_id: ChannelId,
         req: ProtocolMessageRequest<BalanceOf<T>>,
         resp: ProtocolMessageResponse,
@@ -235,7 +236,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub(crate) fn process_outbox_message_responses(
-        dst_domain_id: T::DomainId,
+        dst_domain_id: DomainId,
         channel_id: ChannelId,
     ) -> DispatchResult {
         // fetch the next message response nonce to process

@@ -1,6 +1,7 @@
 use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRootOf};
 use frame_support::storage::generator::StorageDoubleMap;
 use sp_core::storage::StorageKey;
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::DispatchResult;
@@ -8,7 +9,6 @@ use sp_state_machine::backend::Backend;
 use sp_state_machine::{prove_read, InMemoryBackend};
 use sp_trie::StorageProof;
 
-pub(crate) type DomainId = u64;
 pub(crate) type Balance = u64;
 pub(crate) type AccountId = u64;
 
@@ -16,7 +16,8 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{DomainId, TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
+        use crate::mock::{TestExternalities, MockEndpoint, MessageId, Balance, AccountId};
+        use sp_domains::DomainId;
         use frame_support::parameter_types;
         use frame_support::pallet_prelude::PhantomData;
         use sp_core::H256;
@@ -87,14 +88,13 @@ macro_rules! impl_runtime {
         }
 
         parameter_types! {
-            pub const SelfDomainId: DomainId = $domain_id;
+            pub const SelfDomainId: DomainId = DomainId::new($domain_id);
             pub const MaximumRelayers: u32 = 10;
             pub const RelayerDeposit: Balance = 500;
         }
 
         impl crate::Config for $runtime {
             type Event = Event;
-            type DomainId = DomainId;
             type SelfDomainId = SelfDomainId;
             type DomainTracker = DomainTracker;
             type MaximumRelayers = MaximumRelayers;
@@ -103,7 +103,7 @@ macro_rules! impl_runtime {
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,
-            ) -> Option<Box<dyn EndpointHandler<Self::DomainId, MessageId>>>{
+            ) -> Option<Box<dyn EndpointHandler<MessageId>>>{
                 match endpoint {
                     Endpoint::Id(id) => match id {
                         100 => Some(Box::new(pallet_transporter::EndpointHandler(PhantomData::<$runtime>))),
@@ -132,7 +132,6 @@ macro_rules! impl_runtime {
 
         impl pallet_transporter::Config for $runtime {
             type Event = Event;
-            type DomainId = DomainId;
             type SelfDomainId = SelfDomainId;
             type SelfEndpointId = TransporterEndpointId;
             type Currency = Balances;
@@ -175,7 +174,7 @@ macro_rules! impl_runtime {
 pub(crate) type MessageId = (ChannelId, Nonce);
 
 pub struct MockEndpoint {}
-impl EndpointHandler<DomainId, MessageId> for MockEndpoint {
+impl EndpointHandler<MessageId> for MockEndpoint {
     fn message(
         &self,
         _src_domain_id: DomainId,
@@ -220,7 +219,7 @@ fn storage_proof_for_key<T: Config>(
 
 pub(crate) fn storage_proof_of_channels<T: Config>(
     backend: InMemoryBackend<T::Hashing>,
-    domain_id: T::DomainId,
+    domain_id: DomainId,
     channel_id: ChannelId,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
     let key = Channels::<T>::storage_double_map_final_key(domain_id, channel_id);
@@ -231,7 +230,7 @@ pub(crate) fn storage_proof_of_channels<T: Config>(
 
 pub(crate) fn storage_proof_of_outbox_messages<T: Config>(
     backend: InMemoryBackend<T::Hashing>,
-    domain_id: T::DomainId,
+    domain_id: DomainId,
     channel_id: ChannelId,
     nonce: Nonce,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
@@ -243,7 +242,7 @@ pub(crate) fn storage_proof_of_outbox_messages<T: Config>(
 
 pub(crate) fn storage_proof_of_inbox_message_responses<T: Config>(
     backend: InMemoryBackend<T::Hashing>,
-    domain_id: T::DomainId,
+    domain_id: DomainId,
     channel_id: ChannelId,
     nonce: Nonce,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {

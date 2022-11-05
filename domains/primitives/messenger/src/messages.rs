@@ -1,6 +1,7 @@
 use crate::endpoint::{EndpointRequest, EndpointResponse};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::traits::CheckedAdd;
@@ -98,7 +99,7 @@ pub enum VersionedPayload<Balance> {
 
 /// Message contains information to be sent to or received from another domain
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Message<DomainId, Balance> {
+pub struct Message<Balance> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -126,7 +127,7 @@ pub struct Proof<StateRoot> {
 
 /// Cross Domain message contains Message and its proof on src_domain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<DomainId, StateRoot> {
+pub struct CrossDomainMessage<StateRoot> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -141,7 +142,7 @@ pub struct CrossDomainMessage<DomainId, StateRoot> {
 
 /// Relayer message with storage key to generate storage proof using the backend.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq)]
-pub struct RelayerMessageWithStorageKey<DomainId> {
+pub struct RelayerMessageWithStorageKey {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -156,14 +157,14 @@ pub struct RelayerMessageWithStorageKey<DomainId> {
 
 /// Set of messages with storage keys to be relayed by a given relayer.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq)]
-pub struct RelayerMessagesWithStorageKey<DomainId> {
-    pub outbox: Vec<RelayerMessageWithStorageKey<DomainId>>,
-    pub inbox_responses: Vec<RelayerMessageWithStorageKey<DomainId>>,
+pub struct RelayerMessagesWithStorageKey {
+    pub outbox: Vec<RelayerMessageWithStorageKey>,
+    pub inbox_responses: Vec<RelayerMessageWithStorageKey>,
 }
 
-impl<DomainId, StateRoot> CrossDomainMessage<DomainId, StateRoot> {
+impl<StateRoot> CrossDomainMessage<StateRoot> {
     pub fn from_relayer_msg_with_proof(
-        r_msg: RelayerMessageWithStorageKey<DomainId>,
+        r_msg: RelayerMessageWithStorageKey,
         proof: Proof<StateRoot>,
     ) -> Self {
         CrossDomainMessage {

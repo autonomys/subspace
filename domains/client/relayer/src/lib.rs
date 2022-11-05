@@ -6,6 +6,7 @@ mod worker;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey};
 use sp_api::{ProvideRuntimeApi, StateBackend};
+use sp_domains::DomainId;
 use sp_messenger::messages::{
     CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
@@ -15,7 +16,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use system_runtime_primitives::{DomainId, RelayerId};
+use system_runtime_primitives::RelayerId;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -69,7 +70,7 @@ where
         + StateBackend<<Block::Header as HeaderT>::Hashing>
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, RelayerId, DomainId, NumberFor<Block>>,
+    Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
 {
     pub(crate) fn domain_id(&self) -> Result<DomainId, Error> {
         let best_block_id = BlockId::Hash(self.domain_client.info().best_hash);
@@ -109,11 +110,11 @@ where
     }
 
     fn construct_cross_domain_message_and_submit<
-        Submitter: Fn(CrossDomainMessage<DomainId, Block::Hash>) -> Result<(), sp_api::ApiError>,
+        Submitter: Fn(CrossDomainMessage<Block::Hash>) -> Result<(), sp_api::ApiError>,
     >(
         &self,
         block_id: BlockId<Block>,
-        msgs: Vec<RelayerMessageWithStorageKey<DomainId>>,
+        msgs: Vec<RelayerMessageWithStorageKey>,
         submitter: Submitter,
     ) -> Result<(), Error> {
         for msg in msgs {
@@ -152,7 +153,7 @@ where
         let best_block_id = BlockId::Hash(self.domain_client.info().best_hash);
         let api = self.domain_client.runtime_api();
 
-        let assigned_messages: RelayerMessagesWithStorageKey<DomainId> = api
+        let assigned_messages: RelayerMessagesWithStorageKey = api
             .relayer_assigned_messages(&confirmed_block_id, self.relayer_id.clone())
             .map_err(|_| Error::FetchAssignedMessages)?;
 

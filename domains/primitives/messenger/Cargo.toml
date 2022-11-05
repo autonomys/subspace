@@ -18,6 +18,7 @@ codec = { package = "parity-scale-codec", version = "3.1.5", default-features = 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
+sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-runtime = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sp-trie = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
@@ -28,6 +29,7 @@ std = [
 	"frame-support/std",
 	"scale-info/std",
 	"sp-api/std",
+	"sp-domains/std",
 	"sp-runtime/std",
 	"sp-trie/std"
 ]
