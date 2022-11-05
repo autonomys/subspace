@@ -4499,8 +4499,10 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-domains",
+ "sp-executor-registry",
  "sp-io",
  "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -4550,6 +4552,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-core",
  "sp-domains",
+ "sp-executor-registry",
  "sp-io",
  "sp-runtime",
  "sp-std",
@@ -7476,6 +7479,14 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
+]
+
+[[package]]
+name = "sp-executor-registry"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-std",
 ]
 
 [[package]]

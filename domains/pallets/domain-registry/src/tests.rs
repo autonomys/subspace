@@ -99,12 +99,7 @@ impl pallet_executor_registry::Config for Test {
     type EpochDuration = EpochDuration;
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
-}
-
-impl crate::ExecutorRegistry<AccountId, Balance> for ExecutorRegistry {
-    fn executor_stake(who: &AccountId) -> Option<Balance> {
-        ExecutorRegistry::executor_stake(who)
-    }
+    type OnNewEpoch = DomainRegistry;
 }
 
 parameter_types! {
@@ -116,6 +111,7 @@ parameter_types! {
 impl pallet_domain_registry::Config for Test {
     type Event = Event;
     type Currency = Balances;
+    type StakeWeight = StakeWeight;
     type ExecutorRegistry = ExecutorRegistry;
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;

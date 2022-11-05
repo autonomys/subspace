@@ -24,8 +24,10 @@ use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, Wit
 use frame_support::weights::Weight;
 pub use pallet::*;
 use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
+use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::Zero;
 use sp_runtime::Percent;
+use sp_std::collections::btree_map::BTreeMap;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -35,16 +37,10 @@ type DomainConfig<T> =
 
 const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
-// TODO: Move to an appropriate place when using it.
-/// Executor registry interface.
-pub trait ExecutorRegistry<AccountId, Balance> {
-    /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not an executor.
-    fn executor_stake(who: &AccountId) -> Option<Balance>;
-}
-
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, DomainConfig, ExecutorRegistry};
+    use super::{BalanceOf, DomainConfig};
+    use codec::Codec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
@@ -52,14 +48,30 @@ mod pallet {
         BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionCode,
         InvalidTransactionProof,
     };
-    use sp_runtime::traits::Zero;
-    use sp_runtime::Percent;
+    use sp_executor_registry::ExecutorRegistry;
+    use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize};
+    use sp_runtime::{FixedPointOperand, Percent};
+    use sp_std::fmt::Debug;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
+
+        /// The stake weight of an executor.
+        type StakeWeight: Parameter
+            + Member
+            + AtLeast32BitUnsigned
+            + Codec
+            + Default
+            + Copy
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaxEncodedLen
+            + TypeInfo
+            + FixedPointOperand
+            + From<BalanceOf<Self>>;
 
         /// Interface to access the executor info.
         type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>>;
@@ -395,17 +407,6 @@ mod pallet {
         InvalidTransactionProofProcessed,
     }
 
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
-            // TODO: Need a hook in pallet-executor-registry to snapshot the domain
-            // authorities as well as the stake weight on each new epoch.
-
-            // TODO: proper weight
-            Weight::zero()
-        }
-    }
-
     /// Constructs a `TransactionValidity` with pallet-domain-registry specific defaults.
     fn unsigned_validity(prefix: &'static str, tag: impl Encode) -> TransactionValidity {
         ValidTransaction::with_tag_prefix(prefix)
@@ -488,6 +489,12 @@ mod pallet {
                 _ => InvalidTransaction::Call.into(),
             }
         }
+    }
+}
+
+impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
+    fn on_new_epoch(_executor_weights: BTreeMap<T::AccountId, T::StakeWeight>) {
+        // TODO: Rotate domain authorities.
     }
 }
 

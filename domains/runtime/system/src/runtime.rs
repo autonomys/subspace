@@ -269,6 +269,7 @@ impl pallet_executor_registry::Config for Runtime {
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
+    type OnNewEpoch = ();
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

@@ -24,6 +24,7 @@ use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, Withdraw
 pub use pallet::*;
 use sp_arithmetic::Percent;
 use sp_domains::ExecutorPublicKey;
+use sp_executor_registry::ExecutorRegistry;
 use sp_runtime::BoundedVec;
 
 type BalanceOf<T> =
@@ -41,6 +42,7 @@ mod pallet {
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
     use sp_domains::ExecutorPublicKey;
+    use sp_executor_registry::OnNewEpoch;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
         MaybeSerializeDeserialize, Zero,
@@ -107,6 +109,9 @@ mod pallet {
         /// The executor set for the bundle election is scheduled to rotate on each new epoch.
         #[pallet::constant]
         type EpochDuration: Get<Self::BlockNumber>;
+
+        /// What to do on epoch changes.
+        type OnNewEpoch: OnNewEpoch<Self::AccountId, Self::StakeWeight>;
     }
 
     #[pallet::pallet]
@@ -748,11 +753,13 @@ mod pallet {
     pub(super) type SlotProbability<T> = StorageValue<_, (u64, u64), ValueQuery>;
 }
 
-impl<T: Config> Pallet<T> {
-    pub fn executor_stake(who: &T::AccountId) -> Option<BalanceOf<T>> {
+impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>> for Pallet<T> {
+    fn executor_stake(who: &T::AccountId) -> Option<BalanceOf<T>> {
         Executors::<T>::get(who).map(|executor| executor.stake)
     }
+}
 
+impl<T: Config> Pallet<T> {
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
     }
