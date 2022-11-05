@@ -20,13 +20,22 @@
 use sp_std::collections::btree_map::BTreeMap;
 
 /// Executor registry interface.
-pub trait ExecutorRegistry<AccountId, Balance> {
+pub trait ExecutorRegistry<AccountId, Balance, StakeWeight> {
     /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not an executor.
     fn executor_stake(who: &AccountId) -> Option<Balance>;
+
+    /// Returns `Some(stake_weight)` if the given account is an authority.
+    #[cfg(feature = "std")]
+    fn authority_stake_weight(who: &AccountId) -> Option<StakeWeight>;
 }
 
-impl<AccountId, Balance> ExecutorRegistry<AccountId, Balance> for () {
+impl<AccountId, Balance, StakeWeight> ExecutorRegistry<AccountId, Balance, StakeWeight> for () {
     fn executor_stake(_who: &AccountId) -> Option<Balance> {
+        None
+    }
+
+    #[cfg(feature = "std")]
+    fn authority_stake_weight(_who: &AccountId) -> Option<StakeWeight> {
         None
     }
 }

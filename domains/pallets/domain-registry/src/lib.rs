@@ -74,7 +74,7 @@ mod pallet {
             + From<BalanceOf<Self>>;
 
         /// Interface to access the executor info.
-        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>>;
+        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>, Self::StakeWeight>;
 
         /// Minimum amount of deposit to create a domain.
         #[pallet::constant]
@@ -131,6 +131,23 @@ mod pallet {
         Percent,
         OptionQuery,
     >;
+
+    /// (domain_id, domain_authority, domain_stake_weight)
+    #[pallet::storage]
+    pub(super) type DomainAuthorities<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        T::AccountId,
+        T::StakeWeight,
+        OptionQuery,
+    >;
+
+    /// A map tracking the total stake weight of each domain.
+    #[pallet::storage]
+    pub(super) type DomainTotalStakeWeight<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, T::StakeWeight, OptionQuery>;
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -334,6 +351,16 @@ mod pallet {
                     *operator_stake,
                 )
                 .expect("Failed to apply the genesis domain operator registration");
+
+                let stake_weight = T::ExecutorRegistry::authority_stake_weight(domain_operator)
+                    .expect("Genesis domain operator must be a genesis executor authority; qed");
+                let domain_stake_weight: T::StakeWeight = operator_stake.mul_floor(stake_weight);
+
+                DomainAuthorities::<T>::insert(domain_id, domain_operator, domain_stake_weight);
+                DomainTotalStakeWeight::<T>::mutate(domain_id, |maybe_total| {
+                    let old = maybe_total.unwrap_or_default();
+                    maybe_total.replace(old + domain_stake_weight);
+                });
             }
         }
     }
@@ -493,8 +520,31 @@ mod pallet {
 }
 
 impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
-    fn on_new_epoch(_executor_weights: BTreeMap<T::AccountId, T::StakeWeight>) {
-        // TODO: Rotate domain authorities.
+    // TODO: similar to the executors, bench how many domain operators can be supported.
+    /// Rotate the domain authorities on each new epoch.
+    fn on_new_epoch(executor_weights: BTreeMap<T::AccountId, T::StakeWeight>) {
+        let _ = DomainAuthorities::<T>::clear(u32::MAX, None);
+        let _ = DomainTotalStakeWeight::<T>::clear(u32::MAX, None);
+
+        let mut total_stake_weights = BTreeMap::new();
+
+        for (operator, domain_id, stake_allocation) in DomainOperators::<T>::iter() {
+            // TODO: Need to confirm whether an inactive executor can still be the domain authority.
+            if let Some(stake_weight) = executor_weights.get(&operator) {
+                let domain_stake_weight: T::StakeWeight = stake_allocation.mul_floor(*stake_weight);
+
+                total_stake_weights
+                    .entry(domain_id)
+                    .and_modify(|total| *total += domain_stake_weight)
+                    .or_insert(domain_stake_weight);
+
+                DomainAuthorities::<T>::insert(domain_id, operator, domain_stake_weight);
+            }
+        }
+
+        for (domain_id, total_stake_weight) in total_stake_weights {
+            DomainTotalStakeWeight::<T>::insert(domain_id, total_stake_weight);
+        }
     }
 }
 
