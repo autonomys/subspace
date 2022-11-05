@@ -19,15 +19,19 @@
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
+use frame_support::weights::Weight;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::ExecutorPublicKey;
+use sp_runtime::Percent;
 use subspace_runtime_primitives::SSC;
 use system_domain_runtime::{
-    AccountId, Balance, BalancesConfig, ExecutorRegistryConfig, GenesisConfig, SystemConfig,
-    WASM_BINARY,
+    AccountId, Balance, BalancesConfig, DomainRegistryConfig, ExecutorRegistryConfig,
+    GenesisConfig, Hash, SystemConfig, WASM_BINARY,
 };
+
+type DomainConfig = sp_domains::DomainConfig<Hash, Balance, Weight>;
 
 pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
@@ -49,6 +53,20 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     1_000 * SSC,
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
+                )],
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    1_000 * SSC,
+                    // TODO: proper genesis domain config
+                    DomainConfig {
+                        wasm_runtime_hash: Hash::random(),
+                        max_bundle_size: 1024 * 1024,
+                        bundle_frequency: 100,
+                        max_bundle_weight: Weight::MAX,
+                        min_operator_stake: 100 * SSC,
+                    },
+                    get_account_id_from_seed("Alice"),
+                    Percent::one(),
                 )],
             )
         },
@@ -89,6 +107,20 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     1_000 * SSC,
                     get_account_id_from_seed("Alice"),
                     get_public_key_from_seed::<ExecutorPublicKey>("Alice"),
+                )],
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    1_000 * SSC,
+                    // TODO: proper genesis domain config
+                    DomainConfig {
+                        wasm_runtime_hash: Hash::random(),
+                        max_bundle_size: 1024 * 1024,
+                        bundle_frequency: 100,
+                        max_bundle_weight: Weight::MAX,
+                        min_operator_stake: 100 * SSC,
+                    },
+                    get_account_id_from_seed("Alice"),
+                    Percent::one(),
                 )],
             )
         },
@@ -131,6 +163,20 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
                     )
                     .expect("Wrong executor public key"),
                 )],
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    1_000 * SSC,
+                    // TODO: proper genesis domain config
+                    DomainConfig {
+                        wasm_runtime_hash: Hash::random(),
+                        max_bundle_size: 1024 * 1024,
+                        bundle_frequency: 100,
+                        max_bundle_weight: Weight::MAX,
+                        min_operator_stake: 100 * SSC,
+                    },
+                    get_account_id_from_seed("Alice"),
+                    Percent::one(),
+                )],
             )
         },
         // Bootnodes
@@ -150,6 +196,7 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
+    domains: Vec<(AccountId, Balance, DomainConfig, AccountId, Percent)>,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -169,5 +216,6 @@ fn testnet_genesis(
             executors,
             slot_probability: (1, 1),
         },
+        domain_registry: DomainRegistryConfig { domains },
     }
 }
