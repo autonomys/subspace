@@ -1,6 +1,5 @@
 use crate::{
-    self as pallet_domain_registry, DomainConfig, DomainCreators, DomainOperators, Domains, Error,
-    NextDomainId,
+    self as pallet_domain_registry, DomainCreators, DomainOperators, Domains, Error, NextDomainId,
 };
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
 use frame_support::{assert_noop, assert_ok, parameter_types};
@@ -14,6 +13,8 @@ use sp_runtime::Percent;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+type DomainConfig = crate::DomainConfig<Test>;
 
 frame_support::construct_runtime!(
     pub struct Test

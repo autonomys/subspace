@@ -21,6 +21,7 @@
 mod tests;
 
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
+use frame_support::weights::Weight;
 pub use pallet::*;
 use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
 use sp_runtime::traits::Zero;
@@ -28,6 +29,9 @@ use sp_runtime::Percent;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+type DomainConfig<T> =
+    sp_domains::DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>, Weight>;
 
 const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
@@ -40,7 +44,7 @@ pub trait ExecutorRegistry<AccountId, Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, ExecutorRegistry};
+    use super::{BalanceOf, DomainConfig, ExecutorRegistry};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
@@ -83,28 +87,6 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Domain configuration.
-    #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
-    #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-    pub struct DomainConfig<Hash, Balance> {
-        /// Hash of the domain wasm runtime blob.
-        pub wasm_runtime_hash: Hash,
-
-        // May be supported later.
-        //pub upgrade_keys: Vec<AccountId>,
-        // TODO: elaborate this field.
-        pub bundle_frequency: u32,
-
-        /// Maximum domain bundle size in bytes.
-        pub max_bundle_size: u32,
-
-        /// Maximum domain bundle weight.
-        pub max_bundle_weight: Weight,
-
-        /// Minimum executor stake value to be an operator on this domain.
-        pub min_operator_stake: Balance,
-    }
-
     /// Domain id for the next domain.
     #[pallet::storage]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
@@ -124,7 +106,7 @@ mod pallet {
     /// A map tracking all the non-system domains.
     #[pallet::storage]
     pub(super) type Domains<T: Config> =
-        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T::Hash, BalanceOf<T>>, OptionQuery>;
+        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T>, OptionQuery>;
 
     /// (executor, domain_id, allocated_stake_proportion)
     #[pallet::storage]
@@ -146,7 +128,7 @@ mod pallet {
         pub fn create_domain(
             origin: OriginFor<T>,
             deposit: BalanceOf<T>,
-            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            domain_config: DomainConfig<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -171,7 +153,7 @@ mod pallet {
         pub fn update_domain_config(
             origin: OriginFor<T>,
             domain_id: DomainId,
-            _domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            _domain_config: DomainConfig<T>,
         ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
@@ -304,7 +286,7 @@ mod pallet {
     type GenesisDomainInfo<T> = (
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
-        DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>>,
+        DomainConfig<T>,
         <T as frame_system::Config>::AccountId,
         Percent,
     );
@@ -383,7 +365,7 @@ mod pallet {
             creator: T::AccountId,
             domain_id: DomainId,
             deposit: BalanceOf<T>,
-            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            domain_config: DomainConfig<T>,
         },
 
         /// A new domain operator.
@@ -513,7 +495,7 @@ impl<T: Config> Pallet<T> {
     fn can_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,
-        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+        domain_config: &DomainConfig<T>,
     ) -> Result<(), Error<T>> {
         if deposit < T::MinDomainDeposit::get() {
             return Err(Error::<T>::DepositTooSmall);
@@ -537,7 +519,7 @@ impl<T: Config> Pallet<T> {
     fn apply_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,
-        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+        domain_config: &DomainConfig<T>,
     ) -> DomainId {
         T::Currency::set_lock(DOMAIN_LOCK_ID, who, deposit, WithdrawReasons::all());
 
