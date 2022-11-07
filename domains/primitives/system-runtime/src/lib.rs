@@ -46,9 +46,6 @@ pub type BlockNumber = u32;
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
 
-/// The type of the DomainId we use for mapping with domains.
-pub type DomainId = u64;
-
 /// The type we use to represent relayer id. This is same as account Id.
 pub type RelayerId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
@@ -72,16 +69,6 @@ where
             .as_ref()
             .and_then(|(signed, _, _)| lookup.lookup(signed.clone()).ok())
     }
-}
-
-/// Returns true if the domain_id maps to a system domain.
-pub fn is_system_domain(domain_id: DomainId) -> bool {
-    domain_id <= 100
-}
-
-/// Returns true if the domain_id maps to a core domain.
-pub fn is_core_domain(domain_id: DomainId) -> bool {
-    domain_id > 100 && domain_id <= 1000
 }
 
 sp_api::decl_runtime_apis! {

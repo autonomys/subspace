@@ -4,7 +4,7 @@ use crate::mock::domain_a::{
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
-    AccountId, Balance, DomainId, TestExternalities,
+    AccountId, Balance, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
 use crate::verification::{StorageProofVerifier, VerificationError};
@@ -17,6 +17,7 @@ use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
@@ -120,7 +121,7 @@ fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonc
 #[test]
 fn test_initiate_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default())
     });
@@ -129,7 +130,7 @@ fn test_initiate_channel() {
 #[test]
 fn test_close_missing_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         assert_err!(
             Messenger::close_channel(Origin::root(), domain_id, channel_id,),
@@ -141,7 +142,7 @@ fn test_close_missing_channel() {
 #[test]
 fn test_close_not_open_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default());
         assert_err!(
@@ -154,7 +155,7 @@ fn test_close_not_open_channel() {
 #[test]
 fn test_close_open_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default());
 
@@ -175,7 +176,7 @@ fn test_close_open_channel() {
 #[test]
 fn test_storage_proof_verification_invalid() {
     let mut t = new_domain_a_ext();
-    let domain_id = 2;
+    let domain_id = 2.into();
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id, Default::default());
@@ -201,7 +202,7 @@ fn test_storage_proof_verification_invalid() {
 #[test]
 fn test_storage_proof_verification_missing_value() {
     let mut t = new_domain_a_ext();
-    let domain_id = 2;
+    let domain_id = 2.into();
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id, Default::default());
@@ -227,7 +228,7 @@ fn test_storage_proof_verification_missing_value() {
 #[test]
 fn test_storage_proof_verification() {
     let mut t = new_domain_a_ext();
-    let domain_id = 2;
+    let domain_id = 2.into();
     let channel_id = U256::zero();
     let mut expected_channel = None;
     t.execute_with(|| {
@@ -341,7 +342,7 @@ fn send_message_between_domains(
 
     // send message form outbox
     domain_a_test_ext.execute_with(|| {
-        let resp = <domain_a::Messenger as Sender<AccountId, DomainId>>::send_message(
+        let resp = <domain_a::Messenger as Sender<AccountId>>::send_message(
             sender,
             domain_b_id,
             EndpointRequest {

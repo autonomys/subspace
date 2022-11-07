@@ -7,7 +7,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::sync::Arc;
-use system_runtime_primitives::{DomainId, RelayerId};
+use system_runtime_primitives::RelayerId;
 
 pub async fn relay_system_domain_messages<Client, Block, SDBI>(
     relayer_id: RelayerId,
@@ -21,7 +21,7 @@ where
         + StateBackend<<Block::Header as HeaderT>::Hashing>
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, RelayerId, DomainId, NumberFor<Block>>,
+    Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDBI: Stream<Item = NumberFor<Block>> + Unpin,
 {
     let relayer = Relayer {

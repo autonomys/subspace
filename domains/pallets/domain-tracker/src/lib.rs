@@ -37,9 +37,9 @@ mod pallet {
     use frame_system::pallet_prelude::{BlockNumberFor, OriginFor};
     use sp_core::storage::StorageKey;
     use sp_domain_tracker::{InherentType, NoFatalError, INHERENT_IDENTIFIER};
+    use sp_domains::DomainId;
     use sp_messenger::DomainTracker;
     use sp_std::vec::Vec;
-    use system_runtime_primitives::{is_core_domain, is_system_domain, DomainId};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -135,11 +135,7 @@ mod pallet {
         }
     }
 
-    impl<T: Config> DomainTracker<DomainId, StateRootOf<T>> for Pallet<T> {
-        fn is_system_domain(domain_id: DomainId) -> bool {
-            is_system_domain(domain_id)
-        }
-
+    impl<T: Config> DomainTracker<StateRootOf<T>> for Pallet<T> {
         fn system_domain_state_roots() -> Vec<StateRootOf<T>> {
             SystemDomainStateRoots::<T>::get()
         }
@@ -147,10 +143,6 @@ mod pallet {
         fn domain_state_root_storage_key(_domain_id: DomainId) -> StorageKey {
             // TODO(ved): return well know key once the storage item for domain registry is defined.
             todo!()
-        }
-
-        fn is_core_domain(domain_id: DomainId) -> bool {
-            is_core_domain(domain_id)
         }
     }
 

@@ -28,5 +28,6 @@ parity-scale-codec = { version = "3.1.5", features = ["derive"] }
 parking_lot = "0.12.1"
 tracing = "0.1.36"
 
+sp-domains = { path = "../../../crates/sp-domains" }
 sp-messenger = { path = "../../primitives/messenger" }
 system-runtime-primitives = { path = "../../primitives/system-runtime" }

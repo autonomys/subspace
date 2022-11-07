@@ -7,7 +7,7 @@ use frame_support::{assert_noop, assert_ok, parameter_types};
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
-use sp_domains::{ExecutorPair, StakeWeight};
+use sp_domains::{DomainId, ExecutorPair, StakeWeight};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::Percent;
@@ -180,6 +180,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn create_domain_should_work() {
     new_test_ext().execute_with(|| {
+        let genesis_domain_id = DomainId::from(0);
         let genesis_domain_config = DomainConfig {
             wasm_runtime_hash: Hash::repeat_byte(1),
             bundle_frequency: 100,
@@ -187,9 +188,12 @@ fn create_domain_should_work() {
             max_bundle_weight: 100_000_000_000,
             min_operator_stake: 20,
         };
-        assert_eq!(Domains::<Test>::get(0).unwrap(), genesis_domain_config);
-        assert_eq!(NextDomainId::<Test>::get(), 1);
-        assert_eq!(DomainCreators::<Test>::get(0, 1), Some(100));
+        assert_eq!(
+            Domains::<Test>::get(genesis_domain_id).unwrap(),
+            genesis_domain_config
+        );
+        assert_eq!(NextDomainId::<Test>::get(), 1.into());
+        assert_eq!(DomainCreators::<Test>::get(genesis_domain_id, 1), Some(100));
 
         let domain_config = DomainConfig {
             wasm_runtime_hash: Hash::random(),
@@ -253,23 +257,27 @@ fn create_domain_should_work() {
 fn register_domain_operator_and_update_domain_stake_should_work() {
     new_test_ext().execute_with(|| {
         assert_eq!(
-            DomainOperators::<Test>::get(1, 0).unwrap(),
+            DomainOperators::<Test>::get(1, DomainId::from(0)).unwrap(),
             Percent::from_percent(80)
         );
 
         assert_noop!(
-            DomainRegistry::update_domain_stake(Origin::signed(1), 0, Percent::from_percent(10),),
+            DomainRegistry::update_domain_stake(
+                Origin::signed(1),
+                DomainId::from(0),
+                Percent::from_percent(10),
+            ),
             Error::<Test>::OperatorStakeTooSmall
         );
 
         assert_ok!(DomainRegistry::update_domain_stake(
             Origin::signed(1),
-            0,
+            DomainId::from(0),
             Percent::from_percent(20),
         ));
 
         assert_eq!(
-            DomainOperators::<Test>::get(1, 0).unwrap(),
+            DomainOperators::<Test>::get(1, DomainId::from(0)).unwrap(),
             Percent::from_percent(20)
         );
 
@@ -289,7 +297,7 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
         assert_noop!(
             DomainRegistry::register_domain_operator(
                 Origin::signed(1),
-                1,
+                DomainId::from(1),
                 Percent::from_percent(90),
             ),
             Error::<Test>::StakeAllocationTooLarge
@@ -297,25 +305,25 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
 
         assert_ok!(DomainRegistry::register_domain_operator(
             Origin::signed(1),
-            1,
+            DomainId::from(1),
             Percent::from_percent(80),
         ));
 
         assert_ok!(DomainRegistry::register_domain_operator(
             Origin::signed(2),
-            0,
+            DomainId::from(0),
             Percent::from_percent(50),
         ));
 
         assert_eq!(
-            DomainOperators::<Test>::get(2, 0).unwrap(),
+            DomainOperators::<Test>::get(2, DomainId::from(0)).unwrap(),
             Percent::from_percent(50)
         );
 
         assert_noop!(
             DomainRegistry::register_domain_operator(
                 Origin::signed(8),
-                1,
+                DomainId::from(1),
                 Percent::from_percent(30),
             ),
             Error::<Test>::NotExecutor
@@ -327,46 +335,47 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
 fn deregister_domain_operator_should_work() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            DomainRegistry::deregister_domain_operator(Origin::signed(3), 0,),
+            DomainRegistry::deregister_domain_operator(Origin::signed(3), DomainId::from(0)),
             Error::<Test>::NotOperator
         );
 
         assert_ok!(DomainRegistry::register_domain_operator(
             Origin::signed(2),
-            0,
+            DomainId::from(0),
             Percent::from_percent(50),
         ));
 
         assert_ok!(DomainRegistry::deregister_domain_operator(
             Origin::signed(1),
-            0,
+            DomainId::from(0)
         ));
 
-        assert!(DomainOperators::<Test>::get(1, 0).is_none());
+        assert!(DomainOperators::<Test>::get(1, DomainId::from(0)).is_none());
     });
 }
 
 #[test]
 fn rotate_domain_authorities_should_work() {
     new_test_ext().execute_with(|| {
+        let genesis_domain_id = DomainId::from(0);
         assert_eq!(
             DomainAuthorities::<Test>::iter().collect::<Vec<_>>(),
-            vec![(0, 1, 80)]
+            vec![(genesis_domain_id, 1, 80)]
         );
         assert_eq!(
             DomainTotalStakeWeight::<Test>::iter().collect::<Vec<_>>(),
-            vec![(0, 80)]
+            vec![(genesis_domain_id, 80)]
         );
 
         assert_ok!(DomainRegistry::register_domain_operator(
             Origin::signed(2),
-            0,
+            DomainId::from(0),
             Percent::from_percent(20),
         ));
 
         assert_ok!(DomainRegistry::register_domain_operator(
             Origin::signed(3),
-            0,
+            DomainId::from(0),
             Percent::from_percent(30),
         ));
 
@@ -379,11 +388,15 @@ fn rotate_domain_authorities_should_work() {
 
         assert_eq!(
             DomainAuthorities::<Test>::iter().collect::<Vec<_>>(),
-            vec![(0, 3, 90), (0, 1, 80), (0, 2, 40)]
+            vec![
+                (genesis_domain_id, 3, 90),
+                (genesis_domain_id, 1, 80),
+                (genesis_domain_id, 2, 40)
+            ]
         );
         assert_eq!(
             DomainTotalStakeWeight::<Test>::iter().collect::<Vec<_>>(),
-            vec![(0, 90 + 80 + 40)]
+            vec![(genesis_domain_id, 90 + 80 + 40)]
         );
     });
 }

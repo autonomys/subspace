@@ -1,11 +1,12 @@
 use crate::mock::{
-    new_test_ext, AccountId, Balance, Balances, DomainId, Event, MockRuntime, Origin, SelfDomainId,
+    new_test_ext, AccountId, Balance, Balances, Event, MockRuntime, Origin, SelfDomainId,
     SelfEndpointId, System, Transporter, USER_ACCOUNT,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_ok};
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,
 };
@@ -19,7 +20,7 @@ fn test_initiate_transfer_failed() {
         assert_eq!(balance, 0);
 
         // transfer 500 to dst_domain id 100
-        let dst_domain_id = 1;
+        let dst_domain_id = 1.into();
         let dst_location = Location {
             domain_id: dst_domain_id,
             account_id: account,
@@ -39,7 +40,7 @@ fn test_initiate_transfer() {
         assert_eq!(total_balance, 1000);
 
         // transfer 500 to dst_domain id 100
-        let dst_domain_id = 1;
+        let dst_domain_id = 1.into();
         let dst_location = Location {
             domain_id: dst_domain_id,
             account_id: account,
@@ -76,7 +77,7 @@ fn test_initiate_transfer() {
 #[test]
 fn test_transfer_response_missing_request() {
     new_test_ext().execute_with(|| {
-        let dst_domain_id: DomainId = 1;
+        let dst_domain_id: DomainId = 1.into();
         let amount: Balance = 500;
         let account: AccountId = 100;
         let encoded_payload = Transfer {
@@ -149,7 +150,7 @@ fn test_transfer_response_invalid_request() {
         let account = USER_ACCOUNT;
         let amount: Balance = 500;
         // transfer 500 to dst_domain id 100
-        let dst_domain_id: DomainId = 1;
+        let dst_domain_id: DomainId = 1.into();
         initiate_transfer(dst_domain_id, account, amount);
         let encoded_payload = Transfer {
             amount,
@@ -175,7 +176,7 @@ fn test_transfer_response_revert() {
         let account = USER_ACCOUNT;
         // transfer 500 to dst_domain id 1
         let amount: Balance = 500;
-        let dst_domain_id: DomainId = 1;
+        let dst_domain_id: DomainId = 1.into();
 
         // check pre dispatch balances
         let balance = Balances::free_balance(&account);
@@ -233,7 +234,7 @@ fn test_transfer_response_successful() {
         let account = USER_ACCOUNT;
         // transfer 500 to dst_domain id 1
         let amount: Balance = 500;
-        let dst_domain_id: DomainId = 1;
+        let dst_domain_id: DomainId = 1.into();
 
         // check pre dispatch balances
         let balance = Balances::free_balance(&account);
@@ -286,8 +287,8 @@ fn test_receive_incoming_transfer() {
         let receiver = 2;
         // transfer 500
         let amount: Balance = 500;
-        let src_domain_id: DomainId = 100;
-        let dst_domain_id: DomainId = 1;
+        let src_domain_id: DomainId = 100.into();
+        let dst_domain_id: DomainId = 1.into();
 
         // check pre dispatch balances
         let balance = Balances::free_balance(&receiver);

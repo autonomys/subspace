@@ -82,8 +82,8 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-pub(crate) struct ValidatedRelayMessage<DomainId, Balance> {
-    msg: Message<DomainId, Balance>,
+pub(crate) struct ValidatedRelayMessage<Balance> {
+    msg: Message<Balance>,
     should_init_channel: bool,
 }
 
@@ -99,6 +99,7 @@ mod pallet {
     use frame_support::traits::ReservableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
+    use sp_domains::DomainId;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
@@ -110,16 +111,14 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-        /// Domain ID uniquely identifies a Domain.
-        type DomainId: Parameter + Member + Default + Copy + MaxEncodedLen;
         /// Gets the domain_id that is treated as src_domain for outgoing messages.
-        type SelfDomainId: Get<Self::DomainId>;
+        type SelfDomainId: Get<DomainId>;
         /// System domain tracker.
-        type DomainTracker: DomainTrackerT<Self::DomainId, StateRootOf<Self>>;
+        type DomainTracker: DomainTrackerT<StateRootOf<Self>>;
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_response_handler(
             endpoint: &Endpoint,
-        ) -> Option<Box<dyn EndpointHandler<Self::DomainId, MessageId>>>;
+        ) -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
         type Currency: ReservableCurrency<Self::AccountId>;
         /// Maximum number of relayers that can join this domain.
@@ -138,7 +137,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn next_channel_id)]
     pub(super) type NextChannelId<T: Config> =
-        StorageMap<_, Identity, T::DomainId, ChannelId, ValueQuery>;
+        StorageMap<_, Identity, DomainId, ChannelId, ValueQuery>;
 
     /// Stores channel config between two domains.
     /// Key points to the foreign domain wrt own domain's storage name space
@@ -147,7 +146,7 @@ mod pallet {
     pub(super) type Channels<T: Config> = StorageDoubleMap<
         _,
         Identity,
-        T::DomainId,
+        DomainId,
         Identity,
         ChannelId,
         Channel<BalanceOf<T>>,
@@ -161,8 +160,8 @@ mod pallet {
     pub(super) type Inbox<T: Config> = CountedStorageMap<
         _,
         Identity,
-        (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId, BalanceOf<T>>,
+        (DomainId, ChannelId, Nonce),
+        Message<BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -173,8 +172,8 @@ mod pallet {
     pub(super) type InboxResponses<T: Config> = CountedStorageMap<
         _,
         Identity,
-        (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId, BalanceOf<T>>,
+        (DomainId, ChannelId, Nonce),
+        Message<BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -185,8 +184,8 @@ mod pallet {
     pub(super) type Outbox<T: Config> = CountedStorageMap<
         _,
         Identity,
-        (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId, BalanceOf<T>>,
+        (DomainId, ChannelId, Nonce),
+        Message<BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -195,8 +194,8 @@ mod pallet {
     pub(super) type OutboxResponses<T: Config> = CountedStorageMap<
         _,
         Identity,
-        (T::DomainId, ChannelId, Nonce),
-        Message<T::DomainId, BalanceOf<T>>,
+        (DomainId, ChannelId, Nonce),
+        Message<BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -217,7 +216,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn relayer_messages)]
     pub(super) type RelayerMessages<T: Config> =
-        StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages<T::DomainId>, OptionQuery>;
+        StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -226,7 +225,7 @@ mod pallet {
         /// Emits when a channel between two domains in initiated.
         ChannelInitiated {
             /// Foreign domain id this channel connects to.
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             /// Channel ID of the said channel.
             channel_id: ChannelId,
         },
@@ -234,7 +233,7 @@ mod pallet {
         /// Emits when a channel between two domains in closed.
         ChannelClosed {
             /// Foreign domain id this channel connects to.
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             /// Channel ID of the said channel.
             channel_id: ChannelId,
         },
@@ -242,14 +241,14 @@ mod pallet {
         /// Emits when a channel between two domains in open.
         ChannelOpen {
             /// Foreign domain id this channel connects to.
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             /// Channel ID of the said channel.
             channel_id: ChannelId,
         },
 
         /// Emits when a new message is added to the outbox.
         OutboxMessage {
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             channel_id: ChannelId,
             nonce: Nonce,
             relayer_id: RelayerId<T>,
@@ -258,7 +257,7 @@ mod pallet {
         /// Emits when a message response is available for Outbox message.
         OutboxMessageResponse {
             /// Destination domain ID.
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
@@ -266,7 +265,7 @@ mod pallet {
 
         /// Emits outbox message result.
         OutboxMessageResult {
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             channel_id: ChannelId,
             nonce: Nonce,
             result: OutboxMessageResult,
@@ -274,7 +273,7 @@ mod pallet {
 
         /// Emits when a new inbox message is validated and added to Inbox.
         InboxMessage {
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             channel_id: ChannelId,
             nonce: Nonce,
         },
@@ -282,7 +281,7 @@ mod pallet {
         /// Emits when a message response is available for Inbox message.
         InboxMessageResponse {
             /// Destination domain ID.
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
@@ -306,11 +305,8 @@ mod pallet {
         },
     }
 
-    type Tag<DomainId> = (DomainId, ChannelId, Nonce);
-    fn unsigned_validity<T: Config>(
-        prefix: &'static str,
-        provides: Tag<T::DomainId>,
-    ) -> TransactionValidity {
+    type Tag = (DomainId, ChannelId, Nonce);
+    fn unsigned_validity<T: Config>(prefix: &'static str, provides: Tag) -> TransactionValidity {
         ValidTransaction::with_tag_prefix(prefix)
             .priority(TransactionPriority::MAX)
             .and_provides(provides)
@@ -431,7 +427,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn initiate_channel(
             origin: OriginFor<T>,
-            dst_domain_id: T::DomainId,
+            dst_domain_id: DomainId,
             params: InitiateChannelParams<BalanceOf<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
@@ -459,7 +455,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn close_channel(
             origin: OriginFor<T>,
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             channel_id: ChannelId,
         ) -> DispatchResult {
             ensure_root(origin)?;
@@ -480,7 +476,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+            msg: CrossDomainMessage<StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::process_inbox_messages(msg.src_domain_id, msg.channel_id)?;
@@ -491,7 +487,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
+            msg: CrossDomainMessage<StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::process_outbox_message_responses(msg.src_domain_id, msg.channel_id)?;
@@ -515,12 +511,12 @@ mod pallet {
         }
     }
 
-    impl<T: Config> Sender<T::AccountId, T::DomainId> for Pallet<T> {
+    impl<T: Config> Sender<T::AccountId> for Pallet<T> {
         type MessageId = MessageId;
 
         fn send_message(
             sender: &T::AccountId,
-            dst_domain_id: T::DomainId,
+            dst_domain_id: DomainId,
             req: EndpointRequest,
         ) -> Result<Self::MessageId, DispatchError> {
             let (channel_id, fee_model) = Self::get_open_channel_for_domain(dst_domain_id)
@@ -542,7 +538,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Returns the last open channel for a given domain.
         fn get_open_channel_for_domain(
-            dst_domain_id: T::DomainId,
+            dst_domain_id: DomainId,
         ) -> Option<(ChannelId, FeeModel<BalanceOf<T>>)> {
             let mut next_channel_id = NextChannelId::<T>::get(dst_domain_id);
 
@@ -563,7 +559,7 @@ mod pallet {
 
         /// Opens an initiated channel.
         pub(crate) fn do_open_channel(
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             channel_id: ChannelId,
         ) -> DispatchResult {
             Channels::<T>::try_mutate(domain_id, channel_id, |maybe_channel| -> DispatchResult {
@@ -587,7 +583,7 @@ mod pallet {
         }
 
         pub(crate) fn do_close_channel(
-            domain_id: T::DomainId,
+            domain_id: DomainId,
             channel_id: ChannelId,
         ) -> DispatchResult {
             Channels::<T>::try_mutate(domain_id, channel_id, |maybe_channel| -> DispatchResult {
@@ -611,13 +607,12 @@ mod pallet {
         }
 
         pub(crate) fn do_init_channel(
-            dst_domain_id: T::DomainId,
+            dst_domain_id: DomainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
             // ensure domain is either system domain or core domain
             ensure!(
-                T::DomainTracker::is_core_domain(dst_domain_id)
-                    || T::DomainTracker::is_system_domain(dst_domain_id),
+                dst_domain_id.is_core() || dst_domain_id.is_system(),
                 Error::<T>::InvalidDomain,
             );
 
@@ -649,9 +644,8 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message(
-            xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<ValidatedRelayMessage<T::DomainId, BalanceOf<T>>, TransactionValidityError>
-        {
+            xdm: &CrossDomainMessage<StateRootOf<T>>,
+        ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 None => {
@@ -693,7 +687,7 @@ mod pallet {
         }
 
         pub(crate) fn pre_dispatch_relay_message(
-            msg: Message<T::DomainId, BalanceOf<T>>,
+            msg: Message<BalanceOf<T>>,
             should_init_channel: bool,
         ) -> Result<(), TransactionValidityError> {
             if should_init_channel {
@@ -718,8 +712,8 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message_response(
-            xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
+            xdm: &CrossDomainMessage<StateRootOf<T>>,
+        ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
@@ -754,7 +748,7 @@ mod pallet {
         }
 
         pub(crate) fn pre_dispatch_relay_message_response(
-            msg: Message<T::DomainId, BalanceOf<T>>,
+            msg: Message<BalanceOf<T>>,
         ) -> Result<(), TransactionValidityError> {
             Self::deposit_event(Event::OutboxMessageResponse {
                 domain_id: msg.src_domain_id,
@@ -769,8 +763,8 @@ mod pallet {
         pub(crate) fn do_verify_xdm(
             next_nonce: Nonce,
             storage_key: StorageKey,
-            xdm: &CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-        ) -> Result<Message<T::DomainId, BalanceOf<T>>, TransactionValidityError> {
+            xdm: &CrossDomainMessage<StateRootOf<T>>,
+        ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // fetch state roots from System domain tracker
             let state_roots = T::DomainTracker::system_domain_state_roots();
             if !state_roots.contains(&xdm.proof.state_root) {
@@ -783,15 +777,11 @@ mod pallet {
             let core_domain_state_root_proof = xdm.proof.core_domain_proof.clone();
             let state_root = {
                 // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
-                if T::DomainTracker::is_system_domain(xdm.src_domain_id)
-                    && xdm.proof.core_domain_proof.is_none()
-                {
+                if xdm.src_domain_id.is_system() && xdm.proof.core_domain_proof.is_none() {
                     Ok(xdm.proof.state_root)
                 }
                 // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
-                else if T::DomainTracker::is_core_domain(xdm.src_domain_id)
-                    && core_domain_state_root_proof.is_some()
-                {
+                else if xdm.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
                     let core_domain_state_root_key =
                         T::DomainTracker::domain_state_root_storage_key(xdm.src_domain_id);
                     StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
@@ -817,7 +807,7 @@ mod pallet {
 
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
-                Message<T::DomainId, BalanceOf<T>>,
+                Message<BalanceOf<T>>,
             >(&state_root, xdm.proof.message_proof.clone(), storage_key)
             .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
 
@@ -830,7 +820,7 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    pub fn submit_outbox_message_unsigned(msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>) {
+    pub fn submit_outbox_message_unsigned(msg: CrossDomainMessage<StateRootOf<T>>) {
         let call = Call::relay_message { msg };
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
@@ -845,9 +835,7 @@ where
         }
     }
 
-    pub fn submit_inbox_response_message_unsigned(
-        msg: CrossDomainMessage<T::DomainId, StateRootOf<T>>,
-    ) {
+    pub fn submit_inbox_response_message_unsigned(msg: CrossDomainMessage<StateRootOf<T>>) {
         let call = Call::relay_message_response { msg };
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
