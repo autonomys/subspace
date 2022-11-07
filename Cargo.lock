@@ -1590,6 +1590,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-domain-registry",
  "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -1622,6 +1623,7 @@ dependencies = [
  "domain-client-executor",
  "domain-service",
  "domain-test-runtime",
+ "frame-support",
  "frame-system",
  "futures 0.3.21",
  "pallet-transaction-payment",
@@ -4499,8 +4501,10 @@ dependencies = [
  "serde",
  "sp-core",
  "sp-domains",
+ "sp-executor-registry",
  "sp-io",
  "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -4550,6 +4554,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-core",
  "sp-domains",
+ "sp-executor-registry",
  "sp-io",
  "sp-runtime",
  "sp-std",
@@ -7464,6 +7469,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
+ "serde",
  "sp-api",
  "sp-application-crypto",
  "sp-consensus-slots",
@@ -7476,6 +7482,14 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
+]
+
+[[package]]
+name = "sp-executor-registry"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-std",
 ]
 
 [[package]]
@@ -8712,6 +8726,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
+ "pallet-domain-registry",
  "pallet-executor-registry",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",

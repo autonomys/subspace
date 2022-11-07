@@ -1,10 +1,12 @@
 //! Chain specification for the domain test runtime.
 
-use domain_test_runtime::{AccountId, Balance, Signature};
+use domain_test_runtime::{AccountId, Balance, Hash, Signature};
+use frame_support::weights::Weight;
 use sc_service::ChainType;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::Percent;
 use subspace_runtime_primitives::SSC;
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
@@ -18,6 +20,8 @@ pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Pu
 }
 
 type AccountPublic = <Signature as Verify>::Signer;
+
+type DomainConfig = sp_domains::DomainConfig<Hash, Balance, Weight>;
 
 /// Helper function to generate an account ID from seed.
 pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
@@ -67,6 +71,20 @@ pub fn local_testnet_genesis() -> domain_test_runtime::GenesisConfig {
             get_account_id_from_seed::<sr25519::Public>("Alice"),
             get_from_seed::<ExecutorPublicKey>("Alice"),
         )],
+        vec![(
+            get_account_id_from_seed::<sr25519::Public>("Alice"),
+            1_000 * SSC,
+            // TODO: proper genesis domain config
+            DomainConfig {
+                wasm_runtime_hash: Hash::random(),
+                max_bundle_size: 1024 * 1024,
+                bundle_frequency: 100,
+                max_bundle_weight: Weight::MAX,
+                min_operator_stake: 100 * SSC,
+            },
+            get_account_id_from_seed::<sr25519::Public>("Alice"),
+            Percent::one(),
+        )],
     )
 }
 
@@ -74,6 +92,7 @@ fn testnet_genesis(
     _root_key: AccountId,
     endowed_accounts: Vec<AccountId>,
     executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
+    domains: Vec<(AccountId, Balance, DomainConfig, AccountId, Percent)>,
 ) -> domain_test_runtime::GenesisConfig {
     domain_test_runtime::GenesisConfig {
         system: domain_test_runtime::SystemConfig {
@@ -93,5 +112,6 @@ fn testnet_genesis(
             executors,
             slot_probability: (1, 1),
         },
+        domain_registry: domain_test_runtime::DomainRegistryConfig { domains },
     }
 }

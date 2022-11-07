@@ -93,9 +93,10 @@ impl pallet_executor_registry::Config for Test {
     type MaxExecutorStake = MaxExecutorStake;
     type MinExecutors = MinExecutors;
     type MaxExecutors = MaxExecutors;
-    type EpochDuration = EpochDuration;
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
+    type EpochDuration = EpochDuration;
+    type OnNewEpoch = ();
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {

@@ -24,6 +24,7 @@ use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, Withdraw
 pub use pallet::*;
 use sp_arithmetic::Percent;
 use sp_domains::ExecutorPublicKey;
+use sp_executor_registry::ExecutorRegistry;
 use sp_runtime::BoundedVec;
 
 type BalanceOf<T> =
@@ -41,11 +42,13 @@ mod pallet {
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
     use sp_domains::ExecutorPublicKey;
+    use sp_executor_registry::OnNewEpoch;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
         MaybeSerializeDeserialize, Zero,
     };
     use sp_runtime::FixedPointOperand;
+    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
@@ -107,6 +110,9 @@ mod pallet {
         /// The executor set for the bundle election is scheduled to rotate on each new epoch.
         #[pallet::constant]
         type EpochDuration: Get<Self::BlockNumber>;
+
+        /// What to do on epoch changes.
+        type OnNewEpoch: OnNewEpoch<Self::AccountId, Self::StakeWeight>;
     }
 
     #[pallet::pallet]
@@ -641,7 +647,10 @@ mod pallet {
             // 1. Snapshot the latest state of active executors.
             // 2. Activate the new executor public key if any.
             if (block_number % T::EpochDuration::get()).is_zero() {
+                let mut executor_weights = BTreeMap::new();
+
                 let mut total_stake_weight = T::StakeWeight::zero();
+
                 // TODO: currently, we are iterating the Executors map, figure out how many executors
                 // we can support with this approach and optimize it when it does not satisfy our requirement.
                 let authorities = Executors::<T>::iter()
@@ -653,7 +662,7 @@ mod pallet {
                                 //
                                 // TODO: add a test that the public_key can be updated and the key_owner
                                 // will be deleted as expected.
-                                Executors::<T>::mutate(who, |maybe_executor_config| {
+                                Executors::<T>::mutate(&who, |maybe_executor_config| {
                                     let executor_config = maybe_executor_config
                                         .as_mut()
                                         .expect("Executor config must exist; qed");
@@ -677,6 +686,8 @@ mod pallet {
                                 each of them has 1_000_000_000 SSC at stake; qed",
                         );
 
+                        executor_weights.insert(who, stake_weight);
+
                         (public_key, stake_weight)
                     })
                     .collect::<Vec<_>>();
@@ -688,6 +699,8 @@ mod pallet {
                 Authorities::<T>::put(bounded_authorities);
 
                 TotalStakeWeight::<T>::put(total_stake_weight);
+
+                T::OnNewEpoch::on_new_epoch(executor_weights);
             }
 
             // TODO: proper weight
@@ -748,11 +761,28 @@ mod pallet {
     pub(super) type SlotProbability<T> = StorageValue<_, (u64, u64), ValueQuery>;
 }
 
-impl<T: Config> Pallet<T> {
-    pub fn executor_stake(who: &T::AccountId) -> Option<BalanceOf<T>> {
+impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>, T::StakeWeight> for Pallet<T> {
+    fn executor_stake(who: &T::AccountId) -> Option<BalanceOf<T>> {
         Executors::<T>::get(who).map(|executor| executor.stake)
     }
 
+    #[cfg(feature = "std")]
+    fn authority_stake_weight(who: &T::AccountId) -> Option<T::StakeWeight> {
+        Executors::<T>::get(who).and_then(|executor_config| {
+            Authorities::<T>::get()
+                .iter()
+                .find_map(|(authority, stake_weight)| {
+                    if *authority == executor_config.public_key {
+                        Some(*stake_weight)
+                    } else {
+                        None
+                    }
+                })
+        })
+    }
+}
+
+impl<T: Config> Pallet<T> {
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
     }

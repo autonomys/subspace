@@ -1,8 +1,8 @@
 use crate::{
-    self as pallet_domain_registry, DomainConfig, DomainCreators, DomainOperators, Domains, Error,
-    NextDomainId,
+    self as pallet_domain_registry, DomainAuthorities, DomainCreators, DomainOperators,
+    DomainTotalStakeWeight, Domains, Error, NextDomainId,
 };
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
@@ -14,6 +14,8 @@ use sp_runtime::Percent;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+type DomainConfig = crate::DomainConfig<Test>;
 
 frame_support::construct_runtime!(
     pub struct Test
@@ -98,12 +100,7 @@ impl pallet_executor_registry::Config for Test {
     type EpochDuration = EpochDuration;
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
-}
-
-impl crate::ExecutorRegistry<AccountId, Balance> for ExecutorRegistry {
-    fn executor_stake(who: &AccountId) -> Option<Balance> {
-        ExecutorRegistry::executor_stake(who)
-    }
+    type OnNewEpoch = DomainRegistry;
 }
 
 parameter_types! {
@@ -115,6 +112,7 @@ parameter_types! {
 impl pallet_domain_registry::Config for Test {
     type Event = Event;
     type Currency = Balances;
+    type StakeWeight = StakeWeight;
     type ExecutorRegistry = ExecutorRegistry;
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
@@ -145,6 +143,12 @@ fn new_test_ext() -> sp_io::TestExternalities {
                 200,
                 2 + 10000,
                 ExecutorPair::from_seed(&U256::from(2u32).into()).public(),
+            ),
+            (
+                3,
+                300,
+                3 + 10000,
+                ExecutorPair::from_seed(&U256::from(3u32).into()).public(),
             ),
         ],
         slot_probability: (1u64, 1u64),
@@ -310,7 +314,7 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
 
         assert_noop!(
             DomainRegistry::register_domain_operator(
-                Origin::signed(3),
+                Origin::signed(8),
                 1,
                 Percent::from_percent(30),
             ),
@@ -339,5 +343,47 @@ fn deregister_domain_operator_should_work() {
         ));
 
         assert!(DomainOperators::<Test>::get(1, 0).is_none());
+    });
+}
+
+#[test]
+fn rotate_domain_authorities_should_work() {
+    new_test_ext().execute_with(|| {
+        assert_eq!(
+            DomainAuthorities::<Test>::iter().collect::<Vec<_>>(),
+            vec![(0, 1, 80)]
+        );
+        assert_eq!(
+            DomainTotalStakeWeight::<Test>::iter().collect::<Vec<_>>(),
+            vec![(0, 80)]
+        );
+
+        assert_ok!(DomainRegistry::register_domain_operator(
+            Origin::signed(2),
+            0,
+            Percent::from_percent(20),
+        ));
+
+        assert_ok!(DomainRegistry::register_domain_operator(
+            Origin::signed(3),
+            0,
+            Percent::from_percent(30),
+        ));
+
+        let epoch_end = EpochDuration::get();
+
+        for b in (System::block_number() + 1)..=epoch_end {
+            System::set_block_number(b);
+            <ExecutorRegistry as Hooks<BlockNumber>>::on_initialize(b);
+        }
+
+        assert_eq!(
+            DomainAuthorities::<Test>::iter().collect::<Vec<_>>(),
+            vec![(0, 3, 90), (0, 1, 80), (0, 2, 40)]
+        );
+        assert_eq!(
+            DomainTotalStakeWeight::<Test>::iter().collect::<Vec<_>>(),
+            vec![(0, 90 + 80 + 40)]
+        );
     });
 }

@@ -269,6 +269,23 @@ impl pallet_executor_registry::Config for Runtime {
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
+    type OnNewEpoch = ();
+}
+
+parameter_types! {
+    pub const MinDomainDeposit: Balance = 10 * SSC;
+    pub const MaxDomainDeposit: Balance = 1000 * SSC;
+    pub const MinDomainOperatorStake: Balance = 10 * SSC;
+}
+
+impl pallet_domain_registry::Config for Runtime {
+    type Event = Event;
+    type Currency = Balances;
+    type StakeWeight = sp_domains::StakeWeight;
+    type ExecutorRegistry = ExecutorRegistry;
+    type MinDomainDeposit = MinDomainDeposit;
+    type MaxDomainDeposit = MaxDomainDeposit;
+    type MinDomainOperatorStake = MinDomainOperatorStake;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -292,6 +309,7 @@ construct_runtime!(
         // Must be after Balances pallet so that its genesis is built after the Balances genesis is
         // built.
         ExecutorRegistry: pallet_executor_registry,
+        DomainRegistry: pallet_domain_registry,
     }
 );
 

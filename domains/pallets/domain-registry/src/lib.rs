@@ -21,26 +21,26 @@
 mod tests;
 
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
+use frame_support::weights::Weight;
 pub use pallet::*;
 use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
+use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::Zero;
 use sp_runtime::Percent;
+use sp_std::collections::btree_map::BTreeMap;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
+type DomainConfig<T> =
+    sp_domains::DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>, Weight>;
 
-// TODO: Move to an appropriate place when using it.
-/// Executor registry interface.
-pub trait ExecutorRegistry<AccountId, Balance> {
-    /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not an executor.
-    fn executor_stake(who: &AccountId) -> Option<Balance>;
-}
+const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, ExecutorRegistry};
+    use super::{BalanceOf, DomainConfig};
+    use codec::Codec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
@@ -48,8 +48,10 @@ mod pallet {
         BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionCode,
         InvalidTransactionProof,
     };
-    use sp_runtime::traits::Zero;
-    use sp_runtime::Percent;
+    use sp_executor_registry::ExecutorRegistry;
+    use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize};
+    use sp_runtime::{FixedPointOperand, Percent};
+    use sp_std::fmt::Debug;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -57,8 +59,22 @@ mod pallet {
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
+        /// The stake weight of an executor.
+        type StakeWeight: Parameter
+            + Member
+            + AtLeast32BitUnsigned
+            + Codec
+            + Default
+            + Copy
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaxEncodedLen
+            + TypeInfo
+            + FixedPointOperand
+            + From<BalanceOf<Self>>;
+
         /// Interface to access the executor info.
-        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>>;
+        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>, Self::StakeWeight>;
 
         /// Minimum amount of deposit to create a domain.
         #[pallet::constant]
@@ -83,28 +99,6 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Domain configuration.
-    #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
-    #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-    pub struct DomainConfig<Hash, Balance> {
-        /// Hash of the domain wasm runtime blob.
-        pub wasm_runtime_hash: Hash,
-
-        // May be supported later.
-        //pub upgrade_keys: Vec<AccountId>,
-        // TODO: elaborate this field.
-        pub bundle_frequency: u32,
-
-        /// Maximum domain bundle size in bytes.
-        pub max_bundle_size: u32,
-
-        /// Maximum domain bundle weight.
-        pub max_bundle_weight: Weight,
-
-        /// Minimum executor stake value to be an operator on this domain.
-        pub min_operator_stake: Balance,
-    }
-
     /// Domain id for the next domain.
     #[pallet::storage]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
@@ -124,7 +118,7 @@ mod pallet {
     /// A map tracking all the non-system domains.
     #[pallet::storage]
     pub(super) type Domains<T: Config> =
-        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T::Hash, BalanceOf<T>>, OptionQuery>;
+        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T>, OptionQuery>;
 
     /// (executor, domain_id, allocated_stake_proportion)
     #[pallet::storage]
@@ -138,6 +132,23 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// (domain_id, domain_authority, domain_stake_weight)
+    #[pallet::storage]
+    pub(super) type DomainAuthorities<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        T::AccountId,
+        T::StakeWeight,
+        OptionQuery,
+    >;
+
+    /// A map tracking the total stake weight of each domain.
+    #[pallet::storage]
+    pub(super) type DomainTotalStakeWeight<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, T::StakeWeight, OptionQuery>;
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
@@ -146,7 +157,7 @@ mod pallet {
         pub fn create_domain(
             origin: OriginFor<T>,
             deposit: BalanceOf<T>,
-            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            domain_config: DomainConfig<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -171,7 +182,7 @@ mod pallet {
         pub fn update_domain_config(
             origin: OriginFor<T>,
             domain_id: DomainId,
-            _domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            _domain_config: DomainConfig<T>,
         ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
@@ -304,7 +315,7 @@ mod pallet {
     type GenesisDomainInfo<T> = (
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
-        DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>>,
+        DomainConfig<T>,
         <T as frame_system::Config>::AccountId,
         Percent,
     );
@@ -340,6 +351,16 @@ mod pallet {
                     *operator_stake,
                 )
                 .expect("Failed to apply the genesis domain operator registration");
+
+                let stake_weight = T::ExecutorRegistry::authority_stake_weight(domain_operator)
+                    .expect("Genesis domain operator must be a genesis executor authority; qed");
+                let domain_stake_weight: T::StakeWeight = operator_stake.mul_floor(stake_weight);
+
+                DomainAuthorities::<T>::insert(domain_id, domain_operator, domain_stake_weight);
+                DomainTotalStakeWeight::<T>::mutate(domain_id, |maybe_total| {
+                    let old = maybe_total.unwrap_or_default();
+                    maybe_total.replace(old + domain_stake_weight);
+                });
             }
         }
     }
@@ -383,7 +404,7 @@ mod pallet {
             creator: T::AccountId,
             domain_id: DomainId,
             deposit: BalanceOf<T>,
-            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            domain_config: DomainConfig<T>,
         },
 
         /// A new domain operator.
@@ -411,17 +432,6 @@ mod pallet {
         BundleEquivocationProofProcessed,
 
         InvalidTransactionProofProcessed,
-    }
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
-            // TODO: Need a hook in pallet-executor-registry to snapshot the domain
-            // authorities as well as the stake weight on each new epoch.
-
-            // TODO: proper weight
-            Weight::zero()
-        }
     }
 
     /// Constructs a `TransactionValidity` with pallet-domain-registry specific defaults.
@@ -509,11 +519,40 @@ mod pallet {
     }
 }
 
+impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
+    // TODO: similar to the executors, bench how many domain operators can be supported.
+    /// Rotate the domain authorities on each new epoch.
+    fn on_new_epoch(executor_weights: BTreeMap<T::AccountId, T::StakeWeight>) {
+        let _ = DomainAuthorities::<T>::clear(u32::MAX, None);
+        let _ = DomainTotalStakeWeight::<T>::clear(u32::MAX, None);
+
+        let mut total_stake_weights = BTreeMap::new();
+
+        for (operator, domain_id, stake_allocation) in DomainOperators::<T>::iter() {
+            // TODO: Need to confirm whether an inactive executor can still be the domain authority.
+            if let Some(stake_weight) = executor_weights.get(&operator) {
+                let domain_stake_weight: T::StakeWeight = stake_allocation.mul_floor(*stake_weight);
+
+                total_stake_weights
+                    .entry(domain_id)
+                    .and_modify(|total| *total += domain_stake_weight)
+                    .or_insert(domain_stake_weight);
+
+                DomainAuthorities::<T>::insert(domain_id, operator, domain_stake_weight);
+            }
+        }
+
+        for (domain_id, total_stake_weight) in total_stake_weights {
+            DomainTotalStakeWeight::<T>::insert(domain_id, total_stake_weight);
+        }
+    }
+}
+
 impl<T: Config> Pallet<T> {
     fn can_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,
-        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+        domain_config: &DomainConfig<T>,
     ) -> Result<(), Error<T>> {
         if deposit < T::MinDomainDeposit::get() {
             return Err(Error::<T>::DepositTooSmall);
@@ -537,7 +576,7 @@ impl<T: Config> Pallet<T> {
     fn apply_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,
-        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+        domain_config: &DomainConfig<T>,
     ) -> DomainId {
         T::Currency::set_lock(DOMAIN_LOCK_ID, who, deposit, WithdrawReasons::all());
 

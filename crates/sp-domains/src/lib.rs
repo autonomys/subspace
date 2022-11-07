@@ -82,6 +82,28 @@ pub type StakeWeight = u128;
 // TODO: unify the DomainId usage across the codebase.
 pub type DomainId = u64;
 
+/// Domain configuration.
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub struct DomainConfig<Hash, Balance, Weight> {
+    /// Hash of the domain wasm runtime blob.
+    pub wasm_runtime_hash: Hash,
+
+    // May be supported later.
+    //pub upgrade_keys: Vec<AccountId>,
+    // TODO: elaborate this field.
+    pub bundle_frequency: u32,
+
+    /// Maximum domain bundle size in bytes.
+    pub max_bundle_size: u32,
+
+    /// Maximum domain bundle weight.
+    pub max_bundle_weight: Weight,
+
+    /// Minimum executor stake value to be an operator on this domain.
+    pub min_operator_stake: Balance,
+}
+
 /// Custom invalid validity code for the extrinsics in pallet-executor.
 #[repr(u8)]
 pub enum InvalidTransactionCode {
