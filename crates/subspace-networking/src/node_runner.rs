@@ -16,12 +16,14 @@ use libp2p::kad::{
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, PutRecordOk,
     QueryId, QueryResult, Quorum, Record,
 };
+use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm};
 use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Weak;
 use std::time::Duration;
@@ -77,6 +79,8 @@ where
     max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     max_established_outgoing_connections: u32,
+    /// Prometheus metrics.
+    metrics: Metrics,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -93,6 +97,7 @@ where
     pub reserved_peers: HashMap<PeerId, Multiaddr>,
     pub max_established_incoming_connections: u32,
     pub max_established_outgoing_connections: u32,
+    pub metrics: Metrics,
 }
 
 impl<RecordStore> NodeRunner<RecordStore>
@@ -110,6 +115,7 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            metrics,
         }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         Self {
@@ -129,6 +135,7 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            metrics,
         }
     }
 
@@ -145,6 +152,7 @@ where
                 },
                 swarm_event = self.swarm.next() => {
                     if let Some(swarm_event) = swarm_event {
+                        self.register_event_metrics(&swarm_event);
                         self.handle_swarm_event(swarm_event).await;
                     } else {
                         break;
@@ -255,7 +263,7 @@ where
             .get_closest_peers(random_peer_id);
     }
 
-    async fn handle_swarm_event<E: std::fmt::Debug>(&mut self, swarm_event: SwarmEvent<Event, E>) {
+    async fn handle_swarm_event<E: Debug>(&mut self, swarm_event: SwarmEvent<Event, E>) {
         match swarm_event {
             SwarmEvent::Behaviour(Event::Identify(event)) => {
                 self.handle_identify_event(event).await;
@@ -849,6 +857,30 @@ where
                         sender: result_sender,
                     },
                 );
+            }
+        }
+    }
+
+    fn register_event_metrics<E: Debug>(&mut self, swarm_event: &SwarmEvent<Event, E>) {
+        match swarm_event {
+            SwarmEvent::Behaviour(Event::Ping(ping_event)) => {
+                self.metrics.record(ping_event);
+            }
+            SwarmEvent::Behaviour(Event::Identify(identify_event)) => {
+                self.metrics.record(identify_event);
+            }
+            SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
+                self.metrics.record(kademlia_event);
+            }
+            SwarmEvent::Behaviour(Event::Gossipsub(gossipsub_event)) => {
+                self.metrics.record(gossipsub_event);
+            }
+            // TODO: implement in the upstream repository
+            // SwarmEvent::Behaviour(Event::RequestResponse(request_response_event)) => {
+            //     self.metrics.record(request_response_event);
+            // }
+            swarm_event => {
+                self.metrics.record(swarm_event);
             }
         }
     }

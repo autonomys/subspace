@@ -9,6 +9,7 @@ use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::utils::convert_multiaddresses;
+use crate::utils::prometheus::start_prometheus_metrics_server;
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -19,6 +20,7 @@ use libp2p::gossipsub::{
 };
 use libp2p::identify::IdentifyConfig;
 use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
+use libp2p::metrics::Metrics;
 use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
@@ -27,6 +29,7 @@ use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use prometheus_client::registry::Registry;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -118,6 +121,8 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// Defines optional prometheus metrics server address. None will prevent the server start.
+    pub prometheus_metrics_server_address: Option<String>,
 }
 
 impl fmt::Debug for Config {
@@ -173,8 +178,8 @@ impl Config {
             .expect("Default config for gossipsub is always correct; qed");
 
         let keypair = identity::Keypair::Sr25519(keypair);
-
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
+
         Self {
             keypair,
             listen_on: vec![],
@@ -193,6 +198,7 @@ impl Config {
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            prometheus_metrics_server_address: None,
         }
     }
 }
@@ -239,10 +245,23 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        prometheus_metrics_server_address,
     } = config;
     let local_peer_id = keypair.public().to_peer_id();
 
     let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
+
+    let mut metric_registry = Registry::default();
+    let metrics = Metrics::new(&mut metric_registry);
+
+    // Init prometheus
+    if let Some(address) = prometheus_metrics_server_address {
+        tokio::task::spawn(async move {
+            start_prometheus_metrics_server(address.parse().unwrap(), metric_registry)
+                .await
+                .unwrap();
+        });
+    }
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -298,6 +317,7 @@ where
             reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            metrics,
         });
 
         Ok((node, node_runner))
