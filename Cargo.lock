@@ -1493,10 +1493,12 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-client-api",
+ "sc-consensus",
  "sc-network",
  "sc-network-gossip",
  "sc-utils",
  "sp-api",
+ "sp-blockchain",
  "sp-core",
  "sp-messenger",
  "sp-runtime",
@@ -4484,6 +4486,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-domain-registry"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "pallet-executor-registry",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-domains",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-domain-tracker"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domain-tracker",
+ "sp-io",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-std",
+ "system-runtime-primitives",
+]
+
+[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
@@ -4566,6 +4604,7 @@ dependencies = [
  "hex",
  "log",
  "pallet-balances",
+ "pallet-domain-tracker",
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
@@ -7410,6 +7449,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-domain-tracker"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-inherents",
+]
+
+[[package]]
 name = "sp-domains"
 version = "0.1.0"
 dependencies = [
@@ -7971,6 +8018,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "blake2-rfc",
+ "criterion",
  "derive_more",
  "dusk-bls12_381",
  "dusk-bytes",

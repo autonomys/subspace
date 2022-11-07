@@ -74,6 +74,16 @@ where
     }
 }
 
+/// Returns true if the domain_id maps to a system domain.
+pub fn is_system_domain(domain_id: DomainId) -> bool {
+    domain_id <= 100
+}
+
+/// Returns true if the domain_id maps to a core domain.
+pub fn is_core_domain(domain_id: DomainId) -> bool {
+    domain_id > 100 && domain_id <= 1000
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for system domain.
     pub trait SystemDomainApi<AccountId: Encode + Decode> {

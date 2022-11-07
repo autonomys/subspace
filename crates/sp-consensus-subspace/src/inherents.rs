@@ -31,7 +31,12 @@ pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 #[cfg_attr(feature = "std", derive(Decode))]
 pub enum InherentError {
     /// List of root blocks is not correct.
-    IncorrectRootBlocksList,
+    IncorrectRootBlocksList {
+        /// Expected list of root blocks according to node's inherents.
+        expected: Vec<RootBlock>,
+        /// List of root blocks contained within proposed block.
+        actual: Vec<RootBlock>,
+    },
     /// List of root blocks is not present.
     MissingRootBlocksList,
 }

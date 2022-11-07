@@ -3,8 +3,7 @@ use frame_support::PalletError;
 use hash_db::Hasher;
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
-use sp_messenger::messages::Proof;
-use sp_trie::{read_trie_value, LayoutV1};
+use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use std::marker::PhantomData;
 
 /// Verification error.
@@ -24,11 +23,12 @@ pub(crate) struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
 
 impl<H: Hasher> StorageProofVerifier<H> {
     pub(crate) fn verify_and_get_value<V: Decode>(
-        proof: Proof<H::Out>,
+        state_root: &H::Out,
+        proof: StorageProof,
         key: StorageKey,
     ) -> Result<V, VerificationError> {
-        let db = proof.message_proof.into_memory_db::<H>();
-        let val = read_trie_value::<LayoutV1<H>, _>(&db, &proof.state_root, key.as_ref())
+        let db = proof.into_memory_db::<H>();
+        let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref())
             .map_err(|_| VerificationError::InvalidProof)?
             .ok_or(VerificationError::MissingValue)?;
 
