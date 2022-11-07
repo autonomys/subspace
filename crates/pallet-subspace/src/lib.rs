@@ -581,7 +581,10 @@ mod pallet {
                     .expect("Subspace inherent data must be provided");
 
                 if root_blocks != &inherent_data.root_blocks {
-                    return Err(InherentError::IncorrectRootBlocksList);
+                    return Err(InherentError::IncorrectRootBlocksList {
+                        expected: inherent_data.root_blocks,
+                        actual: root_blocks.clone(),
+                    });
                 }
             }
 
