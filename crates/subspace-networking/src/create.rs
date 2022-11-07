@@ -18,7 +18,7 @@ use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::IdentifyConfig;
-use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
+use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
 use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
@@ -27,6 +27,7 @@ use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -44,9 +45,19 @@ const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
 // The default maximum incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_TTL_IN_SECS: u64 = 86400; /* 1 day */
+const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: u64 = 3600; /* 1 hour */
+const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
+    Some(Duration::from_secs(3600)); /* 1 hour */
+// Defines a republication interval for item providers in Kademlia network.
+const KADEMLIA_RECORD_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
+    Some(Duration::from_secs(4 * 3600)); /* 4 hour */
+// Object replication factor. It must consider different peer types with no record stores.
+const KADEMLIA_RECORD_REPLICATION_FACTOR: NonZeroUsize =
+    NonZeroUsize::new(10).expect("Manually set value should be > 0");
+// Defines a replication factor for Kademlia on get_record operation.
+// "Good citizen" supports the network health.
+const KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS: u16 = 3;
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
@@ -125,15 +136,22 @@ impl Config {
         kademlia
             .set_protocol_name(KADEMLIA_PROTOCOL)
             .set_max_packet_size(2 * PIECE_SIZE)
-            // Providers' settings
-            .set_provider_record_ttl(Some(Duration::from_secs(KADEMLIA_PROVIDER_TTL_IN_SECS)))
-            .set_provider_publication_interval(Some(Duration::from_secs(
-                KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS,
-            )))
+            .set_kbucket_inserts(KademliaBucketInserts::Manual)
+            .set_replication_factor(KADEMLIA_RECORD_REPLICATION_FACTOR)
+            .set_caching(KademliaCaching::Enabled {
+                max_peers: KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS,
+            })
             // Ignore any puts
             // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
             .set_record_filtering(KademliaStoreInserts::Unfiltered)
-            .set_kbucket_inserts(KademliaBucketInserts::Manual);
+            // Providers' settings
+            .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
+            .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)
+            // Records' settings
+            .set_publication_interval(KADEMLIA_RECORD_REPUBLICATION_INTERVAL_IN_SECS)
+            // Our records don't expire.
+            .set_record_ttl(None)
+            .set_replication_interval(None);
 
         let mut yamux_config = YamuxConfig::default();
         // Enable proper flow-control: window updates are only sent when buffered data has been

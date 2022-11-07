@@ -1,3 +1,5 @@
+#![feature(type_changing_struct_update)]
+
 mod commands;
 mod ss58;
 mod utils;
@@ -33,13 +35,6 @@ static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 struct FarmingArgs {
-    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[clap(long)]
-    bootstrap_nodes: Vec<Multiaddr>,
-    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
-    /// multiple are supported.
-    #[clap(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
-    listen_on: Vec<Multiaddr>,
     /// WebSocket RPC URL of the Subspace node to connect to
     #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
     node_rpc_url: String,
@@ -55,9 +50,27 @@ struct FarmingArgs {
     /// Disable farming
     #[clap(long)]
     disable_farming: bool,
+    /// DSN parameters
+    #[clap(flatten)]
+    dsn: DsnArgs,
+}
+
+/// Arguments for DSN
+#[derive(Debug, Parser)]
+struct DsnArgs {
     /// Enable DSN and use DSN piece provider for plotting
     #[clap(long)]
     enable_dsn: bool,
+    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
+    #[clap(long)]
+    bootstrap_nodes: Vec<Multiaddr>,
+    /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
+    /// multiple are supported.
+    #[clap(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
+    listen_on: Vec<Multiaddr>,
+    /// Record cache size in items.
+    #[clap(long, default_value_t = 32768)]
+    record_cache_size: usize,
 }
 
 #[derive(Debug, Clone, Copy, ArgEnum)]
@@ -175,13 +188,11 @@ impl FromStr for DiskFarm {
 struct Command {
     #[clap(subcommand)]
     subcommand: Subcommand,
-    /// Base path for data storage instead of platform-specific default
+    /// Base path for data storage.
     #[clap(
         long,
         default_value_os_t = utils::default_base_path(),
         value_hint = ValueHint::FilePath,
-        conflicts_with = "farm",
-        conflicts_with = "tmp"
     )]
     base_path: PathBuf,
     /// Specify single plot located at specified path, can be specified multiple times to use
@@ -277,7 +288,7 @@ async fn main() -> Result<()> {
                 }
 
                 vec![DiskFarm {
-                    directory: base_path,
+                    directory: base_path.clone(),
                     allocated_plotting_space: get_usable_plot_space(plot_size),
                 }]
             } else {
@@ -290,7 +301,7 @@ async fn main() -> Result<()> {
                 command.farm
             };
 
-            commands::farm_multi_disk(disk_farms, farming_args).await?;
+            commands::farm_multi_disk(base_path, disk_farms, farming_args).await?;
         }
         Subcommand::Info => {
             let disk_farms = if command.farm.is_empty() {

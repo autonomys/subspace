@@ -255,7 +255,7 @@ impl PlotMetadataHeader {
 
 /// Metadata of the plotted sector
 #[doc(hidden)]
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub struct SectorMetadata {
     /// Total number of pieces in archived history of the blockchain as of sector creation
     pub total_pieces: NonZeroU64,
@@ -432,6 +432,7 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 #[derive(Default, Debug)]
 struct Handlers {
     sector_plotted: Handler<PlottedSector>,
+    solution: Handler<SolutionResponse>,
 }
 
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
@@ -710,6 +711,7 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
+                            // TODO: Remove RPC version and keep DSN version only.
                             let piece_receiver = MultiChannelPieceReceiver::new(
                                 rpc_client.clone(),
                                 dsn_node.clone(),
@@ -784,6 +786,7 @@ impl SingleDiskPlot {
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
                 let handle = handle.clone();
+                let handlers = Arc::clone(&handlers);
                 let metadata_header = Arc::clone(&metadata_header);
                 let mut start_receiver = start_sender.subscribe();
                 let shutting_down = Arc::clone(&shutting_down);
@@ -890,11 +893,13 @@ impl SingleDiskPlot {
                                 solutions.push(solution);
                             }
 
+                            let response = SolutionResponse {
+                                slot_number: slot_info.slot_number,
+                                solutions,
+                            };
+                            handlers.solution.call_simple(&response);
                             handle
-                                .block_on(rpc_client.submit_solution_response(SolutionResponse {
-                                    slot_number: slot_info.slot_number,
-                                    solutions,
-                                }))
+                                .block_on(rpc_client.submit_solution_response(response))
                                 .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
                                     error,
                                 })?;
@@ -1064,6 +1069,11 @@ impl SingleDiskPlot {
     /// Subscribe to sector plotting notification
     pub fn on_sector_plotted(&self, callback: HandlerFn<PlottedSector>) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
+    }
+
+    /// Subscribe to new solution notification
+    pub fn on_solution(&self, callback: HandlerFn<SolutionResponse>) -> HandlerId {
+        self.handlers.solution.add(callback)
     }
 
     /// Run and wait for background threads to exit or return an error
