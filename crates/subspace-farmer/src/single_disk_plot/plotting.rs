@@ -14,6 +14,7 @@ use thiserror::Error;
 use tracing::debug;
 
 /// Information about sector that was plotted
+#[derive(Debug, Clone)]
 pub struct PlottedSector {
     /// Sector ID
     pub sector_id: SectorId,

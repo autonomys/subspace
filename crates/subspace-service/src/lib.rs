@@ -417,7 +417,22 @@ where
             &subspace_link,
             dsn_config,
             task_manager.spawn_essential_handle(),
+            piece_cache.clone(),
             Arc::new(move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()),
+            Arc::new({
+                let client = client.clone();
+
+                move || {
+                    let best_block_id = BlockId::Hash(client.info().best_hash);
+                    let total_pieces = client
+                        .runtime_api()
+                        .total_pieces(&best_block_id)
+                        .expect("Can't receive total pieces number.");
+
+                    // segment index with a zero-based index-shift
+                    (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
+                }
+            }),
         )
         .await?;
     }

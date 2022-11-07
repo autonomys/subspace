@@ -6495,6 +6495,7 @@ dependencies = [
  "parity-scale-codec",
  "sc-client-api",
  "subspace-core-primitives",
+ "subspace-networking",
 ]
 
 [[package]]
@@ -8036,6 +8037,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "blake2-rfc",
+ "criterion",
  "derive_more",
  "dusk-bls12_381",
  "dusk-bytes",

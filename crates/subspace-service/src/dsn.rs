@@ -1,5 +1,9 @@
+mod piece_record_store;
+
+use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
 use futures::StreamExt;
 use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
+use sc_piece_cache::AuxPieceCache;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
@@ -7,7 +11,7 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGM
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    MemoryRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
 
@@ -28,11 +32,13 @@ pub struct DsnConfig {
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
 /// pub-sub protocol.
-pub async fn start_dsn_node<Block, Spawner>(
+pub async fn start_dsn_node<Block, Spawner, AS: sc_client_api::AuxStore + Sync + Send + 'static>(
     subspace_link: &SubspaceLink<Block>,
     dsn_config: DsnConfig,
     spawner: Spawner,
+    piece_cache: AuxPieceCache<AS>,
     piece_getter: PieceGetter,
+    segment_index_getter: SegmentIndexGetter,
 ) -> Result<(), CreationError>
 where
     Block: BlockT,
@@ -41,10 +47,12 @@ where
     let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
 
+    let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
+
     trace!("Subspace networking starting.");
 
     let networking_config = subspace_networking::Config::<
-        CustomRecordStore<MemoryRecordStorage, MemoryProviderStorage>,
+        CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>,
     > {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.dsn_listen_on,
@@ -64,10 +72,7 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(
-            MemoryRecordStorage::default(),
-            MemoryProviderStorage::default(),
-        ),
+        record_store: CustomRecordStore::new(record_storage, MemoryProviderStorage::default()),
         ..subspace_networking::Config::with_generated_keypair()
     };
 
