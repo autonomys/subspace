@@ -7,6 +7,7 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_consensus_slots::Slot;
 use sp_domains::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
@@ -105,78 +106,13 @@ where
             global_challenge,
         } = slot_info;
 
-        let parent_number = self.client.info().best_number;
-
-        let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
-        // TODO: proper timeout
-        let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
-
-        let pending_iterator = select! {
-            res = t1 => res,
-            _ = t2 => {
-                tracing::warn!(
-                    target: LOG_TARGET,
-                    "Timeout fired waiting for transaction pool at #{}, proceeding with production.",
-                    parent_number,
-                );
-                self.transaction_pool.ready()
-            }
-        };
-
-        // TODO: proper deadline
-        let pushing_duration = time::Duration::from_micros(500);
-
-        let start = time::Instant::now();
-
-        // TODO: Select transactions properly from the transaction pool
-        //
-        // Selection policy:
-        // - minimize the transaction equivocation.
-        // - maximize the executor computation power.
-        let mut extrinsics = Vec::new();
-
-        for pending_tx in pending_iterator {
-            if start.elapsed() >= pushing_duration {
-                break;
-            }
-            let pending_tx_data = pending_tx.data().clone();
-            extrinsics.push(pending_tx_data);
-        }
-
-        let extrinsics_root = BlakeTwo256::ordered_trie_root(
-            extrinsics.iter().map(|xt| xt.encode()).collect(),
-            sp_core::storage::StateVersion::V1,
-        );
-
-        let _state_root = self
-            .client
-            .expect_header(BlockId::Number(parent_number))?
-            .state_root();
-
-        let receipts = if self
-            .primary_chain_client
-            .expect_block_number_from_id(&BlockId::Hash(primary_hash))?
-            .is_zero()
-        {
-            Vec::new()
-        } else {
-            self.expected_receipts_on_primary_chain(primary_hash, parent_number)?
-        };
-
-        let bundle = Bundle {
-            header: BundleHeader {
-                primary_hash,
-                slot_number: slot.into(),
-                extrinsics_root,
-            },
-            receipts,
-            extrinsics,
-        };
-
         if let Some(proof_of_election) = self.solve_bundle_election_challenge(global_challenge)? {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
+            let bundle = self.propose_bundle_at(slot, primary_hash).await?;
+
             let to_sign = bundle.hash();
+
             match SyncCryptoStore::sign_with(
                 &*self.keystore,
                 ExecutorPublicKey::ID,
@@ -309,6 +245,83 @@ where
         }
 
         Ok(None)
+    }
+
+    async fn propose_bundle_at(
+        &self,
+        slot: Slot,
+        primary_hash: PBlock::Hash,
+    ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+    {
+        let parent_number = self.client.info().best_number;
+
+        let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
+        // TODO: proper timeout
+        let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
+
+        let pending_iterator = select! {
+            res = t1 => res,
+            _ = t2 => {
+                tracing::warn!(
+                    target: LOG_TARGET,
+                    "Timeout fired waiting for transaction pool at #{}, proceeding with production.",
+                    parent_number,
+                );
+                self.transaction_pool.ready()
+            }
+        };
+
+        // TODO: proper deadline
+        let pushing_duration = time::Duration::from_micros(500);
+
+        let start = time::Instant::now();
+
+        // TODO: Select transactions properly from the transaction pool
+        //
+        // Selection policy:
+        // - minimize the transaction equivocation.
+        // - maximize the executor computation power.
+        let mut extrinsics = Vec::new();
+
+        for pending_tx in pending_iterator {
+            if start.elapsed() >= pushing_duration {
+                break;
+            }
+            let pending_tx_data = pending_tx.data().clone();
+            extrinsics.push(pending_tx_data);
+        }
+
+        let extrinsics_root = BlakeTwo256::ordered_trie_root(
+            extrinsics.iter().map(|xt| xt.encode()).collect(),
+            sp_core::storage::StateVersion::V1,
+        );
+
+        let _state_root = self
+            .client
+            .expect_header(BlockId::Number(parent_number))?
+            .state_root();
+
+        let receipts = if self
+            .primary_chain_client
+            .expect_block_number_from_id(&BlockId::Hash(primary_hash))?
+            .is_zero()
+        {
+            Vec::new()
+        } else {
+            self.expected_receipts_on_primary_chain(primary_hash, parent_number)?
+        };
+
+        let bundle = Bundle {
+            header: BundleHeader {
+                primary_hash,
+                slot_number: slot.into(),
+                extrinsics_root,
+            },
+            receipts,
+            extrinsics,
+        };
+
+        Ok(bundle)
     }
 
     fn expected_receipts_on_primary_chain(
