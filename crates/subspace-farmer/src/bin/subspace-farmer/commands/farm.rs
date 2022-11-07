@@ -1,21 +1,32 @@
 use crate::utils::shutdown_signal;
-use crate::{DiskFarm, FarmingArgs, Multiaddr};
+use crate::{DiskFarm, DsnArgs, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
 use subspace_networking::{
-    create, BootstrappedNetworkingParameters, Config, Node, NodeRunner, PieceByHashRequestHandler,
-    PieceByHashResponse, PieceKey,
+    create, BootstrappedNetworkingParameters, Config, CustomRecordStore,
+    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
+    ParityDbRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, trace};
+
+const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
+
+// Type alias for currently configured Kademlia's custom record store.
+type ConfiguredRecordStore = CustomRecordStore<
+    LimitedSizeRecordStorageWrapper<ParityDbRecordStorage>,
+    MemoryProviderStorage,
+>;
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -33,6 +44,7 @@ struct ReadersAndPieces {
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm_multi_disk(
+    base_path: PathBuf,
     disk_farms: Vec<DiskFarm>,
     farming_args: FarmingArgs,
 ) -> Result<(), anyhow::Error> {
@@ -45,20 +57,17 @@ pub(crate) async fn farm_multi_disk(
     // TODO: Use variables and remove this suppression
     #[allow(unused_variables)]
     let FarmingArgs {
-        bootstrap_nodes,
-        listen_on,
         node_rpc_url,
         reward_address,
         plot_size: _,
         disk_concurrency,
         disable_farming,
-        enable_dsn,
+        dsn,
     } = farming_args;
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
-    let (node, node_runner) =
-        configure_dsn(enable_dsn, listen_on, bootstrap_nodes, &readers_and_pieces).await?;
+    let (node, node_runner) = configure_dsn(base_path, dsn, &readers_and_pieces).await?;
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -215,20 +224,36 @@ pub(crate) async fn farm_multi_disk(
 }
 
 async fn configure_dsn(
-    enable_dsn: bool,
-    listen_on: Vec<Multiaddr>,
-    bootstrap_nodes: Vec<Multiaddr>,
+    base_path: PathBuf,
+    DsnArgs {
+        enable_dsn,
+        listen_on,
+        bootstrap_nodes,
+        record_cache_size,
+    }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
-) -> Result<(Option<Node>, Option<NodeRunner>), anyhow::Error> {
+) -> Result<(Option<Node>, Option<NodeRunner<ConfiguredRecordStore>>), anyhow::Error> {
     if !enable_dsn {
         info!("No DSN configured.");
         return Ok((None, None));
     }
 
+    let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
+        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
+            .expect("We don't expect an error on manually set value."),
+    );
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
+    let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
+
+    info!(
+        ?record_cache_db_path,
+        ?record_cache_size,
+        "Record cache DB configured."
+    );
+
     let handle = Handle::current();
-    let config = Config {
+    let config = Config::<ConfiguredRecordStore> {
         listen_on,
         allow_non_globals_in_dht: true,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
@@ -287,10 +312,18 @@ async fn configure_dsn(
 
             Some(PieceByHashResponse { piece: result })
         })],
+        record_store: CustomRecordStore::new(
+            LimitedSizeRecordStorageWrapper::new(
+                ParityDbRecordStorage::new(&record_cache_db_path)
+                    .map_err(|err| anyhow::anyhow!(err.to_string()))?,
+                record_cache_size,
+            ),
+            MemoryProviderStorage::default(),
+        ),
         ..Config::with_generated_keypair()
     };
 
-    create(config)
+    create::<ConfiguredRecordStore>(config)
         .await
         .map(|(node, node_runner)| (Some(node), Some(node_runner)))
         .map_err(Into::into)

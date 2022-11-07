@@ -15,7 +15,7 @@
 
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
-#![feature(ip, try_blocks)]
+#![feature(const_option, ip, try_blocks)]
 
 mod behavior;
 mod create;
@@ -35,8 +35,9 @@ pub use crate::node::{
 };
 pub use crate::node_runner::NodeRunner;
 pub use behavior::custom_record_store::{
-    CustomRecordStore, GetOnlyRecordStorage, MemoryProviderStorage, MemoryRecordStorage,
-    NoRecordStorage, ParityDbRecordStorage, RecordStorage,
+    CustomRecordStore, GetOnlyRecordStorage, LimitedSizeRecordStorageWrapper,
+    MemoryProviderStorage, MemoryRecordStorage, NoRecordStorage, ParityDbRecordStorage,
+    RecordStorage,
 };
 pub use create::{create, Config, CreationError, RelayMode};
 pub use libp2p;

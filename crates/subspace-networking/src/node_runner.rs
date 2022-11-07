@@ -664,13 +664,13 @@ where
                     key: key.into(),
                     value,
                     publisher: Some(local_peer_id),
-                    expires: None, //TODO: set expiration time
+                    expires: None, // No time expiration.
                 };
                 let query_result = self
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .put_record(record, Quorum::One); //TODO: add replication factor
+                    .put_record(record, Quorum::One);
 
                 match query_result {
                     Ok(query_id) => {

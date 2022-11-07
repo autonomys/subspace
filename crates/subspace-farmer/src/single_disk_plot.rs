@@ -711,6 +711,7 @@ impl SingleDiskPlot {
                                     |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
                                 )?;
 
+                            // TODO: Remove RPC version and keep DSN version only.
                             let piece_receiver = MultiChannelPieceReceiver::new(
                                 rpc_client.clone(),
                                 dsn_node.clone(),

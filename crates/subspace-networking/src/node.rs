@@ -382,7 +382,7 @@ impl Node {
         result_receiver.await?.map_err(PublishError::Publish)
     }
 
-    // Sends the generic request to the peer and awaits the result.
+    /// Sends the generic request to the peer and awaits the result.
     pub async fn send_generic_request<Request>(
         &self,
         peer_id: PeerId,
