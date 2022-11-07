@@ -117,8 +117,9 @@ pub struct Message<DomainId, Balance> {
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Proof<StateRoot> {
     pub state_root: StateRoot,
-    /// Storage proof that src_domain state_root is registered on System domain
-    // TODO(ved): add system domain proof when store is available
+    /// Storage proof that src_domain state_root is registered on System domain.
+    /// This is optional when the src_domain is the system domain.
+    pub core_domain_proof: Option<StorageProof>,
     /// Storage proof that message is processed on src_domain.
     pub message_proof: StorageProof,
 }
