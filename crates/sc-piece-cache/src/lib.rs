@@ -37,6 +37,7 @@ pub trait PieceCache: Clone {
     fn get_piece_by_key(&self, key: Vec<u8>) -> Result<Option<Piece>, Box<dyn Error>>;
 }
 
+// TODO: Refactor AuxPieceCache once we remove RPC endpoint.
 /// Cache of pieces in aux storage
 #[derive(Debug)]
 pub struct AuxPieceCache<AS> {
