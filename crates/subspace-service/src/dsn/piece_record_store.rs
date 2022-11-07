@@ -56,7 +56,7 @@ impl<'a, AS: AuxStore> RecordStorage<'a> for AuxRecordStorage<AS> {
     }
 
     fn put(&mut self, rec: Record) -> subspace_networking::libp2p::kad::store::Result<()> {
-        trace!(key=?rec.key, "Attempted to put a record t0 the aux piece record store.");
+        trace!(key=?rec.key, "Attempted to put a record to the aux piece record store.");
 
         Ok(())
     }
@@ -71,13 +71,8 @@ impl<'a, AS: AuxStore> RecordStorage<'a> for AuxRecordStorage<AS> {
     fn records(&'a self) -> Self::RecordsIter {
         let segment_index = (self.last_segment_index_getter)();
 
-        let starting_piece_index: PieceIndex = if segment_index >= MAX_SEGMENTS_NUMBER_IN_CACHE {
-            let starting_segment_index = segment_index - MAX_SEGMENTS_NUMBER_IN_CACHE;
-
-            starting_segment_index * PIECES_IN_SEGMENT as u64
-        } else {
-            0
-        };
+        let starting_piece_index: PieceIndex =
+            segment_index.saturating_sub(MAX_SEGMENTS_NUMBER_IN_CACHE) * PIECES_IN_SEGMENT as u64;
 
         AuxStoreRecordIterator::new(starting_piece_index, self.piece_cache.clone())
     }
