@@ -749,6 +749,10 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn executor_stake(who: &T::AccountId) -> Option<BalanceOf<T>> {
+        Executors::<T>::get(who).map(|executor| executor.stake)
+    }
+
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
     }
