@@ -8,11 +8,14 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_domains::{
+use sp_domains::bundle_election::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    Bundle, BundleElectionParams, BundleHeader, DomainId, ExecutorApi, ExecutorPublicKey,
-    ExecutorSignature, ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
+    BundleElectionParams,
+};
+use sp_domains::{
+    Bundle, BundleHeader, DomainId, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
+    ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;

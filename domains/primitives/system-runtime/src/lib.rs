@@ -18,7 +18,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use parity_scale_codec::{Decode, Encode};
-use sp_domains::{BundleElectionParams, DomainId};
+use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::DomainId;
 use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
