@@ -151,14 +151,19 @@ mod pallet {
         }
     }
 
-    impl<T: Config> DomainTracker<StateRootOf<T>> for Pallet<T> {
+    impl<T: Config> DomainTracker<T::BlockNumber, StateRootOf<T>> for Pallet<T> {
         fn system_domain_state_roots() -> Vec<StateRootOf<T>> {
             SystemDomainStateRoots::<T>::get()
         }
 
-        fn domain_state_root_storage_key(_domain_id: DomainId) -> StorageKey {
-            // TODO(ved): return well know key once the storage item for domain registry is defined.
-            todo!()
+        fn domain_state_root_storage_key(
+            domain_id: DomainId,
+            block_number: T::BlockNumber,
+        ) -> StorageKey {
+            StorageKey(CoreDomainsStateRoot::<T>::hashed_key_for(
+                domain_id,
+                block_number,
+            ))
         }
     }
 

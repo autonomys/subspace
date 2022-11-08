@@ -185,7 +185,7 @@ fn test_storage_proof_verification_invalid() {
 
     let (_, _, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
-    let proof = Proof {
+    let proof: Proof<u64, _> = Proof {
         state_root: Default::default(),
         core_domain_proof: None,
         message_proof: storage_proof,
@@ -211,7 +211,7 @@ fn test_storage_proof_verification_missing_value() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, U256::one());
-    let proof = Proof {
+    let proof: Proof<u64, _> = Proof {
         state_root,
         core_domain_proof: None,
         message_proof: storage_proof,
@@ -239,7 +239,7 @@ fn test_storage_proof_verification() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
-    let proof = Proof {
+    let proof: Proof<u64, _> = Proof {
         state_root,
         core_domain_proof: None,
         message_proof: storage_proof,

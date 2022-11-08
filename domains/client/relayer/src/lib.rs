@@ -91,7 +91,7 @@ where
         &self,
         block_id: BlockId<Block>,
         key: &StorageKey,
-    ) -> Result<Proof<Block::Hash>, Error> {
+    ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
         self.domain_client
             .header(block_id)?
             .map(|header| *header.state_root())
@@ -110,7 +110,7 @@ where
     }
 
     fn construct_cross_domain_message_and_submit<
-        Submitter: Fn(CrossDomainMessage<Block::Hash>) -> Result<(), sp_api::ApiError>,
+        Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), sp_api::ApiError>,
     >(
         &self,
         block_id: BlockId<Block>,
