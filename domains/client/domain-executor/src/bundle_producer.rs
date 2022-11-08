@@ -11,8 +11,8 @@ use sp_consensus_slots::Slot;
 use sp_domains::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    Bundle, BundleElectionParams, BundleHeader, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
-    ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
+    Bundle, BundleElectionParams, BundleHeader, DomainId, ExecutorApi, ExecutorPublicKey,
+    ExecutorSignature, ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -31,6 +31,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
 {
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
@@ -48,6 +49,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
             transaction_pool: self.transaction_pool.clone(),
@@ -75,6 +77,7 @@ where
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(super) fn new(
+        domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         transaction_pool: Arc<TransactionPool>,
@@ -83,6 +86,7 @@ where
         keystore: SyncCryptoStorePtr,
     ) -> Self {
         Self {
+            domain_id,
             primary_chain_client,
             client,
             transaction_pool,
@@ -187,11 +191,8 @@ where
                 authority_id.as_ref(),
                 transcript_data.clone(),
             ) {
-                // TODO: specify domain_id properly.
-                const SYSTEM_DOMAIN_ID: u32 = 0;
-
                 let election_solution = derive_bundle_election_solution(
-                    SYSTEM_DOMAIN_ID.into(),
+                    self.domain_id,
                     vrf_signature.output.to_bytes(),
                     &authority_id,
                     &global_challenge,
@@ -228,7 +229,7 @@ where
                         .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
 
                     let proof_of_election = ProofOfElection {
-                        domain_id: SYSTEM_DOMAIN_ID.into(),
+                        domain_id: self.domain_id,
                         vrf_output: vrf_signature.output.to_bytes(),
                         vrf_proof: vrf_signature.proof.to_bytes(),
                         executor_public_key: authority_id,

@@ -118,6 +118,8 @@ const CORE_DOMAIN_ID_START: u32 = 100;
 const OPEN_DOMAIN_ID_START: u32 = 1000;
 
 impl DomainId {
+    pub const SYSTEM: Self = Self::new(0);
+
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)
