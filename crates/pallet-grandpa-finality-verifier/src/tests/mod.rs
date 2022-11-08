@@ -354,7 +354,7 @@ fn successfully_imports_header_in_forward_direction() {
             ));
             assert_eq!(
                 <ChainTip<TestRuntime>>::get(chain_id),
-                ((tip as u32).encode(), header.hash().encode())
+                (tip.encode(), header.hash().encode())
             );
             parent_header = header;
         }
@@ -404,7 +404,7 @@ fn successfully_imports_parent_headers_in_reverse_and_forward() {
             ));
             assert_eq!(
                 <ChainTip<TestRuntime>>::get(chain_id),
-                ((tip as u32).encode(), header.hash().encode())
+                (tip.encode(), header.hash().encode())
             );
             parent_header = header;
         }

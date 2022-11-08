@@ -67,8 +67,8 @@ pub fn nonce_of(who: AccountId) -> u64 {
 
 pub fn initialize_block(header: &Header) {
 	// populate environment.
-	<Number>::put(&header.number);
-	<ParentHash>::put(&header.parent_hash);
+	<Number>::put(header.number);
+	<ParentHash>::put(header.parent_hash);
 	<StorageDigest>::put(header.digest());
 	storage::unhashed::put(well_known_keys::EXTRINSIC_INDEX, &0u32);
 

@@ -114,7 +114,7 @@ pub struct PublicKey(
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(&self.0))
+        write!(f, "{}", hex::encode(self.0))
     }
 }
 

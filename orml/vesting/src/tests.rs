@@ -269,7 +269,7 @@ fn claim_for_works() {
 				reasons: Reasons::All,
 			})
 		);
-		assert!(VestingSchedules::<Runtime>::contains_key(&BOB));
+		assert!(VestingSchedules::<Runtime>::contains_key(BOB));
 
 		MockBlockNumberProvider::set(21);
 
@@ -277,7 +277,7 @@ fn claim_for_works() {
 
 		// no locks anymore
 		assert_eq!(PalletBalances::locks(&BOB), vec![]);
-		assert!(!VestingSchedules::<Runtime>::contains_key(&BOB));
+		assert!(!VestingSchedules::<Runtime>::contains_key(BOB));
 	});
 }
 
@@ -383,7 +383,7 @@ fn multiple_vesting_schedule_claim_works() {
 
 		assert_ok!(Vesting::claim(Origin::signed(BOB)));
 
-		assert!(!VestingSchedules::<Runtime>::contains_key(&BOB));
+		assert!(!VestingSchedules::<Runtime>::contains_key(BOB));
 
 		assert_eq!(PalletBalances::locks(&BOB), vec![]);
 	});

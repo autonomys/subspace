@@ -464,7 +464,7 @@ fn object_on_the_edge_of_segment() {
                 // * block continuation segment item bytes
                 // * one byte for segment item enum variant
                 // * compact length of bytes length
-                offset: SEGMENT_SIZE as u32
+                offset: SEGMENT_SIZE
                     - 1
                     - 1
                     - 1
