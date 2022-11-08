@@ -66,6 +66,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the storage key for the state root of the core domain
         /// as present on the system domain.
-        fn storage_key_for_core_domain_state_root(domain_id: DomainId) -> StorageKey;
+        fn storage_key_for_core_domain_state_root(domain_id: DomainId, block_number: BlockNumber) -> StorageKey;
     }
 }
