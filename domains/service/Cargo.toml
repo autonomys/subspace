@@ -34,8 +34,6 @@ pallet-transaction-payment-rpc = { git = "https://github.com/subspace/substrate"
 substrate-frame-rpc-system = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 ## Substrate Client Dependencies
-sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
-sc-cli = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598", default-features = false }
 sc-client-api = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sc-consensus = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 sc-executor = { git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
