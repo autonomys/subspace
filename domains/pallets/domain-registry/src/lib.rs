@@ -582,8 +582,8 @@ impl<T: Config> Pallet<T> {
 
         let domain_id = NextDomainId::<T>::get();
 
-        Domains::<T>::insert(domain_id, &domain_config);
-        DomainCreators::<T>::insert(domain_id, &who, deposit);
+        Domains::<T>::insert(domain_id, domain_config);
+        DomainCreators::<T>::insert(domain_id, who, deposit);
         NextDomainId::<T>::put(domain_id + 1);
 
         domain_id
@@ -606,7 +606,7 @@ impl<T: Config> Pallet<T> {
         }
 
         // Exclude the potential existing stake allocation on this domain.
-        let already_allocated: Percent = DomainOperators::<T>::iter_prefix(&who)
+        let already_allocated: Percent = DomainOperators::<T>::iter_prefix(who)
             .filter_map(|(id, value)| if domain_id == id { None } else { Some(value) })
             .fold(Zero::zero(), |acc, x| acc + x);
 

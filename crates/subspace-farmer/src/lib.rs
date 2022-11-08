@@ -4,7 +4,6 @@
     hash_drain_filter,
     int_log,
     io_error_other,
-    map_first_last,
     trait_alias,
     try_blocks,
     type_changing_struct_update

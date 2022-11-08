@@ -445,7 +445,7 @@ where
                         Ok(GetClosestPeersOk { key, peers }) => {
                             trace!(
                                 "Get closest peers query for {} yielded {} results",
-                                hex::encode(&key),
+                                hex::encode(key),
                                 peers.len(),
                             );
 
@@ -467,7 +467,7 @@ where
 
                             debug!(
                                 "Get closest peers query for {} timed out with {} results",
-                                hex::encode(&key),
+                                hex::encode(key),
                                 peers.len(),
                             );
                         }
