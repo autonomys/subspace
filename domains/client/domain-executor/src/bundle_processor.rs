@@ -10,7 +10,7 @@ use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
 use sc_network::NetworkService;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
@@ -321,20 +321,12 @@ where
 
         // TODO: The applied txs can be fully removed from the transaction pool
 
-        // TODO: Remove once the network is reset.
-        if self
-            .primary_chain_client
-            .runtime_api()
-            .api_version::<dyn ExecutorApi<PBlock, Block::Hash>>(&BlockId::Hash(primary_hash))?
-            .map_or(false, |v| v >= 3)
-        {
-            self.check_receipts_in_primary_block(primary_hash)?;
-        }
+        self.check_receipts_in_primary_block(primary_hash)?;
 
         if self.primary_network.is_major_syncing() {
             tracing::debug!(
                 target: LOG_TARGET,
-                "Skip generating signed execution receipt as the primary node is still major syncing..."
+                "Skip checking the receipts as the primary node is still major syncing..."
             );
             return Ok(());
         }
