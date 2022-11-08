@@ -1,10 +1,11 @@
+use parity_scale_codec::Encode;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{Node, ToMultihash};
+use subspace_networking::{GSet, Node, ToMultihash};
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
@@ -48,12 +49,10 @@ impl PieceSectorPublisher {
                     .to_multihash_by_code(MultihashCode::Sector);
 
                 // TODO: rework to piece announcing (pull-model) after fixing
-                // TODO: as an alternative - support multiple PeerID via CRDT-structure
                 // https://github.com/libp2p/rust-libp2p/issues/3048
-                let result = self
-                    .dsn_node
-                    .put_value(key, self.dsn_node.id().to_bytes())
-                    .await;
+                let gset = GSet::from_single(self.dsn_node.id().to_bytes());
+
+                let result = self.dsn_node.put_value(key, gset.encode()).await;
 
                 if let Err(error) = result {
                     error!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");

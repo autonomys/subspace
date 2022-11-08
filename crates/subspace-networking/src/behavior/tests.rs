@@ -1,6 +1,6 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::custom_record_store::{
-    CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+    CustomRecordStore, GSet, MemoryProviderStorage, NoRecordStorage,
 };
 use chrono::Duration;
 use libp2p::kad::record::Key;
@@ -9,7 +9,8 @@ use libp2p::kad::ProviderRecord;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
-use std::collections::HashSet;
+use parity_scale_codec::{Decode, Encode};
+use std::collections::{BTreeSet, HashSet};
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -126,4 +127,25 @@ fn check_custom_store_api() {
         HashSet::from_iter(vec![rec2].into_iter()),
         provided_collection
     );
+}
+
+#[test]
+fn gset_works_as_expected() {
+    let gset1 = GSet::from_single(1);
+    let gset2 = GSet::from_single(1);
+    let gset3 = GSet::from_single(2);
+    let gset4 = GSet::from_single(3);
+
+    let gset13 = gset1.merge(gset3);
+    let gset24 = gset2.merge(gset4);
+
+    let merged_gset = gset13.merge(gset24);
+
+    assert_eq!(merged_gset.values(), BTreeSet::from_iter(vec![1, 2, 3]));
+
+    let encoded = merged_gset.encode();
+
+    let decoded_gset = GSet::decode(&mut encoded.as_slice()).unwrap();
+
+    assert_eq!(merged_gset, decoded_gset);
 }

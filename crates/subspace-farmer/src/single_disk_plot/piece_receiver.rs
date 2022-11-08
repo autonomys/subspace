@@ -1,12 +1,13 @@
 use crate::RpcClient;
 use async_trait::async_trait;
+use parity_scale_codec::Decode;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{Node, PieceByHashRequest, PieceKey, ToMultihash};
+use subspace_networking::{GSet, Node, PieceByHashRequest, PieceKey, ToMultihash};
 use tokio::time::sleep;
 use tracing::{debug, error, info, trace, warn};
 
@@ -120,41 +121,57 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
             let piece_result = dsn_node.get_value(key).await;
 
             match piece_result {
-                Ok(Some(peer_id)) => {
+                Ok(Some(encoded_gset)) => {
                     trace!(
                         %piece_index,
                         ?key,
-                        ?peer_id,
-                        "get_value returned a piece-by-sector provider"
+                        "get_value returned a piece-by-sector providers"
                     );
 
-                    if let Ok(piece_provider_id) = PeerId::from_bytes(&peer_id) {
-                        let request_result = dsn_node
-                            .send_generic_request(
-                                piece_provider_id,
-                                PieceByHashRequest {
-                                    key: PieceKey::Sector(PieceIndexHash::from_index(piece_index)),
-                                },
-                            )
-                            .await;
+                    // Workaround for archival sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
+                    let peer_set =
+                        if let Ok(gset) = GSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice()) {
+                            gset
+                        } else {
+                            warn!(
+                                %piece_index,
+                                ?key,
+                                "get_value returned a non-gset value"
+                            );
+                            return None;
+                        };
 
-                        match request_result {
-                            Ok(request) => {
-                                if let Some(piece) = request.piece {
-                                    return Some(piece);
+                    for peer_id in peer_set.values() {
+                        if let Ok(piece_provider_id) = PeerId::from_bytes(&peer_id) {
+                            let request_result = dsn_node
+                                .send_generic_request(
+                                    piece_provider_id,
+                                    PieceByHashRequest {
+                                        key: PieceKey::Sector(PieceIndexHash::from_index(
+                                            piece_index,
+                                        )),
+                                    },
+                                )
+                                .await;
+
+                            match request_result {
+                                Ok(request) => {
+                                    if let Some(piece) = request.piece {
+                                        return Some(piece);
+                                    }
+                                }
+                                Err(error) => {
+                                    error!(%piece_index,?peer_id, ?key, ?error, "Error on piece-by-hash request.");
                                 }
                             }
-                            Err(error) => {
-                                error!(%piece_index,?peer_id, ?key, ?error, "Error on piece-by-hash request.");
-                            }
+                        } else {
+                            error!(
+                                %piece_index,
+                                ?peer_id,
+                                ?key,
+                                "Cannot convert piece-by-sector provider PeerId from received bytes"
+                            );
                         }
-                    } else {
-                        error!(
-                            %piece_index,
-                            ?peer_id,
-                            ?key,
-                            "Cannot convert piece-by-sector provider PeerId from received bytes"
-                        );
                     }
                 }
                 Ok(None) => {

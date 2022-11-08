@@ -1,4 +1,5 @@
 use crate::utils::circular_buffer::{CircularBuffer, IsQueue};
+use crate::utils::multihash::MultihashCode;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{Error, RecordStore};
 use libp2p::kad::{store, ProviderRecord, Record};
@@ -7,7 +8,7 @@ use libp2p::PeerId;
 use parity_db::{ColumnOptions, Db, Options};
 use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::iter::IntoIterator;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -242,6 +243,50 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 }
 
+// Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
+// It returns `new_record` in case of other multihash or non-GSet values
+fn merge_records_in_case_of_sector_multihash(
+    new_record: Record,
+    old_record: Option<Record>,
+) -> Record {
+    let updated_rec = old_record.and_then(|old_record| {
+        let key_multihash = old_record.key.to_vec();
+
+        let multihash = Multihash::from_bytes(key_multihash.as_slice())
+            .expect("Key should represent a valid multihash");
+
+        if multihash.code() == u64::from(MultihashCode::Sector) {
+            let gset1 = if let Ok(gset) = GSet::<Vec<u8>>::decode(&mut old_record.value.as_slice())
+            {
+                gset
+            } else {
+                // Value is not a GSet
+                return Some(new_record.clone());
+            };
+
+            let gset2 = if let Ok(gset) =
+                GSet::<Vec<u8>>::decode(&mut new_record.value.clone().as_slice())
+            {
+                gset
+            } else {
+                // Value is not a GSet
+                return Some(new_record.clone());
+            };
+
+            let merged_gset = gset1.merge(gset2);
+
+            Some(Record {
+                value: merged_gset.encode(),
+                ..new_record.clone()
+            })
+        } else {
+            None
+        }
+    });
+
+    updated_rec.unwrap_or(new_record)
+}
+
 /// Defines a stub for record storage with all operations defaulted.
 #[derive(Clone, Default)]
 pub struct NoRecordStorage;
@@ -390,7 +435,12 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     fn put(&mut self, record: Record) -> store::Result<()> {
         debug!("Saving a new record to DB, key: {:?}", record.key);
 
-        let db_rec = ParityDbRecord::from(record.clone());
+        // Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
+        // It returns `new_record` in case of other multihash or non-GSet values
+        let old_record = self.get(&record.key).map(|item| item.into_owned());
+        let actual_record = merge_records_in_case_of_sector_multihash(record.clone(), old_record);
+
+        let db_rec = ParityDbRecord::from(actual_record);
 
         self.save_data(&record.key, Some(db_rec.encode()));
 
@@ -526,5 +576,38 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
 
     fn records(&'a self) -> Self::RecordsIter {
         self.inner.records()
+    }
+}
+
+/// CRDT structure - growing only set:
+/// https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type
+#[derive(Debug, Default, Clone, Eq, PartialEq, Encode, Decode)]
+pub struct GSet<T: Ord + Clone> {
+    values: BTreeSet<T>,
+}
+
+impl<T: Ord + Clone> GSet<T> {
+    /// Creates GSet from a single item.
+    pub fn from_single(item: T) -> Self {
+        Self {
+            values: BTreeSet::from_iter(vec![item]),
+        }
+    }
+
+    /// Merges two sets into a new one.
+    pub fn merge(&self, other_set: GSet<T>) -> GSet<T> {
+        Self {
+            values: BTreeSet::from_iter(
+                self.values
+                    .clone()
+                    .into_iter()
+                    .chain(other_set.values.into_iter()),
+            ),
+        }
+    }
+
+    /// Clones inner values.
+    pub fn values(&self) -> BTreeSet<T> {
+        self.values.clone()
     }
 }
