@@ -39,6 +39,7 @@ mod pallet {
     use sp_domain_tracker::{InherentType, NoFatalError, INHERENT_IDENTIFIER};
     use sp_domains::DomainId;
     use sp_messenger::DomainTracker;
+    use sp_runtime::traits::{CheckedSub, One};
     use sp_std::vec::Vec;
 
     #[pallet::config]
@@ -60,6 +61,21 @@ mod pallet {
     #[pallet::getter(fn system_domain_state_roots)]
     pub(super) type SystemDomainStateRoots<T: Config> =
         StorageValue<_, Vec<StateRootOf<T>>, ValueQuery>;
+
+    /// Latest Confirmed Core domain state roots bounded to the StateRootBound value.
+    /// This is essentially used by relayer and updated by the system domain runtime when there is
+    /// a new state root confirmed for a given core domain.
+    #[pallet::storage]
+    #[pallet::getter(fn core_domains_state_root)]
+    pub(super) type CoreDomainsStateRoot<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        DomainId,
+        Identity,
+        T::BlockNumber,
+        StateRootOf<T>,
+        OptionQuery,
+    >;
 
     /// Flag to allow only one update per block through inherent.
     #[pallet::storage]
@@ -96,7 +112,7 @@ mod pallet {
                 Error::<T>::StateRootsAlreadyUpdated
             );
 
-            Self::do_update_state_root(state_root);
+            Self::do_update_system_domain_state_root(state_root);
             StateRootsUpdated::<T>::set(true);
             Self::deposit_event(Event::<T>::StateRootsUpdated);
             Ok(())
@@ -147,7 +163,7 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn do_update_state_root(state_root: StateRootOf<T>) {
+        pub fn do_update_system_domain_state_root(state_root: StateRootOf<T>) {
             SystemDomainStateRoots::<T>::mutate(|state_roots| {
                 state_roots.push(state_root);
                 if state_roots.len() > T::StateRootsBound::get() as usize {
@@ -155,6 +171,30 @@ mod pallet {
                     *state_roots = state_roots.split_off(first_idx);
                 }
             });
+        }
+
+        /// Adds a new state root for the core domain mapped to domain_id.
+        /// This is only called on system domain runtime by the domain registry.
+        /// TODO(ved): ensure this is called when the core domain state roots are available.
+        pub fn add_confirmed_core_domain_state_root(
+            domain_id: DomainId,
+            block_number: T::BlockNumber,
+            state_root: StateRootOf<T>,
+        ) {
+            CoreDomainsStateRoot::<T>::insert(domain_id, block_number, state_root);
+            // ensure to bound the total state roots
+            match block_number.checked_sub(&T::StateRootsBound::get().into()) {
+                // nothing to clean up yet
+                None => (),
+                Some(mut from) => {
+                    while CoreDomainsStateRoot::<T>::take(domain_id, from).is_some() {
+                        from = match from.checked_sub(&One::one()) {
+                            None => return,
+                            Some(from) => from,
+                        }
+                    }
+                }
+            }
         }
     }
 }

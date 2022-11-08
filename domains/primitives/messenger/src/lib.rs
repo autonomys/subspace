@@ -63,5 +63,9 @@ sp_api::decl_runtime_apis! {
         fn submit_inbox_response_message_unsigned(
             msg: CrossDomainMessage<Block::Hash>,
         );
+
+        /// Returns the storage key for the state root of the core domain
+        /// as present on the system domain.
+        fn storage_key_for_core_domain_state_root(domain_id: DomainId) -> StorageKey;
     }
 }

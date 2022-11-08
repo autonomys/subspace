@@ -1,8 +1,9 @@
 use crate::mock::{new_test_ext, DomainTracker, MockRuntime, Origin, StateRootsBound};
-use crate::pallet::SystemDomainStateRoots;
+use crate::pallet::{CoreDomainsStateRoot, SystemDomainStateRoots};
 use crate::Error;
 use frame_support::{assert_err, assert_ok};
 use sp_domain_tracker::InherentType;
+use sp_domains::DomainId;
 use sp_runtime::traits::{BlakeTwo256, Hash};
 
 #[test]
@@ -62,5 +63,18 @@ fn test_state_roots_bounded() {
             vec![BlakeTwo256::hash_of(&2), BlakeTwo256::hash_of(&3)]
         );
         assert!(DomainTracker::state_roots_updated());
+    })
+}
+
+#[test]
+fn test_core_domain_state_roots_bounded() {
+    new_test_ext().execute_with(|| {
+        let domain_id = DomainId::new(1);
+        CoreDomainsStateRoot::<MockRuntime>::insert(domain_id, 1, BlakeTwo256::hash_of(&1));
+        CoreDomainsStateRoot::<MockRuntime>::insert(domain_id, 2, BlakeTwo256::hash_of(&2));
+
+        assert!(DomainTracker::core_domains_state_root(domain_id, 1).is_some());
+        DomainTracker::add_confirmed_core_domain_state_root(domain_id, 3, BlakeTwo256::hash_of(&3));
+        assert!(DomainTracker::core_domains_state_root(domain_id, 1).is_none());
     })
 }
