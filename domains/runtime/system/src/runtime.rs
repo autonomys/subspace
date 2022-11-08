@@ -8,6 +8,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
+use sp_domains::{BundleElectionParams, DomainId};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
@@ -439,8 +440,9 @@ impl_runtime_apis! {
             ).encode()
         }
 
-        fn bundle_elections_params() -> sp_domains::BundleElectionParams {
-            sp_domains::BundleElectionParams {
+        fn bundle_elections_params(_domain_id: DomainId) -> BundleElectionParams {
+            // TODO: support all kinds of domains.
+            BundleElectionParams {
                 authorities: ExecutorRegistry::authorities().into(),
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),

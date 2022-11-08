@@ -171,7 +171,7 @@ where
         } = self
             .client
             .runtime_api()
-            .bundle_elections_params(&best_block_id)?;
+            .bundle_elections_params(&best_block_id, self.domain_id)?;
 
         assert!(
             total_stake_weight
