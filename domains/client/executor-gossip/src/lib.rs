@@ -3,7 +3,9 @@ mod worker;
 use self::worker::GossipWorker;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
-use sc_network::{ObservedRole, PeerId};
+use sc_network::PeerId;
+use sc_network_common::config::NonDefaultSetConfig;
+use sc_network_common::protocol::role::ObservedRole;
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Network as GossipNetwork, ValidationResult, Validator,
     ValidatorContext,
@@ -29,10 +31,9 @@ const REBROADCAST_AFTER: Duration = Duration::from_secs(6);
 
 type MessageHash = [u8; 8];
 
-/// Returns the configuration value to put in [`sc_network::config::NetworkConfiguration::extra_sets`].
-pub fn executor_gossip_peers_set_config() -> sc_network::config::NonDefaultSetConfig {
-    let mut cfg =
-        sc_network::config::NonDefaultSetConfig::new(EXECUTOR_PROTOCOL_NAME.into(), 1024 * 1024);
+/// Returns the configuration value to put in [`NetworkConfiguration::extra_sets`].
+pub fn executor_gossip_peers_set_config() -> NonDefaultSetConfig {
+    let mut cfg = NonDefaultSetConfig::new(EXECUTOR_PROTOCOL_NAME.into(), 1024 * 1024);
     cfg.allow_non_reserved(25, 25);
     cfg
 }

@@ -374,7 +374,7 @@ pub fn read_bundle_election_params(
     let db = storage_proof.into_memory_db::<BlakeTwo256>();
 
     let read_value = |storage_key| {
-        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key)
+        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key, None, None)
             .map_err(|_| ReadBundleElectionParamsError::TrieError)
     };
 

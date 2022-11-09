@@ -166,7 +166,7 @@ impl CliConfiguration<Self> for SecondaryChainCli {
     fn base_path(&self) -> Result<Option<BasePath>> {
         Ok(self
             .shared_params()
-            .base_path()
+            .base_path()?
             .or_else(|| self.base_path.clone().map(Into::into)))
     }
 
@@ -202,8 +202,8 @@ impl CliConfiguration<Self> for SecondaryChainCli {
         self.run.transaction_pool(is_dev)
     }
 
-    fn state_cache_child_ratio(&self) -> Result<Option<usize>> {
-        self.run.state_cache_child_ratio()
+    fn trie_cache_maximum_size(&self) -> Result<Option<usize>> {
+        self.run.trie_cache_maximum_size()
     }
 
     fn rpc_methods(&self) -> Result<sc_service::config::RpcMethods> {

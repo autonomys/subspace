@@ -1,6 +1,6 @@
+use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use sp_core::H256;
-use sp_runtime::parameter_types;
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 
@@ -24,8 +24,8 @@ impl frame_system::Config for MockRuntime {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = u64;
     type Hash = H256;
@@ -33,7 +33,7 @@ impl frame_system::Config for MockRuntime {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -51,7 +51,7 @@ parameter_types! {
 }
 
 impl crate::Config for MockRuntime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type StateRootsBound = StateRootsBound;
 }
 

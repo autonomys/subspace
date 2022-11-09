@@ -427,7 +427,7 @@ where
     ) -> Result<(), sp_blockchain::Error> {
         let extrinsics = self
             .primary_chain_client
-            .block_body(&BlockId::Hash(primary_hash))?
+            .block_body(primary_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
                     "Primary block body for {:?} not found",

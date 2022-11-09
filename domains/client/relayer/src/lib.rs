@@ -89,16 +89,16 @@ where
     /// Constructs the proof for the given key using the system domain backend.
     fn construct_system_domain_storage_proof_for_key_at(
         &self,
-        block_id: BlockId<Block>,
+        block_hash: Block::Hash,
         key: &StorageKey,
     ) -> Result<Proof<Block::Hash>, Error> {
         self.domain_client
-            .header(block_id)?
+            .header(BlockId::Hash(block_hash))?
             .map(|header| *header.state_root())
             .and_then(|state_root| {
                 let proof = self
                     .domain_client
-                    .read_proof(&block_id, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -113,13 +113,13 @@ where
         Submitter: Fn(CrossDomainMessage<Block::Hash>) -> Result<(), sp_api::ApiError>,
     >(
         &self,
-        block_id: BlockId<Block>,
+        block_hash: Block::Hash,
         msgs: Vec<RelayerMessageWithStorageKey>,
         submitter: Submitter,
     ) -> Result<(), Error> {
         for msg in msgs {
             let proof = match self
-                .construct_system_domain_storage_proof_for_key_at(block_id, &msg.storage_key)
+                .construct_system_domain_storage_proof_for_key_at(block_hash, &msg.storage_key)
             {
                 Ok(proof) => proof,
                 Err(_) => {
@@ -148,23 +148,26 @@ where
 
     pub(crate) fn submit_unsigned_messages(
         &self,
-        confirmed_block_id: BlockId<Block>,
+        confirmed_block_hash: Block::Hash,
     ) -> Result<(), Error> {
         let best_block_id = BlockId::Hash(self.domain_client.info().best_hash);
         let api = self.domain_client.runtime_api();
 
         let assigned_messages: RelayerMessagesWithStorageKey = api
-            .relayer_assigned_messages(&confirmed_block_id, self.relayer_id.clone())
+            .relayer_assigned_messages(
+                &BlockId::Hash(confirmed_block_hash),
+                self.relayer_id.clone(),
+            )
             .map_err(|_| Error::FetchAssignedMessages)?;
 
         self.construct_cross_domain_message_and_submit(
-            confirmed_block_id,
+            confirmed_block_hash,
             assigned_messages.outbox,
             |msg| api.submit_outbox_message_unsigned(&best_block_id, msg),
         )?;
 
         self.construct_cross_domain_message_and_submit(
-            confirmed_block_id,
+            confirmed_block_hash,
             assigned_messages.inbox_responses,
             |msg| api.submit_inbox_response_message_unsigned(&best_block_id, msg),
         )?;
