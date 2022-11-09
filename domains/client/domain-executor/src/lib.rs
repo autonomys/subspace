@@ -61,17 +61,17 @@
 #![feature(drain_filter)]
 
 mod aux_schema;
-mod bundle_processor;
-mod bundle_producer;
 mod fraud_proof;
 mod merkle_tree;
+mod system_bundle_processor;
+mod system_bundle_producer;
 #[cfg(test)]
 mod tests;
 mod worker;
 
-use crate::bundle_processor::BundleProcessor;
-use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::system_bundle_processor::BundleProcessor;
+use crate::system_bundle_producer::BundleProducer;
 use crate::worker::BlockInfo;
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
