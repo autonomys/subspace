@@ -267,44 +267,28 @@ where
     }
 }
 
-/// A slot duration.
-///
-/// Create with [`Self::get`].
-#[derive(Clone)]
-pub struct Config(SlotDuration);
+/// Read configuration from the runtime state at current best block.
+pub fn slot_duration<Block: BlockT, Client>(client: &Client) -> ClientResult<SlotDuration>
+where
+    Block: BlockT,
+    Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+{
+    let block_id = if client.usage_info().chain.finalized_state.is_some() {
+        BlockId::Hash(client.usage_info().chain.best_hash)
+    } else {
+        debug!(target: "subspace", "No finalized state is available. Reading config from genesis");
+        BlockId::Hash(client.usage_info().chain.genesis_hash)
+    };
 
-impl Config {
-    /// Fetch the config from the runtime.
-    pub fn get<Block, Client>(client: &Client) -> ClientResult<Self>
-    where
-        Block: BlockT,
-        Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
-        Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-    {
-        trace!(target: "subspace", "Getting slot duration");
-
-        let mut best_block_id = BlockId::Hash(client.usage_info().chain.best_hash);
-        if client.usage_info().chain.finalized_state.is_none() {
-            debug!(
-                target: "subspace",
-                "No finalized state is available. Reading config from genesis"
-            );
-            best_block_id = BlockId::Hash(client.usage_info().chain.genesis_hash);
-        }
-        let slot_duration = client.runtime_api().slot_duration(&best_block_id)?;
-
-        Ok(Self(SlotDuration::from_millis(
-            slot_duration
-                .as_millis()
-                .try_into()
-                .expect("Slot duration in ms never exceeds u64; qed"),
-        )))
-    }
-
-    /// Get the inner slot duration
-    pub fn slot_duration(&self) -> SlotDuration {
-        self.0
-    }
+    Ok(SlotDuration::from_millis(
+        client
+            .runtime_api()
+            .slot_duration(&block_id)?
+            .as_millis()
+            .try_into()
+            .expect("Slot duration in ms never exceeds u64; qed"),
+    ))
 }
 
 /// Parameters for Subspace.
@@ -416,7 +400,7 @@ where
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
     let inner = sc_consensus_slots::start_slot_worker(
-        subspace_link.config.0,
+        subspace_link.slot_duration(),
         select_chain,
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
         SlotWorkerSyncOracle {
@@ -451,7 +435,7 @@ impl Future for SubspaceWorker {
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
-    config: Config,
+    slot_duration: SlotDuration,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_sender: SubspaceNotificationSender<RewardSigningNotification>,
@@ -467,9 +451,9 @@ pub struct SubspaceLink<Block: BlockT> {
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
-    /// Get the config of this link.
-    pub fn config(&self) -> &Config {
-        &self.config
+    /// Get the slot duration from this link.
+    pub fn slot_duration(&self) -> SlotDuration {
+        self.slot_duration
     }
 
     /// Get stream with notifications about new slot arrival with ability to send solution back.
@@ -1235,7 +1219,7 @@ where
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
 pub fn block_import<Client, Block, I, CIDP>(
-    config: Config,
+    slot_duration: SlotDuration,
     wrapped_block_import: I,
     client: Arc<Client>,
     create_inherent_data_providers: CIDP,
@@ -1266,7 +1250,7 @@ where
     let kzg = Kzg::new(kzg::test_public_parameters());
 
     let link = SubspaceLink {
-        config,
+        slot_duration,
         new_slot_notification_sender,
         new_slot_notification_stream,
         reward_signing_notification_sender,
