@@ -189,75 +189,16 @@ where
             "New secondary best number must be equal to the primary number"
         );
 
-        let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
-
-        if let Some(new_runtime) = maybe_new_runtime {
-            let encoded_set_code = self
-                .client
-                .runtime_api()
-                .construct_set_code_extrinsic(&BlockId::Hash(parent_hash), new_runtime.to_vec())?;
-            let set_code_extrinsic =
-                Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
-            extrinsics.push(set_code_extrinsic);
-        }
-
-        let block_builder = BlockBuilder::new(
-            &*self.client,
-            parent_hash,
-            parent_number,
-            RecordProof::No,
-            Default::default(),
-            &*self.backend,
-            extrinsics,
-        )?;
-
-        let BuiltBlock {
-            block,
-            storage_changes,
-            proof: _,
-        } = block_builder.build()?;
-
-        let (header, body) = block.deconstruct();
-        let state_root = *header.state_root();
-        let header_hash = header.hash();
-        let header_number = *header.number();
-
-        let block_import_params = {
-            let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
-            import_block.body = Some(body);
-            import_block.state_action =
-                StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-            // Follow the primary block's fork choice.
-            import_block.fork_choice = Some(fork_choice);
-            import_block
-        };
-
-        let import_result = (&*self.client)
-            .import_block(block_import_params, Default::default())
+        let (header_hash, header_number, state_root) = self
+            .build_and_import_block(
+                parent_hash,
+                parent_number,
+                bundles,
+                shuffling_seed,
+                maybe_new_runtime,
+                fork_choice,
+            )
             .await?;
-
-        match import_result {
-            ImportResult::Imported(..) => {}
-            ImportResult::AlreadyInChain => {}
-            ImportResult::KnownBad => {
-                return Err(sp_consensus::Error::ClientImport(format!(
-                    "Bad block #{header_number}({header_hash:?})"
-                ))
-                .into());
-            }
-            ImportResult::UnknownParent => {
-                return Err(sp_consensus::Error::ClientImport(format!(
-                    "Block #{header_number}({header_hash:?}) has an unknown parent: {parent_hash:?}"
-                ))
-                .into());
-            }
-            ImportResult::MissingState => {
-                return Err(sp_consensus::Error::ClientImport(format!(
-                    "Parent state of block #{header_number}({header_hash:?}) is missing, parent: {parent_hash:?}"
-                ))
-                .into());
-            }
-        }
 
         let mut roots = self
             .client
@@ -341,6 +282,88 @@ where
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
         Ok(())
+    }
+
+    async fn build_and_import_block(
+        &self,
+        parent_hash: Block::Hash,
+        parent_number: NumberFor<Block>,
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        shuffling_seed: Randomness,
+        maybe_new_runtime: Option<Cow<'static, [u8]>>,
+        fork_choice: ForkChoiceStrategy,
+    ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
+        let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+
+        if let Some(new_runtime) = maybe_new_runtime {
+            let encoded_set_code = self
+                .client
+                .runtime_api()
+                .construct_set_code_extrinsic(&BlockId::Hash(parent_hash), new_runtime.to_vec())?;
+            let set_code_extrinsic =
+                Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
+            extrinsics.push(set_code_extrinsic);
+        }
+
+        let block_builder = BlockBuilder::new(
+            &*self.client,
+            parent_hash,
+            parent_number,
+            RecordProof::No,
+            Default::default(),
+            &*self.backend,
+            extrinsics,
+        )?;
+
+        let BuiltBlock {
+            block,
+            storage_changes,
+            proof: _,
+        } = block_builder.build()?;
+
+        let (header, body) = block.deconstruct();
+        let state_root = *header.state_root();
+        let header_hash = header.hash();
+        let header_number = *header.number();
+
+        let block_import_params = {
+            let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+            import_block.body = Some(body);
+            import_block.state_action =
+                StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
+            // Follow the primary block's fork choice.
+            import_block.fork_choice = Some(fork_choice);
+            import_block
+        };
+
+        let import_result = (&*self.client)
+            .import_block(block_import_params, Default::default())
+            .await?;
+
+        match import_result {
+            ImportResult::Imported(..) => {}
+            ImportResult::AlreadyInChain => {}
+            ImportResult::KnownBad => {
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Bad block #{header_number}({header_hash:?})"
+                ))
+                .into());
+            }
+            ImportResult::UnknownParent => {
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Block #{header_number}({header_hash:?}) has an unknown parent: {parent_hash:?}"
+                ))
+                .into());
+            }
+            ImportResult::MissingState => {
+                return Err(sp_consensus::Error::ClientImport(format!(
+                    "Parent state of block #{header_number}({header_hash:?}) is missing, parent: {parent_hash:?}"
+                ))
+                .into());
+            }
+        }
+
+        Ok((header_hash, header_number, state_root))
     }
 
     fn bundles_to_extrinsics(
