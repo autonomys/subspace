@@ -21,8 +21,8 @@
 #![allow(unused_imports, unused_variables, unused_mut)]
 
 use crate::{
-    extract_pre_digest, start_subspace, Config, NewSlotNotification, SubspaceLink, SubspaceParams,
-    SubspaceVerifier,
+    extract_pre_digest, slot_duration, start_subspace, NewSlotNotification, SubspaceLink,
+    SubspaceParams, SubspaceVerifier,
 };
 use codec::Encode;
 use futures::channel::oneshot;
@@ -336,9 +336,9 @@ impl TestNetFactory for SubspaceTestNet {
     ) {
         let client = client.as_client();
 
-        let config = Config::get(&*client).expect("config available");
+        let slot_duration = slot_duration(&*client).expect("slot duration available");
         let (block_import, link) = crate::block_import(
-            config,
+            slot_duration,
             client.clone(),
             client,
             TestCreateInherentDataProviders {

@@ -237,7 +237,7 @@ where
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
-        sc_consensus_subspace::Config::get(&*client)?,
+        sc_consensus_subspace::slot_duration(&*client)?,
         fraud_proof_block_import,
         client.clone(),
         {
@@ -259,7 +259,7 @@ where
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                             *timestamp,
-                            subspace_link.config().slot_duration(),
+                            subspace_link.slot_duration(),
                             subspace_link.root_blocks_for_block(parent_block_number + 1),
                         );
 
@@ -302,7 +302,7 @@ where
             }
         });
 
-    let slot_duration = subspace_link.config().slot_duration();
+    let slot_duration = subspace_link.slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         block_import.clone(),
         None,
@@ -511,7 +511,7 @@ where
                         let subspace_inherents =
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                                 *timestamp,
-                                subspace_link.config().slot_duration(),
+                                subspace_link.slot_duration(),
                                 subspace_link.root_blocks_for_block(parent_block_number + 1),
                             );
 
