@@ -48,6 +48,8 @@ pub enum Error {
     BlockchainError(Box<sp_blockchain::Error>),
     /// Arithmatic related error.
     ArithmaticError(ArithmeticError),
+    /// Emits when failes to fetch a block hash by block number.
+    UnableToFetchBlockHash,
 }
 
 impl From<sp_blockchain::Error> for Error {

@@ -61,8 +61,11 @@ where
 
         while relay_block_from <= relay_block_until {
             let block_id = BlockId::Number(relay_block_from);
-            // TODO: Block hash is needed here
-            relayer.submit_unsigned_messages(todo!("block_hash"))?;
+            let block_hash = relayer
+                .domain_client
+                .block_hash_from_id(&block_id)?
+                .ok_or(Error::UnableToFetchBlockHash)?;
+            relayer.submit_unsigned_messages(block_hash)?;
             relayer.store_last_relayed_block(domain_id, block_id)?;
             relay_block_from = relay_block_from
                 .checked_add(&One::one())
