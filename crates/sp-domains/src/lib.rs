@@ -25,7 +25,9 @@ use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
 use sp_consensus_slots::Slot;
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
+};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
@@ -307,6 +309,11 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, SecondaryHash: Encode>
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
+
+    /// Returns the domain_id of this bundle.
+    pub fn domain_id(&self) -> DomainId {
+        self.proof_of_election.domain_id
+    }
 }
 
 impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
@@ -523,6 +530,14 @@ impl<Hash: Clone + Default + Encode> BundleEquivocationProof<Hash> {
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidTransactionProof;
 
+/// List of [`OpaqueBundle`].
+pub type OpaqueBundles<Block, SecondaryHash> =
+    Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, SecondaryHash>>;
+
+/// List of [`SignedOpaqueBundle`].
+pub type SignedOpaqueBundles<Block, SecondaryHash> =
+    Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, SecondaryHash>>;
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
@@ -542,8 +557,10 @@ sp_api::decl_runtime_apis! {
             invalid_transaction_proof: InvalidTransactionProof,
         );
 
-        /// Extract the bundles from the given extrinsics.
-        fn extract_bundles(extrinsics: Vec<Block::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, Block::Hash, SecondaryHash>>;
+        /// Extract the system bundles from the given extrinsics.
+        fn extract_system_bundles(
+            extrinsics: Vec<Block::Extrinsic>,
+        ) -> (OpaqueBundles<Block, SecondaryHash>, SignedOpaqueBundles<Block, SecondaryHash>);
 
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(

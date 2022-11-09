@@ -451,9 +451,9 @@ where
         Ok(Some(body)) => body,
     };
 
-    let bundles = primary_chain_client
+    let (system_bundles, _core_bundles) = primary_chain_client
         .runtime_api()
-        .extract_bundles(&block_id, extrinsics)?;
+        .extract_system_bundles(&block_id, extrinsics)?;
 
     let header = match primary_chain_client.header(block_id) {
         Err(err) => {
@@ -492,7 +492,7 @@ where
 
     processor(
         (block_hash, block_number, fork_choice),
-        bundles,
+        system_bundles,
         shuffling_seed,
         maybe_new_runtime,
     )
