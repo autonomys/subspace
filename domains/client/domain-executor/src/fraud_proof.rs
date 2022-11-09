@@ -30,15 +30,17 @@ pub enum FraudProofError {
     RuntimeApi(#[from] sp_api::ApiError),
 }
 
-pub(crate) struct FraudProofGenerator<Block, Client, Backend, E> {
+pub(crate) struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     backend: Arc<Backend>,
     code_executor: Arc<E>,
-    _phantom: PhantomData<Block>,
+    _phantom: PhantomData<(Block, PBlock)>,
 }
 
-impl<Block, Client, Backend, E> Clone for FraudProofGenerator<Block, Client, Backend, E> {
+impl<Block, PBlock, Client, Backend, E> Clone
+    for FraudProofGenerator<Block, PBlock, Client, Backend, E>
+{
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
@@ -50,12 +52,13 @@ impl<Block, Client, Backend, E> Clone for FraudProofGenerator<Block, Client, Bac
     }
 }
 
-impl<Block, Client, Backend, E> FraudProofGenerator<Block, Client, Backend, E>
+impl<Block, PBlock, Client, Backend, E> FraudProofGenerator<Block, PBlock, Client, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -80,7 +83,7 @@ where
         }
     }
 
-    pub(crate) fn generate_proof<PBlock: BlockT>(
+    pub(crate) fn generate_proof(
         &self,
         local_trace_index: u32,
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,

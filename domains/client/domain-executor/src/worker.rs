@@ -100,7 +100,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -236,7 +236,10 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            (
+                Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+                Vec<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            ),
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -382,7 +385,10 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            (
+                Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+                Vec<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            ),
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -427,7 +433,10 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            (
+                Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+                Vec<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            ),
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -451,7 +460,7 @@ where
         Ok(Some(body)) => body,
     };
 
-    let (system_bundles, _core_bundles) = primary_chain_client
+    let (system_bundles, core_bundles) = primary_chain_client
         .runtime_api()
         .extract_system_bundles(&block_id, extrinsics)?;
 
@@ -492,7 +501,7 @@ where
 
     processor(
         (block_hash, block_number, fork_choice),
-        system_bundles,
+        (system_bundles, core_bundles),
         shuffling_seed,
         maybe_new_runtime,
     )

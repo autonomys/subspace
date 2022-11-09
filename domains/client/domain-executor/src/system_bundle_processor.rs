@@ -14,7 +14,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle};
+use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
@@ -91,7 +91,7 @@ where
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
-    fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     _phantom_data: PhantomData<PBlock>,
 }
 
@@ -116,6 +116,11 @@ where
     }
 }
 
+type SystemAndCoreBundles<Block, PBlock> = (
+    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
+    Vec<SignedOpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
+);
+
 impl<Block, PBlock, Client, PClient, Backend, E>
     BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
@@ -123,7 +128,7 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -149,7 +154,7 @@ where
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
-        fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
             primary_chain_client,
@@ -172,7 +177,7 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        bundles: SystemAndCoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -288,7 +293,7 @@ where
         &self,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        bundles: SystemAndCoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
         fork_choice: ForkChoiceStrategy,
@@ -369,10 +374,10 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        (system_bundles, core_bundles): SystemAndCoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let mut extrinsics = bundles
+        let origin_system_extrinsics = system_bundles
             .into_iter()
             .flat_map(|bundle| {
                 bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
@@ -390,7 +395,27 @@ where
                         },
                     }
                 })
-            })
+            });
+
+        let mut extrinsics = self
+            .client
+            .runtime_api()
+            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
+            .into_iter()
+            .filter_map(
+                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
+                    Ok(uxt) => Some(uxt),
+                    Err(e) => {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            error = ?e,
+                            "Failed to decode the opaque extrisic in bundle, this should not happen"
+                        );
+                        None
+                    }
+                },
+            )
+            .chain(origin_system_extrinsics)
             .collect::<Vec<_>>();
 
         // TODO: or just Vec::new()?
@@ -577,11 +602,7 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof::<PBlock>(
-                    trace_mismatch_index,
-                    &local_receipt,
-                    bad_signed_bundle_hash,
-                )
+                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to generate fraud proof: {err}"

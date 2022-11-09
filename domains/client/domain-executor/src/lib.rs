@@ -117,7 +117,7 @@ where
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
-    fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
 }
 
@@ -168,7 +168,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -451,7 +451,7 @@ where
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
+            let fraud_proof = self.fraud_proof_generator.generate_proof(
                 trace_mismatch_index,
                 &local_receipt,
                 signed_bundle_hash,
@@ -481,7 +481,12 @@ where
     ) {
         if let Err(err) = self
             .bundle_processor
-            .process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
+            .process_bundles(
+                primary_info,
+                (bundles, Vec::new()), // TODO: No core domain bundles in tests.
+                shuffling_seed,
+                maybe_new_runtime,
+            )
             .await
         {
             tracing::error!(
@@ -538,7 +543,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
