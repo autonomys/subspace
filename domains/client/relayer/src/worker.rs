@@ -2,6 +2,7 @@ use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, StateBackend, LOG_TA
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
 use sp_api::ProvideRuntimeApi;
+use sp_consensus::SyncOracle;
 use sp_domain_tracker::DomainTrackerApi;
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
@@ -10,11 +11,13 @@ use sp_runtime::ArithmeticError;
 use std::sync::Arc;
 use system_runtime_primitives::RelayerId;
 
-// TODO(ved): ensure the client is not in major sync before relayer is ready to process the blocks
-pub async fn relay_system_domain_messages<Client, Block, DBI>(
+/// Starts relaying system domain messages to other domains.
+/// If the node is in major sync, worker waits waits until the sync is finished.
+pub async fn relay_system_domain_messages<Client, Block, DBI, SO>(
     relayer_id: RelayerId,
-    domain_client: Arc<Client>,
-    domain_block_import: DBI,
+    system_domain_client: Arc<Client>,
+    system_domain_block_import: DBI,
+    system_domain_sync_oracle: SO,
 ) -> Result<(), Error>
 where
     Block: BlockT,
@@ -25,21 +28,28 @@ where
         + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
+    SO: SyncOracle,
 {
     relay_domain_messages(
         relayer_id,
-        domain_client,
-        domain_block_import,
+        system_domain_client,
+        system_domain_block_import,
         Relayer::submit_messages_from_system_domain,
+        system_domain_sync_oracle,
     )
     .await
 }
 
-pub async fn relay_core_domain_messages<CDC, SDC, Block, DBI>(
+/// Starts relaying core domain messages to other domains.
+/// If the either system domain or core domain node is in major sync,
+/// worker waits waits until the sync is finished.
+pub async fn relay_core_domain_messages<CDC, SDC, Block, DBI, SO>(
     relayer_id: RelayerId,
     core_domain_client: Arc<CDC>,
     system_domain_client: Arc<SDC>,
     core_domain_block_import: DBI,
+    system_domain_sync_oracle: SO,
+    core_domain_sync_oracle: SO,
 ) -> Result<(), Error>
 where
     Block: BlockT,
@@ -52,7 +62,11 @@ where
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
     SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
     SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
+    SO: SyncOracle,
 {
+    let combined_sync_oracle =
+        CombinedSyncOracle::new(&system_domain_sync_oracle, &core_domain_sync_oracle);
+
     relay_domain_messages(
         relayer_id,
         core_domain_client,
@@ -65,15 +79,17 @@ where
                 block_id,
             )
         },
+        combined_sync_oracle,
     )
     .await
 }
 
-async fn relay_domain_messages<Client, Block, SDBI, MP>(
+async fn relay_domain_messages<Client, Block, SDBI, MP, SO>(
     relayer_id: RelayerId,
     domain_client: Arc<Client>,
     mut domain_block_import: SDBI,
     message_processor: MP,
+    sync_oracle: SO,
 ) -> Result<(), Error>
 where
     Block: BlockT,
@@ -85,6 +101,7 @@ where
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDBI: Stream<Item = NumberFor<Block>> + Unpin,
     MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
+    SO: SyncOracle,
 {
     let domain_id = Relayer::domain_id(&domain_client)?;
     let relay_confirmation_depth = Relayer::relay_confirmation_depth(&domain_client)?;
@@ -102,6 +119,12 @@ where
     // construct proof of each message to be relayed
     // submit XDM as unsigned extrinsic.
     while let Some(block_number) = domain_block_import.next().await {
+        // if the client is in major sync, wait until sync is complete
+        if sync_oracle.is_major_syncing() {
+            tracing::info!(target: LOG_TARGET, "Client is in major sync. Skipping...");
+            continue;
+        }
+
         let relay_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
@@ -132,4 +155,36 @@ where
     }
 
     Ok(())
+}
+
+/// Combines both system and core domain sync oracles into one.
+struct CombinedSyncOracle<'a> {
+    system_domain_sync_oracle: &'a dyn SyncOracle,
+    core_domain_sync_oracle: &'a dyn SyncOracle,
+}
+
+impl<'a> SyncOracle for CombinedSyncOracle<'a> {
+    /// Returns true if either of the domains are in major sync.
+    fn is_major_syncing(&self) -> bool {
+        self.system_domain_sync_oracle.is_major_syncing()
+            || self.core_domain_sync_oracle.is_major_syncing()
+    }
+
+    /// Returns true if either of the domains are offline.
+    fn is_offline(&self) -> bool {
+        self.system_domain_sync_oracle.is_offline() || self.core_domain_sync_oracle.is_offline()
+    }
+}
+
+impl<'a> CombinedSyncOracle<'a> {
+    /// Returns a new sync oracle that wraps system domain and core domain sync oracle.
+    fn new(
+        system_domain_sync_oracle: &'a dyn SyncOracle,
+        core_domain_sync_oracle: &'a dyn SyncOracle,
+    ) -> Self {
+        CombinedSyncOracle {
+            system_domain_sync_oracle,
+            core_domain_sync_oracle,
+        }
+    }
 }
