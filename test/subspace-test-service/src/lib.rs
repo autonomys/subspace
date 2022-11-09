@@ -62,8 +62,8 @@ pub fn node_config(
     run_farmer: bool,
     force_authoring: bool,
     force_synced: bool,
+    base_path: BasePath,
 ) -> Configuration {
-    let base_path = BasePath::new_temp_dir().expect("Could not create temporary directory");
     let root = base_path.path();
     let role = if run_farmer {
         Role::Authority
@@ -159,6 +159,7 @@ pub async fn run_validator_node(
     run_farmer: bool,
     force_authoring: bool,
     force_synced: bool,
+    base_path: BasePath,
 ) -> (PrimaryTestNode, NetworkStarter) {
     let primary_chain_config = node_config(
         tokio_handle,
@@ -167,6 +168,7 @@ pub async fn run_validator_node(
         run_farmer,
         force_authoring,
         force_synced,
+        base_path,
     );
     let multiaddr = primary_chain_config.network.listen_addresses[0].clone();
     let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
@@ -334,12 +336,16 @@ pub fn construct_transfer_extrinsic(
 #[cfg(test)]
 mod tests {
     use super::run_validator_node;
+    use sc_service::BasePath;
     use sp_keyring::Sr25519Keyring::{Alice, Bob};
+    use tempfile::TempDir;
 
     // TODO: always enable the test to catch any potential regressions.
     #[substrate_test_utils::test]
     #[ignore]
     async fn test_primary_node_catching_up() {
+        let directory = TempDir::new().expect("Must be able to create temporary directory");
+
         let mut builder = sc_cli::LoggerBuilder::new("");
         builder.with_colors(false);
         let _ = builder.init();
@@ -347,8 +353,16 @@ mod tests {
         let tokio_handle = tokio::runtime::Handle::current();
 
         // start alice
-        let (alice, alice_network_starter) =
-            run_validator_node(tokio_handle.clone(), Alice, vec![], true, true, true).await;
+        let (alice, alice_network_starter) = run_validator_node(
+            tokio_handle.clone(),
+            Alice,
+            vec![],
+            true,
+            true,
+            true,
+            BasePath::new(directory.path().join("alice")),
+        )
+        .await;
 
         alice_network_starter.start_network();
 
@@ -359,6 +373,7 @@ mod tests {
             false,
             false,
             false,
+            BasePath::new(directory.path().join("bob")),
         )
         .await;
 

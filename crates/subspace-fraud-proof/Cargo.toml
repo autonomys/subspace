@@ -35,4 +35,5 @@ sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substr
 sp-keyring = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 system-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/system-runtime" }
+tempfile = "3.3.0"
 tokio = "1.20.1"
