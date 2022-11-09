@@ -280,11 +280,13 @@ where
     let rpc_builder = {
         let client = client.clone();
         let transaction_pool = transaction_pool.clone();
+        let chain_spec = secondary_chain_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
                 client: client.clone(),
                 pool: transaction_pool.clone(),
+                chain_spec: chain_spec.cloned_box(),
                 deny_unsafe,
             };
 

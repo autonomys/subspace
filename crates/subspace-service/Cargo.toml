@@ -24,6 +24,7 @@ pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.
 parity-scale-codec = "3.1.5"
 parity-util-mem = { version = "0.12.0", default-features = false, features = ["primitive-types"] }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
+sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-consensus-fraud-proof = { version = "0.1.0", path = "../sc-consensus-fraud-proof" }
@@ -35,6 +36,7 @@ sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substr
 sc-piece-cache = { version = "0.1.0", path = "../sc-piece-cache" }
 sc-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-rpc-api = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
+sc-rpc-spec-v2 = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523", default-features = false, features = ["wasmtime"] }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }

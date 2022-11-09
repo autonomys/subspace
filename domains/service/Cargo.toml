@@ -34,12 +34,14 @@ pallet-transaction-payment-rpc = { git = "https://github.com/subspace/substrate"
 substrate-frame-rpc-system = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 
 ## Substrate Client Dependencies
+sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-client-api = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-consensus = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-executor = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-network = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-rpc = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-rpc-api = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
+sc-rpc-spec-v2 = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-service = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523", default-features = false, features = ["wasmtime"] }
 sc-telemetry = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
 sc-transaction-pool = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
