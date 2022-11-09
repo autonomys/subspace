@@ -26,6 +26,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -63,6 +68,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -96,6 +106,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -131,6 +146,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
