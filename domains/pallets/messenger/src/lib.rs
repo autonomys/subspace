@@ -785,7 +785,10 @@ mod pallet {
                     let (number, proof) =
                         core_domain_state_root_proof.expect("checked for existence value above");
                     let core_domain_state_root_key =
-                        T::DomainTracker::domain_state_root_storage_key(xdm.src_domain_id, number);
+                        T::DomainTracker::storage_key_for_core_domain_state_root(
+                            xdm.src_domain_id,
+                            number,
+                        );
                     StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
                         &xdm.proof.state_root,
                         proof,

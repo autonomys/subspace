@@ -156,7 +156,7 @@ mod pallet {
             SystemDomainStateRoots::<T>::get()
         }
 
-        fn domain_state_root_storage_key(
+        fn storage_key_for_core_domain_state_root(
             domain_id: DomainId,
             block_number: T::BlockNumber,
         ) -> StorageKey {

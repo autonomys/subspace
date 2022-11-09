@@ -33,8 +33,11 @@ pub trait DomainTracker<BlockNumber, StateRoot> {
     /// Returns a list of state roots of system domain.
     fn system_domain_state_roots() -> Vec<StateRoot>;
 
-    /// Returns the storage key that maps to the latest state root of the domain.
-    fn domain_state_root_storage_key(domain_id: DomainId, block_number: BlockNumber) -> StorageKey;
+    /// Returns the storage key that maps to the state root of the core domain for a specific block.
+    fn storage_key_for_core_domain_state_root(
+        domain_id: DomainId,
+        block_number: BlockNumber,
+    ) -> StorageKey;
 }
 
 sp_api::decl_runtime_apis! {
