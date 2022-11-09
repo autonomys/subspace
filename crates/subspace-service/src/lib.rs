@@ -550,11 +550,13 @@ where
             let reward_signing_notification_stream = reward_signing_notification_stream.clone();
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
             let transaction_pool = transaction_pool.clone();
+            let chain_spec = config.chain_spec.cloned_box();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = rpc::FullDeps {
                     client: client.clone(),
                     pool: transaction_pool.clone(),
+                    chain_spec: chain_spec.cloned_box(),
                     deny_unsafe,
                     subscription_executor,
                     new_slot_notification_stream: new_slot_notification_stream.clone(),
