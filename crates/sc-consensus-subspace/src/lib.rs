@@ -45,7 +45,7 @@ use sc_consensus::block_import::{
 use sc_consensus::import_queue::{
     BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
 };
-use sc_consensus::{JustificationSyncLink, StateAction};
+use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
@@ -637,7 +637,7 @@ where
                 &pre_digest.solution.public_key,
             )
             .or_else(|error| {
-                if matches!(block.state_action, StateAction::Skip) {
+                if block.state_action.skip_execution_checks() {
                     Ok(false)
                 } else {
                     Err(Error::<Block::Header>::RuntimeApi(error))
@@ -1044,7 +1044,7 @@ where
 
         let subspace_digest_items = extract_subspace_digest_items(&block.header)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
-        let skip_state_computation = matches!(block.state_action, StateAction::Skip);
+        let skip_execution_checks = block.state_action.skip_execution_checks();
 
         let root_plot_public_key = self
             .client
@@ -1060,7 +1060,7 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
-            skip_state_computation,
+            skip_execution_checks,
         )
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
