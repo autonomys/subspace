@@ -4,7 +4,7 @@ use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_consensus::ForkChoiceStrategy;
-use sc_service::Role;
+use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
@@ -17,10 +17,13 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::{Hash, SystemDomainApi};
+use tempfile::TempDir;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn test_executor_full_node_catching_up() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -28,21 +31,34 @@ async fn test_executor_full_node_catching_up() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) =
-        run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
+    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority, false, false)
-        .await;
+    let alice = domain_test_service::TestNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Authority, false, false)
+    .await;
 
     // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(tokio_handle, Bob)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Full, false, false)
-        .await;
+    let bob = domain_test_service::TestNodeBuilder::new(
+        tokio_handle,
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Full, false, false)
+    .await;
 
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
@@ -73,6 +89,8 @@ async fn test_executor_full_node_catching_up() {
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -80,15 +98,24 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) =
-        run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
+    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority, false, true)
-        .await;
+    let alice = domain_test_service::TestNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Authority, false, true)
+    .await;
 
     alice.wait_for_blocks(3).await;
 
@@ -203,6 +230,8 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn set_new_code_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -210,15 +239,24 @@ async fn set_new_code_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) =
-        run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
+    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority, false, false)
-        .await;
+    let alice = domain_test_service::TestNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Authority, false, false)
+    .await;
 
     ferdie.wait_for_blocks(1).await;
 
@@ -283,6 +321,8 @@ async fn set_new_code_should_work() {
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn pallet_domains_unsigned_extrinsics_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -290,17 +330,26 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) =
-        run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
+    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain full node)
     // Run a full node deliberately in order to control the execution chain by
     // submitting the receipts manually later.
-    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Full, false, false)
-        .await;
+    let alice = domain_test_service::TestNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Full, false, false)
+    .await;
 
     alice.wait_for_blocks(2).await;
 

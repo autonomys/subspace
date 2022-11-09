@@ -1547,6 +1547,7 @@ dependencies = [
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "system-runtime-primitives",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",
@@ -8281,6 +8282,7 @@ dependencies = [
  "sp-trie",
  "substrate-test-utils",
  "system-runtime-primitives",
+ "tempfile",
  "tokio",
  "tracing",
 ]
@@ -8597,6 +8599,7 @@ dependencies = [
  "subspace-test-runtime",
  "substrate-test-client",
  "substrate-test-utils",
+ "tempfile",
  "tokio",
 ]
 

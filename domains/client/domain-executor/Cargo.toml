@@ -58,3 +58,4 @@ subspace-test-runtime = { path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { path = "../../../test/subspace-test-service" }
 substrate-test-runtime-client = { path = "../../../substrate/substrate-test-runtime-client" }
 substrate-test-utils = { git = "https://github.com/subspace/substrate", rev = "4fa79c18d6a29fdd1adeba6b7946b70d18263523" }
+tempfile = "3.3.0"

@@ -6,17 +6,20 @@ use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
-use sc_service::Role;
+use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domains::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use system_runtime_primitives::{Hash, SystemDomainApi};
+use tempfile::TempDir;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn execution_proof_creation_and_verification_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -24,21 +27,34 @@ async fn execution_proof_creation_and_verification_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) =
-        run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
+    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority, false, false)
-        .await;
+    let alice = domain_test_service::TestNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Authority, false, false)
+    .await;
 
     // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(tokio_handle, Bob)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Full, false, false)
-        .await;
+    let bob = domain_test_service::TestNodeBuilder::new(
+        tokio_handle,
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Full, false, false)
+    .await;
 
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
@@ -350,6 +366,8 @@ async fn execution_proof_creation_and_verification_should_work() {
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn invalid_execution_proof_should_not_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
     let mut builder = sc_cli::LoggerBuilder::new("");
     builder.with_colors(false);
     let _ = builder.init();
@@ -357,21 +375,34 @@ async fn invalid_execution_proof_should_not_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) =
-        run_primary_chain_validator_node(tokio_handle.clone(), Ferdie, vec![]).await;
+    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
     ferdie_network_starter.start_network();
 
     // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(tokio_handle.clone(), Alice)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Authority, false, false)
-        .await;
+    let alice = domain_test_service::TestNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Authority, false, false)
+    .await;
 
     // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(tokio_handle, Bob)
-        .connect_to_primary_chain_node(&ferdie)
-        .build(Role::Full, false, false)
-        .await;
+    let bob = domain_test_service::TestNodeBuilder::new(
+        tokio_handle,
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .connect_to_primary_chain_node(&ferdie)
+    .build(Role::Full, false, false)
+    .await;
 
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
