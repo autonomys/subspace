@@ -56,8 +56,8 @@ use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, Tr
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
-    SelectChain, SyncOracle,
+    BlockOrigin, CacheKeyId, Environment, Error as ConsensusError, Proposer, SelectChain,
+    SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
@@ -308,7 +308,7 @@ impl Config {
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
+pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS> {
     /// The client to use
     pub client: Arc<C>,
 
@@ -341,9 +341,6 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
     /// The source of timestamps for relative slots
     pub subspace_link: SubspaceLink<B>,
 
-    /// Checks if the current native implementation can author with a runtime at a given block.
-    pub can_author_with: CAW,
-
     /// The proportion of the slot dedicated to proposing.
     ///
     /// The block proposing will be limited to this proportion of the slot from the starting of the
@@ -360,7 +357,7 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
+pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, L, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -372,11 +369,10 @@ pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
         force_authoring,
         backoff_authoring_blocks,
         subspace_link,
-        can_author_with,
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, CAW>,
+    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
     Block: BlockT,
@@ -401,7 +397,6 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     let worker = SubspaceSlotWorker {
@@ -429,7 +424,6 @@ where
             inner: sync_oracle,
         },
         create_inherent_data_providers,
-        can_author_with,
     );
 
     Ok(SubspaceWorker {
@@ -751,21 +745,19 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
+pub struct SubspaceBlockImport<Block: BlockT, Client, I, CIDP> {
     inner: I,
     client: Arc<Client>,
     imported_block_notification_sender:
         SubspaceNotificationSender<ImportedBlockNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
-    can_author_with: CAW,
     create_inherent_data_providers: CIDP,
 }
 
-impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+impl<Block, I, Client, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CIDP>
 where
     Block: BlockT,
     I: Clone,
-    CAW: Clone,
     CIDP: Clone,
 {
     fn clone(&self) -> Self {
@@ -774,18 +766,16 @@ where
             client: self.client.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
-            can_author_with: self.can_author_with.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
         }
     }
 }
 
-impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+impl<Block, Client, I, CIDP> SubspaceBlockImport<Block, Client, I, CIDP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     fn new(
@@ -795,7 +785,6 @@ where
             ImportedBlockNotification<Block>,
         >,
         subspace_link: SubspaceLink<Block>,
-        can_author_with: CAW,
         create_inherent_data_providers: CIDP,
     ) -> Self {
         SubspaceBlockImport {
@@ -803,7 +792,6 @@ where
             inner: block_import,
             imported_block_notification_sender,
             subspace_link,
-            can_author_with,
             create_inherent_data_providers,
         }
     }
@@ -976,39 +964,31 @@ where
             // internally-set timestamp in the inherents actually matches the slot set in the seal
             // and root blocks in the inherents are set correctly.
             if let Some(extrinsics) = extrinsics {
-                if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
-                    debug!(
-                        target: "subspace",
-                        "Skipping `check_inherents` as authoring version is not compatible: {}",
-                        error,
-                    );
-                } else {
-                    let create_inherent_data_providers = self
-                        .create_inherent_data_providers
-                        .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
-                        .await
-                        .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+                let create_inherent_data_providers = self
+                    .create_inherent_data_providers
+                    .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+                    .await
+                    .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
 
-                    let inherent_data = create_inherent_data_providers
-                        .create_inherent_data()
-                        .map_err(Error::CreateInherents)?;
+                let inherent_data = create_inherent_data_providers
+                    .create_inherent_data()
+                    .map_err(Error::CreateInherents)?;
 
-                    let inherent_res = self.client.runtime_api().check_inherents_with_context(
-                        &parent_block_id,
-                        origin.into(),
-                        Block::new(header, extrinsics),
-                        inherent_data,
-                    )?;
+                let inherent_res = self.client.runtime_api().check_inherents_with_context(
+                    &parent_block_id,
+                    origin.into(),
+                    Block::new(header, extrinsics),
+                    inherent_data,
+                )?;
 
-                    if !inherent_res.ok() {
-                        for (i, e) in inherent_res.into_errors() {
-                            match create_inherent_data_providers
-                                .try_handle_error(&i, &e)
-                                .await
-                            {
-                                Some(res) => res.map_err(Error::CheckInherents)?,
-                                None => return Err(Error::CheckInherentsUnhandled(i)),
-                            }
+                if !inherent_res.ok() {
+                    for (i, e) in inherent_res.into_errors() {
+                        match create_inherent_data_providers
+                            .try_handle_error(&i, &e)
+                            .await
+                        {
+                            Some(res) => res.map_err(Error::CheckInherents)?,
+                            None => return Err(Error::CheckInherentsUnhandled(i)),
                         }
                     }
                 }
@@ -1020,8 +1000,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner, CAW, CIDP> BlockImport<Block>
-    for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP>
+impl<Block, Client, Inner, CIDP> BlockImport<Block>
+    for SubspaceBlockImport<Block, Client, Inner, CIDP>
 where
     Block: BlockT,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
@@ -1035,7 +1015,6 @@ where
         + Send
         + Sync,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     type Error = ConsensusError;
@@ -1255,21 +1234,19 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
-pub fn block_import<Client, Block, I, CAW, CIDP>(
+pub fn block_import<Client, Block, I, CIDP>(
     config: Config,
     wrapped_block_import: I,
     client: Arc<Client>,
-    can_author_with: CAW,
     create_inherent_data_providers: CIDP,
 ) -> ClientResult<(
-    SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
+    SubspaceBlockImport<Block, Client, I, CIDP>,
     SubspaceLink<Block>,
 )>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
@@ -1306,7 +1283,6 @@ where
         wrapped_block_import,
         imported_block_notification_sender,
         link.clone(),
-        can_author_with,
         create_inherent_data_providers,
     );
 

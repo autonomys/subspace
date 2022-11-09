@@ -25,8 +25,8 @@ use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
-use sc_network::config::TransportConfig;
 use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
+use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
@@ -378,8 +378,7 @@ pub fn node_config(
 
     if nodes_exlusive {
         network_config.default_peers_set.reserved_nodes = nodes;
-        network_config.default_peers_set.non_reserved_mode =
-            sc_network::config::NonReservedPeerMode::Deny;
+        network_config.default_peers_set.non_reserved_mode = NonReservedPeerMode::Deny;
     } else {
         network_config.boot_nodes = nodes;
     }
@@ -404,10 +403,9 @@ pub fn node_config(
         database: DatabaseSource::ParityDb {
             path: root.join("paritydb"),
         },
-        state_cache_size: 67108864,
-        state_cache_child_ratio: None,
+        trie_cache_maximum_size: Some(16 * 1024 * 1024),
         state_pruning: Some(PruningMode::ArchiveAll),
-        blocks_pruning: BlocksPruning::All,
+        blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: spec,
         wasm_method: WasmExecutionMethod::Interpreted,
         // NOTE: we enforce the use of the native runtime to make the errors more debuggable
@@ -462,7 +460,7 @@ impl TestNode {
     /// Construct and send an extrinsic to this node.
     pub async fn construct_and_send_extrinsic(
         &self,
-        function: impl Into<runtime::Call>,
+        function: impl Into<runtime::RuntimeCall>,
         caller: Sr25519Keyring,
         immortal: bool,
         nonce: u32,
@@ -484,7 +482,7 @@ impl TestNode {
 /// Construct an extrinsic that can be applied to the test runtime.
 pub fn construct_extrinsic(
     client: &Client,
-    function: impl Into<runtime::Call>,
+    function: impl Into<runtime::RuntimeCall>,
     caller: Sr25519Keyring,
     immortal: bool,
     nonce: u32,

@@ -21,6 +21,7 @@ use crate::{
     self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEraChange,
     NormalGlobalRandomnessInterval,
 };
+use frame_support::pallet_prelude::Weight;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU32, ConstU64, GenesisBuild, OnInitialize};
 use rand::Rng;
@@ -66,7 +67,7 @@ frame_support::construct_runtime!(
 parameter_types! {
     pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(16);
     pub BlockWeights: frame_system::limits::BlockWeights =
-        frame_system::limits::BlockWeights::simple_max(1024);
+        frame_system::limits::BlockWeights::simple_max(Weight::from_ref_time(1024));
 }
 
 impl frame_system::Config for Test {
@@ -74,17 +75,17 @@ impl frame_system::Config for Test {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
+    type RuntimeOrigin = RuntimeOrigin;
     type Index = u64;
     type BlockNumber = u64;
-    type Call = Call;
+    type RuntimeCall = RuntimeCall;
     type Hash = H256;
     type Version = ();
     type Hashing = sp_runtime::traits::BlakeTwo256;
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
     type PalletInfo = PalletInfo;
     type AccountData = pallet_balances::AccountData<u128>;
@@ -98,10 +99,10 @@ impl frame_system::Config for Test {
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Test
 where
-    Call: From<C>,
+    RuntimeCall: From<C>,
 {
-    type OverarchingCall = Call;
-    type Extrinsic = TestXt<Call, ()>;
+    type OverarchingCall = RuntimeCall;
+    type Extrinsic = TestXt<RuntimeCall, ()>;
 }
 
 impl pallet_timestamp::Config for Test {
@@ -117,14 +118,14 @@ impl pallet_balances::Config for Test {
     type ReserveIdentifier = [u8; 8];
     type Balance = u128;
     type DustRemoval = ();
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ConstU128<1>;
     type AccountStore = System;
     type WeightInfo = ();
 }
 
 impl pallet_offences_subspace::Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type OnOffenceHandler = Subspace;
 }
 
@@ -150,7 +151,7 @@ parameter_types! {
 }
 
 impl Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type EraDuration = EraDuration;
     type InitialSolutionRange = InitialSolutionRange;

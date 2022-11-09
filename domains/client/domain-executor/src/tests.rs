@@ -2,11 +2,11 @@ use codec::{Decode, Encode};
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
-use sc_client_api::{Backend, BlockBackend, HeaderBackend, StateBackend};
+use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sc_transaction_pool_api::TransactionSource;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domains::{
@@ -124,7 +124,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let storage_proof = prover
         .prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             None,
         )
@@ -253,11 +253,8 @@ async fn set_new_code_should_work() {
         .await;
 
     let best_hash = alice.client.info().best_hash;
-    let state = alice
-        .backend
-        .state_at(BlockId::Hash(best_hash))
-        .expect("Get state");
-    let trie_backend = state.as_trie_backend().unwrap();
+    let state = alice.backend.state_at(best_hash).expect("Get state");
+    let trie_backend = state.as_trie_backend();
     let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
     let logs = alice
@@ -270,7 +267,7 @@ async fn set_new_code_should_work() {
     if logs != vec![DigestItem::RuntimeEnvironmentUpdated] {
         let extrinsics = alice
             .client
-            .block_body(&BlockId::Hash(best_hash))
+            .block_body(best_hash)
             .unwrap()
             .unwrap()
             .into_iter()

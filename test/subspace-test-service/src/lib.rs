@@ -22,8 +22,9 @@ use futures::future::Future;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
-use sc_network::config::{NetworkConfiguration, TransportConfig};
+use sc_network::config::NetworkConfiguration;
 use sc_network::{multiaddr, NetworkStateInfo};
+use sc_network_common::config::TransportConfig;
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
 };
@@ -104,10 +105,9 @@ pub fn node_config(
         database: DatabaseSource::ParityDb {
             path: root.join("paritydb"),
         },
-        state_cache_size: 16777216,
-        state_cache_child_ratio: None,
+        trie_cache_maximum_size: Some(64 * 1024 * 1024),
         state_pruning: Default::default(),
-        blocks_pruning: BlocksPruning::All,
+        blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: Box::new(spec),
         wasm_method: WasmExecutionMethod::Interpreted,
         wasm_runtime_overrides: Default::default(),
@@ -252,7 +252,7 @@ impl PrimaryTestNode {
     /// Send an extrinsic to this node.
     pub async fn send_extrinsic(
         &self,
-        function: impl Into<subspace_test_runtime::Call>,
+        function: impl Into<subspace_test_runtime::RuntimeCall>,
         caller: Sr25519Keyring,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         let extrinsic = construct_extrinsic(&self.client, function, caller, 0);
@@ -269,7 +269,7 @@ impl PrimaryTestNode {
 /// Construct an extrinsic that can be applied to the test runtime.
 pub fn construct_extrinsic(
     client: &Client,
-    function: impl Into<subspace_test_runtime::Call>,
+    function: impl Into<subspace_test_runtime::RuntimeCall>,
     caller: Sr25519Keyring,
     nonce: u32,
 ) -> UncheckedExtrinsic {
@@ -323,7 +323,7 @@ pub fn construct_transfer_extrinsic(
     dest: sp_keyring::AccountKeyring,
     value: Balance,
 ) -> UncheckedExtrinsic {
-    let function = subspace_test_runtime::Call::Balances(pallet_balances::Call::transfer {
+    let function = subspace_test_runtime::RuntimeCall::Balances(pallet_balances::Call::transfer {
         dest: MultiSigner::from(dest.public()).into_account().into(),
         value,
     });

@@ -276,10 +276,9 @@ where
                     let storage_keys = well_known_keys::bundle_election_storage_keys();
                     // TODO: bench how large the storage proof we can afford and try proving a single
                     // electioned executor storage instead of the whole authority set.
-                    let storage_proof = self.client.read_proof(
-                        &best_block_id,
-                        &mut storage_keys.iter().map(|s| s.as_slice()),
-                    )?;
+                    let storage_proof = self
+                        .client
+                        .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?;
 
                     let state_root = *self
                         .client

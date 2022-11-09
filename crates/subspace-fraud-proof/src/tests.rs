@@ -201,7 +201,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     // Test `initialize_block`.
     let storage_proof = prover
         .prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             None,
         )
@@ -210,7 +210,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     // Test `initialize_block` verification.
     let execution_result = prover
         .check_execution_proof(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             *parent_header.state_root(),
             storage_proof.clone(),
@@ -263,7 +263,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
         let storage_proof = prover
             .prove_execution(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 Some((delta, post_delta_root)),
             )
@@ -275,7 +275,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         // Test `apply_extrinsic` verification.
         let execution_result = prover
             .check_execution_proof(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 post_delta_root,
                 storage_proof.clone(),
@@ -315,7 +315,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     let storage_proof = prover
         .prove_execution(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             Some((delta, post_delta_root)),
         )
@@ -324,7 +324,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     // Test `finalize_block` verification.
     let execution_result = prover
         .check_execution_proof(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             post_delta_root,
             storage_proof.clone(),
@@ -458,7 +458,7 @@ async fn invalid_execution_proof_should_not_work() {
 
         let proof = prover
             .prove_execution(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 Some((delta, post_delta_root)),
             )
@@ -475,7 +475,7 @@ async fn invalid_execution_proof_should_not_work() {
             call_data: transfer_to_charlie_again.encode(),
         };
         prover.check_execution_proof(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             post_delta_root,
             proof,

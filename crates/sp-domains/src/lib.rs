@@ -32,7 +32,6 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFo
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
-use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use subspace_core_primitives::crypto::blake2b_256_hash_list;
@@ -374,7 +373,7 @@ pub fn read_bundle_election_params(
     let db = storage_proof.into_memory_db::<BlakeTwo256>();
 
     let read_value = |storage_key| {
-        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key)
+        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key, None, None)
             .map_err(|_| ReadBundleElectionParamsError::TrieError)
     };
 

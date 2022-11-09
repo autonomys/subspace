@@ -353,7 +353,7 @@ fn finalize_block<Block, Backend, Client>(
         // Ideally some handle to a synchronization oracle would be used to avoid unconditionally
         // notifying.
         client
-            .apply_finality(import_op, BlockId::Hash(hash), None, true)
+            .apply_finality(import_op, hash, None, true)
             .map_err(|error| {
                 warn!(target: "subspace", "Error applying finality to block {:?}: {}", (hash, number), error);
                 error

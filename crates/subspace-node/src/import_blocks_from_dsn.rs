@@ -40,13 +40,13 @@ type PieceIndex = u64;
 #[derive(Debug, Parser)]
 pub struct ImportBlocksFromDsnCmd {
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[clap(long)]
+    #[arg(long)]
     pub bootstrap_node: Vec<Multiaddr>,
 
     /// The default number of 64KB pages to ever allocate for Wasm execution.
     ///
     /// Don't alter this unless you know what you're doing.
-    #[clap(long, value_name = "COUNT")]
+    #[arg(long, value_name = "COUNT")]
     pub default_heap_pages: Option<u32>,
 
     #[allow(missing_docs)]

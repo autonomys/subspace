@@ -17,6 +17,8 @@ env:
   # Build smaller artifacts to avoid running out of space in CI
   # TODO: Try to remove once https://github.com/paritytech/substrate/issues/11538 is resolved
   RUSTFLAGS: -C strip=symbols -C opt-level=s
+  # Remove unnecessary WASM build artefacts
+  WASM_BUILD_CLEAN_TARGET: 1
 
 jobs:
   cargo-fmt:

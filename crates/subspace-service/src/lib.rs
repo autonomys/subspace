@@ -30,7 +30,7 @@ use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::{BlockBackend, ExecutorProvider, HeaderBackend, StateBackendFor};
+use sc_client_api::{BlockBackend, HeaderBackend, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -48,7 +48,8 @@ use sc_service::{
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
+use sp_blockchain::HeaderMetadata;
+use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_domains::ExecutorApi;
@@ -239,7 +240,6 @@ where
         sc_consensus_subspace::Config::get(&*client)?,
         fraud_proof_block_import,
         client.clone(),
-        CanAuthorWithNativeVersion::new(client.executor().clone()),
         {
             let client = client.clone();
 
@@ -338,6 +338,7 @@ where
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api:
         TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
@@ -445,7 +446,7 @@ where
         config.role.is_authority(),
     );
 
-    let (network, system_rpc_tx, network_starter) =
+    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             client: client.clone(),
@@ -514,14 +515,13 @@ where
                                 subspace_link.root_blocks_for_block(parent_block_number + 1),
                             );
 
-                        Ok((timestamp, subspace_inherents))
+                        Ok((subspace_inherents, timestamp))
                     }
                 }
             },
             force_authoring: config.force_authoring,
             backoff_authoring_blocks,
             subspace_link,
-            can_author_with: CanAuthorWithNativeVersion::new(client.executor().clone()),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
@@ -573,6 +573,7 @@ where
         system_rpc_tx,
         config: config.into(),
         telemetry: telemetry.as_mut(),
+        tx_handler_controller,
     })?;
 
     Ok(NewFull {
