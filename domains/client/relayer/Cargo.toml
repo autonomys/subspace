@@ -29,5 +29,6 @@ parking_lot = "0.12.1"
 tracing = "0.1.36"
 
 sp-domains = { path = "../../../crates/sp-domains" }
+sp-domain-tracker = { path = "../../primitives/domain-tracker" }
 sp-messenger = { path = "../../primitives/messenger" }
 system-runtime-primitives = { path = "../../primitives/system-runtime" }

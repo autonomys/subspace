@@ -2,6 +2,7 @@ use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, StateBackend, LOG_TA
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
 use sp_api::ProvideRuntimeApi;
+use sp_domain_tracker::DomainTrackerApi;
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
@@ -34,10 +35,44 @@ where
     .await
 }
 
+pub async fn relay_core_domain_messages<CDC, SDC, Block, DBI>(
+    relayer_id: RelayerId,
+    core_domain_client: Arc<CDC>,
+    system_domain_client: Arc<SDC>,
+    core_domain_block_import: DBI,
+) -> Result<(), Error>
+where
+    Block: BlockT,
+    CDC: HeaderBackend<Block>
+        + AuxStore
+        + StateBackend<<Block::Header as HeaderT>::Hashing>
+        + ProofProvider<Block>
+        + ProvideRuntimeApi<Block>,
+    CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
+    DBI: Stream<Item = NumberFor<Block>> + Unpin,
+    SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
+    SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
+{
+    relay_domain_messages(
+        relayer_id,
+        core_domain_client,
+        core_domain_block_import,
+        |relayer_id, client, block_id| {
+            Relayer::submit_messages_from_core_domain(
+                relayer_id,
+                client,
+                &system_domain_client,
+                block_id,
+            )
+        },
+    )
+    .await
+}
+
 async fn relay_domain_messages<Client, Block, SDBI, MP>(
     relayer_id: RelayerId,
-    system_domain_client: Arc<Client>,
-    mut system_domain_block_import: SDBI,
+    domain_client: Arc<Client>,
+    mut domain_block_import: SDBI,
     message_processor: MP,
 ) -> Result<(), Error>
 where
@@ -49,22 +84,16 @@ where
         + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDBI: Stream<Item = NumberFor<Block>> + Unpin,
-    MP: Fn(RelayerId, &Arc<Client>, BlockId<Block>) -> Result<(), Error>,
+    MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
 {
-    let domain_id = Relayer::domain_id(&system_domain_client)?;
-    let relay_confirmation_depth = Relayer::relay_confirmation_depth(&system_domain_client)?;
-    let maybe_last_relayed_block =
-        Relayer::fetch_last_relayed_block(&system_domain_client, domain_id);
+    let domain_id = Relayer::domain_id(&domain_client)?;
+    let relay_confirmation_depth = Relayer::relay_confirmation_depth(&domain_client)?;
+    let maybe_last_relayed_block = Relayer::fetch_last_relayed_block(&domain_client, domain_id);
     let mut relay_block_from = match maybe_last_relayed_block {
         None => Zero::zero(),
-        Some(block_id) => {
-            let last_block_number = system_domain_client
-                .block_number_from_id(&block_id)?
-                .ok_or(Error::UnableToFetchProcessedBlockId)?;
-            last_block_number
-                .checked_add(&One::one())
-                .ok_or(ArithmeticError::Overflow)?
-        }
+        Some(last_block_number) => last_block_number
+            .checked_add(&One::one())
+            .ok_or(ArithmeticError::Overflow)?,
     };
 
     // from the start block, start processing all the messages assigned
@@ -72,7 +101,7 @@ where
     // then fetch new messages assigned to to relayer from system domain
     // construct proof of each message to be relayed
     // submit XDM as unsigned extrinsic.
-    while let Some(block_number) = system_domain_block_import.next().await {
+    while let Some(block_number) = domain_block_import.next().await {
         let relay_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
@@ -82,9 +111,11 @@ where
         };
 
         while relay_block_from <= relay_block_until {
-            let block_id = BlockId::Number(relay_block_from);
-            if let Err(err) = message_processor(relayer_id.clone(), &system_domain_client, block_id)
-            {
+            let block_hash = domain_client
+                .header(BlockId::Number(relay_block_from))?
+                .ok_or(Error::UnableToFetchBlockNumber)?
+                .hash();
+            if let Err(err) = message_processor(relayer_id.clone(), &domain_client, block_hash) {
                 tracing::error!(
                     target: LOG_TARGET,
                     ?err,
@@ -93,7 +124,7 @@ where
                 break;
             };
 
-            Relayer::store_last_relayed_block(&system_domain_client, domain_id, block_id)?;
+            Relayer::store_last_relayed_block(&domain_client, domain_id, relay_block_from)?;
             relay_block_from = relay_block_from
                 .checked_add(&One::one())
                 .ok_or(ArithmeticError::Overflow)?;

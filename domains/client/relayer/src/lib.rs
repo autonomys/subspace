@@ -1,11 +1,13 @@
 // TODO(ved): remove once the code is connected.
 #![allow(dead_code)]
+#![warn(rust_2018_idioms)]
 
 mod worker;
 
 use parity_scale_codec::{Decode, Encode};
-use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey};
+use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey, StorageProof};
 use sp_api::{ProvideRuntimeApi, StateBackend};
+use sp_domain_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
     CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
@@ -31,10 +33,8 @@ pub enum Error {
     ConstructStorageProof,
     /// Emits when failed to fetch assigned messages for a given relayer.
     FetchAssignedMessages,
-    /// Emits when failed to store the processed block id.
-    StoreRelayedBlockId,
-    /// Emits when failed to fetch stored processed block id.
-    UnableToFetchProcessedBlockId,
+    /// Emits when failed to store the processed block number.
+    StoreRelayedBlockNumber,
     /// Emits when unable to fetch domain_id.
     UnableToFetchDomainId,
     /// Emits when unable to fetch relay confirmation depth.
@@ -43,6 +43,12 @@ pub enum Error {
     BlockchainError(Box<sp_blockchain::Error>),
     /// Arithmatic related error.
     ArithmaticError(ArithmeticError),
+    /// Api related error.
+    ApiError(sp_api::ApiError),
+    /// Emits when the core domain block is not yet confirmed on the system domain.
+    CoreDomainNonConfirmedOnSystemDomain,
+    /// Unable to fetch block number against a block hash.
+    UnableToFetchBlockNumber,
 }
 
 impl From<sp_blockchain::Error> for Error {
@@ -54,6 +60,12 @@ impl From<sp_blockchain::Error> for Error {
 impl From<ArithmeticError> for Error {
     fn from(err: ArithmeticError) -> Self {
         Error::ArithmaticError(err)
+    }
+}
+
+impl From<sp_api::ApiError> for Error {
+    fn from(err: sp_api::ApiError) -> Self {
+        Error::ApiError(err)
     }
 }
 
@@ -86,9 +98,10 @@ where
     /// Constructs the proof for the given key using the system domain backend.
     fn construct_system_domain_storage_proof_for_key_at(
         system_domain_client: &Arc<Client>,
-        block_id: BlockId<Block>,
+        block_hash: Block::Hash,
         key: &StorageKey,
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
+        let block_id = BlockId::Hash(block_hash);
         system_domain_client
             .header(block_id)?
             .map(|header| *header.state_root())
@@ -105,17 +118,41 @@ where
             .ok_or(Error::ConstructStorageProof)
     }
 
+    /// Constructs the proof for the given key using the core domain backend.
+    fn construct_core_domain_storage_proof_for_key_at(
+        core_domain_client: &Arc<Client>,
+        block_hash: Block::Hash,
+        key: &StorageKey,
+        core_domain_proof: StorageProof,
+    ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
+        let block_id = BlockId::Hash(block_hash);
+        core_domain_client
+            .header(block_id)?
+            .map(|header| (*header.number(), *header.state_root()))
+            .and_then(|(number, state_root)| {
+                let proof = core_domain_client
+                    .read_proof(&block_id, &mut [key.as_ref()].into_iter())
+                    .ok()?;
+                Some(Proof {
+                    state_root,
+                    core_domain_proof: Some((number, core_domain_proof)),
+                    message_proof: proof,
+                })
+            })
+            .ok_or(Error::ConstructStorageProof)
+    }
+
     fn construct_cross_domain_message_and_submit<
         Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), sp_api::ApiError>,
-        ProofConstructor: Fn(BlockId<Block>, &StorageKey) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
+        ProofConstructor: Fn(Block::Hash, &StorageKey) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
     >(
-        block_id: BlockId<Block>,
+        block_hash: Block::Hash,
         msgs: Vec<RelayerMessageWithStorageKey>,
         proof_constructor: ProofConstructor,
         submitter: Submitter,
     ) -> Result<(), Error> {
         for msg in msgs {
-            let proof = match proof_constructor(block_id, &msg.storage_key) {
+            let proof = match proof_constructor(block_hash, &msg.storage_key) {
                 Ok(proof) => proof,
                 Err(err) => {
                     tracing::error!(
@@ -145,11 +182,10 @@ where
     pub(crate) fn submit_messages_from_system_domain(
         relayer_id: RelayerId,
         system_domain_client: &Arc<Client>,
-        confirmed_block_id: BlockId<Block>,
+        confirmed_block_hash: Block::Hash,
     ) -> Result<(), Error> {
-        let best_block_id = BlockId::Hash(system_domain_client.info().best_hash);
         let api = system_domain_client.runtime_api();
-
+        let confirmed_block_id = BlockId::Hash(confirmed_block_hash);
         let assigned_messages: RelayerMessagesWithStorageKey = api
             .relayer_assigned_messages(&confirmed_block_id, relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
@@ -157,8 +193,9 @@ where
         // TODO(ved): check for already relayed messages before submitting
         // TODO(ved): would need a function on runtime to confirm the relay.
 
+        let best_block_id = BlockId::Hash(system_domain_client.info().best_hash);
         Self::construct_cross_domain_message_and_submit(
-            confirmed_block_id,
+            confirmed_block_hash,
             assigned_messages.outbox,
             |block_id, key| {
                 Self::construct_system_domain_storage_proof_for_key_at(
@@ -171,7 +208,7 @@ where
         )?;
 
         Self::construct_cross_domain_message_and_submit(
-            confirmed_block_id,
+            confirmed_block_hash,
             assigned_messages.inbox_responses,
             |block_id, key| {
                 Self::construct_system_domain_storage_proof_for_key_at(
@@ -186,6 +223,79 @@ where
         Ok(())
     }
 
+    pub(crate) fn submit_messages_from_core_domain<SDC>(
+        relayer_id: RelayerId,
+        core_domain_client: &Arc<Client>,
+        system_domain_client: &Arc<SDC>,
+        confirmed_block_hash: Block::Hash,
+    ) -> Result<(), Error>
+    where
+        SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
+        SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
+    {
+        // check if this block state root is confirmed on system domain
+        let system_domain_api = system_domain_client.runtime_api();
+        let latest_system_domain_block_id = BlockId::Hash(system_domain_client.info().best_hash);
+        let core_domain_id = Self::domain_id(core_domain_client)?;
+        let confirmed_block_number = *core_domain_client
+            .header(BlockId::Hash(confirmed_block_hash))?
+            .ok_or(Error::UnableToFetchBlockNumber)?
+            .number();
+        let storage_key = match system_domain_api.storage_key_for_core_domain_state_root(
+            &latest_system_domain_block_id,
+            core_domain_id,
+            confirmed_block_number,
+        )? {
+            Some(storage_key) => storage_key,
+            None => return Err(Error::CoreDomainNonConfirmedOnSystemDomain),
+        };
+
+        // construct storage proof for the core domain state root using system domain backend.
+        let state_root_proof = system_domain_client.read_proof(
+            &latest_system_domain_block_id,
+            &mut [storage_key.as_ref()].into_iter(),
+        )?;
+
+        let core_domain_api = core_domain_client.runtime_api();
+        let assigned_messages: RelayerMessagesWithStorageKey = core_domain_api
+            .relayer_assigned_messages(&BlockId::Hash(confirmed_block_hash), relayer_id)
+            .map_err(|_| Error::FetchAssignedMessages)?;
+
+        // TODO(ved): check for already relayed messages before submitting
+        // TODO(ved): would need a function on runtime to confirm the relay.
+
+        let best_block_id = BlockId::Hash(core_domain_client.info().best_hash);
+        Self::construct_cross_domain_message_and_submit(
+            confirmed_block_hash,
+            assigned_messages.outbox,
+            |block_id, key| {
+                Self::construct_core_domain_storage_proof_for_key_at(
+                    core_domain_client,
+                    block_id,
+                    key,
+                    state_root_proof.clone(),
+                )
+            },
+            |msg| core_domain_api.submit_outbox_message_unsigned(&best_block_id, msg),
+        )?;
+
+        Self::construct_cross_domain_message_and_submit(
+            confirmed_block_hash,
+            assigned_messages.inbox_responses,
+            |block_id, key| {
+                Self::construct_core_domain_storage_proof_for_key_at(
+                    core_domain_client,
+                    block_id,
+                    key,
+                    state_root_proof.clone(),
+                )
+            },
+            |msg| core_domain_api.submit_inbox_response_message_unsigned(&best_block_id, msg),
+        )?;
+
+        Ok(())
+    }
+
     fn last_relayed_block_key(domain_id: DomainId) -> Vec<u8> {
         (b"message_relayer_last_processed_block_of_domain", domain_id).encode()
     }
@@ -193,27 +303,27 @@ where
     fn fetch_last_relayed_block(
         client: &Arc<Client>,
         domain_id: DomainId,
-    ) -> Option<BlockId<Block>> {
+    ) -> Option<NumberFor<Block>> {
         let encoded = client
             .get_aux(&Self::last_relayed_block_key(domain_id))
             .ok()??;
 
-        BlockId::decode(&mut encoded.as_ref()).ok()
+        NumberFor::<Block>::decode(&mut encoded.as_ref()).ok()
     }
 
     pub(crate) fn store_last_relayed_block(
         client: &Arc<Client>,
         domain_id: DomainId,
-        block_id: BlockId<Block>,
+        block_number: NumberFor<Block>,
     ) -> Result<(), Error> {
         client
             .insert_aux(
                 &[(
                     Self::last_relayed_block_key(domain_id).as_ref(),
-                    block_id.encode().as_ref(),
+                    block_number.encode().as_ref(),
                 )],
                 &[],
             )
-            .map_err(|_| Error::StoreRelayedBlockId)
+            .map_err(|_| Error::StoreRelayedBlockNumber)
     }
 }
