@@ -1,4 +1,4 @@
-use crate::utils::circular_buffer::{CircularBuffer, IsQueue};
+use super::record_binary_heap::RecordBinaryHeap;
 use crate::utils::multihash::MultihashCode;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{Error, RecordStore};
@@ -519,28 +519,28 @@ impl<'a> Iterator for ParityDbRecordIterator<'a> {
 pub struct LimitedSizeRecordStorageWrapper<RC = MemoryRecordStorage> {
     // Wrapped record storage implementation.
     inner: RC,
-    // Maintains FIFO queue to limit total item number.
-    fifo_keys: CircularBuffer<Key>,
+    // Maintains a heap to limit total item number.
+    heap: RecordBinaryHeap,
 }
 
 impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC> {
-    pub fn new(record_store: RC, max_items_limit: NonZeroUsize) -> Self {
-        let mut fifo_keys = CircularBuffer::new(max_items_limit.get());
+    pub fn new(record_store: RC, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
+        let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
         // Initial cache loading.
         for rec in record_store.records() {
-            let _ = fifo_keys.add(rec.key.clone());
+            let _ = heap.insert(rec.key.clone());
         }
 
-        if fifo_keys.size() > 0 {
-            info!(size = fifo_keys.size(), "Record cache loaded.");
+        if heap.size() > 0 {
+            info!(size = heap.size(), "Record cache loaded.");
         } else {
             info!("New record cache initialized.");
         }
 
         Self {
             inner: record_store,
-            fifo_keys,
+            heap,
         }
     }
 }
@@ -557,9 +557,9 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
 
         self.inner.put(record)?;
 
-        let evicted_key = self.fifo_keys.add(record_key);
+        let evicted_key = self.heap.insert(record_key);
 
-        if let Ok(Some(key)) = evicted_key {
+        if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
 
             self.inner.remove(&key);
@@ -571,7 +571,7 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
     fn remove(&mut self, key: &Key) {
         self.inner.remove(key);
 
-        self.fifo_keys.remove_value(key);
+        self.heap.remove(key);
     }
 
     fn records(&'a self) -> Self::RecordsIter {
