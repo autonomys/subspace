@@ -21,7 +21,7 @@ pub mod endpoint;
 pub mod messages;
 
 use codec::{Decode, Encode};
-use messages::{CrossDomainMessage, RelayerMessagesWithStorageKey};
+use messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 
@@ -64,8 +64,10 @@ sp_api::decl_runtime_apis! {
             msg: CrossDomainMessage<Block::Hash, BlockNumber>,
         );
 
-        /// Returns the storage key for the state root of the core domain
-        /// as present on the system domain.
-        fn storage_key_for_core_domain_state_root(domain_id: DomainId, block_number: BlockNumber) -> StorageKey;
+        /// Returns true if the outbox message is ready to be relayed to dst_domain.
+        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool;
+
+        /// Returns true if the inbox message response is ready to be relayed to dst_domain.
+        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool;
     }
 }

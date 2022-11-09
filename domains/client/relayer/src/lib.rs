@@ -179,6 +179,47 @@ where
         Ok(())
     }
 
+    fn filter_assigned_messages(
+        client: &Arc<Client>,
+        mut msgs: RelayerMessagesWithStorageKey,
+    ) -> Result<RelayerMessagesWithStorageKey, Error> {
+        let api = client.runtime_api();
+        let best_block_id = BlockId::Hash(client.info().best_hash);
+        msgs.outbox.retain(|msg| {
+            let id = (msg.channel_id, msg.nonce);
+            match api.should_relay_outbox_message(&best_block_id, msg.dst_domain_id, id) {
+                Ok(valid) => valid,
+                Err(err) => {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        ?err,
+                        "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
+                        msg.dst_domain_id
+                    );
+                    false
+                }
+            }
+        });
+
+        msgs.inbox_responses.retain(|msg| {
+            let id = (msg.channel_id, msg.nonce);
+            match api.should_relay_inbox_message_response(&best_block_id, msg.dst_domain_id, id) {
+                Ok(valid) => valid,
+                Err(err) => {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        ?err,
+                        "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
+                        msg.dst_domain_id
+                    );
+                    false
+                }
+            }
+        });
+
+        Ok(msgs)
+    }
+
     pub(crate) fn submit_messages_from_system_domain(
         relayer_id: RelayerId,
         system_domain_client: &Arc<Client>,
@@ -189,14 +230,18 @@ where
         let assigned_messages: RelayerMessagesWithStorageKey = api
             .relayer_assigned_messages(&confirmed_block_id, relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
+        let filtered_messages =
+            Self::filter_assigned_messages(system_domain_client, assigned_messages)?;
 
-        // TODO(ved): check for already relayed messages before submitting
-        // TODO(ved): would need a function on runtime to confirm the relay.
+        // short circuit if the there are no messages to relay
+        if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
+            return Ok(());
+        }
 
         let best_block_id = BlockId::Hash(system_domain_client.info().best_hash);
         Self::construct_cross_domain_message_and_submit(
             confirmed_block_hash,
-            assigned_messages.outbox,
+            filtered_messages.outbox,
             |block_id, key| {
                 Self::construct_system_domain_storage_proof_for_key_at(
                     system_domain_client,
@@ -209,7 +254,7 @@ where
 
         Self::construct_cross_domain_message_and_submit(
             confirmed_block_hash,
-            assigned_messages.inbox_responses,
+            filtered_messages.inbox_responses,
             |block_id, key| {
                 Self::construct_system_domain_storage_proof_for_key_at(
                     system_domain_client,
@@ -233,47 +278,57 @@ where
         SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
         SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
     {
-        // check if this block state root is confirmed on system domain
-        let system_domain_api = system_domain_client.runtime_api();
-        let latest_system_domain_block_id = BlockId::Hash(system_domain_client.info().best_hash);
-        let core_domain_id = Self::domain_id(core_domain_client)?;
-        let confirmed_block_number = *core_domain_client
-            .header(BlockId::Hash(confirmed_block_hash))?
-            .ok_or(Error::UnableToFetchBlockNumber)?
-            .number();
-        let storage_key = match system_domain_api.storage_key_for_core_domain_state_root(
-            &latest_system_domain_block_id,
-            core_domain_id,
-            confirmed_block_number,
-        )? {
-            Some(storage_key) => storage_key,
-            None => return Err(Error::CoreDomainNonConfirmedOnSystemDomain),
-        };
-
-        // construct storage proof for the core domain state root using system domain backend.
-        let state_root_proof = system_domain_client.read_proof(
-            &latest_system_domain_block_id,
-            &mut [storage_key.as_ref()].into_iter(),
-        )?;
-
+        // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
         let assigned_messages: RelayerMessagesWithStorageKey = core_domain_api
             .relayer_assigned_messages(&BlockId::Hash(confirmed_block_hash), relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
 
-        // TODO(ved): check for already relayed messages before submitting
-        // TODO(ved): would need a function on runtime to confirm the relay.
+        let filtered_messages =
+            Self::filter_assigned_messages(core_domain_client, assigned_messages)?;
+
+        // short circuit if the there are no messages to relay
+        if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
+            return Ok(());
+        }
+
+        // check if this block state root is confirmed on system domain
+        // and generate proof
+        let core_domain_state_root_proof = {
+            let system_domain_api = system_domain_client.runtime_api();
+            let latest_system_domain_block_id =
+                BlockId::Hash(system_domain_client.info().best_hash);
+            let core_domain_id = Self::domain_id(core_domain_client)?;
+            let confirmed_block_number = *core_domain_client
+                .header(BlockId::Hash(confirmed_block_hash))?
+                .ok_or(Error::UnableToFetchBlockNumber)?
+                .number();
+            match system_domain_api.storage_key_for_core_domain_state_root(
+                &latest_system_domain_block_id,
+                core_domain_id,
+                confirmed_block_number,
+            )? {
+                Some(storage_key) => {
+                    // construct storage proof for the core domain state root using system domain backend.
+                    system_domain_client.read_proof(
+                        &latest_system_domain_block_id,
+                        &mut [storage_key.as_ref()].into_iter(),
+                    )?
+                }
+                None => return Err(Error::CoreDomainNonConfirmedOnSystemDomain),
+            }
+        };
 
         let best_block_id = BlockId::Hash(core_domain_client.info().best_hash);
         Self::construct_cross_domain_message_and_submit(
             confirmed_block_hash,
-            assigned_messages.outbox,
+            filtered_messages.outbox,
             |block_id, key| {
                 Self::construct_core_domain_storage_proof_for_key_at(
                     core_domain_client,
                     block_id,
                     key,
-                    state_root_proof.clone(),
+                    core_domain_state_root_proof.clone(),
                 )
             },
             |msg| core_domain_api.submit_outbox_message_unsigned(&best_block_id, msg),
@@ -281,13 +336,13 @@ where
 
         Self::construct_cross_domain_message_and_submit(
             confirmed_block_hash,
-            assigned_messages.inbox_responses,
+            filtered_messages.inbox_responses,
             |block_id, key| {
                 Self::construct_core_domain_storage_proof_for_key_at(
                     core_domain_client,
                     block_id,
                     key,
-                    state_root_proof.clone(),
+                    core_domain_state_root_proof.clone(),
                 )
             },
             |msg| core_domain_api.submit_inbox_response_message_unsigned(&best_block_id, msg),
