@@ -18,7 +18,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use parity_scale_codec::{Decode, Encode};
-use sp_domains::BundleElectionParams;
+use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::DomainId;
 use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
@@ -92,6 +93,6 @@ sp_api::decl_runtime_apis! {
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
 
         /// Returns the parameters for the bundle election.
-        fn bundle_elections_params() -> BundleElectionParams;
+        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams;
     }
 }

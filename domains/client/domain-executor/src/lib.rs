@@ -88,7 +88,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_domains::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
+    Bundle, BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
     InvalidTransactionProof, OpaqueBundle, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -221,6 +221,7 @@ where
         let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
         let bundle_producer = BundleProducer::new(
+            DomainId::SYSTEM,
             primary_chain_client.clone(),
             client.clone(),
             transaction_pool.clone(),
