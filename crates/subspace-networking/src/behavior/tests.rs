@@ -2,11 +2,14 @@ use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::custom_record_store::{
     CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
 };
+use crate::behavior::record_binary_heap::RecordBinaryHeap;
 use chrono::Duration;
+use libp2p::kad::kbucket::Sha256Hash;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::ProviderRecord;
 use libp2p::multiaddr::Protocol;
+use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use std::collections::HashSet;
@@ -126,4 +129,88 @@ fn check_custom_store_api() {
         HashSet::from_iter(vec![rec2].into_iter()),
         provided_collection
     );
+}
+
+#[test]
+fn binary_heap_insert_works() {
+    let peer_id =
+        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
+            .unwrap();
+    let mut heap = RecordBinaryHeap::new(peer_id, 10);
+
+    let key1 = Key::from(vec![1]);
+    let key2 = Key::from(vec![2]);
+
+    heap.insert(key1);
+    heap.insert(key2);
+
+    assert_eq!(heap.size(), 2);
+}
+
+#[test]
+fn binary_heap_remove_works() {
+    let peer_id =
+        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
+            .unwrap();
+    let mut heap = RecordBinaryHeap::new(peer_id, 10);
+
+    let key1 = Key::from(vec![1]);
+    let key2 = Key::from(vec![2]);
+
+    heap.insert(key1.clone());
+    assert_eq!(heap.size(), 1);
+
+    heap.remove(&key2);
+    assert_eq!(heap.size(), 1);
+
+    heap.remove(&key1);
+    assert_eq!(heap.size(), 0);
+}
+
+#[test]
+fn binary_heap_limit_works() {
+    let peer_id =
+        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
+            .unwrap();
+    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+
+    let key1 = Key::from(vec![1]);
+    let key2 = Key::from(vec![2]);
+
+    let evicted = heap.insert(key1);
+    assert!(evicted.is_none());
+    assert_eq!(heap.size(), 1);
+
+    let evicted = heap.insert(key2);
+    assert!(evicted.is_some());
+    assert_eq!(heap.size(), 1);
+}
+
+#[test]
+fn binary_heap_eviction_works() {
+    type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T, Sha256Hash>;
+
+    let peer_id =
+        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
+            .unwrap();
+    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+
+    let key1 = Key::from(vec![1]);
+    let key2 = Key::from(vec![2]);
+
+    heap.insert(key1.clone());
+    let evicted = heap.insert(key2.clone());
+    assert!(evicted.is_some());
+
+    let bucket_key1: KademliaBucketKey<Key> = KademliaBucketKey::new(key1.clone());
+    let bucket_key2: KademliaBucketKey<Key> = KademliaBucketKey::new(key2.clone());
+
+    let evicted = evicted.unwrap();
+    if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::new(peer_id))
+        > bucket_key2.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::new(peer_id))
+    {
+        assert_eq!(evicted, key1);
+    } else {
+        assert_eq!(evicted, key2);
+    }
 }

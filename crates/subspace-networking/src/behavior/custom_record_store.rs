@@ -1,4 +1,5 @@
-use crate::utils::circular_buffer::{CircularBuffer, IsQueue};
+use super::record_binary_heap::RecordBinaryHeap;
+use crate::utils::multihash::MultihashCode;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{Error, RecordStore};
 use libp2p::kad::{store, ProviderRecord, Record};
@@ -7,7 +8,7 @@ use libp2p::PeerId;
 use parity_db::{ColumnOptions, Db, Options};
 use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::iter::IntoIterator;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -242,6 +243,50 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 }
 
+// Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
+// It returns `new_record` in case of other multihash or non-Set values
+fn merge_records_in_case_of_sector_multihash(
+    new_record: Record,
+    old_record: Option<Record>,
+) -> Record {
+    let updated_rec = old_record.and_then(|old_record| {
+        let key_multihash = old_record.key.to_vec();
+
+        let multihash = Multihash::from_bytes(key_multihash.as_slice())
+            .expect("Key should represent a valid multihash");
+
+        if multihash.code() == u64::from(MultihashCode::Sector) {
+            let set1 =
+                if let Ok(set) = BTreeSet::<Vec<u8>>::decode(&mut old_record.value.as_slice()) {
+                    set
+                } else {
+                    // Value is not a Set
+                    return Some(new_record.clone());
+                };
+
+            let set2 = if let Ok(set) =
+                BTreeSet::<Vec<u8>>::decode(&mut new_record.value.clone().as_slice())
+            {
+                set
+            } else {
+                // Value is not a Set
+                return Some(new_record.clone());
+            };
+
+            let merged_set = set1.union(&set2).collect::<BTreeSet<_>>();
+
+            Some(Record {
+                value: merged_set.encode(),
+                ..new_record.clone()
+            })
+        } else {
+            None
+        }
+    });
+
+    updated_rec.unwrap_or(new_record)
+}
+
 /// Defines a stub for record storage with all operations defaulted.
 #[derive(Clone, Default)]
 pub struct NoRecordStorage;
@@ -390,7 +435,12 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     fn put(&mut self, record: Record) -> store::Result<()> {
         debug!("Saving a new record to DB, key: {:?}", record.key);
 
-        let db_rec = ParityDbRecord::from(record.clone());
+        // Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
+        // It returns `new_record` in case of other multihash or non-Set values
+        let old_record = self.get(&record.key).map(|item| item.into_owned());
+        let actual_record = merge_records_in_case_of_sector_multihash(record.clone(), old_record);
+
+        let db_rec = ParityDbRecord::from(actual_record);
 
         self.save_data(&record.key, Some(db_rec.encode()));
 
@@ -469,28 +519,28 @@ impl<'a> Iterator for ParityDbRecordIterator<'a> {
 pub struct LimitedSizeRecordStorageWrapper<RC = MemoryRecordStorage> {
     // Wrapped record storage implementation.
     inner: RC,
-    // Maintains FIFO queue to limit total item number.
-    fifo_keys: CircularBuffer<Key>,
+    // Maintains a heap to limit total item number.
+    heap: RecordBinaryHeap,
 }
 
 impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC> {
-    pub fn new(record_store: RC, max_items_limit: NonZeroUsize) -> Self {
-        let mut fifo_keys = CircularBuffer::new(max_items_limit.get());
+    pub fn new(record_store: RC, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
+        let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
         // Initial cache loading.
         for rec in record_store.records() {
-            let _ = fifo_keys.add(rec.key.clone());
+            let _ = heap.insert(rec.key.clone());
         }
 
-        if fifo_keys.size() > 0 {
-            info!(size = fifo_keys.size(), "Record cache loaded.");
+        if heap.size() > 0 {
+            info!(size = heap.size(), "Record cache loaded.");
         } else {
             info!("New record cache initialized.");
         }
 
         Self {
             inner: record_store,
-            fifo_keys,
+            heap,
         }
     }
 }
@@ -507,9 +557,9 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
 
         self.inner.put(record)?;
 
-        let evicted_key = self.fifo_keys.add(record_key);
+        let evicted_key = self.heap.insert(record_key);
 
-        if let Ok(Some(key)) = evicted_key {
+        if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
 
             self.inner.remove(&key);
@@ -521,7 +571,7 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
     fn remove(&mut self, key: &Key) {
         self.inner.remove(key);
 
-        self.fifo_keys.remove_value(key);
+        self.heap.remove(key);
     }
 
     fn records(&'a self) -> Self::RecordsIter {
