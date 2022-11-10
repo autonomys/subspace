@@ -95,6 +95,14 @@ mod pallet {
         // the new stake amount still meets the operator stake threshold on all domains he stakes.
         #[pallet::constant]
         type MinDomainOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Maximum execution receipt drift.
+        ///
+        /// If the primary number of an execution receipt plus the maximum drift is bigger than the
+        /// best execution chain number, this receipt will be rejected as being too far in the
+        /// future.
+        #[pallet::constant]
+        type MaximumReceiptDrift: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -658,6 +666,11 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn best_execution_chain_number(domain_id: DomainId) -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
+        best_number
+    }
+
     fn can_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,

@@ -10,7 +10,7 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::{DomainId, SignedOpaqueBundle};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -278,6 +278,7 @@ parameter_types! {
     pub const MinDomainDeposit: Balance = 10 * SSC;
     pub const MaxDomainDeposit: Balance = 1000 * SSC;
     pub const MinDomainOperatorStake: Balance = 10 * SSC;
+    pub const MaximumReceiptDrift: BlockNumber = 128;
 }
 
 impl pallet_domain_registry::Config for Runtime {
@@ -288,6 +289,7 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -464,6 +466,14 @@ impl_runtime_apis! {
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),
             }
+        }
+
+        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::best_execution_chain_number(domain_id)
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
         }
     }
 }
