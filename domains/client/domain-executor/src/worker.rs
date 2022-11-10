@@ -463,10 +463,6 @@ where
         Ok(Some(body)) => body,
     };
 
-    let (system_bundles, core_bundles) = primary_chain_client
-        .runtime_api()
-        .extract_system_bundles(&block_id, extrinsics)?;
-
     let header = match primary_chain_client.header(block_id) {
         Err(err) => {
             tracing::error!(
@@ -501,6 +497,10 @@ where
     let shuffling_seed = primary_chain_client
         .runtime_api()
         .extrinsics_shuffling_seed(&block_id, header)?;
+
+    let (system_bundles, core_bundles) = primary_chain_client
+        .runtime_api()
+        .extract_system_bundles(&block_id, extrinsics)?;
 
     processor(
         (block_hash, block_number, fork_choice),
