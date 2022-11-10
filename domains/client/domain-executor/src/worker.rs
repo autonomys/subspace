@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::{BundleProcessor, BundleProducer, TransactionFor};
+use crate::system_bundle_processor::SystemBundleProcessor;
+use crate::system_bundle_producer::SystemBundleProducer;
+use crate::TransactionFor;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
@@ -85,8 +87,8 @@ pub(super) async fn start_worker<
 >(
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
-    bundle_producer: BundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
-    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    bundle_producer: SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
+    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,

@@ -73,8 +73,8 @@ mod tests;
 mod worker;
 
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
-use crate::system_bundle_processor::BundleProcessor;
-use crate::system_bundle_producer::BundleProducer;
+use crate::system_bundle_processor::SystemBundleProcessor;
+use crate::system_bundle_producer::SystemBundleProducer;
 use crate::worker::BlockInfo;
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
@@ -121,7 +121,7 @@ where
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -223,7 +223,7 @@ where
     {
         let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
-        let bundle_producer = BundleProducer::new(
+        let bundle_producer = SystemBundleProducer::new(
             DomainId::SYSTEM,
             primary_chain_client.clone(),
             client.clone(),
@@ -240,7 +240,7 @@ where
             code_executor,
         );
 
-        let bundle_processor = BundleProcessor::new(
+        let bundle_processor = SystemBundleProcessor::new(
             primary_chain_client.clone(),
             primary_network,
             client.clone(),
