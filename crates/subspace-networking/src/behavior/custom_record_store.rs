@@ -244,7 +244,7 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
 }
 
 // Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-// It returns `new_record` in case of other multihash or non-GSet values
+// It returns `new_record` in case of other multihash or non-Set values
 fn merge_records_in_case_of_sector_multihash(
     new_record: Record,
     old_record: Option<Record>,
@@ -256,27 +256,27 @@ fn merge_records_in_case_of_sector_multihash(
             .expect("Key should represent a valid multihash");
 
         if multihash.code() == u64::from(MultihashCode::Sector) {
-            let gset1 = if let Ok(gset) = GSet::<Vec<u8>>::decode(&mut old_record.value.as_slice())
+            let set1 =
+                if let Ok(set) = BTreeSet::<Vec<u8>>::decode(&mut old_record.value.as_slice()) {
+                    set
+                } else {
+                    // Value is not a Set
+                    return Some(new_record.clone());
+                };
+
+            let set2 = if let Ok(set) =
+                BTreeSet::<Vec<u8>>::decode(&mut new_record.value.clone().as_slice())
             {
-                gset
+                set
             } else {
-                // Value is not a GSet
+                // Value is not a Set
                 return Some(new_record.clone());
             };
 
-            let gset2 = if let Ok(gset) =
-                GSet::<Vec<u8>>::decode(&mut new_record.value.clone().as_slice())
-            {
-                gset
-            } else {
-                // Value is not a GSet
-                return Some(new_record.clone());
-            };
-
-            let merged_gset = gset1.merge(gset2);
+            let merged_set = set1.union(&set2).collect::<BTreeSet<_>>();
 
             Some(Record {
-                value: merged_gset.encode(),
+                value: merged_set.encode(),
                 ..new_record.clone()
             })
         } else {
@@ -436,7 +436,7 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
         debug!("Saving a new record to DB, key: {:?}", record.key);
 
         // Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-        // It returns `new_record` in case of other multihash or non-GSet values
+        // It returns `new_record` in case of other multihash or non-Set values
         let old_record = self.get(&record.key).map(|item| item.into_owned());
         let actual_record = merge_records_in_case_of_sector_multihash(record.clone(), old_record);
 
@@ -576,38 +576,5 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
 
     fn records(&'a self) -> Self::RecordsIter {
         self.inner.records()
-    }
-}
-
-/// CRDT structure - growing only set:
-/// https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type
-#[derive(Debug, Default, Clone, Eq, PartialEq, Encode, Decode)]
-pub struct GSet<T: Ord + Clone> {
-    values: BTreeSet<T>,
-}
-
-impl<T: Ord + Clone> GSet<T> {
-    /// Creates GSet from a single item.
-    pub fn from_single(item: T) -> Self {
-        Self {
-            values: BTreeSet::from_iter(vec![item]),
-        }
-    }
-
-    /// Merges two sets into a new one.
-    pub fn merge(&self, other_set: GSet<T>) -> GSet<T> {
-        Self {
-            values: BTreeSet::from_iter(
-                self.values
-                    .clone()
-                    .into_iter()
-                    .chain(other_set.values.into_iter()),
-            ),
-        }
-    }
-
-    /// Clones inner values.
-    pub fn values(&self) -> BTreeSet<T> {
-        self.values.clone()
     }
 }

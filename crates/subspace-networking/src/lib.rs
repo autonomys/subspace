@@ -35,7 +35,7 @@ pub use crate::node::{
 };
 pub use crate::node_runner::NodeRunner;
 pub use behavior::custom_record_store::{
-    CustomRecordStore, GSet, GetOnlyRecordStorage, LimitedSizeRecordStorageWrapper,
+    CustomRecordStore, GetOnlyRecordStorage, LimitedSizeRecordStorageWrapper,
     MemoryProviderStorage, MemoryRecordStorage, NoRecordStorage, ParityDbRecordStorage,
     RecordStorage,
 };

@@ -1,11 +1,12 @@
 use parity_scale_codec::Encode;
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{GSet, Node, ToMultihash};
+use subspace_networking::{Node, ToMultihash};
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
@@ -50,9 +51,9 @@ impl PieceSectorPublisher {
 
                 // TODO: rework to piece announcing (pull-model) after fixing
                 // https://github.com/libp2p/rust-libp2p/issues/3048
-                let gset = GSet::from_single(self.dsn_node.id().to_bytes());
+                let set = BTreeSet::from_iter(vec![self.dsn_node.id().to_bytes()]);
 
-                let result = self.dsn_node.put_value(key, gset.encode()).await;
+                let result = self.dsn_node.put_value(key, set.encode()).await;
 
                 if let Err(error) = result {
                     error!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");

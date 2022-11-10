@@ -1,13 +1,14 @@
 use crate::RpcClient;
 use async_trait::async_trait;
 use parity_scale_codec::Decode;
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{GSet, Node, PieceByHashRequest, PieceKey, ToMultihash};
+use subspace_networking::{Node, PieceByHashRequest, PieceKey, ToMultihash};
 use tokio::time::sleep;
 use tracing::{debug, error, info, trace, warn};
 
@@ -129,19 +130,20 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
                     );
 
                     // Workaround for archival sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-                    let peer_set =
-                        if let Ok(gset) = GSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice()) {
-                            gset
-                        } else {
-                            warn!(
-                                %piece_index,
-                                ?key,
-                                "get_value returned a non-gset value"
-                            );
-                            return None;
-                        };
+                    let peer_set = if let Ok(set) =
+                        BTreeSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice())
+                    {
+                        set
+                    } else {
+                        warn!(
+                            %piece_index,
+                            ?key,
+                            "get_value returned a non-gset value"
+                        );
+                        return None;
+                    };
 
-                    for peer_id in peer_set.values() {
+                    for peer_id in peer_set.into_iter() {
                         if let Ok(piece_provider_id) = PeerId::from_bytes(&peer_id) {
                             let request_result = dsn_node
                                 .send_generic_request(
