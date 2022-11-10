@@ -62,6 +62,7 @@
 
 mod aux_schema;
 mod bundle_election_solver;
+mod core_bundle_processor;
 mod core_bundle_producer;
 mod fraud_proof;
 mod merkle_tree;
