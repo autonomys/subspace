@@ -16,6 +16,7 @@
 
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
+use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
@@ -33,7 +34,6 @@ use sp_runtime::traits::{HashFor, Header as HeaderT, NumberFor, One, Saturating}
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -42,36 +42,6 @@ use system_runtime_primitives::{AccountId, SystemDomainApi};
 use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
-
-/// Data required to produce bundles on executor node.
-#[derive(PartialEq, Clone, Debug)]
-pub(super) struct ExecutorSlotInfo {
-    /// Slot
-    pub(super) slot: Slot,
-    /// Global challenge
-    pub(super) global_challenge: Blake2b256Hash,
-}
-
-/// An event telling the `Overseer` on the particular block
-/// that has been imported or finalized.
-///
-/// This structure exists solely for the purposes of decoupling
-/// `Overseer` code from the client code and the necessity to call
-/// `HeaderBackend::block_number_from_id()`.
-#[derive(Debug, Clone)]
-pub struct BlockInfo<Block>
-where
-    Block: BlockT,
-{
-    /// hash of the block.
-    pub hash: Block::Hash,
-    /// hash of the parent block.
-    pub parent_hash: Block::Hash,
-    /// block's number.
-    pub number: NumberFor<Block>,
-    /// Fork choice of the block.
-    pub fork_choice: ForkChoiceStrategy,
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn start_worker<

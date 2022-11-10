@@ -1,5 +1,5 @@
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::system_domain_worker::ExecutorSlotInfo;
+use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};

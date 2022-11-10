@@ -71,11 +71,12 @@ mod system_bundle_producer;
 mod system_domain_worker;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::system_domain_worker::BlockInfo;
+use crate::utils::BlockInfo;
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use futures::channel::mpsc;
