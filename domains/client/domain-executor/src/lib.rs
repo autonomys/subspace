@@ -64,6 +64,7 @@ mod aux_schema;
 mod bundle_election_solver;
 mod core_bundle_processor;
 mod core_bundle_producer;
+mod core_domain_worker;
 mod fraud_proof;
 mod merkle_tree;
 mod system_bundle_processor;
