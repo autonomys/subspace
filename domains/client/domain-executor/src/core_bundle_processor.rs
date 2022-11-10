@@ -79,7 +79,7 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
     shuffled_extrinsics
 }
 
-pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+pub(crate) struct CoreBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -96,7 +96,7 @@ where
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+    for CoreBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -122,7 +122,7 @@ type SystemAndCoreBundles<Block, PBlock> = (
 );
 
 impl<Block, PBlock, Client, PClient, Backend, E>
-    BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+    CoreBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,

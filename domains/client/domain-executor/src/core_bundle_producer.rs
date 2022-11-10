@@ -26,7 +26,7 @@ use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 const LOG_TARGET: &str = "bundle-producer";
 
-pub(super) struct BundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
+pub(super) struct CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -44,7 +44,7 @@ where
 }
 
 impl<Block, SBlock, PBlock, Client, SClient, TransactionPool> Clone
-    for BundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
+    for CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -66,7 +66,7 @@ where
 }
 
 impl<Block, SBlock, PBlock, Client, SClient, TransactionPool>
-    BundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
+    CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
     Block: BlockT,
     SBlock: BlockT,
