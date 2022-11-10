@@ -219,20 +219,7 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let _state_root = self
-            .client
-            .expect_header(BlockId::Number(parent_number))?
-            .state_root();
-
-        let receipts = if self
-            .primary_chain_client
-            .expect_block_number_from_id(&BlockId::Hash(primary_hash))?
-            .is_zero()
-        {
-            Vec::new()
-        } else {
-            self.expected_receipts_on_primary_chain(primary_hash, parent_number)?
-        };
+        let receipts = self.expected_receipts_on_primary_chain(primary_hash, parent_number)?;
 
         let bundle = Bundle {
             header: BundleHeader {
@@ -252,6 +239,14 @@ where
         primary_hash: PBlock::Hash,
         header_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
+        if self
+            .primary_chain_client
+            .expect_block_number_from_id(&BlockId::Hash(primary_hash))?
+            .is_zero()
+        {
+            return Ok(Vec::new());
+        }
+
         let best_execution_chain_number = self
             .primary_chain_client
             .runtime_api()
