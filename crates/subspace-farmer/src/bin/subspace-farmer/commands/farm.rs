@@ -13,7 +13,7 @@ use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
 use subspace_networking::{
-    create, BootstrappedNetworkingParameters, Config, CustomRecordStore,
+    create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
     LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
     ParityDbRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
 };
@@ -253,6 +253,8 @@ async fn configure_dsn(
     );
 
     let handle = Handle::current();
+    let default_config = Config::with_generated_keypair();
+
     let config = Config::<ConfiguredRecordStore> {
         listen_on,
         allow_non_globals_in_dht: true,
@@ -317,10 +319,11 @@ async fn configure_dsn(
                 ParityDbRecordStorage::new(&record_cache_db_path)
                     .map_err(|err| anyhow::anyhow!(err.to_string()))?,
                 record_cache_size,
+                peer_id(&default_config.keypair),
             ),
             MemoryProviderStorage::default(),
         ),
-        ..Config::with_generated_keypair()
+        ..default_config
     };
 
     create::<ConfiguredRecordStore>(config)
