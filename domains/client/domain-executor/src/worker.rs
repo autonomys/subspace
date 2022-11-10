@@ -153,15 +153,15 @@ pub(super) async fn start_worker<
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
-        move |primary_hash, slot_info| {
+        move |primary_info, slot_info| {
             bundle_producer
                 .clone()
-                .produce_bundle(primary_hash, slot_info)
+                .produce_bundle(primary_info, slot_info)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
                     tracing::error!(
                         target: LOG_TARGET,
-                        relay_parent = ?primary_hash,
+                        ?primary_info,
                         error = ?error,
                         "Error at producing bundle.",
                     );
@@ -194,7 +194,7 @@ async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PBlock::Hash,
+            (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -336,7 +336,7 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PBlock::Hash,
+            (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -350,11 +350,14 @@ where
         + Sync,
 {
     let best_hash = primary_chain_client.info().best_hash;
+    let best_number = primary_chain_client.info().best_hash;
 
     let best_hash = PBlock::Hash::decode(&mut best_hash.encode().as_slice())
         .expect("Hash type must be correct");
+    let best_number = NumberFor::<PBlock>::decode(&mut best_number.encode().as_slice())
+        .expect("BlockNumber type must be correct");
 
-    let opaque_bundle = match bundler(best_hash, executor_slot_info).await {
+    let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
             tracing::debug!(

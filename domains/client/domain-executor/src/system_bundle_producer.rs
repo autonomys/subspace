@@ -103,7 +103,7 @@ where
 
     pub(super) async fn produce_bundle(
         self,
-        primary_hash: PBlock::Hash,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
@@ -128,7 +128,7 @@ where
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
-            let bundle = self.propose_bundle_at(slot, primary_hash).await?;
+            let bundle = self.propose_bundle_at(slot, primary_info).await?;
 
             let to_sign = bundle.hash();
 
@@ -173,7 +173,7 @@ where
     async fn propose_bundle_at(
         &self,
         slot: Slot,
-        primary_hash: PBlock::Hash,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>),
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     {
         let parent_number = self.client.info().best_number;
@@ -219,7 +219,13 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let receipts = self.expected_receipts_on_primary_chain(primary_hash, parent_number)?;
+        let (primary_hash, primary_number) = primary_info;
+
+        let receipts = if primary_number.is_zero() {
+            Vec::new()
+        } else {
+            self.collect_system_bundle_receipts(primary_hash, parent_number)?
+        };
 
         let bundle = Bundle {
             header: BundleHeader {
@@ -234,19 +240,12 @@ where
         Ok(bundle)
     }
 
-    fn expected_receipts_on_primary_chain(
+    /// Returns the receipts in the next system domain bundle.
+    fn collect_system_bundle_receipts(
         &self,
         primary_hash: PBlock::Hash,
         header_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
-        if self
-            .primary_chain_client
-            .expect_block_number_from_id(&BlockId::Hash(primary_hash))?
-            .is_zero()
-        {
-            return Ok(Vec::new());
-        }
-
         let best_execution_chain_number = self
             .primary_chain_client
             .runtime_api()
