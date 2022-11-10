@@ -1,3 +1,4 @@
+use crate::bundle_election_solver::BundleElectionSolver;
 use crate::worker::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
@@ -8,23 +9,18 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_domains::bundle_election::{
-    calculate_bundle_election_threshold, derive_bundle_election_solution,
-    is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    BundleElectionParams,
-};
 use sp_domains::{
     Bundle, BundleHeader, DomainId, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
-    ProofOfElection, SignedBundle, SignedOpaqueBundle, StakeWeight,
+    SignedBundle, SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 const LOG_TARGET: &str = "bundle-producer";
@@ -41,6 +37,7 @@ where
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
+    bundle_election_solver: BundleElectionSolver<Block, PBlock, Client>,
     _phantom_data: PhantomData<PBlock>,
 }
 
@@ -59,6 +56,7 @@ where
             bundle_sender: self.bundle_sender.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
+            bundle_election_solver: self.bundle_election_solver.clone(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -89,6 +87,7 @@ where
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
     ) -> Self {
+        let bundle_election_solver = BundleElectionSolver::new(client.clone(), keystore.clone());
         Self {
             domain_id,
             primary_chain_client,
@@ -97,6 +96,7 @@ where
             bundle_sender,
             is_authority,
             keystore,
+            bundle_election_solver,
             _phantom_data: PhantomData::default(),
         }
     }
@@ -114,7 +114,18 @@ where
             global_challenge,
         } = slot_info;
 
-        if let Some(proof_of_election) = self.solve_bundle_election_challenge(global_challenge)? {
+        let best_hash = self.client.info().best_hash;
+        let best_number = self.client.info().best_number;
+
+        if let Some(proof_of_election) = self
+            .bundle_election_solver
+            .solve_bundle_election_challenge(
+                best_hash,
+                best_number,
+                self.domain_id,
+                global_challenge,
+            )?
+        {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
             let bundle = self.propose_bundle_at(slot, primary_hash).await?;
@@ -157,100 +168,6 @@ where
         } else {
             Ok(None)
         }
-    }
-
-    fn solve_bundle_election_challenge(
-        &self,
-        global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
-        let best_hash = self.client.info().best_hash;
-        let best_number = self.client.info().best_number;
-
-        let best_block_id = BlockId::Hash(best_hash);
-
-        let BundleElectionParams {
-            authorities,
-            total_stake_weight,
-            slot_probability,
-        } = self
-            .client
-            .runtime_api()
-            .bundle_elections_params(&best_block_id, self.domain_id)?;
-
-        assert!(
-            total_stake_weight
-                == authorities
-                    .iter()
-                    .map(|(_, weight)| weight)
-                    .sum::<StakeWeight>(),
-            "Total stake weight mismatches, which must be a bug in the runtime"
-        );
-
-        let transcript_data = make_local_randomness_transcript_data(&global_challenge);
-
-        for (authority_id, stake_weight) in authorities {
-            if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
-                &*self.keystore,
-                ExecutorPublicKey::ID,
-                authority_id.as_ref(),
-                transcript_data.clone(),
-            ) {
-                let election_solution = derive_bundle_election_solution(
-                    self.domain_id,
-                    vrf_signature.output.to_bytes(),
-                    &authority_id,
-                    &global_challenge,
-                )
-                .map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to derive bundle election solution: {err}",
-                    )))
-                })?;
-
-                let threshold = calculate_bundle_election_threshold(
-                    stake_weight,
-                    total_stake_weight,
-                    slot_probability,
-                );
-
-                if is_election_solution_within_threshold(election_solution, threshold) {
-                    let storage_keys =
-                        well_known_keys::bundle_election_storage_keys(self.domain_id);
-                    // TODO: bench how large the storage proof we can afford and try proving a single
-                    // electioned executor storage instead of the whole authority set.
-                    let storage_proof = self.client.read_proof(
-                        &best_block_id,
-                        &mut storage_keys.iter().map(|s| s.as_slice()),
-                    )?;
-
-                    let state_root = *self
-                        .client
-                        .header(best_block_id)?
-                        .expect("Best block header must exist; qed")
-                        .state_root();
-
-                    let best_number: BlockNumber = best_number
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
-
-                    let proof_of_election = ProofOfElection {
-                        domain_id: self.domain_id,
-                        vrf_output: vrf_signature.output.to_bytes(),
-                        vrf_proof: vrf_signature.proof.to_bytes(),
-                        executor_public_key: authority_id,
-                        global_challenge,
-                        state_root,
-                        storage_proof,
-                        block_number: best_number,
-                        block_hash: best_hash,
-                    };
-
-                    return Ok(Some(proof_of_election));
-                }
-            }
-        }
-
-        Ok(None)
     }
 
     async fn propose_bundle_at(

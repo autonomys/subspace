@@ -61,6 +61,7 @@
 #![feature(drain_filter)]
 
 mod aux_schema;
+mod bundle_election_solver;
 mod fraud_proof;
 mod merkle_tree;
 mod system_bundle_processor;
