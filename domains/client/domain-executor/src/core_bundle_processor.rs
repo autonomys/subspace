@@ -14,7 +14,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
+use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
@@ -116,10 +116,8 @@ where
     }
 }
 
-type SystemAndCoreBundles<Block, PBlock> = (
-    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
-    Vec<SignedOpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
-);
+type CoreBundles<Block, PBlock> =
+    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>;
 
 impl<Block, PBlock, Client, PClient, Backend, E>
     CoreBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
@@ -177,7 +175,7 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: SystemAndCoreBundles<Block, PBlock>,
+        bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -293,7 +291,7 @@ where
         &self,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        bundles: SystemAndCoreBundles<Block, PBlock>,
+        bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
         fork_choice: ForkChoiceStrategy,
@@ -374,10 +372,10 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        (system_bundles, core_bundles): SystemAndCoreBundles<Block, PBlock>,
+        bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let origin_system_extrinsics = system_bundles
+        let mut extrinsics = bundles
             .into_iter()
             .flat_map(|bundle| {
                 bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
@@ -395,27 +393,7 @@ where
                         },
                     }
                 })
-            });
-
-        let mut extrinsics = self
-            .client
-            .runtime_api()
-            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
-            .into_iter()
-            .filter_map(
-                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            error = ?e,
-                            "Failed to decode the opaque extrisic in bundle, this should not happen"
-                        );
-                        None
-                    }
-                },
-            )
-            .chain(origin_system_extrinsics)
+            })
             .collect::<Vec<_>>();
 
         // TODO: or just Vec::new()?
