@@ -102,6 +102,8 @@ sp_api::decl_runtime_apis! {
 
         fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block>;
 
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+
         fn maximum_receipt_drift() -> NumberFor<Block>;
     }
 }

@@ -27,7 +27,7 @@ use sp_domains::{
     BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::Zero;
+use sp_runtime::traits::{One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 
@@ -103,6 +103,10 @@ mod pallet {
         /// future.
         #[pallet::constant]
         type MaximumReceiptDrift: Get<Self::BlockNumber>;
+
+        /// Number of execution receipts kept in the state.
+        #[pallet::constant]
+        type ReceiptsPruningDepth: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -669,6 +673,17 @@ impl<T: Config> Pallet<T> {
     pub fn best_execution_chain_number(domain_id: DomainId) -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
         best_number
+    }
+
+    /// Returns the block number of the oldest receipt still being tracked in the state.
+    pub fn oldest_receipt_number(domain_id: DomainId) -> T::BlockNumber {
+        Self::finalized_receipt_number(domain_id) + One::one()
+    }
+
+    /// Returns the block number of latest _finalized_ receipt.
+    pub fn finalized_receipt_number(domain_id: DomainId) -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
+        best_number.saturating_sub(T::ReceiptsPruningDepth::get())
     }
 
     fn can_create_domain(

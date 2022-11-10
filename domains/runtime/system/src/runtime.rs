@@ -278,6 +278,7 @@ parameter_types! {
     pub const MinDomainDeposit: Balance = 10 * SSC;
     pub const MaxDomainDeposit: Balance = 1000 * SSC;
     pub const MinDomainOperatorStake: Balance = 10 * SSC;
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
 }
 
@@ -290,6 +291,7 @@ impl pallet_domain_registry::Config for Runtime {
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
     type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -470,6 +472,10 @@ impl_runtime_apis! {
 
         fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
             DomainRegistry::best_execution_chain_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::oldest_receipt_number(domain_id)
         }
 
         fn maximum_receipt_drift() -> NumberFor<Block> {

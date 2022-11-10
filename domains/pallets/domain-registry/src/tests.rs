@@ -108,6 +108,7 @@ parameter_types! {
     pub const MaxDomainDeposit: Balance = 1000;
     pub const MinDomainOperatorStake: u32 = 10;
     pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
 }
 
 impl pallet_domain_registry::Config for Test {
@@ -119,6 +120,7 @@ impl pallet_domain_registry::Config for Test {
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
     type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
