@@ -1,6 +1,5 @@
-use sc_client_api::{BlockBackend, ProofProvider};
+use sc_client_api::ProofProvider;
 use sp_api::{NumberFor, ProvideRuntimeApi};
-use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::bundle_election::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
@@ -41,12 +40,8 @@ impl<Block, PBlock, Client> BundleElectionSolver<Block, PBlock, Client>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block>
-        + BlockBackend<Block>
-        + ProvideRuntimeApi<Block>
-        + ProofProvider<Block>,
-    Client::Api:
-        SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash> + BlockBuilder<Block>,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>,
 {
     pub(super) fn new(client: Arc<Client>, keystore: SyncCryptoStorePtr) -> Self {
         Self {
