@@ -1,6 +1,6 @@
 #![allow(unused)]
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::worker::ExecutorSlotInfo;
+use crate::system_domain_worker::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
 use futures::{select, FutureExt};

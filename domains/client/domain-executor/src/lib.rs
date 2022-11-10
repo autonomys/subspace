@@ -68,14 +68,14 @@ mod fraud_proof;
 mod merkle_tree;
 mod system_bundle_processor;
 mod system_bundle_producer;
+mod system_domain_worker;
 #[cfg(test)]
 mod tests;
-mod worker;
 
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::worker::BlockInfo;
+use crate::system_domain_worker::BlockInfo;
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use futures::channel::mpsc;
@@ -254,7 +254,7 @@ where
         spawn_essential.spawn_essential_blocking(
             "executor-worker",
             None,
-            worker::start_worker(
+            system_domain_worker::start_worker(
                 primary_chain_client.clone(),
                 client.clone(),
                 bundle_producer,
