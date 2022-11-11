@@ -21,7 +21,7 @@ pub mod endpoint;
 pub mod messages;
 
 use codec::{Decode, Encode};
-use messages::{CrossDomainMessage, RelayerMessagesWithStorageKey};
+use messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 
@@ -29,12 +29,15 @@ use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 /// This trait supports utilities to verify the message coming from src_domain to system domain.
 /// If the message is sent to another core domain, then dst_domain can use this trait and verify the message
 /// using System domain as trusted third party.
-pub trait DomainTracker<StateRoot> {
+pub trait DomainTracker<BlockNumber, StateRoot> {
     /// Returns a list of state roots of system domain.
     fn system_domain_state_roots() -> Vec<StateRoot>;
 
-    /// Returns the storage key that maps to the latest state root of the domain.
-    fn domain_state_root_storage_key(domain_id: DomainId) -> StorageKey;
+    /// Returns the storage key that maps to the state root of the core domain for a specific block.
+    fn storage_key_for_core_domain_state_root(
+        domain_id: DomainId,
+        block_number: BlockNumber,
+    ) -> StorageKey;
 }
 
 sp_api::decl_runtime_apis! {
@@ -56,12 +59,18 @@ sp_api::decl_runtime_apis! {
 
         /// Submits outbox message to the dst_domain as an unsigned extrinsic.
         fn submit_outbox_message_unsigned(
-            msg: CrossDomainMessage<Block::Hash>,
+            msg: CrossDomainMessage<Block::Hash, BlockNumber>,
         );
 
         /// Submits inbox response message to the dst_domain as an unsigned extrinsic.
         fn submit_inbox_response_message_unsigned(
-            msg: CrossDomainMessage<Block::Hash>,
+            msg: CrossDomainMessage<Block::Hash, BlockNumber>,
         );
+
+        /// Returns true if the outbox message is ready to be relayed to dst_domain.
+        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool;
+
+        /// Returns true if the inbox message response is ready to be relayed to dst_domain.
+        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool;
     }
 }
