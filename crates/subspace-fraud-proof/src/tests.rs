@@ -8,11 +8,13 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
-use sp_domains::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
+use sp_domains::{
+    BundleHeader, DomainCoreApi, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle,
+};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
-use system_runtime_primitives::{Hash, SystemDomainApi};
+use system_runtime_primitives::Hash;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]

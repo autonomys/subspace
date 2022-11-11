@@ -74,24 +74,7 @@ where
 
 sp_api::decl_runtime_apis! {
     /// API necessary for system domain.
-    pub trait SystemDomainApi<AccountId: Encode + Decode, PNumber: Encode + Decode, PHash: Encode + Decode> {
-        /// Extracts the optional signer per extrinsic.
-        fn extract_signer(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
-
-        /// Returns the intermediate storage roots in an encoded form.
-        fn intermediate_roots() -> Vec<[u8; 32]>;
-
-        /// Returns the storage root after initializing the block.
-        fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8>;
-
-        /// Returns the storage root after applying the extrinsic.
-        fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
-
-        /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
-        fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
-
+    pub trait SystemDomainApi<PNumber: Encode + Decode, PHash: Encode + Decode> {
         /// Wrap the core domain bundles into extrinsics.
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<PNumber, PHash, <Block as BlockT>::Hash>>,

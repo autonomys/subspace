@@ -14,7 +14,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct BundleElectionSolver<Block, PBlock, Client> {
     client: Arc<Client>,
@@ -41,7 +41,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
-    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>,
+    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
 {
     pub(super) fn new(client: Arc<Client>, keystore: SyncCryptoStorePtr) -> Self {
         Self {

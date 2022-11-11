@@ -10,8 +10,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{
-    Bundle, BundleHeader, DomainId, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
-    SignedBundle, SignedOpaqueBundle,
+    Bundle, BundleHeader, DomainCoreApi, DomainId, ExecutorApi, ExecutorPublicKey,
+    ExecutorSignature, SignedBundle, SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -72,8 +72,9 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>,
-    Client::Api:
-        SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash> + BlockBuilder<Block>,
+    Client::Api: DomainCoreApi<Block, AccountId>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + BlockBuilder<Block>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,

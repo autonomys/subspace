@@ -10,13 +10,14 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domains::{
-    Bundle, BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, ProofOfElection, SignedBundle,
+    Bundle, BundleHeader, DomainCoreApi, ExecutionPhase, ExecutorPair, FraudProof, ProofOfElection,
+    SignedBundle,
 };
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
-use system_runtime_primitives::{Hash, SystemDomainApi};
+use system_runtime_primitives::Hash;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]

@@ -19,6 +19,9 @@
 
 pub mod bundle_election;
 
+pub use crate::domain_core_api::runtime_decl_for_DomainCoreApi;
+#[cfg(any(feature = "std", test))]
+pub use crate::domain_core_api::DomainCoreApi;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
@@ -590,5 +593,34 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;
+    }
+}
+
+// Required as `sp_api::decl_runtime_apis` can not be defined in the same module multiple times.
+mod domain_core_api {
+    use parity_scale_codec::{Decode, Encode};
+    use sp_runtime::traits::Block as BlockT;
+    use sp_std::vec::Vec;
+
+    sp_api::decl_runtime_apis! {
+        /// Base API that every domain runtime must implement.
+        pub trait DomainCoreApi<AccountId: Encode + Decode> {
+            /// Extracts the optional signer per extrinsic.
+            fn extract_signer(
+                extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+
+            /// Returns the intermediate storage roots in an encoded form.
+            fn intermediate_roots() -> Vec<[u8; 32]>;
+
+            /// Returns the storage root after initializing the block.
+            fn initialize_block_with_post_state_root(header: &<Block as BlockT>::Header) -> Vec<u8>;
+
+            /// Returns the storage root after applying the extrinsic.
+            fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
+
+            /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
+            fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
+        }
     }
 }
