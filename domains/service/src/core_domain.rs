@@ -1,9 +1,10 @@
-use domain_client_executor::SystemExecutor;
+use domain_client_executor::CoreExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockBackend, StateBackendFor};
+use sc_client_api::{BlockBackend, ProofProvider, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -19,7 +20,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::{DomainCoreApi, ExecutorApi};
+use sp_domains::{DomainId, ExecutorApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -133,19 +134,23 @@ where
     Ok(params)
 }
 
-type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<
-    Block,
-    PBlock,
-    FullClient<RuntimeApi, ExecutorDispatch>,
-    PClient,
-    FullPool<RuntimeApi, ExecutorDispatch>,
-    FullBackend,
-    NativeElseWasmExecutor<ExecutorDispatch>,
->;
+type SystemDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
+    CoreExecutor<
+        Block,
+        SBlock,
+        PBlock,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        SClient,
+        PClient,
+        FullPool<RuntimeApi, ExecutorDispatch>,
+        FullBackend,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+    >;
 
 /// Full node along with some other components.
-pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
+pub struct NewFull<C, CodeExecutor, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>
 where
+    SBlock: BlockT,
     PBlock: BlockT,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
@@ -158,7 +163,6 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -178,14 +182,28 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Executor.
-    pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    pub executor:
+        SystemDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
+#[allow(clippy::too_many_arguments)]
+pub async fn new_full<
+    SBlock,
+    PBlock,
+    SClient,
+    PClient,
+    SC,
+    IBNS,
+    NSNS,
+    RuntimeApi,
+    ExecutorDispatch,
+>(
+    domain_id: DomainId,
     mut secondary_chain_config: Configuration,
+    system_domain_client: Arc<SClient>,
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     select_chain: &SC,
@@ -196,7 +214,9 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
     NewFull<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
+        SBlock,
         PBlock,
+        SClient,
         PClient,
         RuntimeApi,
         ExecutorDispatch,
@@ -204,6 +224,10 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
 >
 where
     PBlock: BlockT,
+    SBlock: BlockT,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -224,7 +248,6 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -293,7 +316,9 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
-    let executor = SystemExecutor::new(
+    let executor = CoreExecutor::new(
+        domain_id,
+        system_domain_client,
         primary_chain_client,
         primary_network,
         &spawn_essential,
