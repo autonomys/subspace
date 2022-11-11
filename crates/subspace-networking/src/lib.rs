@@ -15,7 +15,7 @@
 
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
-#![feature(const_option, ip, try_blocks)]
+#![feature(binary_heap_retain, const_option, ip, try_blocks)]
 
 mod behavior;
 mod create;
@@ -39,7 +39,7 @@ pub use behavior::custom_record_store::{
     MemoryProviderStorage, MemoryRecordStorage, NoRecordStorage, ParityDbRecordStorage,
     RecordStorage,
 };
-pub use create::{create, Config, CreationError, RelayMode};
+pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{

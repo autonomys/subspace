@@ -61,17 +61,17 @@
 #![feature(drain_filter)]
 
 mod aux_schema;
-mod bundle_processor;
-mod bundle_producer;
 mod fraud_proof;
 mod merkle_tree;
+mod system_bundle_processor;
+mod system_bundle_producer;
 #[cfg(test)]
 mod tests;
 mod worker;
 
-use crate::bundle_processor::BundleProcessor;
-use crate::bundle_producer::BundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::system_bundle_processor::BundleProcessor;
+use crate::system_bundle_producer::BundleProducer;
 use crate::worker::BlockInfo;
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
@@ -88,7 +88,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_domains::{
-    Bundle, BundleEquivocationProof, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
+    Bundle, BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorApi, ExecutorPublicKey,
     InvalidTransactionProof, OpaqueBundle, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
@@ -117,7 +117,7 @@ where
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
-    fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
 }
 
@@ -168,7 +168,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -221,6 +221,7 @@ where
         let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
         let bundle_producer = BundleProducer::new(
+            DomainId::SYSTEM,
             primary_chain_client.clone(),
             client.clone(),
             transaction_pool.clone(),
@@ -450,7 +451,7 @@ where
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof::<PBlock>(
+            let fraud_proof = self.fraud_proof_generator.generate_proof(
                 trace_mismatch_index,
                 &local_receipt,
                 signed_bundle_hash,
@@ -480,7 +481,12 @@ where
     ) {
         if let Err(err) = self
             .bundle_processor
-            .process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
+            .process_bundles(
+                primary_info,
+                (bundles, Vec::new()), // TODO: No core domain bundles in tests.
+                shuffling_seed,
+                maybe_new_runtime,
+            )
             .await
         {
             tracing::error!(
@@ -537,7 +543,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,

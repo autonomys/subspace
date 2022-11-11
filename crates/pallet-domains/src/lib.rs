@@ -27,11 +27,14 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
-use sp_domains::{
+use sp_domains::bundle_election::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
-    BundleElectionParams, BundleEquivocationProof, ExecutionReceipt, FraudProof,
-    InvalidTransactionCode, InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
+    BundleElectionParams,
+};
+use sp_domains::{
+    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
+    InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;

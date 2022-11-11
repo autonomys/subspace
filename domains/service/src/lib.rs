@@ -176,7 +176,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SystemDomainApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -241,7 +241,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SystemDomainApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,

@@ -10,11 +10,11 @@ use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
 use sc_network::NetworkService;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle};
+use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
@@ -91,7 +91,7 @@ where
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
-    fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     _phantom_data: PhantomData<PBlock>,
 }
 
@@ -116,6 +116,11 @@ where
     }
 }
 
+type SystemAndCoreBundles<Block, PBlock> = (
+    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
+    Vec<SignedOpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
+);
+
 impl<Block, PBlock, Client, PClient, Backend, E>
     BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
@@ -123,7 +128,7 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -149,7 +154,7 @@ where
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
-        fraud_proof_generator: FraudProofGenerator<Block, Client, Backend, E>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
             primary_chain_client,
@@ -172,7 +177,7 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        bundles: SystemAndCoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -189,6 +194,110 @@ where
             "New secondary best number must be equal to the primary number"
         );
 
+        let (header_hash, header_number, state_root) = self
+            .build_and_import_block(
+                parent_hash,
+                parent_number,
+                bundles,
+                shuffling_seed,
+                maybe_new_runtime,
+                fork_choice,
+            )
+            .await?;
+
+        let mut roots = self
+            .client
+            .runtime_api()
+            .intermediate_roots(&BlockId::Hash(header_hash))?;
+
+        let state_root = state_root
+            .encode()
+            .try_into()
+            .expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
+
+        roots.push(state_root);
+
+        let trace_root = crate::merkle_tree::construct_trace_merkle_tree(roots.clone())?.root();
+        let trace = roots
+            .into_iter()
+            .map(|r| {
+                Block::Hash::decode(&mut r.as_slice())
+                    .expect("Storage root uses the same Block hash type; qed")
+            })
+            .collect();
+
+        tracing::debug!(
+            target: LOG_TARGET,
+            ?trace,
+            ?trace_root,
+            "Trace root calculated for #{}",
+            header_hash
+        );
+
+        let execution_receipt = ExecutionReceipt {
+            primary_number: primary_number.into(),
+            primary_hash,
+            secondary_hash: header_hash,
+            trace,
+            trace_root,
+        };
+
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        let best_execution_chain_number = best_execution_chain_number.into();
+
+        assert!(
+            header_number > best_execution_chain_number,
+            "Consensus chain number must larger than execution chain number by at least 1"
+        );
+
+        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+            &*self.client,
+            (header_hash, header_number),
+            best_execution_chain_number,
+            &execution_receipt,
+        )?;
+
+        // TODO: The applied txs can be fully removed from the transaction pool
+
+        self.check_receipts_in_primary_block(primary_hash)?;
+
+        if self.primary_network.is_major_syncing() {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Skip checking the receipts as the primary node is still major syncing..."
+            );
+            return Ok(());
+        }
+
+        // Submit fraud proof for the first unconfirmed incorrent ER.
+        let oldest_receipt_number = self
+            .primary_chain_client
+            .runtime_api()
+            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+        crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+
+        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
+
+        Ok(())
+    }
+
+    async fn build_and_import_block(
+        &self,
+        parent_hash: Block::Hash,
+        parent_number: NumberFor<Block>,
+        bundles: SystemAndCoreBundles<Block, PBlock>,
+        shuffling_seed: Randomness,
+        maybe_new_runtime: Option<Cow<'static, [u8]>>,
+        fork_choice: ForkChoiceStrategy,
+    ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
         let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
         if let Some(new_runtime) = maybe_new_runtime {
@@ -259,105 +368,16 @@ where
             }
         }
 
-        let mut roots = self
-            .client
-            .runtime_api()
-            .intermediate_roots(&BlockId::Hash(header_hash))?;
-
-        let state_root = state_root
-            .encode()
-            .try_into()
-            .expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
-
-        roots.push(state_root);
-
-        let trace_root = crate::merkle_tree::construct_trace_merkle_tree(roots.clone())?.root();
-        let trace = roots
-            .into_iter()
-            .map(|r| {
-                Block::Hash::decode(&mut r.as_slice())
-                    .expect("Storage root uses the same Block hash type; qed")
-            })
-            .collect();
-
-        tracing::debug!(
-            target: LOG_TARGET,
-            ?trace,
-            ?trace_root,
-            "Trace root calculated for #{}",
-            header_hash
-        );
-
-        let execution_receipt = ExecutionReceipt {
-            primary_number: primary_number.into(),
-            primary_hash,
-            secondary_hash: header_hash,
-            trace,
-            trace_root,
-        };
-
-        let best_execution_chain_number = self
-            .primary_chain_client
-            .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
-
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let best_execution_chain_number = best_execution_chain_number.into();
-
-        assert!(
-            header_number > best_execution_chain_number,
-            "Consensus chain number must larger than execution chain number by at least 1"
-        );
-
-        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
-            &*self.client,
-            (header_hash, header_number),
-            best_execution_chain_number,
-            &execution_receipt,
-        )?;
-
-        // TODO: The applied txs can be fully removed from the transaction pool
-
-        // TODO: Remove once the network is reset.
-        if self
-            .primary_chain_client
-            .runtime_api()
-            .api_version::<dyn ExecutorApi<PBlock, Block::Hash>>(&BlockId::Hash(primary_hash))?
-            .map_or(false, |v| v >= 3)
-        {
-            self.check_receipts_in_primary_block(primary_hash)?;
-        }
-
-        if self.primary_network.is_major_syncing() {
-            tracing::debug!(
-                target: LOG_TARGET,
-                "Skip generating signed execution receipt as the primary node is still major syncing..."
-            );
-            return Ok(());
-        }
-
-        // Submit fraud proof for the first unconfirmed incorrent ER.
-        let oldest_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
-        crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
-
-        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
-
-        Ok(())
+        Ok((header_hash, header_number, state_root))
     }
 
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        (system_bundles, core_bundles): SystemAndCoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let mut extrinsics = bundles
+        let origin_system_extrinsics = system_bundles
             .into_iter()
             .flat_map(|bundle| {
                 bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
@@ -375,7 +395,27 @@ where
                         },
                     }
                 })
-            })
+            });
+
+        let mut extrinsics = self
+            .client
+            .runtime_api()
+            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
+            .into_iter()
+            .filter_map(
+                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
+                    Ok(uxt) => Some(uxt),
+                    Err(e) => {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            error = ?e,
+                            "Failed to decode the opaque extrisic in bundle, this should not happen"
+                        );
+                        None
+                    }
+                },
+            )
+            .chain(origin_system_extrinsics)
             .collect::<Vec<_>>();
 
         // TODO: or just Vec::new()?
@@ -562,11 +602,7 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof::<PBlock>(
-                    trace_mismatch_index,
-                    &local_receipt,
-                    bad_signed_bundle_hash,
-                )
+                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to generate fraud proof: {err}"

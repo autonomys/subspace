@@ -235,7 +235,7 @@ fn create_domain_should_work() {
             domain_config.clone(),
         ));
         assert_eq!(
-            frame_system::Account::<Test>::get(&creator).data,
+            frame_system::Account::<Test>::get(creator).data,
             AccountData {
                 free: 2000,
                 reserved: 0,

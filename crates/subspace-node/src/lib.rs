@@ -101,7 +101,7 @@ impl PurgeChainCmd {
         }
 
         for db_path in &db_paths {
-            match fs::remove_dir_all(&db_path) {
+            match fs::remove_dir_all(db_path) {
                 Ok(_) => {
                     println!("{:?} removed.", &db_path);
                 }

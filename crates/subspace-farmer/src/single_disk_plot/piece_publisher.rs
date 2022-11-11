@@ -1,3 +1,5 @@
+use parity_scale_codec::Encode;
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -48,12 +50,10 @@ impl PieceSectorPublisher {
                     .to_multihash_by_code(MultihashCode::Sector);
 
                 // TODO: rework to piece announcing (pull-model) after fixing
-                // TODO: as an alternative - support multiple PeerID via CRDT-structure
                 // https://github.com/libp2p/rust-libp2p/issues/3048
-                let result = self
-                    .dsn_node
-                    .put_value(key, self.dsn_node.id().to_bytes())
-                    .await;
+                let set = BTreeSet::from_iter(vec![self.dsn_node.id().to_bytes()]);
+
+                let result = self.dsn_node.put_value(key, set.encode()).await;
 
                 if let Err(error) = result {
                     error!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");

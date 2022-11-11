@@ -1494,7 +1494,7 @@ impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId
             |(public_key, _sector_index, _slot, reward_address)| {
                 // Equivocation might have happened in this block, if so - no reward for block
                 // author
-                if !BlockList::<T>::contains_key(&public_key) {
+                if !BlockList::<T>::contains_key(public_key) {
                     // Rewards might be disabled, in which case no block reward either
                     if let Some(height) = EnableRewards::<T>::get() {
                         if frame_system::Pallet::<T>::current_block_number() >= height {

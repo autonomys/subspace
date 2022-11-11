@@ -74,7 +74,7 @@ mod pallet {
             debug!(
                 target: "runtime:object-store",
                 "New object {}, size {} bytes",
-                hex::encode(&object_id),
+                hex::encode(object_id),
                 object_size
             );
 
