@@ -65,17 +65,17 @@ mod bundle_election_solver;
 mod core_bundle_processor;
 mod core_bundle_producer;
 mod core_domain_worker;
-mod executor;
 mod fraud_proof;
 mod merkle_tree;
 mod system_bundle_processor;
 mod system_bundle_producer;
 mod system_domain_worker;
+mod system_executor;
 #[cfg(test)]
 mod tests;
 mod utils;
 
-pub use self::executor::Executor;
+pub use self::system_executor::Executor as SystemExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_domains::{ExecutionReceipt, SignedBundle};
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
