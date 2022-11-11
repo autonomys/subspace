@@ -13,7 +13,7 @@ use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::AccountId;
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
@@ -59,7 +59,6 @@ where
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,

@@ -35,21 +35,6 @@ use system_domain_runtime::opaque::Block;
 use system_domain_runtime::{AccountId, Balance, Hash};
 use system_runtime_primitives::SystemDomainApi;
 
-/// Native executor instance.
-pub struct SystemDomainRuntimeExecutor;
-
-impl NativeExecutionDispatch for SystemDomainRuntimeExecutor {
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        system_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        system_domain_runtime::native_version()
-    }
-}
-
 /// Domain full client.
 pub type FullClient<RuntimeApi, ExecutorDispatch> =
     TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;

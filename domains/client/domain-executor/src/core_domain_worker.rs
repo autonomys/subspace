@@ -86,7 +86,6 @@ pub(super) async fn start_worker<
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
