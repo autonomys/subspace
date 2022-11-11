@@ -764,6 +764,11 @@ impl SingleDiskPlot {
 
                         while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
                         {
+                            if shutting_down.load(Ordering::Acquire) {
+                                debug!("Instance is shutting down, interrupting farming");
+                                return;
+                            }
+
                             debug!(?slot_info, "New slot");
 
                             let sector_count = metadata_header.lock().sector_count;
