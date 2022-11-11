@@ -76,7 +76,7 @@ pub fn local_testnet_genesis() -> domain_test_runtime::GenesisConfig {
             1_000 * SSC,
             // TODO: proper genesis domain config
             DomainConfig {
-                wasm_runtime_hash: Hash::random(),
+                wasm_runtime_hash: Hash::zero(),
                 max_bundle_size: 1024 * 1024,
                 bundle_frequency: 100,
                 max_bundle_weight: Weight::MAX,

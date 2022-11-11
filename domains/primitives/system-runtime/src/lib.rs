@@ -19,7 +19,7 @@
 
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionParams;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, SignedOpaqueBundle};
 use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
@@ -74,7 +74,7 @@ where
 
 sp_api::decl_runtime_apis! {
     /// API necessary for system domain.
-    pub trait SystemDomainApi<AccountId: Encode + Decode> {
+    pub trait SystemDomainApi<AccountId: Encode + Decode, PNumber: Encode + Decode, PHash: Encode + Decode> {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
@@ -91,6 +91,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
+
+        /// Wrap the core domain bundles into extrinsics.
+        fn construct_submit_core_bundle_extrinsics(
+            signed_opaque_bundles: Vec<SignedOpaqueBundle<PNumber, PHash, <Block as BlockT>::Hash>>,
+        ) -> Vec<Vec<u8>>;
 
         /// Returns the parameters for the bundle election.
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams;

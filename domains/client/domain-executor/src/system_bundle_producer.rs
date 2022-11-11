@@ -74,7 +74,8 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>,
-    Client::Api: SystemDomainApi<Block, AccountId> + BlockBuilder<Block>,
+    Client::Api:
+        SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash> + BlockBuilder<Block>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,

@@ -55,7 +55,7 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
 use sp_domains::{
-    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof,
     SignedOpaqueBundle,
 };
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
@@ -522,22 +522,33 @@ fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
     }
 }
 
-fn extract_bundles(
+fn extract_system_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
-    extrinsics
+) -> (
+    sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash>,
+    sp_domains::SignedOpaqueBundles<Block, system_runtime_primitives::Hash>,
+) {
+    let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
         .filter_map(|uxt| {
             if let Call::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_opaque_bundle.bundle)
+                if signed_opaque_bundle.domain_id().is_system() {
+                    Some((Some(signed_opaque_bundle.bundle), None))
+                } else {
+                    Some((None, Some(signed_opaque_bundle)))
+                }
             } else {
                 None
             }
         })
-        .collect()
+        .unzip();
+    (
+        system_bundles.into_iter().flatten().collect(),
+        core_bundles.into_iter().flatten().collect(),
+    )
 }
 
 fn extract_receipts(
@@ -787,8 +798,13 @@ impl_runtime_apis! {
             Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
-            extract_bundles(extrinsics)
+        fn extract_system_bundles(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> (
+            sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash>,
+            sp_domains::SignedOpaqueBundles<Block, system_runtime_primitives::Hash>,
+        ) {
+            extract_system_bundles(extrinsics)
         }
 
         fn extract_receipts(
