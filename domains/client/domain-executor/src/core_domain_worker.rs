@@ -59,7 +59,6 @@ pub(super) async fn start_worker<
 >(
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
-    system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     bundle_producer: CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>,
     bundle_processor: CoreBundleProcessor<

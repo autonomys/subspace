@@ -76,6 +76,7 @@ mod system_executor;
 mod tests;
 mod utils;
 
+pub use self::core_executor::Executor as CoreExecutor;
 pub use self::system_executor::Executor as SystemExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_domains::{ExecutionReceipt, SignedBundle};

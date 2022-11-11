@@ -1,6 +1,6 @@
+use crate::core_bundle_processor::CoreBundleProcessor;
+use crate::core_bundle_producer::CoreBundleProducer;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
-use crate::system_bundle_processor::SystemBundleProcessor;
-use crate::system_bundle_producer::SystemBundleProducer;
 use crate::utils::BlockInfo;
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
@@ -18,7 +18,7 @@ use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_domains::{
     Bundle, BundleEquivocationProof, DomainId, ExecutorApi, ExecutorPublicKey,
-    InvalidTransactionProof, OpaqueBundle, SignedBundle,
+    InvalidTransactionProof, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
@@ -26,15 +26,16 @@ use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
 use sp_runtime::RuntimeAppPublic;
-use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 /// The implementation of the Domain `Executor`.
-pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+pub struct Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     // TODO: no longer used in executor, revisit this with ParachainBlockImport together.
@@ -44,13 +45,14 @@ where
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    _phantom_data: PhantomData<(SBlock, SClient)>,
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
-    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> Clone
+    for Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
@@ -61,15 +63,16 @@ where
             transaction_pool: self.transaction_pool.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
-            bundle_processor: self.bundle_processor.clone(),
+            _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-    Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+    Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -88,6 +91,8 @@ where
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -103,6 +108,8 @@ where
     /// Create a new instance.
     #[allow(clippy::too_many_arguments)]
     pub async fn new<SE, SC, IBNS, NSNS>(
+        domain_id: DomainId,
+        system_domain_client: Arc<SClient>,
         primary_chain_client: Arc<PClient>,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         spawn_essential: &SE,
@@ -129,9 +136,9 @@ where
     {
         let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
 
-        let bundle_producer = SystemBundleProducer::new(
-            DomainId::SYSTEM,
-            primary_chain_client.clone(),
+        let bundle_producer = CoreBundleProducer::new(
+            domain_id,
+            system_domain_client.clone(),
             client.clone(),
             transaction_pool.clone(),
             bundle_sender,
@@ -146,9 +153,11 @@ where
             code_executor,
         );
 
-        let bundle_processor = SystemBundleProcessor::new(
+        let bundle_processor = CoreBundleProcessor::new(
+            domain_id,
             primary_chain_client.clone(),
             primary_network,
+            system_domain_client,
             client.clone(),
             backend.clone(),
             is_authority,
@@ -160,11 +169,12 @@ where
         spawn_essential.spawn_essential_blocking(
             "executor-worker",
             None,
-            crate::system_domain_worker::start_worker(
+            crate::core_domain_worker::start_worker(
+                domain_id,
                 primary_chain_client.clone(),
                 client.clone(),
                 bundle_producer,
-                bundle_processor.clone(),
+                bundle_processor,
                 imported_block_notification_stream,
                 new_slot_notification_stream,
                 active_leaves,
@@ -180,7 +190,7 @@ where
             transaction_pool,
             backend,
             fraud_proof_generator,
-            bundle_processor,
+            _phantom_data: PhantomData::default(),
         })
     }
 
@@ -379,36 +389,6 @@ where
 
         Ok(())
     }
-
-    /// Processes the bundles extracted from the primary block.
-    // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
-    // `set_new_code_should_work` test to do an actual runtime upgrade
-    #[doc(hidden)]
-    pub async fn process_bundles(
-        self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-        shuffling_seed: Randomness,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
-    ) {
-        if let Err(err) = self
-            .bundle_processor
-            .process_bundles(
-                primary_info,
-                (bundles, Vec::new()), // TODO: No core domain bundles in tests.
-                shuffling_seed,
-                maybe_new_runtime,
-            )
-            .await
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?primary_info,
-                error = ?err,
-                "Error at processing bundles.",
-            );
-        }
-    }
 }
 
 /// Error type for domain gossip handling.
@@ -441,11 +421,12 @@ impl From<sp_blockchain::Error> for GossipMessageError {
     }
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
     GossipMessageHandler<PBlock, Block>
-    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+    for Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -466,6 +447,8 @@ where
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
