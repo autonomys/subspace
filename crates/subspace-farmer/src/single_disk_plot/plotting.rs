@@ -6,7 +6,7 @@ use parity_scale_codec::Encode;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::{
-    plot_sector_size, PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE,
+    PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
@@ -57,7 +57,6 @@ where
     SM: io::Write,
 {
     let sector_id = SectorId::new(public_key, sector_index);
-    let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
     // TODO: Consider adding number of pieces in a sector to protocol info
     //  explicitly and, ideally, we need to remove 2x replication
     //  expectation from other places too
@@ -68,7 +67,7 @@ where
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (0u64..)
-        .take(plot_sector_size as usize / PIECE_SIZE)
+        .take(PLOT_SECTOR_SIZE as usize / PIECE_SIZE)
         .map(|piece_offset| {
             sector_id.derive_piece_index(
                 piece_offset as PieceIndex,

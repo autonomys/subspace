@@ -11,7 +11,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    plot_sector_size, Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT,
+    Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE,
     RECORD_SIZE,
 };
 use subspace_farmer::file_ext::FileExt;
@@ -63,10 +63,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
 
-    let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
-
     let plotted_sector = {
-        let mut plotted_sector = vec![0u8; plot_sector_size as usize];
+        let mut plotted_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
 
         block_on(plot_sector(
             &public_key,
@@ -110,7 +108,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .unwrap();
 
         plot_file
-            .preallocate(plot_sector_size * sectors_count)
+            .preallocate(PLOT_SECTOR_SIZE * sectors_count)
             .unwrap();
         plot_file.advise_random_access().unwrap();
 
@@ -129,7 +127,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             let start = Instant::now();
             for _i in 0..iters {
                 for (sector_index, sector) in plot_mmap
-                    .chunks_exact(plot_sector_size as usize)
+                    .chunks_exact(PLOT_SECTOR_SIZE as usize)
                     .enumerate()
                     .map(|(sector_index, sector)| (sector_index as u64, sector))
                 {

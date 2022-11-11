@@ -8048,6 +8048,7 @@ dependencies = [
  "dusk-bytes",
  "dusk-plonk",
  "hex",
+ "num-integer",
  "num-traits",
  "parity-scale-codec",
  "rand 0.8.5",

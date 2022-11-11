@@ -12,7 +12,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    plot_sector_size, Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT,
+    Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE,
     RECORD_SIZE,
 };
 use subspace_farmer::file_ext::FileExt;
@@ -67,10 +67,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let solution_range = SolutionRange::MAX;
     let reward_address = PublicKey::default();
 
-    let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
-
     let (plotted_sector, sector_metadata) = {
-        let mut plotted_sector = vec![0u8; plot_sector_size as usize];
+        let mut plotted_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
 
         block_on(plot_sector(

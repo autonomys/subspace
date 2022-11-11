@@ -11,7 +11,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    plot_sector_size, Piece, PublicKey, PIECES_IN_SEGMENT, RECORD_SIZE,
+    Piece, PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE,
 };
 use subspace_farmer::single_disk_plot::plotting::plot_sector;
 use subspace_rpc_primitives::FarmerProtocolInfo;
@@ -54,9 +54,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let piece_receiver = BenchPieceReceiver::new(piece);
 
     let mut group = c.benchmark_group("sector-plotting");
-    group.throughput(Throughput::Bytes(plot_sector_size(
-        farmer_protocol_info.space_l,
-    )));
+    group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE));
     group.bench_function("no-writes-single-thread", |b| {
         b.iter(|| {
             block_on(plot_sector(
@@ -73,9 +71,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 
     let thread_count = current_num_threads() as u64;
-    group.throughput(Throughput::Bytes(
-        plot_sector_size(farmer_protocol_info.space_l) * thread_count,
-    ));
+    group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE * thread_count));
     group.bench_function("no-writes-multi-thread", |b| {
         b.iter_custom(|iters| {
             let sectors = (0..thread_count).collect::<Vec<_>>();

@@ -35,7 +35,7 @@ use alloc::vec::Vec;
 use bitvec::prelude::*;
 use core::convert::AsRef;
 use core::fmt;
-use core::num::{NonZeroU16, NonZeroU64};
+use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -47,14 +47,28 @@ use serde::{Deserialize, Serialize};
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Byte size of a piece in Subspace Network, 32KiB.
+/// How many full bytes can be stored in BLS12-381 scalar (it is actually 254 bits, but bits are
+/// mut harder to work with and likely not worth it)
+pub const BLS12_381_SCALAR_SAFE_BYTES: u16 = 31;
+/// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
+/// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
+/// BLS12-381 scalar safely).
+///
+/// TODO: Requirement of being a multiple of 2 bytes may go away eventually as we switch erasure
+///  coding implementation, so we might be able to bump it by one field element in size.
 ///
 /// This can not changed after the network is launched.
-pub const PIECE_SIZE: usize = 32 * 1024;
+pub const PIECE_SIZE: usize = 31_744;
 /// Size of witness for a segment record (in bytes).
 pub const WITNESS_SIZE: u32 = 48;
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+/// Size of one plotted sector.
+///
+/// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
+/// equal to number of columns.
+pub const PLOT_SECTOR_SIZE: u64 = (PIECE_SIZE as u64 / BLS12_381_SCALAR_SAFE_BYTES as u64).pow(2)
+    * BLS12_381_SCALAR_SAFE_BYTES as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -869,21 +883,4 @@ impl SectorId {
             hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ])
     }
-}
-
-/// Size of a plotted sector on disk
-///
-/// Depends on `space_l` (specified in bits).
-///
-/// PANICS: Panics if `space_l` is smaller than `3`
-pub fn plot_sector_size(space_l: NonZeroU16) -> u64 {
-    let plot_sector_size_bits = u64::from(space_l.get())
-        .checked_mul(2u64.pow(u32::from(space_l.get())))
-        .expect("u16 is not big enough to cause overflow here; qed");
-
-    // When `space_l` is at least `3` it is guaranteed that we can divide above by `8` (2^3) without
-    // remainder
-    plot_sector_size_bits
-        .checked_div(u64::from(u8::BITS))
-        .expect("`space_l` must be 3 or more")
 }
