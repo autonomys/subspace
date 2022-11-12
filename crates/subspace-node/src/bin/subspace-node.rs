@@ -31,10 +31,10 @@ use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
-/// Secondary executor instance.
-pub struct SecondaryExecutorDispatch;
+/// System domain executor instance.
+pub struct SystemDomainExecutorDispatch;
 
-impl NativeExecutionDispatch for SecondaryExecutorDispatch {
+impl NativeExecutionDispatch for SystemDomainExecutorDispatch {
     #[cfg(feature = "runtime-benchmarks")]
     type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -423,19 +423,7 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                    let secondary_chain_node_fut = domain_service::new_full::<
-                        _,
-                        _,
-                        _,
-                        _,
-                        _,
-                        system_domain_runtime::RuntimeApi,
-                        SecondaryExecutorDispatch,
-                    >(
-                        secondary_chain_config,
-                        primary_chain_node.client.clone(),
-                        primary_chain_node.network.clone(),
-                        &primary_chain_node.select_chain,
+                    let imported_block_notification_stream = || {
                         primary_chain_node
                             .imported_block_notification_stream
                             .subscribe()
@@ -445,7 +433,10 @@ fn main() -> Result<(), Error> {
                                     imported_block_notification.fork_choice,
                                     imported_block_notification.block_import_acknowledgement_sender,
                                 )
-                            }),
+                            })
+                    };
+
+                    let new_slot_notification_stream = || {
                         primary_chain_node
                             .new_slot_notification_stream
                             .subscribe()
@@ -454,11 +445,27 @@ fn main() -> Result<(), Error> {
                                     slot_notification.new_slot_info.slot,
                                     slot_notification.new_slot_info.global_challenge,
                                 )
-                            }),
-                        block_import_throttling_buffer_size,
-                    );
+                            })
+                    };
 
-                    let secondary_chain_node = secondary_chain_node_fut.await?;
+                    let secondary_chain_node = domain_service::new_full::<
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        system_domain_runtime::RuntimeApi,
+                        SystemDomainExecutorDispatch,
+                    >(
+                        secondary_chain_config,
+                        primary_chain_node.client.clone(),
+                        primary_chain_node.network.clone(),
+                        &primary_chain_node.select_chain,
+                        imported_block_notification_stream(),
+                        new_slot_notification_stream(),
+                        block_import_throttling_buffer_size,
+                    )
+                    .await?;
 
                     primary_chain_node
                         .task_manager
