@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::Hash;
+use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
@@ -11,8 +11,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domains::{
-    Bundle, BundleHeader, DomainCoreApi, ExecutionPhase, ExecutorPair, FraudProof, ProofOfElection,
-    SignedBundle,
+    Bundle, BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, ProofOfElection, SignedBundle,
 };
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};

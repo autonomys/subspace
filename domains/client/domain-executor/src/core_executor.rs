@@ -5,7 +5,7 @@ use crate::utils::BlockInfo;
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
-use domain_runtime_primitives::AccountId;
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -18,7 +18,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
 use sp_domains::{
-    Bundle, BundleEquivocationProof, DomainCoreApi, DomainId, ExecutorApi, ExecutorPublicKey,
+    Bundle, BundleEquivocationProof, DomainId, ExecutorApi, ExecutorPublicKey,
     InvalidTransactionProof, SignedBundle,
 };
 use sp_keystore::SyncCryptoStorePtr;

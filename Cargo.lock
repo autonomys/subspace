@@ -1536,7 +1536,6 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-core",
- "sp-domains",
  "sp-runtime",
  "sp-std",
 ]
@@ -1549,6 +1548,7 @@ dependencies = [
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "futures 0.3.21",

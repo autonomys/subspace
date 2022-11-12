@@ -410,7 +410,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::DomainCoreApi<Block, AccountId> for Runtime {
+    impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {

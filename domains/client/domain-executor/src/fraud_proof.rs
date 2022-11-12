@@ -1,13 +1,13 @@
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use domain_runtime_primitives::AccountId;
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
-use sp_domains::{DomainCoreApi, ExecutionPhase, ExecutionReceipt, FraudProof};
+use sp_domains::{ExecutionPhase, ExecutionReceipt, FraudProof};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_trie::StorageProof;

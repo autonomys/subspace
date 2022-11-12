@@ -1,7 +1,7 @@
 use crate::{ExecutionProver, ProofVerifier};
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
-use domain_runtime_primitives::Hash;
+use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
@@ -9,9 +9,7 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::Role;
 use sp_api::ProvideRuntimeApi;
-use sp_domains::{
-    BundleHeader, DomainCoreApi, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle,
-};
+use sp_domains::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;

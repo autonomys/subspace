@@ -3,7 +3,7 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
-use domain_runtime_primitives::AccountId;
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_transaction_pool_api::InPoolTransaction;
@@ -12,8 +12,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{
-    Bundle, BundleHeader, DomainCoreApi, DomainId, ExecutorPublicKey, ExecutorSignature,
-    ProofOfElection, SignedBundle, SignedOpaqueBundle,
+    Bundle, BundleHeader, DomainId, ExecutorPublicKey, ExecutorSignature, ProofOfElection,
+    SignedBundle, SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
