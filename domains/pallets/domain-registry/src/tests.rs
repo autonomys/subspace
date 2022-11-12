@@ -166,7 +166,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
             100,
             DomainConfig {
                 wasm_runtime_hash: Hash::repeat_byte(1),
-                bundle_frequency: 100,
+                bundle_slot_probability: (1, 1),
                 max_bundle_size: 1024 * 1024,
                 max_bundle_weight: 100_000_000_000,
                 min_operator_stake: 20,
@@ -187,7 +187,7 @@ fn create_domain_should_work() {
         let genesis_domain_id = DomainId::from(0);
         let genesis_domain_config = DomainConfig {
             wasm_runtime_hash: Hash::repeat_byte(1),
-            bundle_frequency: 100,
+            bundle_slot_probability: (1, 1),
             max_bundle_size: 1024 * 1024,
             max_bundle_weight: 100_000_000_000,
             min_operator_stake: 20,
@@ -201,7 +201,7 @@ fn create_domain_should_work() {
 
         let domain_config = DomainConfig {
             wasm_runtime_hash: Hash::random(),
-            bundle_frequency: 100,
+            bundle_slot_probability: (1, 1),
             max_bundle_size: 1024 * 1024,
             max_bundle_weight: 100_000_000_000,
             min_operator_stake: 20,
@@ -290,7 +290,7 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
             200,
             DomainConfig {
                 wasm_runtime_hash: Hash::random(),
-                bundle_frequency: 100,
+                bundle_slot_probability: (1, 1),
                 max_bundle_size: 1024 * 1024,
                 max_bundle_weight: 100_000_000_000,
                 min_operator_stake: 20,

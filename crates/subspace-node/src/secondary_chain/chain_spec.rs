@@ -62,7 +62,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     DomainConfig {
                         wasm_runtime_hash: Hash::random(),
                         max_bundle_size: 1024 * 1024,
-                        bundle_frequency: 100,
+                        bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },
@@ -116,7 +116,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     DomainConfig {
                         wasm_runtime_hash: Hash::zero(),
                         max_bundle_size: 1024 * 1024,
-                        bundle_frequency: 100,
+                        bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },
@@ -174,7 +174,7 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
                         )
                         .into(),
                         max_bundle_size: 1024 * 1024,
-                        bundle_frequency: 100,
+                        bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },

@@ -145,8 +145,8 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
     // May be supported later.
     //pub upgrade_keys: Vec<AccountId>,
-    // TODO: elaborate this field.
-    pub bundle_frequency: u32,
+    /// Slot probability
+    pub bundle_slot_probability: (u64, u64),
 
     /// Maximum domain bundle size in bytes.
     pub max_bundle_size: u32,
