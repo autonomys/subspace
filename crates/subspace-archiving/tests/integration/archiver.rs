@@ -375,11 +375,9 @@ fn invalid_usage() {
     }
 }
 
-// WARNING: Tests for various edge cases below use deliberately computed values and unless
-// calculated carefully on piece size change (decrease from current 32kiB) will be unable to catch
-// edge-cases. Please check commits where this tests are introduced for the edge cases they are
-// testing (filling encoded segment) and ensure they still test those edge cases in case you have to
-// decrease piece size in the future.
+// Please check commits where this tests are introduced for the edge cases they are testing (filling
+// encoded segment) and ensure they still test those edge cases in case you have to decrease piece
+// size in the future.
 
 #[test]
 fn one_byte_smaller_segment() {
