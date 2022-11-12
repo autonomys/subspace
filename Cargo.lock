@@ -8736,6 +8736,7 @@ dependencies = [
 name = "system-domain-runtime"
 version = "0.1.0"
 dependencies = [
+ "core-payments-domain-runtime",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",

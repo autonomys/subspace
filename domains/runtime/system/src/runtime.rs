@@ -23,6 +23,9 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
 
+// Make core-payments WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
+
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 
