@@ -421,12 +421,24 @@ fn spill_over_edge_case() {
     let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
 
-    // Carefully compute the block size such that there is just 3 byte left to fill the segment
+    // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
+    // but this should already produce archived segment since just enum variant and smallest compact
+    // vector length encoding will take 2 bytes to encode, thus it will be impossible to slice
+    // internal bytes of the segment item anyway
+    let block_size = SEGMENT_SIZE as usize
+        // Segment enum variant
+        - 1
+        // Compact length of number of segment items
+        - 1
+        // Block continuation segment item enum variant
+        - 1
+        // This is a rough number (a bit fewer bytes will be included in practice), but it is
+        // close enough and practically will always result in the same compact length.
+        - Compact::compact_len(&SEGMENT_SIZE)
+        // We leave three bytes at the end intentionally
+        - 3;
     assert!(archiver
-        .add_block(
-            vec![0u8; SEGMENT_SIZE as usize - 10],
-            BlockObjectMapping::default()
-        )
+        .add_block(vec![0u8; block_size], BlockObjectMapping::default())
         .is_empty());
 
     // Here we add one more block with internal length that takes 4 bytes in compact length
