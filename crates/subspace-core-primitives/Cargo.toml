@@ -15,8 +15,10 @@ include = [
 # Necessary for CLI options to work on benches
 bench = false
 
-
 [dependencies]
+ark-bls12-381 = "0.3.0"
+ark-ff = "0.3.0"
+ark-poly = "0.3.0"
 bitvec = { version = "1.0.1", default-features = false, features = ["alloc", "atomic"] }
 # Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
 blake2-rfc = { version = "0.2.18", default-features = false }
@@ -34,6 +36,7 @@ rand_core = { version = "0.6.4", default-features = false, features = ["alloc"] 
 scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
 serde = { version = "1.0.143", optional = true, features = ["derive"] }
 serde_arrays = "0.1.0"
+thiserror = { version = "1.0.37", optional = true }
 uint = { version = "0.9", default-features = false }
 
 [dev-dependencies]
@@ -42,6 +45,9 @@ criterion = "0.4.0"
 [features]
 default = ["std"]
 std = [
+    "ark-bls12-381/std",
+    "ark-ff/std",
+    "ark-poly/std",
     "bitvec/std",
     "blake2-rfc/std",
     "dusk-bls12_381/std",
@@ -58,6 +64,7 @@ std = [
     "rand_core/std",
     "scale-info/std",
     "serde",
+    "thiserror",
     "uint/std",
 ]
 

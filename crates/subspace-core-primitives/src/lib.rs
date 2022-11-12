@@ -20,11 +20,11 @@
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(int_log)]
 
-#[cfg(test)]
-mod tests;
-
 pub mod crypto;
 pub mod objects;
+pub mod sector_codec;
+#[cfg(test)]
+mod tests;
 
 extern crate alloc;
 
@@ -32,11 +32,13 @@ use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
+use ark_bls12_381::Fr;
+use ark_ff::{BigInteger256, PrimeField};
 use bitvec::prelude::*;
 use core::convert::AsRef;
-use core::fmt;
 use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
+use core::{fmt, mem};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
@@ -47,9 +49,6 @@ use serde::{Deserialize, Serialize};
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// How many full bytes can be stored in BLS12-381 scalar (it is actually 254 bits, but bits are
-/// mut harder to work with and likely not worth it)
-pub const BLS12_381_SCALAR_SAFE_BYTES: u16 = 31;
 /// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
 /// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
 /// BLS12-381 scalar safely).
@@ -67,8 +66,8 @@ pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 ///
 /// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
 /// equal to number of columns.
-pub const PLOT_SECTOR_SIZE: u64 = (PIECE_SIZE as u64 / BLS12_381_SCALAR_SAFE_BYTES as u64).pow(2)
-    * BLS12_381_SCALAR_SAFE_BYTES as u64;
+pub const PLOT_SECTOR_SIZE: u64 =
+    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::SAFE_BYTES as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -116,6 +115,120 @@ pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
 pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
+
+/// Representation of a single BLS12-381 scalar value.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
+pub struct Scalar(Fr);
+
+impl TryFrom<&[u8]> for Scalar {
+    type Error = ();
+
+    /// Number of bytes must be exactly [`Self::SAFE_BYTES`] bytes.
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() != Self::SAFE_BYTES {
+            return Err(());
+        }
+
+        let mut bigint_bytes = [0u64; 4];
+        // NOTE: `bigint_bytes` has one more byte than `bytes`, the last byte will always be zero.
+        bigint_bytes
+            .iter_mut()
+            .zip(value.chunks(mem::size_of::<u64>()))
+            .for_each(|(output, input): (&mut u64, &[u8])| {
+                let mut tmp = 0u64.to_le_bytes();
+
+                tmp.iter_mut().zip(input).for_each(|(output, input)| {
+                    *output = *input;
+                });
+
+                *output = u64::from_le_bytes(tmp);
+            });
+
+        Ok(Scalar(
+            Fr::from_repr(BigInteger256::new(bigint_bytes))
+                .expect("Always smaller than modulus, always 31 bytes; qed"),
+        ))
+    }
+}
+
+impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
+    fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
+        let mut bigint_bytes = [0u64; 4];
+        // NOTE: `bigint_bytes` has one more byte than `bytes`, the last byte will always be zero.
+        bigint_bytes
+            .iter_mut()
+            .zip(value.chunks(mem::size_of::<u64>()))
+            .for_each(|(output, input): (&mut u64, &[u8])| {
+                let mut tmp = 0u64.to_le_bytes();
+
+                tmp.iter_mut().zip(input).for_each(|(output, input)| {
+                    *output = *input;
+                });
+
+                *output = u64::from_le_bytes(tmp);
+            });
+
+        Scalar(
+            Fr::from_repr(BigInteger256::new(bigint_bytes))
+                .expect("Always smaller than modulus, always 31 bytes; qed"),
+        )
+    }
+}
+
+impl From<&Scalar> for [u8; Scalar::SAFE_BYTES] {
+    fn from(value: &Scalar) -> [u8; Scalar::SAFE_BYTES] {
+        let mut bytes = [0u8; Scalar::SAFE_BYTES];
+
+        bytes
+            .chunks_mut(mem::size_of::<u64>())
+            .zip(&value.0.into_repr().0)
+            .for_each(|(output, input): (&mut [u8], &u64)| {
+                output
+                    .iter_mut()
+                    .zip(input.to_le_bytes())
+                    .for_each(|(output, input)| {
+                        *output = input;
+                    });
+            });
+
+        bytes
+    }
+}
+
+impl Scalar {
+    /// How many full bytes can be stored in BLS12-381 scalar (it is actually 254 bits, but bits are
+    /// mut harder to work with and likely not worth it)
+    pub const SAFE_BYTES: usize = 31;
+
+    /// Convert scalar into bytes
+    pub fn to_bytes(&self) -> [u8; Scalar::SAFE_BYTES] {
+        self.into()
+    }
+
+    /// Converts scalar to bytes that will be written to `bytes`.
+    ///
+    /// Returns `Err(())` if number of bytes in slice provided is not exactly [`Self::SAFE_BYTES`].
+    #[allow(clippy::result_unit_err)]
+    pub fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), ()> {
+        if bytes.len() != Self::SAFE_BYTES {
+            return Err(());
+        }
+
+        bytes
+            .chunks_mut(mem::size_of::<u64>())
+            .zip(&self.0.into_repr().0)
+            .for_each(|(output, input): (&mut [u8], &u64)| {
+                output
+                    .iter_mut()
+                    .zip(input.to_le_bytes())
+                    .for_each(|(output, input)| {
+                        *output = input;
+                    });
+            });
+
+        Ok(())
+    }
+}
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
