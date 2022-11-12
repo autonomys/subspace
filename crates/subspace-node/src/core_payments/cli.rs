@@ -64,9 +64,12 @@ impl CorePaymentsCli {
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
-        base_path: Option<PathBuf>,
+        mut system_domain_base_path: Option<PathBuf>,
         core_payments_domain_args: impl Iterator<Item = &'a String>,
     ) -> Self {
+        let base_path = system_domain_base_path
+            .as_mut()
+            .map(|path| path.join("core-payments"));
         Self {
             base_path,
             ..Self::parse_from(core_payments_domain_args)
