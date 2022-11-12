@@ -389,13 +389,22 @@ fn one_byte_smaller_segment() {
     // but this should already produce archived segment since just enum variant and smallest compact
     // vector length encoding will take 2 bytes to encode, thus it will be impossible to slice
     // internal bytes of the segment item anyway
+    let block_size = SEGMENT_SIZE as usize
+        // Segment enum variant
+        - 1
+        // Compact length of number of segment items
+        - 1
+        // Block continuation segment item enum variant
+        - 1
+        // This is a rough number (a bit fewer bytes will be included in practice), but it is
+        // close enough and practically will always result in the same compact length.
+        - Compact::compact_len(&SEGMENT_SIZE)
+        // We leave two bytes at the end intentionally
+        - 2;
     assert_eq!(
         Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg.clone())
             .unwrap()
-            .add_block(
-                vec![0u8; SEGMENT_SIZE as usize - 9],
-                BlockObjectMapping::default()
-            )
+            .add_block(vec![0u8; block_size], BlockObjectMapping::default())
             .len(),
         1
     );
@@ -403,10 +412,7 @@ fn one_byte_smaller_segment() {
     // against code regressions
     assert!(Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg)
         .unwrap()
-        .add_block(
-            vec![0u8; SEGMENT_SIZE as usize - 10],
-            BlockObjectMapping::default()
-        )
+        .add_block(vec![0u8; block_size - 1], BlockObjectMapping::default())
         .is_empty());
 }
 
