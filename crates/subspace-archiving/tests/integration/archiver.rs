@@ -443,11 +443,32 @@ fn spill_over_edge_case() {
     // encoding + one more for enum variant, this should result in new segment being created, but
     // the very first segment item will not include newly added block because it would result in
     // subtracting with overflow when trying to slice internal bytes of the segment item
+    let archived_segments = archiver.add_block(
+        vec![0u8; SEGMENT_SIZE as usize],
+        BlockObjectMapping {
+            objects: vec![BlockObject::V0 {
+                hash: Blake2b256Hash::default(),
+                offset: 0,
+            }],
+        },
+    );
+    assert_eq!(archived_segments.len(), 2);
+    // If spill over actually happened, we'll not find object mapping in the first segment
     assert_eq!(
-        archiver
-            .add_block(vec![0u8; 2_usize.pow(17)], BlockObjectMapping::default())
-            .len(),
-        2
+        archived_segments[0]
+            .object_mapping
+            .iter()
+            .filter(|o| !o.objects.is_empty())
+            .count(),
+        0
+    );
+    assert_eq!(
+        archived_segments[1]
+            .object_mapping
+            .iter()
+            .filter(|o| !o.objects.is_empty())
+            .count(),
+        1
     );
 }
 
