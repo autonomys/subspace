@@ -1,4 +1,5 @@
 use codec::{Decode, Encode};
+use domain_runtime_primitives::Hash;
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
@@ -17,7 +18,6 @@ use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
-use system_runtime_primitives::Hash;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]

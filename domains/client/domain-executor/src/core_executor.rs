@@ -5,6 +5,7 @@ use crate::utils::BlockInfo;
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
+use domain_runtime_primitives::AccountId;
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -29,7 +30,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 /// The implementation of the Domain `Executor`.
 pub struct Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>

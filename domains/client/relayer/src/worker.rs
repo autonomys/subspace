@@ -1,4 +1,5 @@
 use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, StateBackend};
+use domain_runtime_primitives::RelayerId;
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
 use sp_api::ProvideRuntimeApi;
@@ -7,7 +8,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::sync::Arc;
-use system_runtime_primitives::RelayerId;
 
 pub async fn relay_system_domain_messages<Client, Block, SDBI>(
     relayer_id: RelayerId,

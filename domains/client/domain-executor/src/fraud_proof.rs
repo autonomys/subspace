@@ -1,6 +1,7 @@
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_runtime_primitives::AccountId;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -13,7 +14,6 @@ use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
-use system_runtime_primitives::AccountId;
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]

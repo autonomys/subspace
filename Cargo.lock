@@ -1425,6 +1425,7 @@ dependencies = [
  "crossbeam",
  "domain-block-builder",
  "domain-client-executor-gossip",
+ "domain-runtime-primitives",
  "domain-test-service",
  "futures 0.3.21",
  "futures-timer",
@@ -1489,6 +1490,7 @@ dependencies = [
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "futures 0.3.21",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -1503,7 +1505,6 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
- "system-runtime-primitives",
  "tracing",
 ]
 
@@ -1526,6 +1527,18 @@ dependencies = [
  "sp-std",
  "sp-tracing",
  "sp-version",
+]
+
+[[package]]
+name = "domain-runtime-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -1583,6 +1596,7 @@ name = "domain-test-runtime"
 version = "0.1.0"
 dependencies = [
  "domain-pallet-executive",
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -8115,6 +8129,7 @@ name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
  "domain-block-builder",
+ "domain-runtime-primitives",
  "domain-test-service",
  "futures 0.3.21",
  "hash-db",
@@ -8133,7 +8148,6 @@ dependencies = [
  "sp-state-machine",
  "sp-trie",
  "substrate-test-utils",
- "system-runtime-primitives",
  "tokio",
  "tracing",
 ]
@@ -8222,6 +8236,7 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",
@@ -8267,7 +8282,6 @@ dependencies = [
  "subspace-wasm-tools",
  "substrate-wasm-builder",
  "system-domain-runtime",
- "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8288,6 +8302,7 @@ name = "subspace-service"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",
@@ -8335,7 +8350,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "system-runtime-primitives",
  "thiserror",
  "tracing",
 ]
@@ -8379,6 +8393,7 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "domain-test-runtime",
  "frame-executive",
  "frame-support",
@@ -8420,7 +8435,6 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
- "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8723,6 +8737,7 @@ name = "system-domain-runtime"
 version = "0.1.0"
 dependencies = [
  "domain-pallet-executive",
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",

@@ -49,6 +49,7 @@ pallet-transaction-payment = { default-features = false, git = "https://github.c
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "1a7c28721fa77ecce9632ad9ce473f2d3cf1a598" }
 
 domain-pallet-executive = { path = "../../pallets/executive", default-features = false }
+domain-runtime-primitives = { path = "../../primitives/runtime", default-features = false }
 pallet-domain-registry = { path = "../../pallets/domain-registry", default-features = false }
 pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
 sp-domains = { path = "../../../crates/sp-domains", default-features = false }
@@ -81,6 +82,7 @@ std = [
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
 	"domain-pallet-executive/std",
+	"domain-runtime-primitives/std",
 	"pallet-domain-registry/std",
 	"pallet-executor-registry/std",
 	"sp-domains/std",

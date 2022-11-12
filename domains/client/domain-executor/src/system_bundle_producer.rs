@@ -2,6 +2,7 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
+use domain_runtime_primitives::AccountId;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_transaction_pool_api::InPoolTransaction;
@@ -21,7 +22,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::BlockNumber;
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 const LOG_TARGET: &str = "bundle-producer";
 

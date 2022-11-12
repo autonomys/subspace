@@ -1,6 +1,7 @@
 use crate::{ExecutionProver, ProofVerifier};
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_runtime_primitives::Hash;
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
@@ -14,7 +15,6 @@ use sp_domains::{
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
-use system_runtime_primitives::Hash;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]

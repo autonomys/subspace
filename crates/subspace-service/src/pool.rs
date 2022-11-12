@@ -66,7 +66,7 @@ where
         + Sync
         + 'static,
     Client::Api:
-        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     fn new(
@@ -108,7 +108,7 @@ where
         + Sync
         + 'static,
     Client::Api:
-        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -270,7 +270,7 @@ where
         + Sync
         + 'static,
     Client::Api:
-        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -418,7 +418,7 @@ where
         + Sync
         + 'static,
     Client::Api:
-        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
+        TaggedTransactionQueue<Block> + ExecutorApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();

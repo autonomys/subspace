@@ -23,6 +23,7 @@ pub mod rpc;
 
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
+use domain_runtime_primitives::Hash as SecondaryHash;
 use dsn::start_dsn_node;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -63,7 +64,6 @@ use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
-use system_runtime_primitives::Hash as SecondaryHash;
 use tracing::error;
 
 /// Error type for Subspace service.
@@ -339,8 +339,7 @@ where
         + BlockIdTo<Block>
         + HeaderBackend<Block>
         + 'static,
-    Client::Api:
-        TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, SecondaryHash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
