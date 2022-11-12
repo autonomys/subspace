@@ -1,9 +1,9 @@
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use std::assert_matches::assert_matches;
 use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
-use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError};
+use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
@@ -439,57 +439,93 @@ fn spill_over_edge_case() {
 fn object_on_the_edge_of_segment() {
     let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
-    assert_eq!(
-        archiver
-            .add_block(
-                vec![0u8; SEGMENT_SIZE as usize],
-                BlockObjectMapping::default()
-            )
-            .len(),
-        1
-    );
-    let archived_segment = archiver.add_block(
-        vec![0u8; SEGMENT_SIZE as usize * 2],
+    let first_block = vec![0u8; SEGMENT_SIZE as usize];
+    let archived_segments = archiver.add_block(first_block.clone(), BlockObjectMapping::default());
+    assert_eq!(archived_segments.len(), 1);
+    let archived_segment = archived_segments.into_iter().next().unwrap();
+    let left_unarchived_from_first_block = first_block.len() as u32
+        - archived_segment
+            .root_block
+            .last_archived_block()
+            .archived_progress
+            .partial()
+            .unwrap();
+
+    let mut second_block = vec![0u8; SEGMENT_SIZE as usize * 2];
+    let object_mapping = BlockObject::V0 {
+        hash: Blake2b256Hash::default(),
+        // Offset is designed to fall exactly on the edge of the segment
+        offset: SEGMENT_SIZE
+            // Segment enum variant
+            - 1
+            // Compact length of number of segment items
+            - 1
+            // Root block segment item
+            - SegmentItem::RootBlock(RootBlock::V0 {
+                segment_index: 0,
+                records_root: Default::default(),
+                prev_root_block_hash: Default::default(),
+                last_archived_block: LastArchivedBlock {
+                    number: 0,
+                    // Bytes will not fit all into the first segment, so it will be archived
+                    // partially, but exact value doesn't matter here as encoding length of
+                    // `ArchivedBlockProgress` enum variant will be the same either way
+                    archived_progress: ArchivedBlockProgress::Partial(0),
+                },
+            })
+                .encoded_size() as u32
+            // Block continuation segment item enum variant
+            - 1
+            // Compact length of block continuation segment item bytes length.
+            - Compact::compact_len(&left_unarchived_from_first_block) as u32
+            // Block continuation segment item bytes (that didn't fit into the very first segment)
+            - left_unarchived_from_first_block
+            // One byte for block start segment item enum variant
+            - 1
+            // Compact encoding of bytes length.
+            // This is a rough number (a bit fewer bytes will be included in practice), but it is
+            // close enough and practically will always result in the same compact length.
+            - Compact::compact_len(&SEGMENT_SIZE) as u32,
+    };
+    let mapped_bytes = rand::random::<[u8; 32]>().to_vec().encode();
+    // Write mapped bytes at expected offset in source data
+    second_block[object_mapping.offset() as usize..][..mapped_bytes.len()]
+        .copy_from_slice(&mapped_bytes);
+
+    // First ensure that any smaller offset will get translated into the first archived segment,
+    // this is a protection against code regressions
+    {
+        let archived_segments = archiver.clone().add_block(
+            second_block.clone(),
+            BlockObjectMapping {
+                objects: vec![BlockObject::V0 {
+                    hash: object_mapping.hash(),
+                    offset: object_mapping.offset() - 1,
+                }],
+            },
+        );
+
+        assert_eq!(archived_segments.len(), 2);
+        assert_eq!(
+            archived_segments[0]
+                .object_mapping
+                .iter()
+                .filter(|o| !o.objects.is_empty())
+                .count(),
+            1
+        );
+    }
+
+    let archived_segments = archiver.add_block(
+        second_block,
         BlockObjectMapping {
-            objects: vec![BlockObject::V0 {
-                hash: Blake2b256Hash::default(),
-                // Offset is designed to fall exactly on the edge of the segment and is equal to
-                // segment size minus:
-                // * one byte for segment enum variant
-                // * compact length of number of segment items
-                // * one byte root block segment item enum variant
-                // * root block segment item
-                // * one byte for block continuation segment item enum variant
-                // * compact length of block continuation segment item bytes length
-                // * block continuation segment item bytes
-                // * one byte for segment item enum variant
-                // * compact length of bytes length
-                offset: SEGMENT_SIZE
-                    - 1
-                    - 1
-                    - 1
-                    - RootBlock::V0 {
-                        segment_index: 0,
-                        records_root: Default::default(),
-                        prev_root_block_hash: Default::default(),
-                        last_archived_block: LastArchivedBlock {
-                            number: 0,
-                            archived_progress: Default::default(),
-                        },
-                    }
-                    .encoded_size() as u32
-                    - 1
-                    - 4
-                    - 6
-                    - 1
-                    - 4,
-            }],
+            objects: vec![object_mapping],
         },
     );
 
-    assert_eq!(archived_segment.len(), 2);
+    assert_eq!(archived_segments.len(), 2);
     assert_eq!(
-        archived_segment[0]
+        archived_segments[0]
             .object_mapping
             .iter()
             .filter(|o| !o.objects.is_empty())
@@ -498,17 +534,20 @@ fn object_on_the_edge_of_segment() {
     );
     // Object should fall in the next archived segment
     assert_eq!(
-        archived_segment[1]
+        archived_segments[1]
             .object_mapping
             .iter()
             .filter(|o| !o.objects.is_empty())
             .count(),
         1
     );
+    assert_eq!(archived_segments[1].object_mapping[0].objects.len(), 1);
 
-    // This will only need to be adjusted when implementation changes
+    // Ensure bytes are mapped correctly
     assert_eq!(
-        archived_segment[1].object_mapping[0].objects[0].offset(),
-        108
+        &archived_segments[1].pieces
+            [archived_segments[1].object_mapping[0].objects[0].offset() as usize..]
+            [..mapped_bytes.len()],
+        mapped_bytes.as_slice()
     );
 }
