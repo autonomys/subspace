@@ -107,9 +107,8 @@ impl core::ops::Sub<u32> for DomainId {
     }
 }
 
-// TODO: confirm the range of different domain types.
-const CORE_DOMAIN_ID_START: u32 = 100;
-const OPEN_DOMAIN_ID_START: u32 = 1000;
+const CORE_DOMAIN_ID_START: u32 = 1;
+const OPEN_DOMAIN_ID_START: u32 = 100;
 
 impl DomainId {
     pub const SYSTEM: Self = Self::new(0);
@@ -121,7 +120,7 @@ impl DomainId {
 
     /// Returns `true` if a domain is a system domain.
     pub fn is_system(&self) -> bool {
-        self.0 < CORE_DOMAIN_ID_START
+        self.0 == Self::SYSTEM.0
     }
 
     /// Returns `true` if a domain is a core domain.
