@@ -339,8 +339,6 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            // TODO: validate_bundle()
-
             let domain_id = signed_opaque_bundle.proof_of_election.domain_id;
 
             let oldest_receipt_number = OldestReceiptNumber::<T>::get(domain_id);
@@ -577,6 +575,12 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
+                Call::submit_core_bundle {
+                    signed_opaque_bundle: _,
+                } => {
+                    // TODO: validate signed_opaque_bundle
+                    Ok(())
+                }
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -637,7 +641,6 @@ mod pallet {
                         invalid_transaction_proof,
                     )
                 }
-
                 _ => InvalidTransaction::Call.into(),
             }
         }
