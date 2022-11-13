@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -70,15 +71,13 @@ impl SecondaryChainCli {
         base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
         secondary_chain_args: impl Iterator<Item = &'a String>,
-    ) -> (Self, Option<crate::core_payments::cli::CoreDomainCli>) {
+    ) -> (Self, Option<CoreDomainCli>) {
         let domain_cli = DomainCli::parse_from(secondary_chain_args);
 
         let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
-            let core_payments_cli = crate::core_payments::cli::CoreDomainCli::new(
-                base_path.clone(),
-                domain_cli.core_domain_args.iter(),
-            );
-            Some(core_payments_cli)
+            let core_domain_cli =
+                CoreDomainCli::new(base_path.clone(), domain_cli.core_domain_args.iter());
+            Some(core_domain_cli)
         } else {
             None
         };

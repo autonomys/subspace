@@ -18,7 +18,7 @@
 
 mod chain_spec;
 mod chain_spec_utils;
-mod core_payments;
+mod core_domain;
 mod import_blocks_from_dsn;
 mod secondary_chain;
 

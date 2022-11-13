@@ -14,8 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_payments::chain_spec;
+use crate::core_domain::core_payments_chain_spec;
 use clap::Parser;
+use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd, RuntimeVersion, SharedParams, SubstrateCli,
@@ -59,6 +60,8 @@ pub struct CoreDomainCli {
     pub base_path: Option<PathBuf>,
 }
 
+static CORE_DOMAIN_ID: OnceCell<DomainId> = OnceCell::new();
+
 impl CoreDomainCli {
     /// Constructs a new instance of [`CoreDomainCli`].
     ///
@@ -70,16 +73,22 @@ impl CoreDomainCli {
         let base_path = system_domain_base_path
             .as_mut()
             .map(|path| path.join("core-payments"));
-        Self {
+        let cli = Self {
             base_path,
             ..Self::parse_from(core_payments_domain_args)
-        }
+        };
+
+        CORE_DOMAIN_ID
+            .set(cli.domain_id)
+            .expect("Initialization must succeed as the cell has never been set; qed");
+
+        cli
     }
 }
 
 impl SubstrateCli for CoreDomainCli {
     fn impl_name() -> String {
-        "Core-Payments Domain Operator".into()
+        "Subspace".into()
     }
 
     fn impl_version() -> String {
@@ -93,7 +102,7 @@ impl SubstrateCli for CoreDomainCli {
     }
 
     fn description() -> String {
-        "Subspace Executor".into()
+        "Subspace Core Domain Operator".into()
     }
 
     fn author() -> String {
@@ -109,18 +118,28 @@ impl SubstrateCli for CoreDomainCli {
     }
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
-        let chain_spec = match id {
-            "x-net-2" => chain_spec::x_net_2_config(),
-            "dev" => chain_spec::development_config(),
-            "" | "local" => chain_spec::local_testnet_config(),
-            path => chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        let chain_spec = match self.domain_id {
+            DomainId::CORE_PAYMENTS => match id {
+                "x-net-2" => core_payments_chain_spec::x_net_2_config(),
+                "dev" => core_payments_chain_spec::development_config(),
+                "" | "local" => core_payments_chain_spec::local_testnet_config(),
+                path => core_payments_chain_spec::ChainSpec::from_json_file(
+                    std::path::PathBuf::from(path),
+                )?,
+            },
+            domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         };
-
         Ok(Box::new(chain_spec))
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &core_payments_domain_runtime::VERSION
+        match CORE_DOMAIN_ID
+            .get()
+            .expect("Initialized when constructing this struct")
+        {
+            &DomainId::CORE_PAYMENTS => &core_payments_domain_runtime::VERSION,
+            domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
+        }
     }
 }
 

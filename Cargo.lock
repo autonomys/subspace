@@ -8233,6 +8233,7 @@ dependencies = [
  "frame-support",
  "futures 0.3.21",
  "log",
+ "once_cell",
  "parity-scale-codec",
  "sc-cli",
  "sc-client-api",
