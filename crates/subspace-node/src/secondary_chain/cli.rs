@@ -70,11 +70,11 @@ impl SecondaryChainCli {
         base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
         secondary_chain_args: impl Iterator<Item = &'a String>,
-    ) -> (Self, Option<crate::core_payments::cli::CorePaymentsCli>) {
+    ) -> (Self, Option<crate::core_payments::cli::CoreDomainCli>) {
         let domain_cli = DomainCli::parse_from(secondary_chain_args);
 
         let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
-            let core_payments_cli = crate::core_payments::cli::CorePaymentsCli::new(
+            let core_payments_cli = crate::core_payments::cli::CoreDomainCli::new(
                 base_path.clone(),
                 domain_cli.core_domain_args.iter(),
             );

@@ -46,7 +46,7 @@ fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
 }
 
 #[derive(Debug, Parser)]
-pub struct CorePaymentsCli {
+pub struct CoreDomainCli {
     /// Run a node.
     #[clap(flatten)]
     pub run: RunCmd,
@@ -59,8 +59,8 @@ pub struct CorePaymentsCli {
     pub base_path: Option<PathBuf>,
 }
 
-impl CorePaymentsCli {
-    /// Constructs a new instance of [`CorePaymentsCli`].
+impl CoreDomainCli {
+    /// Constructs a new instance of [`CoreDomainCli`].
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
@@ -77,7 +77,7 @@ impl CorePaymentsCli {
     }
 }
 
-impl SubstrateCli for CorePaymentsCli {
+impl SubstrateCli for CoreDomainCli {
     fn impl_name() -> String {
         "Core-Payments Domain Operator".into()
     }
@@ -124,7 +124,7 @@ impl SubstrateCli for CorePaymentsCli {
     }
 }
 
-impl DefaultConfigurationValues for CorePaymentsCli {
+impl DefaultConfigurationValues for CoreDomainCli {
     fn p2p_listen_port() -> u16 {
         30335
     }
@@ -142,7 +142,7 @@ impl DefaultConfigurationValues for CorePaymentsCli {
     }
 }
 
-impl CliConfiguration<Self> for CorePaymentsCli {
+impl CliConfiguration<Self> for CoreDomainCli {
     fn shared_params(&self) -> &SharedParams {
         self.run.shared_params()
     }

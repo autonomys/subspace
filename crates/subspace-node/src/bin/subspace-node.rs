@@ -25,6 +25,7 @@ use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
+use sp_domains::DomainId;
 use std::any::TypeId;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
@@ -512,28 +513,38 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                        let core_domain_node = domain_service::new_full_core::<
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            core_payments_domain_runtime::RuntimeApi,
-                            CorePaymentsDomainExecutorDispatch,
-                        >(
-                            core_domain_cli.domain_id,
-                            core_domain_config,
-                            secondary_chain_node.client.clone(),
-                            primary_chain_node.client.clone(),
-                            primary_chain_node.network.clone(),
-                            &primary_chain_node.select_chain,
-                            imported_block_notification_stream(),
-                            new_slot_notification_stream(),
-                            block_import_throttling_buffer_size,
-                        )
-                        .await?;
+                        let core_domain_node = match core_domain_cli.domain_id {
+                            DomainId::CORE_PAYMENTS => {
+                                domain_service::new_full_core::<
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    core_payments_domain_runtime::RuntimeApi,
+                                    CorePaymentsDomainExecutorDispatch,
+                                >(
+                                    core_domain_cli.domain_id,
+                                    core_domain_config,
+                                    secondary_chain_node.client.clone(),
+                                    primary_chain_node.client.clone(),
+                                    primary_chain_node.network.clone(),
+                                    &primary_chain_node.select_chain,
+                                    imported_block_notification_stream(),
+                                    new_slot_notification_stream(),
+                                    block_import_throttling_buffer_size,
+                                )
+                                .await?
+                            }
+                            _ => {
+                                return Err(Error::Other(format!(
+                                    "Invalid domain id, currently only core-payments domain is supported, please rerun with `--domain-id={:?}`",
+                                    u32::from(DomainId::CORE_PAYMENTS)
+                                )));
+                            }
+                        };
 
                         primary_chain_node
                             .task_manager
