@@ -466,12 +466,28 @@ impl_runtime_apis! {
                 .collect()
         }
 
-        fn bundle_elections_params(_domain_id: DomainId) -> BundleElectionParams {
-            // TODO: support all kinds of domains.
-            BundleElectionParams {
-                authorities: ExecutorRegistry::authorities().into(),
-                total_stake_weight: ExecutorRegistry::total_stake_weight(),
-                slot_probability: ExecutorRegistry::slot_probability(),
+        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
+            if domain_id.is_system() {
+                BundleElectionParams {
+                    authorities: ExecutorRegistry::authorities().into(),
+                    total_stake_weight: ExecutorRegistry::total_stake_weight(),
+                    slot_probability: ExecutorRegistry::slot_probability(),
+                }
+            } else {
+                match (
+                    DomainRegistry::domain_authorities(domain_id),
+                    DomainRegistry::domain_total_stake_weight(domain_id),
+                    DomainRegistry::domain_slot_probability(domain_id),
+                ) {
+                    (authorities, Some(total_stake_weight), Some(slot_probability)) => {
+                        BundleElectionParams {
+                            authorities,
+                            total_stake_weight,
+                            slot_probability,
+                        }
+                    }
+                    _ => BundleElectionParams::empty(),
+                }
             }
         }
 

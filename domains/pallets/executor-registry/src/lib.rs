@@ -766,6 +766,10 @@ impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>, T::StakeWeight> for
         Executors::<T>::get(who).map(|executor| executor.stake)
     }
 
+    fn executor_public_key(who: &T::AccountId) -> Option<ExecutorPublicKey> {
+        Executors::<T>::get(who).map(|executor_config| executor_config.public_key)
+    }
+
     #[cfg(feature = "std")]
     fn authority_stake_weight(who: &T::AccountId) -> Option<T::StakeWeight> {
         Executors::<T>::get(who).and_then(|executor_config| {

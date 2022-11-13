@@ -7544,6 +7544,7 @@ name = "sp-executor-registry"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
+ "sp-domains",
  "sp-std",
 ]
 

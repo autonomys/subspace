@@ -24,12 +24,14 @@ use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, Wit
 use frame_support::weights::Weight;
 pub use pallet::*;
 use sp_domains::{
-    BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
+    BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
+    InvalidTransactionProof,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::{One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec::Vec;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -684,6 +686,23 @@ impl<T: Config> Pallet<T> {
     pub fn finalized_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
         best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
+    pub fn domain_authorities(domain_id: DomainId) -> Vec<(ExecutorPublicKey, T::StakeWeight)> {
+        DomainAuthorities::<T>::iter_prefix(domain_id)
+            .filter_map(|(who, stake_weight)| {
+                T::ExecutorRegistry::executor_public_key(&who)
+                    .map(|executor_public_key| (executor_public_key, stake_weight))
+            })
+            .collect()
+    }
+
+    pub fn domain_total_stake_weight(domain_id: DomainId) -> Option<T::StakeWeight> {
+        DomainTotalStakeWeight::<T>::get(domain_id)
+    }
+
+    pub fn domain_slot_probability(domain_id: DomainId) -> Option<(u64, u64)> {
+        Domains::<T>::get(domain_id).map(|domain_config| domain_config.bundle_slot_probability)
     }
 
     fn can_create_domain(
