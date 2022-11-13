@@ -116,7 +116,7 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Domain id for the next domain.
+    /// Domain id for the next core domain.
     #[pallet::storage]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
 
@@ -450,6 +450,8 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            NextDomainId::<T>::put(DomainId::CORE_DOMAIN_ID_START);
+
             for (creator, deposit, domain_config, domain_operator, operator_stake) in &self.domains
             {
                 Pallet::<T>::can_create_domain(creator, *deposit, domain_config)

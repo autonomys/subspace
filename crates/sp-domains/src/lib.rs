@@ -104,11 +104,14 @@ impl core::ops::Sub<u32> for DomainId {
     }
 }
 
-const CORE_DOMAIN_ID_START: u32 = 1;
 const OPEN_DOMAIN_ID_START: u32 = 100;
 
 impl DomainId {
     pub const SYSTEM: Self = Self::new(0);
+
+    pub const CORE_DOMAIN_ID_START: Self = Self::new(1);
+
+    pub const CORE_PAYMENTS: Self = Self::new(1);
 
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
@@ -122,7 +125,7 @@ impl DomainId {
 
     /// Returns `true` if a domain is a core domain.
     pub fn is_core(&self) -> bool {
-        self.0 >= CORE_DOMAIN_ID_START && self.0 < OPEN_DOMAIN_ID_START
+        self.0 >= Self::CORE_DOMAIN_ID_START.0 && self.0 < OPEN_DOMAIN_ID_START
     }
 
     /// Returns `true` if a domain is an open domain.
