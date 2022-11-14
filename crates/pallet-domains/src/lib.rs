@@ -568,26 +568,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle_election(
-        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
-        proof_of_election: &ProofOfElection<T::SecondaryHash>,
-    ) -> Result<(), BundleError> {
-        verify_vrf_proof(
-            &proof_of_election.executor_public_key,
-            &proof_of_election.vrf_output,
-            &proof_of_election.vrf_proof,
-            &proof_of_election.global_challenge,
-        )
-        .map_err(|_| BundleError::BadVrfProof)?;
-
-        // TODO: validate core domain bundle solution.
-        if proof_of_election.domain_id.is_system() {
-            Self::validate_system_bundle_solution(receipts, proof_of_election)?;
-        }
-
-        Ok(())
-    }
-
     fn validate_system_bundle_solution(
         receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
         proof_of_election: &ProofOfElection<T::SecondaryHash>,
@@ -699,7 +679,17 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        Self::validate_bundle_election(&bundle.receipts, proof_of_election)?;
+        verify_vrf_proof(
+            &proof_of_election.executor_public_key,
+            &proof_of_election.vrf_output,
+            &proof_of_election.vrf_proof,
+            &proof_of_election.global_challenge,
+        )
+        .map_err(|_| BundleError::BadVrfProof)?;
+
+        if proof_of_election.domain_id.is_system() {
+            Self::validate_system_bundle_solution(&bundle.receipts, proof_of_election)?;
+        }
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
