@@ -41,8 +41,8 @@ use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode};
-use scale_info::TypeInfo;
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+use scale_info::{Type, TypeInfo};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -119,6 +119,75 @@ const VRF_PROOF_LENGTH: usize = 64;
 /// Representation of a single BLS12-381 scalar value.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub struct Scalar(Fr);
+
+impl Encode for Scalar {
+    fn size_hint(&self) -> usize {
+        48
+    }
+
+    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+        f(&self.to_bytes())
+    }
+
+    fn encoded_size(&self) -> usize {
+        48
+    }
+}
+
+impl EncodeLike for Scalar {}
+
+impl Decode for Scalar {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        Ok(Self::from(&<[u8; Self::SAFE_BYTES]>::decode(input)?))
+    }
+
+    fn encoded_fixed_size() -> Option<usize> {
+        Some(Self::SAFE_BYTES)
+    }
+}
+
+impl TypeInfo for Scalar {
+    type Identity = Self;
+
+    fn type_info() -> Type {
+        Type::builder()
+            .path(scale_info::Path::new(stringify!(Scalar), module_path!()))
+            .docs(&["BLS12-381 scalar"])
+            .composite(scale_info::build::Fields::named().field(|f| {
+                f.ty::<[u8; Self::SAFE_BYTES]>()
+                    .name(stringify!(inner))
+                    .type_name("Fr")
+            }))
+    }
+}
+
+#[cfg(feature = "serde")]
+mod scalar_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    // Custom wrapper so we don't have to write serialization/deserialization code manually
+    #[derive(Serialize, Deserialize)]
+    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::SAFE_BYTES]);
+
+    impl Serialize for super::Scalar {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Scalar(self.to_bytes()).serialize(serializer)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for super::Scalar {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let Scalar(bytes) = Scalar::deserialize(deserializer)?;
+            Ok(Self::from(&bytes))
+        }
+    }
+}
 
 impl TryFrom<&[u8]> for Scalar {
     type Error = ();
