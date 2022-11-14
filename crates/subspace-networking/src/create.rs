@@ -30,6 +30,7 @@ use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
 use prometheus_client::registry::Registry;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,7 +123,7 @@ pub struct Config<RecordStore = CustomRecordStore> {
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
     /// Defines optional prometheus metrics server address. None will prevent the server start.
-    pub prometheus_metrics_server_address: Option<String>,
+    pub prometheus_metrics_server_address: Option<SocketAddr>,
 }
 
 impl fmt::Debug for Config {
@@ -257,7 +258,7 @@ where
     // Init prometheus
     if let Some(address) = prometheus_metrics_server_address {
         tokio::task::spawn(async move {
-            start_prometheus_metrics_server(address.parse().unwrap(), metric_registry)
+            start_prometheus_metrics_server(address, metric_registry)
                 .await
                 .unwrap();
         });

@@ -31,7 +31,7 @@ async fn main() {
             println!("Request handler for request");
             Some(ExampleResponse)
         })],
-        prometheus_metrics_server_address: Some("127.0.0.1:63000".to_string()),
+        prometheus_metrics_server_address: Some("127.0.0.1:63000".parse().unwrap()),
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();

@@ -1,3 +1,4 @@
+use futures::future::{ready, Ready};
 use hyper::http::StatusCode;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, Server};
@@ -5,9 +6,7 @@ use parking_lot::Mutex;
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
 use std::error::Error;
-use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tracing::{error, info, warn};
@@ -67,7 +66,7 @@ impl MetricService {
 impl Service<Request<Body>> for MetricService {
     type Response = Response<Body>;
     type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = Ready<Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -84,11 +83,11 @@ impl Service<Request<Body>> for MetricService {
         };
 
         match response_result {
-            Ok(response) => Box::pin(async { Ok(response) }),
+            Ok(response) => ready(Ok(response)),
             Err(err) => {
                 warn!(?err, "Can't create metrics response.");
 
-                Box::pin(async { Ok(Response::new(Body::empty())) })
+                ready(Ok(Response::new(Body::empty())))
             }
         }
     }
@@ -109,7 +108,7 @@ impl MakeMetricService {
 impl<T> Service<T> for MakeMetricService {
     type Response = MetricService;
     type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = Ready<Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -117,7 +116,6 @@ impl<T> Service<T> for MakeMetricService {
 
     fn call(&mut self, _: T) -> Self::Future {
         let registry = self.registry.clone();
-        let fut = async move { Ok(MetricService { registry }) };
-        Box::pin(fut)
+        ready(Ok(MetricService { registry }))
     }
 }
