@@ -188,9 +188,12 @@ pub struct Cli {
     /// Secondary chain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
-    /// while the arguments provided after -- will be passed to the executor node.
+    /// while the arguments provided after `--` will be passed to the system domain node.
     ///
-    /// subspace-node [primarychain-args] -- [secondarychain-args]
+    /// If you want to run a core domain node, specify the core domain node arguments after
+    /// the system domain node arguments with an extra `-- --`.
+    ///
+    /// subspace-node [primarychain-args] -- [secondarychain-args] -- -- [core-domain-args]
     #[clap(raw = true)]
     pub secondary_chain_args: Vec<String>,
 }
