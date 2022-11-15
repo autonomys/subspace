@@ -145,13 +145,13 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
 
       - name: Build node
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
 
       - name: Sign Application (macOS)
         run: |

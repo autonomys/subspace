@@ -101,7 +101,7 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets -- -D warnings
+          args: --locked --all-targets -- -D warnings
 
   cargo-docs:
     runs-on: ubuntu-22.04
@@ -131,7 +131,7 @@ jobs:
           key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Check Documentation
-        run: cargo doc --all --no-deps --lib
+        run: cargo doc --locked --all --no-deps --lib
         env:
           RUSTDOCFLAGS: "-D rustdoc::broken-intra-doc-links -D rustdoc::private_intra_doc_links"
 
@@ -176,7 +176,7 @@ jobs:
             ~/.cargo/git
           key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: cargo test
+      - name: cargo test --locked
         uses: actions-rs/cargo@v1
         with:
           command: test

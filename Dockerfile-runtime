@@ -39,6 +39,7 @@ COPY test /code/test
 # TODO: Re-enable cost of storage in future
 RUN \
     /root/.cargo/bin/cargo build \
+        --locked \
         -Z build-std \
         --profile $PROFILE \
         --package subspace-runtime \
