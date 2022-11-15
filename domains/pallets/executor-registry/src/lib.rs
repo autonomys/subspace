@@ -26,6 +26,7 @@ use sp_arithmetic::Percent;
 use sp_domains::ExecutorPublicKey;
 use sp_executor_registry::ExecutorRegistry;
 use sp_runtime::BoundedVec;
+use sp_std::vec::Vec;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -737,6 +738,7 @@ mod pallet {
 
     /// A map tracking the owner of current and next key of each executor.
     #[pallet::storage]
+    #[pallet::getter(fn key_owner)]
     pub(super) type KeyOwner<T: Config> =
         StorageMap<_, Twox64Concat, ExecutorPublicKey, T::AccountId, OptionQuery>;
 
@@ -788,6 +790,10 @@ impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>, T::StakeWeight> for
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn key_owner_hashed_key_for(executor_public_key: &ExecutorPublicKey) -> Vec<u8> {
+        KeyOwner::<T>::hashed_key_for(executor_public_key)
+    }
+
     fn lock_fund(who: &T::AccountId, value: BalanceOf<T>) {
         T::Currency::set_lock(EXECUTOR_LOCK_ID, who, value, WithdrawReasons::all());
     }

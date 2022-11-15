@@ -31,6 +31,7 @@ use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::{One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec;
 use sp_std::vec::Vec;
 
 type BalanceOf<T> =
@@ -709,6 +710,17 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_slot_probability(domain_id: DomainId) -> Option<(u64, u64)> {
         Domains::<T>::get(domain_id).map(|domain_config| domain_config.bundle_slot_probability)
+    }
+
+    pub fn core_bundle_election_storage_keys(
+        domain_id: DomainId,
+        executor: T::AccountId,
+    ) -> Vec<Vec<u8>> {
+        vec![
+            DomainAuthorities::<T>::hashed_key_for(domain_id, executor),
+            DomainTotalStakeWeight::<T>::hashed_key_for(domain_id),
+            Domains::<T>::hashed_key_for(domain_id),
+        ]
     }
 
     fn can_create_domain(
