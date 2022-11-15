@@ -116,22 +116,6 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Rust toolchain (${{ matrix.build.target }})
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: ${{ matrix.build.target }}
-          components: rust-src
-          override: true
-
-      - name: Rust toolchain (wasm32)
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
-
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse

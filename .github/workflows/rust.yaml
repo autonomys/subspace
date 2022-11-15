@@ -33,15 +33,6 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Rust toolchain
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
-          override: true
-          components: rustfmt, clippy
-
       - name: Configure cache
         uses: actions/cache@v2
         with:
@@ -75,15 +66,6 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Rust toolchain
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
-          override: true
-          components: rustfmt, clippy
-
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
@@ -113,14 +95,6 @@ jobs:
         uses: arduino/setup-protoc@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust toolchain
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
-          override: true
 
       - name: Configure cache
         uses: actions/cache@v2
@@ -153,15 +127,6 @@ jobs:
         uses: arduino/setup-protoc@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust toolchain
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
-          override: true
-          components: rustfmt, clippy
 
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64

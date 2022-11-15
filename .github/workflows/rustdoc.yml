@@ -23,15 +23,6 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
-          profile: minimal
-          override: true
-          components: rustfmt, rust-src
-
       # Build the rust crate docs
       # Use `RUSTC_BOOTSTRAP` in order to use the `--enable-index-page` flag of rustdoc
       # This is needed in order to generate a landing page `index.html` for workspaces
