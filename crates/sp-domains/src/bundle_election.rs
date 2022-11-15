@@ -8,7 +8,6 @@ use sp_core::H256;
 #[cfg(feature = "std")]
 use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
 use sp_runtime::traits::BlakeTwo256;
-use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use subspace_core_primitives::crypto::blake2b_256_hash_list;
@@ -201,7 +200,7 @@ pub fn read_bundle_election_params(
     let db = storage_proof.into_memory_db::<BlakeTwo256>();
 
     let read_value = |storage_key| {
-        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key)
+        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key, None, None)
             .map_err(|_| ReadBundleElectionParamsError::TrieError)
     };
 

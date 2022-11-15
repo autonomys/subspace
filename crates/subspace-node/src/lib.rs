@@ -119,6 +119,7 @@ impl PurgeChainCmd {
 
 /// Utilities for working with a node.
 #[derive(Debug, clap::Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
     /// Key management cli utilities
     #[clap(subcommand)]
@@ -178,11 +179,11 @@ pub struct Cli {
 
     /// DSN configuration arguments: DSN 'listen-on' multi-address
     // TODO: Add more DSN-related parameters
-    #[clap(long)]
+    #[arg(long)]
     pub dsn_listen_on: Vec<Multiaddr>,
 
     /// DSN configuration arguments: DSN 'bootstrap-node' multi-address
-    #[clap(long)]
+    #[arg(long)]
     pub dsn_bootstrap_node: Vec<Multiaddr>,
 
     /// Secondary chain arguments
@@ -194,7 +195,7 @@ pub struct Cli {
     /// the system domain node arguments with an extra `-- --`.
     ///
     /// subspace-node [primarychain-args] -- [secondarychain-args] -- -- [core-domain-args]
-    #[clap(raw = true)]
+    #[arg(raw = true)]
     pub secondary_chain_args: Vec<String>,
 }
 

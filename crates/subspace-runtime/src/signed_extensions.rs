@@ -1,4 +1,4 @@
-use crate::{Call, Runtime, RuntimeConfigs, Subspace, Sudo};
+use crate::{Runtime, RuntimeCall, RuntimeConfigs, Subspace, Sudo};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{DispatchInfoOf, SignedExtension};
@@ -13,7 +13,7 @@ pub struct CheckStorageAccess;
 impl SignedExtension for CheckStorageAccess {
     const IDENTIFIER: &'static str = "CheckStorageAccess";
     type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::Call;
+    type Call = <Runtime as frame_system::Config>::RuntimeCall;
     type AdditionalSigned = ();
     type Pre = ();
 
@@ -53,7 +53,7 @@ pub struct DisablePallets;
 impl SignedExtension for DisablePallets {
     const IDENTIFIER: &'static str = "DisablePallets";
     type AccountId = <Runtime as frame_system::Config>::AccountId;
-    type Call = <Runtime as frame_system::Config>::Call;
+    type Call = <Runtime as frame_system::Config>::RuntimeCall;
     type AdditionalSigned = ();
     type Pre = ();
 
@@ -76,7 +76,7 @@ impl SignedExtension for DisablePallets {
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
     ) -> TransactionValidity {
-        if matches!(call, Call::Domains(_)) && !RuntimeConfigs::enable_executor() {
+        if matches!(call, RuntimeCall::Domains(_)) && !RuntimeConfigs::enable_executor() {
             InvalidTransaction::Call.into()
         } else {
             Ok(ValidTransaction::default())

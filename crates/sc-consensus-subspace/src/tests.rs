@@ -21,8 +21,8 @@
 #![allow(unused_imports, unused_variables, unused_mut)]
 
 use crate::{
-    extract_pre_digest, start_subspace, Config, NewSlotNotification, SubspaceLink, SubspaceParams,
-    SubspaceVerifier,
+    extract_pre_digest, slot_duration, start_subspace, NewSlotNotification, SubspaceLink,
+    SubspaceParams, SubspaceVerifier,
 };
 use codec::Encode;
 use futures::channel::oneshot;
@@ -48,8 +48,8 @@ use sc_service::TaskManager;
 use schnorrkel::Keypair;
 use sp_api::HeaderT;
 use sp_consensus::{
-    AlwaysCanAuthor, BlockOrigin, CacheKeyId, DisableProofRecording, Environment,
-    NoNetwork as DummyOracle, Proposal, Proposer,
+    BlockOrigin, CacheKeyId, DisableProofRecording, Environment, NoNetwork as DummyOracle,
+    Proposal, Proposer,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
@@ -59,7 +59,7 @@ use sp_core::crypto::UncheckedFrom;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{Block as BlockT, Zero};
-use sp_timestamp::InherentDataProvider as TimestampInherentDataProvider;
+use sp_timestamp::Timestamp;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
@@ -100,7 +100,7 @@ pub struct TestCreateInherentDataProviders {
         dyn CreateInherentDataProviders<
             TestBlock,
             SubspaceLink<TestBlock>,
-            InherentDataProviders = (TimestampInherentDataProvider, InherentDataProvider),
+            InherentDataProviders = (InherentDataProvider,),
         >,
     >,
 }
@@ -109,7 +109,7 @@ pub struct TestCreateInherentDataProviders {
 impl CreateInherentDataProviders<TestBlock, SubspaceLink<TestBlock>>
     for TestCreateInherentDataProviders
 {
-    type InherentDataProviders = (TimestampInherentDataProvider, InherentDataProvider);
+    type InherentDataProviders = (InherentDataProvider,);
 
     async fn create_inherent_data_providers(
         &self,
@@ -127,7 +127,6 @@ type SubspaceBlockImport = PanickingBlockImport<
         TestBlock,
         TestClient,
         Arc<TestClient>,
-        AlwaysCanAuthor,
         TestCreateInherentDataProviders,
     >,
 >;
@@ -337,22 +336,20 @@ impl TestNetFactory for SubspaceTestNet {
     ) {
         let client = client.as_client();
 
-        let config = Config::get(&*client).expect("config available");
+        let slot_duration = slot_duration(&*client).expect("slot duration available");
         let (block_import, link) = crate::block_import(
-            config,
+            slot_duration,
             client.clone(),
             client,
-            AlwaysCanAuthor,
             TestCreateInherentDataProviders {
                 inner: Arc::new(|_, _| async {
-                    let timestamp = TimestampInherentDataProvider::from_system_time();
                     let slot = InherentDataProvider::from_timestamp_and_slot_duration(
-                        *timestamp,
+                        Timestamp::current(),
                         SlotDuration::from_millis(6000),
                         vec![],
                     );
 
-                    Ok((timestamp, slot))
+                    Ok((slot,))
                 }),
             },
         )
@@ -388,9 +385,7 @@ impl TestNetFactory for SubspaceTestNet {
                 client,
                 select_chain: longest_chain,
                 slot_now: Box::new(|| {
-                    let timestamp = TimestampInherentDataProvider::from_system_time();
-
-                    Slot::from_timestamp(*timestamp, SlotDuration::from_millis(6000))
+                    Slot::from_timestamp(Timestamp::current(), SlotDuration::from_millis(6000))
                 }),
                 telemetry: None,
                 reward_signing_context: schnorrkel::context::signing_context(
@@ -530,19 +525,17 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             env: environ,
             sync_oracle: DummyOracle,
             create_inherent_data_providers: Box::new(|_, _| async {
-                let timestamp = TimestampInherentDataProvider::from_system_time();
                 let slot = InherentDataProvider::from_timestamp_and_slot_duration(
-                    *timestamp,
+                    Timestamp::current(),
                     SlotDuration::from_millis(6000),
                     vec![],
                 );
 
-                Ok((timestamp, slot))
+                Ok((slot,))
             }),
             force_authoring: false,
             backoff_authoring_blocks: Some(BackoffAuthoringOnFinalizedHeadLagging::default()),
             subspace_link: data.link.clone(),
-            can_author_with: sp_consensus::AlwaysCanAuthor,
             justification_sync_link: (),
             block_proposal_slot_portion: SlotProportion::new(0.5),
             max_block_proposal_slot_portion: None,

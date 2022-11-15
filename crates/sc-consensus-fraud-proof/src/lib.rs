@@ -18,7 +18,6 @@
 
 use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
-use sc_consensus::StateAction;
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::{CacheKeyId, Error as ConsensusError};
 use sp_domains::ExecutorApi;
@@ -89,7 +88,7 @@ where
         let parent_hash = *block.header.parent_hash();
         let parent_block_id = BlockId::Hash(parent_hash);
 
-        if !matches!(block.state_action, StateAction::Skip) {
+        if !block.state_action.skip_execution_checks() {
             if let Some(extrinsics) = &block.body {
                 let fraud_proofs = self
                     .client

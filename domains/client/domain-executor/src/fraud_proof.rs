@@ -138,7 +138,7 @@ where
             };
 
             let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 None,
             )?;
@@ -173,7 +173,7 @@ where
             let post_delta_root = storage_changes.transaction_storage_root;
 
             let proof = prover.prove_execution(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 Some((delta, post_delta_root)),
             )?;
@@ -221,7 +221,7 @@ where
     }
 
     fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        self.client.block_body(&BlockId::Hash(at))?.ok_or_else(|| {
+        self.client.block_body(at)?.ok_or_else(|| {
             sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at))
         })
     }
@@ -261,7 +261,7 @@ where
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
         let execution_proof = prover.prove_execution(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             Some((delta, post_delta_root)),
         )?;

@@ -25,8 +25,8 @@ use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
-use sc_network::config::TransportConfig;
 use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
+use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
@@ -228,6 +228,7 @@ pub struct TestNodeBuilder {
     secondary_nodes: Vec<MultiaddrWithPeerId>,
     secondary_nodes_exclusive: bool,
     primary_nodes: Vec<MultiaddrWithPeerId>,
+    base_path: BasePath,
 }
 
 impl TestNodeBuilder {
@@ -236,13 +237,19 @@ impl TestNodeBuilder {
     /// `para_id` - The parachain id this node is running for.
     /// `tokio_handle` - The tokio handler to use.
     /// `key` - The key that will be used to generate the name.
-    pub fn new(tokio_handle: tokio::runtime::Handle, key: Sr25519Keyring) -> Self {
+    /// `base_path` - Where databases will be stored.
+    pub fn new(
+        tokio_handle: tokio::runtime::Handle,
+        key: Sr25519Keyring,
+        base_path: BasePath,
+    ) -> Self {
         TestNodeBuilder {
             key,
             tokio_handle,
             secondary_nodes: Vec::new(),
             secondary_nodes_exclusive: false,
             primary_nodes: Vec::new(),
+            base_path,
         }
     }
 
@@ -314,6 +321,7 @@ impl TestNodeBuilder {
             self.secondary_nodes,
             self.secondary_nodes_exclusive,
             role,
+            BasePath::new(self.base_path.path().join("secondary")),
         )
         .expect("could not generate secondary chain node Configuration");
 
@@ -324,6 +332,7 @@ impl TestNodeBuilder {
             false,
             primary_force_authoring,
             primary_force_synced,
+            BasePath::new(self.base_path.path().join("primary")),
         );
 
         primary_chain_config.network.node_name =
@@ -360,10 +369,10 @@ pub fn node_config(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     nodes: Vec<MultiaddrWithPeerId>,
-    nodes_exlusive: bool,
+    nodes_exclusive: bool,
     role: Role,
+    base_path: BasePath,
 ) -> Result<Configuration, ServiceError> {
-    let base_path = BasePath::new_temp_dir()?;
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
 
@@ -376,10 +385,9 @@ pub fn node_config(
         None,
     );
 
-    if nodes_exlusive {
+    if nodes_exclusive {
         network_config.default_peers_set.reserved_nodes = nodes;
-        network_config.default_peers_set.non_reserved_mode =
-            sc_network::config::NonReservedPeerMode::Deny;
+        network_config.default_peers_set.non_reserved_mode = NonReservedPeerMode::Deny;
     } else {
         network_config.boot_nodes = nodes;
     }
@@ -404,10 +412,9 @@ pub fn node_config(
         database: DatabaseSource::ParityDb {
             path: root.join("paritydb"),
         },
-        state_cache_size: 67108864,
-        state_cache_child_ratio: None,
+        trie_cache_maximum_size: Some(16 * 1024 * 1024),
         state_pruning: Some(PruningMode::ArchiveAll),
-        blocks_pruning: BlocksPruning::All,
+        blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: spec,
         wasm_method: WasmExecutionMethod::Interpreted,
         // NOTE: we enforce the use of the native runtime to make the errors more debuggable
@@ -462,7 +469,7 @@ impl TestNode {
     /// Construct and send an extrinsic to this node.
     pub async fn construct_and_send_extrinsic(
         &self,
-        function: impl Into<runtime::Call>,
+        function: impl Into<runtime::RuntimeCall>,
         caller: Sr25519Keyring,
         immortal: bool,
         nonce: u32,
@@ -484,7 +491,7 @@ impl TestNode {
 /// Construct an extrinsic that can be applied to the test runtime.
 pub fn construct_extrinsic(
     client: &Client,
-    function: impl Into<runtime::Call>,
+    function: impl Into<runtime::RuntimeCall>,
     caller: Sr25519Keyring,
     immortal: bool,
     nonce: u32,
@@ -543,6 +550,16 @@ pub async fn run_primary_chain_validator_node(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
+    base_path: BasePath,
 ) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
-    subspace_test_service::run_validator_node(tokio_handle, key, boot_nodes, true, true, true).await
+    subspace_test_service::run_validator_node(
+        tokio_handle,
+        key,
+        boot_nodes,
+        true,
+        true,
+        true,
+        base_path,
+    )
+    .await
 }

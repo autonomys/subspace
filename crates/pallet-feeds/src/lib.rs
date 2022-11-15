@@ -43,7 +43,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// `pallet-feeds` events
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         // Feed ID uniquely identifies a Feed
         type FeedId: Parameter + Member + Default + Copy + PartialOrd + CheckedAdd + One;

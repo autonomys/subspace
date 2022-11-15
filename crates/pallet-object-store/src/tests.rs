@@ -1,4 +1,4 @@
-use crate::mock::{new_test_ext, Event, ObjectStore, Origin, System, Test};
+use crate::mock::{new_test_ext, ObjectStore, RuntimeEvent, RuntimeOrigin, System, Test};
 use frame_support::assert_ok;
 use subspace_core_primitives::crypto;
 
@@ -11,12 +11,14 @@ fn can_do_put() {
         let object_id = crypto::blake2b_256_hash(&object);
         let object_size = object.len() as u32;
 
-        assert_ok!(ObjectStore::put(Origin::signed(ACCOUNT_ID), object));
+        assert_ok!(ObjectStore::put(RuntimeOrigin::signed(ACCOUNT_ID), object));
 
-        System::assert_last_event(Event::ObjectStore(crate::Event::<Test>::ObjectSubmitted {
-            who: ACCOUNT_ID,
-            object_id,
-            object_size,
-        }));
+        System::assert_last_event(RuntimeEvent::ObjectStore(
+            crate::Event::<Test>::ObjectSubmitted {
+                who: ACCOUNT_ID,
+                object_id,
+                object_size,
+            },
+        ));
     });
 }

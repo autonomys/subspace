@@ -26,8 +26,9 @@ pub mod system;
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
 use core::num::NonZeroU64;
+use frame_support::dispatch::RawOrigin;
 use frame_support::parameter_types;
-use frame_support::traits::{ConstU32, ConstU64, CrateVersion};
+use frame_support::traits::{CallerTrait, ConstU32, ConstU64, CrateVersion};
 use frame_support::weights::RuntimeDbWeight;
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
@@ -41,6 +42,7 @@ use sp_runtime::traits::{
     BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
     GetRuntimeBlockType, IdentityLookup, NumberFor, Verify,
 };
+use frame_support::weights::Weight;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
     ValidTransaction,
@@ -48,7 +50,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_trie::trie_types::{TrieDB, TrieDBMutV1 as TrieDBMut};
+use sp_trie::trie_types::{TrieDBBuilder,TrieDBMutBuilderV1};
 use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
@@ -109,7 +111,7 @@ pub fn native_version() -> NativeVersion {
 }
 
 /// Calls in transactions.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 pub struct Transfer {
     pub from: AccountId,
     pub to: AccountId,
@@ -148,7 +150,7 @@ impl Transfer {
 }
 
 /// Extrinsic for test-runtime.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 pub enum Extrinsic {
     Transfer {
         transfer: Transfer,
@@ -221,11 +223,11 @@ impl ExtrinsicT for Extrinsic {
 }
 
 impl sp_runtime::traits::Dispatchable for Extrinsic {
-    type Origin = Origin;
+    type RuntimeOrigin = RuntimeOrigin;
     type Config = ();
     type Info = ();
     type PostInfo = ();
-    fn dispatch(self, _origin: Self::Origin) -> sp_runtime::DispatchResultWithInfo<Self::PostInfo> {
+    fn dispatch(self, _origin: Self::RuntimeOrigin) -> sp_runtime::DispatchResultWithInfo<Self::PostInfo> {
         panic!("This implemention should not be used for actual dispatch.");
     }
 }
@@ -425,22 +427,33 @@ impl GetRuntimeBlockType for Runtime {
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo, MaxEncodedLen)]
-pub struct Origin;
+pub struct RuntimeOrigin;
 
-impl From<frame_system::Origin<Runtime>> for Origin {
-    fn from(_o: frame_system::Origin<Runtime>) -> Self {
-        unimplemented!("Not required in tests!")
-    }
-}
-impl From<Origin> for Result<frame_system::Origin<Runtime>, Origin> {
-    fn from(_origin: Origin) -> Result<frame_system::Origin<Runtime>, Origin> {
+impl From<RawOrigin<<Runtime as frame_system::Config>::AccountId>> for RuntimeOrigin {
+    fn from(_: RawOrigin<<Runtime as frame_system::Config>::AccountId>) -> Self {
         unimplemented!("Not required in tests!")
     }
 }
 
-impl frame_support::traits::OriginTrait for Origin {
-    type Call = <Runtime as frame_system::Config>::Call;
-    type PalletsOrigin = Origin;
+impl CallerTrait<<Runtime as frame_system::Config>::AccountId> for RuntimeOrigin {
+    fn into_system(self) -> Option<RawOrigin<<Runtime as frame_system::Config>::AccountId>> {
+        unimplemented!("Not required in tests!")
+    }
+
+    fn as_system_ref(&self) -> Option<&RawOrigin<<Runtime as frame_system::Config>::AccountId>> {
+        unimplemented!("Not required in tests!")
+    }
+}
+
+impl From<RuntimeOrigin> for Result<frame_system::Origin<Runtime>, RuntimeOrigin> {
+    fn from(_origin: RuntimeOrigin) -> Result<frame_system::Origin<Runtime>, RuntimeOrigin> {
+        unimplemented!("Not required in tests!")
+    }
+}
+
+impl frame_support::traits::OriginTrait for RuntimeOrigin {
+    type Call = <Runtime as frame_system::Config>::RuntimeCall;
+    type PalletsOrigin = RuntimeOrigin;
     type AccountId = <Runtime as frame_system::Config>::AccountId;
 
     fn add_filter(&mut self, _filter: impl Fn(&Self::Call) -> bool + 'static) {
@@ -463,6 +476,10 @@ impl frame_support::traits::OriginTrait for Origin {
         unimplemented!("Not required in tests!")
     }
 
+    fn into_caller(self) -> Self::PalletsOrigin {
+        unimplemented!("Not required in tests!")
+    }
+
     fn try_with_caller<R>(
         self,
         _f: impl FnOnce(Self::PalletsOrigin) -> Result<R, Self::PalletsOrigin>,
@@ -476,24 +493,27 @@ impl frame_support::traits::OriginTrait for Origin {
     fn root() -> Self {
         unimplemented!("Not required in tests!")
     }
-    fn signed(_by: <Runtime as frame_system::Config>::AccountId) -> Self {
+    fn signed(_by: Self::AccountId) -> Self {
         unimplemented!("Not required in tests!")
     }
     fn as_signed(self) -> Option<Self::AccountId> {
         unimplemented!("Not required in tests!")
     }
+    fn as_system_ref(&self) -> Option<&RawOrigin<Self::AccountId>> {
+        unimplemented!("Not required in tests!")
+    }
 }
 
 #[derive(Debug, Clone, Encode, Decode, Eq, PartialEq, TypeInfo)]
-pub struct Event;
+pub struct RuntimeEvent;
 
-impl From<frame_system::Event<Runtime>> for Event {
+impl From<frame_system::Event<Runtime>> for RuntimeEvent {
     fn from(_evt: frame_system::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
 }
 
-impl From<pallet_subspace::Event<Runtime>> for Event {
+impl From<pallet_subspace::Event<Runtime>> for RuntimeEvent {
     fn from(_evt: pallet_subspace::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
@@ -559,15 +579,21 @@ parameter_types! {
     pub RuntimeBlockLength: BlockLength =
         BlockLength::max(4 * 1024 * 1024);
     pub RuntimeBlockWeights: BlockWeights =
-        BlockWeights::with_sensible_defaults(4 * 1024 * 1024, Perbill::from_percent(75));
+        BlockWeights::with_sensible_defaults(Weight::from_ref_time(4 * 1024 * 1024), Perbill::from_percent(75));
+}
+
+impl From<frame_system::Call<Runtime>> for Extrinsic {
+    fn from(_: frame_system::Call<Runtime>) -> Self {
+        unimplemented!("Not required in tests!")
+    }
 }
 
 impl frame_system::Config for Runtime {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = RuntimeBlockWeights;
     type BlockLength = RuntimeBlockLength;
-    type Origin = Origin;
-    type Call = Extrinsic;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = Extrinsic;
     type Index = u64;
     type BlockNumber = u64;
     type Hash = H256;
@@ -575,7 +601,7 @@ impl frame_system::Config for Runtime {
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = BlockHashCount;
     type DbWeight = ();
     type Version = ();
@@ -588,6 +614,8 @@ impl frame_system::Config for Runtime {
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
 }
+
+impl system::Config for Runtime {}
 
 impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
@@ -604,7 +632,7 @@ parameter_types! {
 }
 
 impl pallet_subspace::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = ConstU64<10>;
     type EraDuration = ConstU64<5>;
     type InitialSolutionRange = ConstU64<{ u64::MAX }>;
@@ -637,31 +665,23 @@ fn code_using_trie() -> u64 {
         (b"0103000000000000000464".to_vec(), b"0400000000".to_vec()),
         (b"0103000000000000000469".to_vec(), b"0401000000".to_vec()),
     ]
-    .to_vec();
+        .to_vec();
 
     let mut mdb = PrefixedMemoryDB::default();
     let mut root = sp_std::default::Default::default();
-    let _ = {
-        let mut t = TrieDBMut::<Hashing>::new(&mut mdb, &mut root);
-        for pair in &pairs {
-            let key: &[u8] = &pair.0;
-            let val: &[u8] = &pair.1;
-            if t.insert(key, val).is_err() {
-                return 101;
+    {
+        let mut t = TrieDBMutBuilderV1::<Hashing>::new(&mut mdb, &mut root).build();
+        for (key, value) in &pairs {
+            if t.insert(key, value).is_err() {
+                return 101
             }
         }
-        t
-    };
-
-    if let Ok(trie) = TrieDB::<Hashing>::new(&mdb, &root) {
-        if let Ok(iter) = trie.iter() {
-            iter.flatten().count() as u64
-        } else {
-            102
-        }
-    } else {
-        103
     }
+
+    let trie = TrieDBBuilder::<Hashing>::new(&mdb, &root).build();
+    let res = if let Ok(iter) = trie.iter() { iter.flatten().count() as u64 } else { 102 };
+
+    res
 }
 
 impl_opaque_keys! {
@@ -1254,7 +1274,7 @@ fn test_read_child_storage() {
 fn test_witness(proof: StorageProof, root: crate::Hash) {
     use sp_externalities::Externalities;
     let db: sp_trie::MemoryDB<crate::Hashing> = proof.into_memory_db();
-    let backend = sp_state_machine::TrieBackend::<_, crate::Hashing>::new(db, root);
+    let backend = sp_state_machine::TrieBackendBuilder::<_, crate::Hashing>::new(db, root).build();
     let mut overlay = sp_state_machine::OverlayedChanges::default();
     let mut cache = sp_state_machine::StorageTransactionCache::<_, _>::default();
     let mut ext = sp_state_machine::Ext::new(
@@ -1292,7 +1312,7 @@ mod tests {
             .set_execution_strategy(ExecutionStrategy::AlwaysWasm)
             .set_heap_pages(8)
             .build();
-        let block_id = BlockId::Number(client.chain_info().best_number);
+        let block_id = BlockId::Hash(client.chain_info().best_hash);
 
         // Try to allocate 1024k of memory on heap. This is going to fail since it is twice larger
         // than the heap.
@@ -1326,7 +1346,7 @@ mod tests {
             .set_execution_strategy(ExecutionStrategy::Both)
             .build();
         let runtime_api = client.runtime_api();
-        let block_id = BlockId::Number(client.chain_info().best_number);
+        let block_id = BlockId::Hash(client.chain_info().best_hash);
 
         runtime_api.test_storage(&block_id).unwrap();
     }
@@ -1336,7 +1356,8 @@ mod tests {
         let mut root = crate::Hash::default();
         let mut mdb = sp_trie::MemoryDB::<crate::Hashing>::default();
         {
-            let mut trie = sp_trie::trie_types::TrieDBMutV1::new(&mut mdb, &mut root);
+            let mut trie =
+                sp_trie::trie_types::TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
             trie.insert(b"value3", &[142]).expect("insert failed");
             trie.insert(b"value4", &[124]).expect("insert failed");
         };
@@ -1346,13 +1367,14 @@ mod tests {
     #[test]
     fn witness_backend_works() {
         let (db, root) = witness_backend();
-        let backend = sp_state_machine::TrieBackend::<_, crate::Hashing>::new(db, root);
+        let backend =
+            sp_state_machine::TrieBackendBuilder::<_, crate::Hashing>::new(db, root).build();
         let proof = sp_state_machine::prove_read(backend, vec![b"value3"]).unwrap();
         let client = TestClientBuilder::new()
             .set_execution_strategy(ExecutionStrategy::Both)
             .build();
         let runtime_api = client.runtime_api();
-        let block_id = BlockId::Number(client.chain_info().best_number);
+        let block_id = BlockId::Hash(client.chain_info().best_hash);
 
         runtime_api.test_witness(&block_id, proof, root).unwrap();
     }
