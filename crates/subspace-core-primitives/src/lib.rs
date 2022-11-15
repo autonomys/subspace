@@ -33,9 +33,10 @@ use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
-use ark_ff::{BigInteger256, PrimeField};
+use ark_ff::BigInteger256;
 use bitvec::prelude::*;
 use core::convert::AsRef;
+use core::marker::PhantomData;
 use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};
@@ -213,10 +214,11 @@ impl TryFrom<&[u8]> for Scalar {
                 *output = u64::from_le_bytes(tmp);
             });
 
-        Ok(Scalar(
-            Fr::from_repr(BigInteger256::new(bigint_bytes))
-                .expect("Always smaller than modulus, always 31 bytes; qed"),
-        ))
+        // Bypass `from_repr` because of https://github.com/arkworks-rs/algebra/issues/516
+        Ok(Scalar(Fr {
+            0: BigInteger256::new(bigint_bytes),
+            1: PhantomData::default(),
+        }))
     }
 }
 
@@ -237,10 +239,11 @@ impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
                 *output = u64::from_le_bytes(tmp);
             });
 
-        Scalar(
-            Fr::from_repr(BigInteger256::new(bigint_bytes))
-                .expect("Always smaller than modulus, always 31 bytes; qed"),
-        )
+        // Bypass `from_repr` because of https://github.com/arkworks-rs/algebra/issues/516
+        Scalar(Fr {
+            0: BigInteger256::new(bigint_bytes),
+            1: PhantomData::default(),
+        })
     }
 }
 
@@ -250,7 +253,7 @@ impl From<&Scalar> for [u8; Scalar::SAFE_BYTES] {
 
         bytes
             .chunks_mut(mem::size_of::<u64>())
-            .zip(&value.0.into_repr().0)
+            .zip(&value.0 .0 .0)
             .for_each(|(output, input): (&mut [u8], &u64)| {
                 output
                     .iter_mut()
@@ -285,7 +288,7 @@ impl Scalar {
 
         bytes
             .chunks_mut(mem::size_of::<u64>())
-            .zip(&self.0.into_repr().0)
+            .zip(&self.0 .0 .0)
             .for_each(|(output, input): (&mut [u8], &u64)| {
                 output
                     .iter_mut()
