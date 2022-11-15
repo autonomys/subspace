@@ -79,7 +79,7 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
     shuffled_extrinsics
 }
 
-pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -96,7 +96,7 @@ where
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+    for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -122,7 +122,7 @@ type SystemAndCoreBundles<Block, PBlock> = (
 );
 
 impl<Block, PBlock, Client, PClient, Backend, E>
-    BundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+    SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -467,7 +467,7 @@ where
     ) -> Result<(), sp_blockchain::Error> {
         let extrinsics = self
             .primary_chain_client
-            .block_body(&BlockId::Hash(primary_hash))?
+            .block_body(primary_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
                     "Primary block body for {:?} not found",

@@ -27,7 +27,7 @@ use sp_domains::{
     BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::Zero;
+use sp_runtime::traits::{One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 
@@ -58,7 +58,7 @@ mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
@@ -95,6 +95,18 @@ mod pallet {
         // the new stake amount still meets the operator stake threshold on all domains he stakes.
         #[pallet::constant]
         type MinDomainOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Maximum execution receipt drift.
+        ///
+        /// If the primary number of an execution receipt plus the maximum drift is bigger than the
+        /// best execution chain number, this receipt will be rejected as being too far in the
+        /// future.
+        #[pallet::constant]
+        type MaximumReceiptDrift: Get<Self::BlockNumber>;
+
+        /// Number of execution receipts kept in the state.
+        #[pallet::constant]
+        type ReceiptsPruningDepth: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -411,6 +423,7 @@ mod pallet {
         }
     }
 
+    #[cfg(feature = "std")]
     type GenesisDomainInfo<T> = (
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
@@ -658,6 +671,22 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn best_execution_chain_number(domain_id: DomainId) -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
+        best_number
+    }
+
+    /// Returns the block number of the oldest receipt still being tracked in the state.
+    pub fn oldest_receipt_number(domain_id: DomainId) -> T::BlockNumber {
+        Self::finalized_receipt_number(domain_id) + One::one()
+    }
+
+    /// Returns the block number of latest _finalized_ receipt.
+    pub fn finalized_receipt_number(domain_id: DomainId) -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
+        best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
     fn can_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,

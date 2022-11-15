@@ -562,6 +562,12 @@ sp_api::decl_runtime_apis! {
             extrinsics: Vec<Block::Extrinsic>,
         ) -> (OpaqueBundles<Block, SecondaryHash>, SignedOpaqueBundles<Block, SecondaryHash>);
 
+        /// Extract the core bundles from the given extrinsics.
+        fn extract_core_bundles(
+            extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
+        ) -> OpaqueBundles<Block, SecondaryHash>;
+
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(
             extrinsics: Vec<Block::Extrinsic>,

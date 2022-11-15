@@ -1,8 +1,9 @@
+use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND,
 };
-use frame_support::weights::{ConstantMultiplier, DispatchClass, IdentityFee, Weight};
+use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
@@ -10,7 +11,7 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::{DomainId, SignedOpaqueBundle};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -51,10 +52,11 @@ pub type SignedExtra = (
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
-pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
+pub type UncheckedExtrinsic =
+    generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
 /// Extrinsic type that has already been checked.
-pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExtra>;
+pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra>;
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = domain_pallet_executive::Executive<
@@ -115,7 +117,7 @@ const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 /// We allow for 0.5 of a second of compute with a 12 second average block time.
-const MAXIMUM_BLOCK_WEIGHT: Weight = WEIGHT_PER_SECOND / 2;
+const MAXIMUM_BLOCK_WEIGHT: Weight = WEIGHT_PER_SECOND.div(2).set_proof_size(u64::MAX);
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -162,7 +164,7 @@ impl frame_system::Config for Runtime {
     /// The identifier used to distinguish between accounts.
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
-    type Call = Call;
+    type RuntimeCall = RuntimeCall;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The index type for storing how many extrinsics an account has signed.
@@ -176,9 +178,9 @@ impl frame_system::Config for Runtime {
     /// The header type.
     type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// The ubiquitous event type.
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     /// The ubiquitous origin type.
-    type Origin = Origin;
+    type RuntimeOrigin = RuntimeOrigin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
     type BlockHashCount = BlockHashCount;
     /// Runtime version.
@@ -219,7 +221,7 @@ impl pallet_balances::Config for Runtime {
     /// The type for recording an account's balance.
     type Balance = Balance;
     /// The ubiquitous event type.
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
@@ -234,7 +236,7 @@ parameter_types! {
 }
 
 impl pallet_transaction_payment::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = pallet_transaction_payment::CurrencyAdapter<Balances, ()>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
@@ -243,8 +245,8 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 impl domain_pallet_executive::Config for Runtime {
-    type Event = Event;
-    type Call = Call;
+    type RuntimeEvent = RuntimeEvent;
+    type Call = RuntimeCall;
 }
 
 parameter_types! {
@@ -261,7 +263,7 @@ parameter_types! {
 }
 
 impl pallet_executor_registry::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type StakeWeight = sp_domains::StakeWeight;
     type MinExecutorStake = MinExecutorStake;
@@ -278,16 +280,20 @@ parameter_types! {
     pub const MinDomainDeposit: Balance = 10 * SSC;
     pub const MaxDomainDeposit: Balance = 1000 * SSC;
     pub const MinDomainOperatorStake: Balance = 10 * SSC;
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
+    pub const MaximumReceiptDrift: BlockNumber = 128;
 }
 
 impl pallet_domain_registry::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type StakeWeight = sp_domains::StakeWeight;
     type ExecutorRegistry = ExecutorRegistry;
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -436,7 +442,7 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
-                    weight: 0
+                    weight: Weight::zero(),
                 }.into()
             ).encode()
         }
@@ -464,6 +470,18 @@ impl_runtime_apis! {
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),
             }
+        }
+
+        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::best_execution_chain_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::oldest_receipt_number(domain_id)
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
         }
     }
 

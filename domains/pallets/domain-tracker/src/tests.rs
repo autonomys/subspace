@@ -1,4 +1,4 @@
-use crate::mock::{new_test_ext, DomainTracker, MockRuntime, Origin, StateRootsBound};
+use crate::mock::{new_test_ext, DomainTracker, MockRuntime, RuntimeOrigin, StateRootsBound};
 use crate::pallet::{CoreDomainsStateRoot, SystemDomainStateRoots};
 use crate::Error;
 use frame_support::{assert_err, assert_ok};
@@ -17,7 +17,7 @@ fn test_update_state_root() {
         assert!(!DomainTracker::state_roots_updated());
 
         let res = DomainTracker::update_system_domain_state_root(
-            Origin::none(),
+            RuntimeOrigin::none(),
             data.system_domain_state_root,
         );
         assert_ok!(res);
@@ -29,7 +29,7 @@ fn test_update_state_root() {
 
         // cannot update twice in same block
         let res = DomainTracker::update_system_domain_state_root(
-            Origin::none(),
+            RuntimeOrigin::none(),
             data.system_domain_state_root,
         );
         assert_err!(res, Error::<MockRuntime>::StateRootsAlreadyUpdated)
@@ -54,7 +54,7 @@ fn test_state_roots_bounded() {
         assert!(!DomainTracker::state_roots_updated());
 
         let res = DomainTracker::update_system_domain_state_root(
-            Origin::none(),
+            RuntimeOrigin::none(),
             data.system_domain_state_root,
         );
         assert_ok!(res);

@@ -45,7 +45,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// Event type for this pallet.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Total number of confirmed state roots to store at a time.
         type StateRootsBound: Get<u32>;

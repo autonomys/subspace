@@ -10,9 +10,9 @@ use crate::request_responses::{
 use custom_record_store::CustomRecordStore;
 use derive_more::From;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
-use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
+use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
-use libp2p::ping::{Ping, PingEvent};
+use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::{NetworkBehaviour, PeerId};
 
 pub(crate) struct BehaviorConfig<RecordStore = CustomRecordStore> {

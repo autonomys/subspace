@@ -18,8 +18,8 @@
 
 use crate::mock::{
     create_archived_segment, create_root_block, create_signed_vote, generate_equivocation_proof,
-    go_to_block, new_test_ext, progress_to_block, Event, GlobalRandomnessUpdateInterval, Origin,
-    ReportLongevity, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    go_to_block, new_test_ext, progress_to_block, GlobalRandomnessUpdateInterval, ReportLongevity,
+    RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
@@ -27,7 +27,8 @@ use crate::{
     ParentBlockVoters, RecordsRoot, SubspaceEquivocationOffence, WeightInfo,
 };
 use codec::Encode;
-use frame_support::weights::{GetDispatchInfo, Pays};
+use frame_support::dispatch::{GetDispatchInfo, Pays};
+use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
@@ -115,7 +116,7 @@ fn can_update_solution_range_on_era_change() {
         assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
         // enable solution range adjustment
         assert_ok!(Subspace::enable_solution_range_adjustment(
-            Origin::root(),
+            RuntimeOrigin::root(),
             None,
             None
         ));
@@ -188,7 +189,7 @@ fn can_override_solution_range_update() {
         let random_solution_range = rand::random();
         let random_voting_solution_range = random_solution_range + 5;
         assert_ok!(Subspace::enable_solution_range_adjustment(
-            Origin::root(),
+            RuntimeOrigin::root(),
             Some(random_solution_range),
             Some(random_voting_solution_range),
         ));
@@ -300,7 +301,7 @@ fn report_equivocation_current_session_works() {
         assert!(!Subspace::is_in_block_list(&farmer_public_key));
 
         // report the equivocation
-        Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
+        Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof)).unwrap();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -328,7 +329,7 @@ fn report_equivocation_old_session_works() {
         assert!(!Subspace::is_in_block_list(&farmer_public_key));
 
         // report the equivocation
-        Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
+        Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof)).unwrap();
 
         progress_to_block(&keypair, 3, 1);
 
@@ -346,7 +347,7 @@ fn report_equivocation_invalid_equivocation_proof() {
 
         let assert_invalid_equivocation = |equivocation_proof| {
             assert_err!(
-                Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof),),
+                Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof),),
                 Error::<Test>::InvalidEquivocationProof,
             )
         };
@@ -446,7 +447,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
         assert_ok!(<Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
 
         // Submit the report
-        Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof)).unwrap();
+        Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof)).unwrap();
 
         // The report should now be considered stale and the transaction is invalid.
         // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
@@ -470,7 +471,7 @@ fn report_equivocation_has_valid_weight() {
     // the weight is always the same.
     assert!((1..=1000)
         .map(|_| { <Test as Config>::WeightInfo::report_equivocation() })
-        .all(|w| w == 10_000));
+        .all(|w| w == Weight::from_ref_time(10_000)));
 }
 
 #[test]
@@ -490,13 +491,15 @@ fn valid_equivocation_reports_dont_pay_fees() {
         .get_dispatch_info();
 
         // it should have non-zero weight and the fee has to be paid.
-        assert!(info.weight > 0);
+        assert!(info.weight.ref_time() > 0);
         assert_eq!(info.pays_fee, Pays::Yes);
 
         // report the equivocation.
-        let post_info =
-            Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof.clone()))
-                .unwrap();
+        let post_info = Subspace::report_equivocation(
+            RuntimeOrigin::none(),
+            Box::new(equivocation_proof.clone()),
+        )
+        .unwrap();
 
         // the original weight should be kept, but given that the report
         // is valid the fee is waived.
@@ -505,10 +508,11 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
         // report the equivocation again which is invalid now since it is
         // duplicate.
-        let post_info = Subspace::report_equivocation(Origin::none(), Box::new(equivocation_proof))
-            .err()
-            .unwrap()
-            .post_info;
+        let post_info =
+            Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof))
+                .err()
+                .unwrap()
+                .post_info;
 
         // the fee is not waived and the original weight is kept.
         assert!(post_info.actual_weight.is_none());
@@ -531,12 +535,12 @@ fn store_root_block_works() {
         // Root blocks don't require fee
         assert_eq!(call.get_dispatch_info().pays_fee, Pays::No);
 
-        Subspace::store_root_blocks(Origin::none(), vec![root_block]).unwrap();
+        Subspace::store_root_blocks(RuntimeOrigin::none(), vec![root_block]).unwrap();
         assert_eq!(
             System::events(),
             vec![EventRecord {
                 phase: Phase::Initialization,
-                event: Event::Subspace(crate::Event::RootBlockStored { root_block }),
+                event: RuntimeEvent::Subspace(crate::Event::RootBlockStored { root_block }),
                 topics: vec![],
             }]
         );
@@ -584,7 +588,7 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
         assert_ok!(<Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
 
         // Submit the report
-        Subspace::store_root_blocks(Origin::none(), vec![root_block]).unwrap();
+        Subspace::store_root_blocks(RuntimeOrigin::none(), vec![root_block]).unwrap();
 
         // The report should now be considered stale and the transaction is invalid.
         // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
@@ -1235,7 +1239,7 @@ fn vote_equivocation_parent_block_plus_vote() {
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
 
         assert_err!(
-            Subspace::vote(Origin::none(), Box::new(signed_vote)),
+            Subspace::vote(RuntimeOrigin::none(), Box::new(signed_vote)),
             DispatchError::Other("Equivocated"),
         );
 
@@ -1312,7 +1316,7 @@ fn vote_equivocation_current_voters_duplicate() {
         // Different vote for the same sector index and time slot leads to equivocation
         Subspace::pre_dispatch_vote(&signed_vote).unwrap();
         assert_err!(
-            Subspace::vote(Origin::none(), Box::new(signed_vote)),
+            Subspace::vote(RuntimeOrigin::none(), Box::new(signed_vote)),
             DispatchError::Other("Equivocated"),
         );
 
@@ -1501,10 +1505,10 @@ fn allow_authoring_by_anyone_works() {
 
         // Unlock authoring by anyone
         assert_err!(
-            Subspace::enable_authoring_by_anyone(Origin::signed(1)),
+            Subspace::enable_authoring_by_anyone(RuntimeOrigin::signed(1)),
             DispatchError::BadOrigin
         );
-        Subspace::enable_authoring_by_anyone(Origin::root()).unwrap();
+        Subspace::enable_authoring_by_anyone(RuntimeOrigin::root()).unwrap();
         // Both must be able to create blocks again
         progress_to_block(
             &keypair1,

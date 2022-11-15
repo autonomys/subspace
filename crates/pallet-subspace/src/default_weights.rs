@@ -21,11 +21,11 @@ use frame_support::weights::Weight;
 impl crate::WeightInfo for () {
     fn report_equivocation() -> Weight {
         // TODO: Proper value
-        10_000
+        Weight::from_ref_time(10_000)
     }
 
     fn store_root_blocks(root_blocks_count: usize) -> Weight {
         // TODO: Proper value
-        10_000 * (root_blocks_count as u64 + 1)
+        Weight::from_ref_time(10_000 * (root_blocks_count as u64 + 1))
     }
 }

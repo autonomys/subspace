@@ -21,6 +21,6 @@ use frame_support::weights::Weight;
 impl crate::WeightInfo for () {
     fn on_initialize() -> Weight {
         // TODO: Correct value
-        1
+        Weight::from_ref_time(1)
     }
 }

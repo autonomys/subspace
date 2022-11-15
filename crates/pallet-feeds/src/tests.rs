@@ -1,5 +1,6 @@
 use crate::mock::{
-    new_test_ext, ContentEnum, Event, Feeds, MockFeedProcessorKind, Origin, System, Test,
+    new_test_ext, ContentEnum, Feeds, MockFeedProcessorKind, RuntimeEvent, RuntimeOrigin, System,
+    Test,
 };
 use crate::{Call as FeedsCall, Error, Object, SuccessfulPuts, TotalObjectsAndSize};
 use codec::{Decode, Encode};
@@ -16,14 +17,14 @@ const NOT_OWNER: u64 = 101;
 fn create_feed() {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             Default::default(),
             None
         ));
 
         assert_eq!(Feeds::totals(0), TotalObjectsAndSize::default());
 
-        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedCreated {
+        System::assert_last_event(RuntimeEvent::Feeds(crate::Event::<Test>::FeedCreated {
             feed_id: FEED_ID,
             who: OWNER,
         }));
@@ -39,12 +40,16 @@ fn can_do_put() {
         let object_size = object.len() as u64;
         // create feed before putting any data
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             Default::default(),
             None
         ));
 
-        assert_ok!(Feeds::put(Origin::signed(OWNER), FEED_ID, object.clone()));
+        assert_ok!(Feeds::put(
+            RuntimeOrigin::signed(OWNER),
+            FEED_ID,
+            object.clone()
+        ));
 
         // check Metadata hashmap for updated metadata
         assert_eq!(Feeds::metadata(FEED_ID), Some(vec![]));
@@ -70,7 +75,7 @@ fn can_do_put() {
             )
         );
 
-        System::assert_last_event(Event::Feeds(crate::Event::<Test>::ObjectSubmitted {
+        System::assert_last_event(RuntimeEvent::Feeds(crate::Event::<Test>::ObjectSubmitted {
             feed_id: FEED_ID,
             who: OWNER,
             metadata: vec![],
@@ -79,7 +84,7 @@ fn can_do_put() {
 
         // only owner can put
         assert_noop!(
-            Feeds::put(Origin::signed(NOT_OWNER), FEED_ID, object),
+            Feeds::put(RuntimeOrigin::signed(NOT_OWNER), FEED_ID, object),
             Error::<Test>::NotFeedOwner
         );
     });
@@ -90,7 +95,7 @@ fn cannot_do_put_without_creating_feed() {
     new_test_ext().execute_with(|| {
         let object: Object = vec![1, 2, 3, 4, 5];
         assert_noop!(
-            Feeds::put(Origin::signed(OWNER), FEED_ID, object),
+            Feeds::put(RuntimeOrigin::signed(OWNER), FEED_ID, object),
             Error::<Test>::UnknownFeedId
         );
 
@@ -104,29 +109,33 @@ fn can_close_open_feed() {
         let object: Object = vec![1, 2, 3, 4, 5];
         // create feed before putting any data
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             Default::default(),
             None
         ));
 
-        assert_ok!(Feeds::put(Origin::signed(OWNER), FEED_ID, object.clone()));
+        assert_ok!(Feeds::put(
+            RuntimeOrigin::signed(OWNER),
+            FEED_ID,
+            object.clone()
+        ));
 
         // only owner can close
         assert_noop!(
-            Feeds::close(Origin::signed(NOT_OWNER), FEED_ID),
+            Feeds::close(RuntimeOrigin::signed(NOT_OWNER), FEED_ID),
             Error::<Test>::NotFeedOwner
         );
 
-        assert_ok!(Feeds::close(Origin::signed(OWNER), FEED_ID));
+        assert_ok!(Feeds::close(RuntimeOrigin::signed(OWNER), FEED_ID));
 
-        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedClosed {
+        System::assert_last_event(RuntimeEvent::Feeds(crate::Event::<Test>::FeedClosed {
             feed_id: FEED_ID,
             who: OWNER,
         }));
 
         // cannot put a closed feed
         assert_noop!(
-            Feeds::put(Origin::signed(OWNER), FEED_ID, object),
+            Feeds::put(RuntimeOrigin::signed(OWNER), FEED_ID, object),
             Error::<Test>::FeedClosed
         );
     });
@@ -137,7 +146,7 @@ fn cannot_close_invalid_feed() {
     new_test_ext().execute_with(|| {
         let feed_id = 10; // invalid
         assert_noop!(
-            Feeds::close(Origin::signed(OWNER), feed_id),
+            Feeds::close(RuntimeOrigin::signed(OWNER), feed_id),
             Error::<Test>::UnknownFeedId
         );
     });
@@ -147,23 +156,28 @@ fn cannot_close_invalid_feed() {
 fn can_update_existing_feed() {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             Default::default(),
             None
         ));
         // only owner can update
         assert_noop!(
-            Feeds::update(Origin::signed(NOT_OWNER), FEED_ID, Default::default(), None),
+            Feeds::update(
+                RuntimeOrigin::signed(NOT_OWNER),
+                FEED_ID,
+                Default::default(),
+                None
+            ),
             Error::<Test>::NotFeedOwner
         );
 
         assert_ok!(Feeds::update(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             FEED_ID,
             Default::default(),
             None
         ));
-        System::assert_last_event(Event::Feeds(crate::Event::<Test>::FeedUpdated {
+        System::assert_last_event(RuntimeEvent::Feeds(crate::Event::<Test>::FeedUpdated {
             feed_id: FEED_ID,
             who: OWNER,
         }));
@@ -174,7 +188,12 @@ fn can_update_existing_feed() {
 fn cannot_update_unknown_feed() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Feeds::update(Origin::signed(OWNER), FEED_ID, Default::default(), None),
+            Feeds::update(
+                RuntimeOrigin::signed(OWNER),
+                FEED_ID,
+                Default::default(),
+                None
+            ),
             Error::<Test>::UnknownFeedId
         );
     });
@@ -184,7 +203,7 @@ fn cannot_update_unknown_feed() {
 fn transfer_feed_ownership() {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             Default::default(),
             None
         ));
@@ -193,10 +212,14 @@ fn transfer_feed_ownership() {
         let new_owner = 102u64;
         // only owner can transfer
         assert_noop!(
-            Feeds::transfer(Origin::signed(NOT_OWNER), FEED_ID, new_owner),
+            Feeds::transfer(RuntimeOrigin::signed(NOT_OWNER), FEED_ID, new_owner),
             Error::<Test>::NotFeedOwner
         );
-        assert_ok!(Feeds::transfer(Origin::signed(OWNER), FEED_ID, new_owner));
+        assert_ok!(Feeds::transfer(
+            RuntimeOrigin::signed(OWNER),
+            FEED_ID,
+            new_owner
+        ));
         assert_eq!(Feeds::feeds(OWNER), None);
         assert_eq!(Feeds::feeds(new_owner).unwrap().to_vec(), vec![FEED_ID]);
     });
@@ -206,7 +229,7 @@ fn transfer_feed_ownership() {
 fn cannot_create_after_max_feeds() {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             Default::default(),
             None
         ));
@@ -214,7 +237,7 @@ fn cannot_create_after_max_feeds() {
 
         // mock limits one feed per user
         assert_noop!(
-            Feeds::create(Origin::signed(OWNER), Default::default(), None),
+            Feeds::create(RuntimeOrigin::signed(OWNER), Default::default(), None),
             Error::<Test>::MaxFeedsReached
         );
     });
@@ -222,7 +245,7 @@ fn cannot_create_after_max_feeds() {
 
 fn create_content_feed(object: Object, kind: MockFeedProcessorKind, contents: Vec<Vec<u8>>) {
     new_test_ext().execute_with(|| {
-        assert_ok!(Feeds::create(Origin::signed(OWNER), kind, None));
+        assert_ok!(Feeds::create(RuntimeOrigin::signed(OWNER), kind, None));
 
         let call = FeedsCall::<Test>::put {
             feed_id: FEED_ID,
@@ -250,7 +273,7 @@ fn create_custom_content_feed(
 ) {
     new_test_ext().execute_with(|| {
         assert_ok!(Feeds::create(
-            Origin::signed(OWNER),
+            RuntimeOrigin::signed(OWNER),
             feed_processor_kind,
             None
         ));

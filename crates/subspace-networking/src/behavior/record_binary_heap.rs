@@ -1,10 +1,10 @@
-use libp2p::kad::kbucket::{Distance, Sha256Hash};
+use libp2p::kad::kbucket::Distance;
 pub use libp2p::kad::record::Key;
 pub use libp2p::PeerId;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T, Sha256Hash>;
+type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
 
 // Helper structure. It wraps Kademlia distance to a given peer for heap-metrics.
 #[derive(Debug, Clone)]
@@ -57,7 +57,7 @@ impl RecordBinaryHeap {
     /// Constructs a heap with given PeerId and size limit.
     pub fn new(peer_id: PeerId, limit: usize) -> Self {
         Self {
-            peer_key: KademliaBucketKey::new(peer_id),
+            peer_key: KademliaBucketKey::from(peer_id),
             max_heap: BinaryHeap::new(),
             limit,
         }
