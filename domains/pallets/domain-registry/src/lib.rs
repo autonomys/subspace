@@ -521,9 +521,20 @@ mod pallet {
         /// Domain stake allocation exceeds the maximum available value.
         StakeAllocationTooLarge,
 
+        /// An error occurred while reading the state needed for verifying the bundle solution.
         FailedToReadBundleElectionParams,
 
+        /// Invalid core domain bundle solution.
         BadBundleElectionSolution,
+
+        /// Either `core_block_hash` or `core_state_root` is missing in the proof of election.
+        CoreBlockInfoNotFound,
+
+        /// Cannot verify the core domain state root.
+        StateRootUnverifiable,
+
+        /// Invalid core domain state root.
+        BadStateRoot,
     }
 
     #[pallet::event]
@@ -752,10 +763,48 @@ impl<T: Config> Pallet<T> {
             state_root,
             executor_public_key,
             global_challenge,
+            block_number,
+            block_hash,
+            core_block_hash,
+            core_state_root,
             ..
         } = &signed_opaque_bundle.proof_of_election;
 
-        // TODO: verify state root
+        if !block_number.is_zero() {
+            let block_number = T::BlockNumber::from(*block_number);
+
+            let core_block_hash = core_block_hash.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
+            let core_state_root = core_state_root.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
+
+            let maybe_state_root =
+                signed_opaque_bundle
+                    .bundle
+                    .receipts
+                    .iter()
+                    .find_map(|receipt| {
+                        receipt.trace.last().and_then(|state_root| {
+                            if (receipt.primary_number, receipt.secondary_hash)
+                                == (block_number, *block_hash)
+                                || (receipt.primary_number, receipt.secondary_hash)
+                                    == (block_number, core_block_hash)
+                            {
+                                Some(*state_root)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+
+            let expected_state_root = match maybe_state_root {
+                Some(v) => v,
+                None => StateRoots::<T>::get((domain_id, block_number, core_block_hash))
+                    .ok_or(Error::<T>::StateRootUnverifiable)?,
+            };
+
+            if expected_state_root != core_state_root {
+                return Err(Error::<T>::BadStateRoot);
+            }
+        }
 
         let db = storage_proof.clone().into_memory_db::<BlakeTwo256>();
 

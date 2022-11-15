@@ -110,10 +110,8 @@ where
                     // electioned executor storage instead of the whole authority set.
                     let storage_proof = if domain_id.is_system() {
                         let storage_keys = well_known_keys::bundle_election_storage_keys(domain_id);
-                        self.client.read_proof(
-                            &best_block_id,
-                            &mut storage_keys.iter().map(|s| s.as_slice()),
-                        )?
+                        self.client
+                            .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else if domain_id.is_core() {
                         let storage_keys = self
                             .client
@@ -128,10 +126,8 @@ where
                                     "Empty core bundle election storage keys".to_string(),
                                 )
                             })?;
-                        self.client.read_proof(
-                            &best_block_id,
-                            &mut storage_keys.iter().map(|s| s.as_slice()),
-                        )?
+                        self.client
+                            .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else {
                         return Err(sp_blockchain::Error::Application(Box::from(
                             "Only system and core domain are supported".to_string(),
@@ -158,6 +154,8 @@ where
                         storage_proof,
                         block_number: best_number,
                         block_hash: best_hash,
+                        core_block_hash: None,
+                        core_state_root: None,
                     };
 
                     return Ok(Some(proof_of_election));
