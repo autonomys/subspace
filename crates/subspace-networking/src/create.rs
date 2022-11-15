@@ -18,6 +18,7 @@ use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::Config as IdentifyConfig;
+use libp2p::identity::Keypair;
 use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
 use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
@@ -214,6 +215,12 @@ pub enum CreationError {
     TransportError(#[from] TransportError<io::Error>),
 }
 
+/// Converts public key from keypair to PeerId.
+/// It serves as the shared PeerId generating algorithm.
+pub fn peer_id(keypair: &Keypair) -> PeerId {
+    keypair.public().to_peer_id()
+}
+
 /// Create a new network node and node runner instances.
 pub async fn create<RecordStore>(
     config: Config<RecordStore>,
@@ -240,7 +247,7 @@ where
         max_established_incoming_connections,
         max_established_outgoing_connections,
     } = config;
-    let local_peer_id = keypair.public().to_peer_id();
+    let local_peer_id = peer_id(&keypair);
 
     let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
 

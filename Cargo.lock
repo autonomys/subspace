@@ -1584,7 +1584,9 @@ dependencies = [
  "sc-utils",
  "sp-api",
  "sp-blockchain",
+ "sp-consensus",
  "sp-core",
+ "sp-domain-tracker",
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
@@ -7550,6 +7552,9 @@ name = "sp-domain-tracker"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
  "sp-inherents",
 ]
 

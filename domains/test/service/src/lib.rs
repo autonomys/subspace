@@ -61,7 +61,7 @@ pub type Backend = TFullBackend<Block>;
 pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 
 /// Secondary executor for the test service.
-pub type Executor = domain_client_executor::Executor<
+pub type Executor = domain_client_executor::SystemExecutor<
     Block,
     PBlock,
     Client,

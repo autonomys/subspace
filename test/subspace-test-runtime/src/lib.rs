@@ -51,7 +51,7 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_domains::{
-    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionProof, OpaqueBundle,
+    BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
     SignedOpaqueBundle,
 };
 use sp_runtime::traits::{
@@ -815,20 +815,48 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
     block_object_mapping
 }
 
-fn extract_bundles(
+fn extract_system_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
-    extrinsics
+) -> (
+    sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash>,
+    sp_domains::SignedOpaqueBundles<Block, system_runtime_primitives::Hash>,
+) {
+    let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
         .filter_map(|uxt| {
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
-                Some(signed_opaque_bundle.bundle)
+                if signed_opaque_bundle.domain_id().is_system() {
+                    Some((Some(signed_opaque_bundle.bundle), None))
+                } else {
+                    Some((None, Some(signed_opaque_bundle)))
+                }
             } else {
                 None
             }
+        })
+        .unzip();
+    (
+        system_bundles.into_iter().flatten().collect(),
+        core_bundles.into_iter().flatten().collect(),
+    )
+}
+
+fn extract_core_bundles(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    domain_id: DomainId,
+) -> sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash> {
+    extrinsics
+        .into_iter()
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle,
+            }) if signed_opaque_bundle.domain_id() == domain_id => {
+                Some(signed_opaque_bundle.bundle)
+            }
+            _ => None,
         })
         .collect()
 }
@@ -1080,8 +1108,20 @@ impl_runtime_apis! {
             Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
-        fn extract_bundles(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
-            extract_bundles(extrinsics)
+        fn extract_system_bundles(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> (
+            sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash>,
+            sp_domains::SignedOpaqueBundles<Block, system_runtime_primitives::Hash>,
+        ) {
+            extract_system_bundles(extrinsics)
+        }
+
+        fn extract_core_bundles(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash> {
+            extract_core_bundles(extrinsics, domain_id)
         }
 
         fn extract_receipts(

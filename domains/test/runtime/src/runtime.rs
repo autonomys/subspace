@@ -9,7 +9,9 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
+use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::{DomainId, SignedOpaqueBundle};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -278,6 +280,8 @@ parameter_types! {
     pub const MinDomainDeposit: Balance = 10 * SSC;
     pub const MaxDomainDeposit: Balance = 1000 * SSC;
     pub const MinDomainOperatorStake: Balance = 10 * SSC;
+    pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
 }
 
 impl pallet_domain_registry::Config for Runtime {
@@ -288,6 +292,8 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -406,7 +412,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, AccountId> for Runtime {
+    impl system_runtime_primitives::SystemDomainApi<Block, AccountId, BlockNumber, Hash> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
@@ -441,12 +447,41 @@ impl_runtime_apis! {
             ).encode()
         }
 
-        fn bundle_elections_params() -> sp_domains::BundleElectionParams {
-            sp_domains::BundleElectionParams {
+        fn construct_submit_core_bundle_extrinsics(
+            signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
+        ) -> Vec<Vec<u8>> {
+            use codec::Encode;
+            signed_opaque_bundles
+                .into_iter()
+                .map(|signed_opaque_bundle| {
+                    UncheckedExtrinsic::new_unsigned(
+                        pallet_domain_registry::Call::submit_core_bundle {
+                            signed_opaque_bundle
+                        }.into()
+                    ).encode()
+                })
+                .collect()
+        }
+
+        fn bundle_elections_params(_domain_id: DomainId) -> BundleElectionParams {
+            // TODO: support all kinds of domains.
+            BundleElectionParams {
                 authorities: ExecutorRegistry::authorities().into(),
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),
             }
+        }
+
+        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::best_execution_chain_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::oldest_receipt_number(domain_id)
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
         }
     }
 }

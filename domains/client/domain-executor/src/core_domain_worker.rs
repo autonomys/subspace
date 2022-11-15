@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::{BundleProcessor, BundleProducer, TransactionFor};
+use crate::core_bundle_processor::CoreBundleProcessor;
+use crate::core_bundle_producer::CoreBundleProducer;
+use crate::utils::{BlockInfo, ExecutorSlotInfo};
+use crate::TransactionFor;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
@@ -25,13 +28,12 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_core::traits::CodeExecutor;
-use sp_domains::{ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{HashFor, Header as HeaderT, NumberFor, One, Saturating};
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -41,41 +43,13 @@ use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
 
-/// Data required to produce bundles on executor node.
-#[derive(PartialEq, Clone, Debug)]
-pub(super) struct ExecutorSlotInfo {
-    /// Slot
-    pub(super) slot: Slot,
-    /// Global challenge
-    pub(super) global_challenge: Blake2b256Hash,
-}
-
-/// An event telling the `Overseer` on the particular block
-/// that has been imported or finalized.
-///
-/// This structure exists solely for the purposes of decoupling
-/// `Overseer` code from the client code and the necessity to call
-/// `HeaderBackend::block_number_from_id()`.
-#[derive(Debug, Clone)]
-pub struct BlockInfo<Block>
-where
-    Block: BlockT,
-{
-    /// hash of the block.
-    pub hash: Block::Hash,
-    /// hash of the parent block.
-    pub parent_hash: Block::Hash,
-    /// block's number.
-    pub number: NumberFor<Block>,
-    /// Fork choice of the block.
-    pub fork_choice: ForkChoiceStrategy,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn start_worker<
     Block,
+    SBlock,
     PBlock,
     Client,
+    SClient,
     PClient,
     TransactionPool,
     Backend,
@@ -83,16 +57,27 @@ pub(super) async fn start_worker<
     NSNS,
     E,
 >(
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
-    bundle_producer: BundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
-    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    bundle_producer: CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>,
+    bundle_processor: CoreBundleProcessor<
+        Block,
+        SBlock,
+        PBlock,
+        Client,
+        SClient,
+        PClient,
+        Backend,
+        E,
+    >,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,
     block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -100,7 +85,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -111,6 +96,8 @@ pub(super) async fn start_worker<
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -123,7 +110,8 @@ pub(super) async fn start_worker<
     let span = tracing::Span::current();
 
     let handle_block_import_notifications_fut =
-        handle_block_import_notifications::<Block, _, _, _, _>(
+        handle_block_import_notifications::<Block, PBlock, _, _, _>(
+            domain_id,
             primary_chain_client.as_ref(),
             client.info().best_number,
             {
@@ -153,15 +141,15 @@ pub(super) async fn start_worker<
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
-        move |primary_hash, slot_info| {
+        move |primary_info, slot_info| {
             bundle_producer
                 .clone()
-                .produce_bundle(primary_hash, slot_info)
+                .produce_bundle(primary_info, slot_info)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
                     tracing::error!(
                         target: LOG_TARGET,
-                        relay_parent = ?primary_hash,
+                        ?primary_info,
                         error = ?error,
                         "Error at producing bundle.",
                     );
@@ -194,7 +182,7 @@ async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PBlock::Hash,
+            (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -223,6 +211,7 @@ async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
 }
 
 async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, BlockImports>(
+    domain_id: DomainId,
     primary_chain_client: &PClient,
     best_secondary_number: NumberFor<Block>,
     processor: ProcessorFn,
@@ -256,6 +245,7 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
         // Skip the blocks that have been processed by the execution chain.
         if number > best_secondary_number.into() {
             if let Err(error) = process_primary_block::<Block, PBlock, _, _>(
+                domain_id,
                 primary_chain_client,
                 &processor,
                 (hash, number, fork_choice),
@@ -303,6 +293,7 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
             }
             Some(block_info) = block_info_receiver.next() => {
                 if let Err(error) = block_imported::<Block, PBlock, _, _>(
+                    domain_id,
                     primary_chain_client,
                     &processor,
                     &mut active_leaves,
@@ -333,7 +324,7 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PBlock::Hash,
+            (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -347,11 +338,14 @@ where
         + Sync,
 {
     let best_hash = primary_chain_client.info().best_hash;
+    let best_number = primary_chain_client.info().best_hash;
 
     let best_hash = PBlock::Hash::decode(&mut best_hash.encode().as_slice())
         .expect("Hash type must be correct");
+    let best_number = NumberFor::<PBlock>::decode(&mut best_number.encode().as_slice())
+        .expect("BlockNumber type must be correct");
 
-    let opaque_bundle = match bundler(best_hash, executor_slot_info).await {
+    let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
             tracing::debug!(
@@ -370,6 +364,7 @@ where
 }
 
 async fn block_imported<Block, PBlock, PClient, ProcessorFn>(
+    domain_id: DomainId,
     primary_chain_client: &PClient,
     processor: &ProcessorFn,
     active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
@@ -402,6 +397,7 @@ where
     }
 
     process_primary_block::<Block, PBlock, _, _>(
+        domain_id,
         primary_chain_client,
         processor,
         (block_info.hash, block_info.number, block_info.fork_choice),
@@ -416,6 +412,7 @@ where
 /// 1. Extract the transaction bundles from the block.
 /// 2. Pass the bundles to secondary node and do the computation there.
 async fn process_primary_block<Block, PBlock, PClient, ProcessorFn>(
+    domain_id: DomainId,
     primary_chain_client: &PClient,
     processor: &ProcessorFn,
     (block_hash, block_number, fork_choice): (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
@@ -450,10 +447,6 @@ where
         }
         Ok(Some(body)) => body,
     };
-
-    let bundles = primary_chain_client
-        .runtime_api()
-        .extract_bundles(&block_id, extrinsics)?;
 
     let header = match primary_chain_client.header(block_id) {
         Err(err) => {
@@ -490,9 +483,13 @@ where
         .runtime_api()
         .extrinsics_shuffling_seed(&block_id, header)?;
 
+    let core_bundles = primary_chain_client
+        .runtime_api()
+        .extract_core_bundles(&block_id, extrinsics, domain_id)?;
+
     processor(
         (block_hash, block_number, fork_choice),
-        bundles,
+        core_bundles,
         shuffling_seed,
         maybe_new_runtime,
     )

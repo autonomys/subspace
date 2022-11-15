@@ -2,7 +2,7 @@
 
 mod rpc;
 
-use domain_client_executor::Executor;
+use domain_client_executor::SystemExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
 use futures::channel::mpsc;
 use futures::Stream;
@@ -152,7 +152,7 @@ where
     Ok(params)
 }
 
-type CirrusExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Executor<
+type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<
     Block,
     PBlock,
     FullClient<RuntimeApi, ExecutorDispatch>,
@@ -176,7 +176,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SystemDomainApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -196,7 +196,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Executor.
-    pub executor: CirrusExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -241,7 +241,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SystemDomainApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -313,7 +313,7 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
-    let executor = Executor::new(
+    let executor = SystemExecutor::new(
         primary_chain_client,
         primary_network,
         &spawn_essential,
