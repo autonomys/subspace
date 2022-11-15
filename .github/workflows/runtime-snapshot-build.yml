@@ -20,11 +20,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       - name: Build runtime
         id: build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 # @v3.2.0
         with:
           file: Dockerfile-runtime
           push: false
@@ -36,7 +36,7 @@ jobs:
           echo "SPEC_VERSION=$SPEC_VERSION" >> $GITHUB_ENV
 
       - name: Upload runtime to artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb # @v3.1.1
         with:
           name: subspace_runtime
           path: |
@@ -44,7 +44,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload runtime to assets
-        uses: alexellis/upload-assets@0.3.0
+        uses: alexellis/upload-assets@259de5111cb56966d046ced998941e93f91d2c93 # @0.4.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:

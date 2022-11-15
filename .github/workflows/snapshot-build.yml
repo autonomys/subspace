@@ -41,13 +41,13 @@ jobs:
 
     steps:
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@e81a89b1732b9c48d79cd809d8d81d79c4647a18 # @v2.1.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@8c0edbc76e98fa90f69d9a2c020dcb50019dc325 # @v2.2.1
 
       - name: Log into registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # @v2.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -55,7 +55,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v3
+        uses: docker/metadata-action@57396166ad8aefe6098280995947635806a0e6ea # @v4.1.1
         with:
           images: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
@@ -67,7 +67,7 @@ jobs:
 
       - name: Build and push ${{ matrix.image }} image
         id: build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5 # @v3.2.0
         with:
           file: Dockerfile-${{ matrix.image }}${{ matrix.platform.dockerfile-suffix }}
           platforms: ${{ matrix.platform.arch }}
@@ -109,28 +109,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v1
+        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust toolchain (${{ matrix.build.target }})
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: ${{ matrix.build.target }}
-          components: rust-src
-          override: true
-
-      - name: Rust toolchain (wasm32)
-        uses: actions-rs/toolchain@v1
-        # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
-        with:
-          toolchain: nightly-2022-11-08
-          target: wasm32-unknown-unknown
 
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64
@@ -142,16 +126,16 @@ jobs:
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
       - name: Build farmer
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: build
-          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
 
       - name: Build node
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: build
-          args: -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-node
 
       - name: Sign Application (macOS)
         run: |
@@ -183,7 +167,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
-        uses: skymatic/code-sign-action@v1.1.0
+        uses: skymatic/code-sign-action@cfcc1c15b32938bab6dea25192045b6d2989e4d0 # @v1.1.0
         with:
           certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
           password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
@@ -220,7 +204,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: Upload node and farmer executables to artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb # @v3.1.1
         with:
           name: executables-${{ matrix.build.suffix }}
           path: |
@@ -228,7 +212,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload node and farmer executables to assets
-        uses: alexellis/upload-assets@0.3.0
+        uses: alexellis/upload-assets@259de5111cb56966d046ced998941e93f91d2c93 # @0.4.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:

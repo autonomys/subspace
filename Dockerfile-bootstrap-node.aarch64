@@ -50,6 +50,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g+
 
 RUN \
     /root/.cargo/bin/cargo build \
+        --locked \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-bootstrap-node \
