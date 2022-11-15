@@ -1,17 +1,26 @@
-use crate::single_disk_plot::piece_receiver::PieceReceiver;
-use crate::single_disk_plot::{PlottingError, SectorMetadata};
+use crate::SectorMetadata;
+use async_trait::async_trait;
 use bitvec::order::Lsb0;
 use bitvec::prelude::*;
 use parity_scale_codec::Encode;
+use std::error::Error;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::{
-    PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
 use thiserror::Error;
 use tracing::debug;
+
+#[async_trait]
+pub trait PieceReceiver {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
 
 /// Information about sector that was plotted
 #[derive(Debug, Clone)]
@@ -28,13 +37,27 @@ pub struct PlottedSector {
 
 /// Plotting status
 #[derive(Debug, Error)]
-pub enum PlotSectorError {
+pub enum PlottingError {
     /// Plotting was cancelled
     #[error("Plotting was cancelled")]
     Cancelled,
-    /// Plotting failed
-    #[error("Plotting failed: {0}")]
-    Plotting(#[from] PlottingError),
+    /// Piece not found, can't create sector, this should never happen
+    #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
+    PieceNotFound {
+        /// Piece index
+        piece_index: PieceIndex,
+    },
+    /// Failed to retrieve piece
+    #[error("Failed to retrieve piece {piece_index}: {error}")]
+    FailedToRetrievePiece {
+        /// Piece index
+        piece_index: PieceIndex,
+        /// Lower-level error
+        error: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
@@ -50,7 +73,7 @@ pub async fn plot_sector<PR, S, SM>(
     farmer_protocol_info: &FarmerProtocolInfo,
     mut sector_output: S,
     mut sector_metadata_output: SM,
-) -> Result<PlottedSector, PlotSectorError>
+) -> Result<PlottedSector, PlottingError>
 where
     PR: PieceReceiver,
     S: io::Write,
@@ -82,7 +105,7 @@ where
                 %sector_index,
                 "Plotting was cancelled, interrupting plotting"
             );
-            return Err(PlotSectorError::Cancelled);
+            return Err(PlottingError::Cancelled);
         }
 
         let mut piece = piece_receiver
@@ -115,7 +138,7 @@ where
                     });
             });
 
-        sector_output.write_all(&piece).map_err(PlottingError::Io)?;
+        sector_output.write_all(&piece)?;
     }
 
     let sector_metadata = SectorMetadata {
@@ -123,9 +146,7 @@ where
         expires_at,
     };
 
-    sector_metadata_output
-        .write_all(&sector_metadata.encode())
-        .map_err(PlottingError::Io)?;
+    sector_metadata_output.write_all(&sector_metadata.encode())?;
 
     Ok(PlottedSector {
         sector_id,

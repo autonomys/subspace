@@ -13,7 +13,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Piece, PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE,
 };
-use subspace_farmer::single_disk_plot::plotting::plot_sector;
+use subspace_farmer_components::plotting::plot_sector;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use utils::BenchPieceReceiver;
 

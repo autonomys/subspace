@@ -1,6 +1,10 @@
+//! File extension trait
+
 use std::fs::File;
 use std::io::Result;
 
+/// Extension convenience trait that allows pre-allocating files, suggesting random access pattern
+/// and doing cross-platform exact reads/writes
 pub trait FileExt {
     /// Make sure file has specified number of bytes allocated for it
     fn preallocate(&self, len: u64) -> Result<()>;

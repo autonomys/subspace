@@ -1,4 +1,4 @@
-use crate::single_disk_plot::{FarmingError, SectorMetadata};
+use crate::SectorMetadata;
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, IoReader};
 use schnorrkel::Keypair;
@@ -13,7 +13,22 @@ use subspace_core_primitives::{
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_chunk_signature, derive_chunk_otp};
 use subspace_verification::is_within_solution_range;
+use thiserror::Error;
 use tracing::error;
+
+/// Errors that happen during farming
+#[derive(Debug, Error)]
+pub enum FarmingError {
+    /// Failed to decode sector metadata
+    #[error("Failed to decode sector metadata: {error}")]
+    FailedToDecodeMetadata {
+        /// Lower-level error
+        error: parity_scale_codec::Error,
+    },
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+}
 
 /// Sector that can be used to create a solution that is within desired solution range
 #[derive(Debug, Clone)]

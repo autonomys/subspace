@@ -128,12 +128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arc-swap"
-version = "1.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
-
-[[package]]
 name = "ark-bls12-381"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -471,20 +465,6 @@ name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
-
-[[package]]
-name = "backoff"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b62ddb9cb1ec0a098ad4bbf9344d0713fa193ae1a80af55febcff2627b6a00c1"
-dependencies = [
- "futures-core",
- "getrandom 0.2.7",
- "instant",
- "pin-project-lite 0.2.9",
- "rand 0.8.5",
- "tokio",
-]
 
 [[package]]
 name = "backtrace"
@@ -8373,30 +8353,23 @@ dependencies = [
 
 [[package]]
 name = "subspace-farmer"
-version = "0.3.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
- "arc-swap",
- "async-oneshot",
  "async-trait",
- "backoff",
  "base58",
  "bitvec",
  "blake2-rfc",
  "bytesize",
  "clap 4.0.22",
- "criterion",
  "derive_more",
  "dirs",
  "event-listener-primitives",
  "fdlimit",
- "fs2",
  "futures 0.3.21",
  "hex",
  "jemallocator",
  "jsonrpsee",
- "libc",
- "lru 0.7.8",
  "memmap2",
  "num-traits",
  "parity-db",
@@ -8405,7 +8378,6 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "schnorrkel",
- "scopeguard",
  "serde",
  "serde_json",
  "ss58-registry",
@@ -8413,10 +8385,10 @@ dependencies = [
  "std-semaphore",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-farmer-components",
  "subspace-networking",
  "subspace-rpc-primitives",
  "subspace-solving",
- "subspace-verification",
  "substrate-bip39",
  "tempfile",
  "thiserror",
@@ -8425,6 +8397,32 @@ dependencies = [
  "tracing-subscriber 0.3.15",
  "ulid",
  "zeroize",
+]
+
+[[package]]
+name = "subspace-farmer-components"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitvec",
+ "blake2-rfc",
+ "criterion",
+ "fs2",
+ "futures 0.3.21",
+ "libc",
+ "memmap2",
+ "parity-scale-codec",
+ "rand 0.8.5",
+ "rayon",
+ "schnorrkel",
+ "static_assertions",
+ "subspace-archiving",
+ "subspace-core-primitives",
+ "subspace-rpc-primitives",
+ "subspace-solving",
+ "subspace-verification",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
