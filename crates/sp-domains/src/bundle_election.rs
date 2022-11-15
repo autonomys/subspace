@@ -270,16 +270,38 @@ pub fn verify_system_bundle_solution<SecondaryHash>(
         })
         .ok_or(BundleSolutionError::AuthorityNotFound)?;
 
-    let election_solution = derive_bundle_election_solution(
+    verify_bundle_solution_threshold(
         *domain_id,
         *vrf_output,
+        *stake_weight,
+        total_stake_weight,
+        slot_probability,
+        executor_public_key,
+        global_challenge,
+    )?;
+
+    Ok(())
+}
+
+pub fn verify_bundle_solution_threshold(
+    domain_id: DomainId,
+    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    stake_weight: StakeWeight,
+    total_stake_weight: StakeWeight,
+    slot_probability: (u64, u64),
+    executor_public_key: &ExecutorPublicKey,
+    global_challenge: &Blake2b256Hash,
+) -> Result<(), BundleSolutionError> {
+    let election_solution = derive_bundle_election_solution(
+        domain_id,
+        vrf_output,
         executor_public_key,
         global_challenge,
     )
     .map_err(BundleSolutionError::FailedToDeriveBundleElectionSolution)?;
 
     let threshold =
-        calculate_bundle_election_threshold(*stake_weight, total_stake_weight, slot_probability);
+        calculate_bundle_election_threshold(stake_weight, total_stake_weight, slot_probability);
 
     if !is_election_solution_within_threshold(election_solution, threshold) {
         return Err(BundleSolutionError::InvalidElectionSolution);
