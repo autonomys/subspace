@@ -9,6 +9,7 @@ use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
+use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
@@ -25,6 +26,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::Ss58Codec;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
+// use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -80,6 +82,7 @@ fn new_partial<RuntimeApi, Executor>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<Executor>,
+            SubspaceNotificationStream<NumberFor<Block>>,
         ),
     >,
     sc_service::Error,
@@ -133,11 +136,12 @@ where
         client.clone(),
     );
 
-    let import_queue = domain_client_consensus_relay_chain::import_queue(
-        client.clone(),
-        &task_manager.spawn_essential_handle(),
-        config.prometheus_registry(),
-    )?;
+    let (import_queue, import_block_notification_stream) =
+        domain_client_consensus_relay_chain::import_queue(
+            client.clone(),
+            &task_manager.spawn_essential_handle(),
+            config.prometheus_registry(),
+        )?;
 
     let params = PartialComponents {
         backend,
@@ -147,7 +151,12 @@ where
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (telemetry, telemetry_worker_handle, executor),
+        other: (
+            telemetry,
+            telemetry_worker_handle,
+            executor,
+            import_block_notification_stream,
+        ),
     };
 
     Ok(params)
@@ -293,7 +302,8 @@ where
 
     let params = new_partial(&secondary_chain_config.service_config)?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor, _import_block_notification_stream) =
+        params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
@@ -378,6 +388,21 @@ where
             bundle_receiver,
         });
     spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
+
+    if let Some(_relayer_id) = secondary_chain_config.maybe_relayer_id {
+        // let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
+        //     relayer_id,
+        //     client.clone(),
+        //     import_block_notification_stream.subscribe(),
+        //     network.clone(),
+        // );
+        //
+        // spawn_essential.spawn_essential_blocking(
+        //     "system-domain-relayer",
+        //     None,
+        //     Box::pin(relayer_worker),
+        // );
+    }
 
     let new_full = NewFull {
         task_manager,

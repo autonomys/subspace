@@ -2,10 +2,10 @@
 #![allow(dead_code)]
 #![warn(rust_2018_idioms)]
 
-mod worker;
+pub mod worker;
 
 use parity_scale_codec::{Decode, Encode};
-use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey, StorageProof};
+use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sp_api::{ProvideRuntimeApi, StateBackend};
 use sp_domain_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
@@ -99,14 +99,14 @@ where
     fn construct_system_domain_storage_proof_for_key_at(
         system_domain_client: &Arc<Client>,
         block_hash: Block::Hash,
-        key: &StorageKey,
+        key: &[u8],
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
         system_domain_client
             .header(BlockId::Hash(block_hash))?
             .map(|header| *header.state_root())
             .and_then(|state_root| {
                 let proof = system_domain_client
-                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -121,7 +121,7 @@ where
     fn construct_core_domain_storage_proof_for_key_at(
         core_domain_client: &Arc<Client>,
         block_hash: Block::Hash,
-        key: &StorageKey,
+        key: &[u8],
         core_domain_proof: StorageProof,
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
         core_domain_client
@@ -129,7 +129,7 @@ where
             .map(|header| (*header.number(), *header.state_root()))
             .and_then(|(number, state_root)| {
                 let proof = core_domain_client
-                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -142,7 +142,7 @@ where
 
     fn construct_cross_domain_message_and_submit<
         Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), sp_api::ApiError>,
-        ProofConstructor: Fn(Block::Hash, &StorageKey) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
+        ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
         msgs: Vec<RelayerMessageWithStorageKey>,

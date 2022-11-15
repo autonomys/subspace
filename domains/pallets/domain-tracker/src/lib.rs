@@ -207,17 +207,17 @@ mod pallet {
         pub fn storage_key_for_core_domain_state_root(
             domain_id: DomainId,
             block_number: T::BlockNumber,
-        ) -> Option<StorageKey> {
+        ) -> Option<Vec<u8>> {
             if !domain_id.is_core()
                 || !CoreDomainsStateRoot::<T>::contains_key(domain_id, block_number)
             {
                 return None;
             };
 
-            Some(StorageKey(CoreDomainsStateRoot::<T>::hashed_key_for(
+            Some(CoreDomainsStateRoot::<T>::hashed_key_for(
                 domain_id,
                 block_number,
-            )))
+            ))
         }
     }
 }

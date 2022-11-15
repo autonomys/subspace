@@ -35,7 +35,8 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
-use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, Nonce};
+use sp_domains::DomainId;
+use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce};
 use sp_runtime::traits::Hash;
 use sp_runtime::DispatchError;
 
@@ -107,6 +108,7 @@ mod pallet {
     };
     use sp_messenger::DomainTracker as DomainTrackerT;
     use sp_runtime::ArithmeticError;
+    use sp_std::boxed::Box;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -855,5 +857,15 @@ where
                 );
             }
         }
+    }
+
+    /// Returns true if the outbox message has not received the response yet.
+    pub fn should_relay_outbox_message(dst_domain: DomainId, msg_id: MessageId) -> bool {
+        Outbox::<T>::contains_key((dst_domain, msg_id.0, msg_id.1))
+    }
+
+    /// Returns true if the inbox message response has not received acknowledgement yet.
+    pub fn should_relay_inbox_message_response(dst_domain: DomainId, msg_id: MessageId) -> bool {
+        InboxResponses::<T>::contains_key((dst_domain, msg_id.0, msg_id.1))
     }
 }

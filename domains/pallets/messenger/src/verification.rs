@@ -3,8 +3,8 @@ use frame_support::PalletError;
 use hash_db::Hasher;
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
+use sp_std::marker::PhantomData;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
-use std::marker::PhantomData;
 
 /// Verification error.
 #[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo)]

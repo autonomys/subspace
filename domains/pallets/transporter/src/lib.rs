@@ -70,6 +70,7 @@ mod pallet {
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
     };
+    use sp_std::vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
