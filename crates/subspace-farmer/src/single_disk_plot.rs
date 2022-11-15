@@ -1,10 +1,7 @@
-pub mod farming;
 pub mod piece_publisher;
 pub mod piece_reader;
 pub mod piece_receiver;
-pub mod plotting;
 
-use crate::file_ext::FileExt;
 use crate::identity::Identity;
 use crate::reward_signing::reward_signing;
 use crate::rpc_client;
@@ -12,7 +9,7 @@ use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
-use crate::single_disk_plot::plotting::{plot_sector, PlotSectorError, PlottedSector};
+use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
@@ -21,15 +18,15 @@ use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use memmap2::{Mmap, MmapMut, MmapOptions};
-use parity_db::const_assert;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use piece_receiver::MultiChannelPieceReceiver;
 use serde::{Deserialize, Serialize};
+use static_assertions::const_assert;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::{NonZeroU16, NonZeroU64};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,9 +35,10 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::{
-    PieceIndex, PublicKey, SectorId, SectorIndex, SegmentIndex, Solution, PIECE_SIZE,
-    PLOT_SECTOR_SIZE,
+    PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
+use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::{farming, plotting, SectorMetadata};
 use subspace_networking::Node;
 use subspace_rpc_primitives::SolutionResponse;
 use thiserror::Error;
@@ -253,28 +251,6 @@ impl PlotMetadataHeader {
     }
 }
 
-/// Metadata of the plotted sector
-#[doc(hidden)]
-#[derive(Debug, Encode, Decode, Clone)]
-pub struct SectorMetadata {
-    /// Total number of pieces in archived history of the blockchain as of sector creation
-    pub total_pieces: NonZeroU64,
-    /// Sector expiration, defined as sector of the archived history of the blockchain
-    pub expires_at: SegmentIndex,
-}
-
-impl SectorMetadata {
-    /// Size of encoded sector metadata
-    pub fn encoded_size() -> usize {
-        let default = SectorMetadata {
-            total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
-            expires_at: 0,
-        };
-
-        default.encoded_size()
-    }
-}
-
 /// Options used to open single dis plot
 pub struct SingleDiskPlotOptions<RC> {
     /// Path to directory where plot are stored.
@@ -356,23 +332,9 @@ pub enum PlottingError {
         /// Lower-level error
         error: rpc_client::Error,
     },
-    /// Piece not found, can't create sector, this should never happen
-    #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
-    PieceNotFound {
-        /// Piece index
-        piece_index: PieceIndex,
-    },
-    /// Failed to retrieve piece
-    #[error("Failed to retrieve piece {piece_index}: {error}")]
-    FailedToRetrievePiece {
-        /// Piece index
-        piece_index: PieceIndex,
-        /// Lower-level error
-        error: Box<dyn std::error::Error + Send + Sync + 'static>,
-    },
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
+    /// Low-level plotting error
+    #[error("Low-level plotting error: {0}")]
+    LowLevel(#[from] plotting::PlottingError),
 }
 
 /// Errors that happen during farming
@@ -396,18 +358,15 @@ pub enum FarmingError {
         /// Lower-level error
         error: io::Error,
     },
-    /// Failed to decode sector metadata
-    #[error("Failed to decode sector metadata: {error}")]
-    FailedToDecodeMetadata {
-        /// Lower-level error
-        error: parity_scale_codec::Error,
-    },
     /// Failed to submit solutions response
     #[error("Failed to submit solutions response: {error}")]
     FailedToSubmitSolutionsResponse {
         /// Lower-level error
         error: rpc_client::Error,
     },
+    /// Low-level farming error
+    #[error("Low-level farming error: {0}")]
+    LowLevel(#[from] farming::FarmingError),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -720,10 +679,10 @@ impl SingleDiskPlot {
                                 io::Cursor::new(sector_metadata),
                             )) {
                                 Ok(plotted_sector) => plotted_sector,
-                                Err(PlotSectorError::Cancelled) => {
+                                Err(plotting::PlottingError::Cancelled) => {
                                     return;
                                 }
-                                Err(PlotSectorError::Plotting(error)) => Err(error)?,
+                                Err(error) => Err(PlottingError::LowLevel(error))?,
                             };
 
                             let mut metadata_header = metadata_header.lock();
@@ -853,30 +812,29 @@ impl SingleDiskPlot {
                                     return;
                                 }
 
-                                let eligible_sector = match audit_sector(
+                                let maybe_eligible_sector = audit_sector(
                                     &public_key,
                                     sector_index,
                                     &farmer_protocol_info,
                                     &slot_info.global_challenge,
                                     slot_info.voting_solution_range,
                                     io::Cursor::new(sector),
-                                )? {
-                                    Some(eligible_sector) => eligible_sector,
-                                    None => {
-                                        continue;
-                                    }
+                                )
+                                .map_err(FarmingError::LowLevel)?;
+                                let Some(eligible_sector) = maybe_eligible_sector else {
+                                    continue;
                                 };
 
-                                let solution = match eligible_sector.try_into_solution(
-                                    &identity,
-                                    reward_address,
-                                    &farmer_protocol_info,
-                                    sector_metadata,
-                                )? {
-                                    Some(solution) => solution,
-                                    None => {
-                                        continue;
-                                    }
+                                let maybe_solution = eligible_sector
+                                    .try_into_solution(
+                                        &identity,
+                                        reward_address,
+                                        &farmer_protocol_info,
+                                        sector_metadata,
+                                    )
+                                    .map_err(FarmingError::LowLevel)?;
+                                let Some(solution) = maybe_solution else {
+                                    continue;
                                 };
 
                                 debug!("Solution found");

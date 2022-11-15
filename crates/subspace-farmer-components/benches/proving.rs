@@ -15,10 +15,10 @@ use subspace_core_primitives::{
     Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE,
     RECORD_SIZE,
 };
-use subspace_farmer::file_ext::FileExt;
-use subspace_farmer::single_disk_plot::farming::audit_sector;
-use subspace_farmer::single_disk_plot::plotting::plot_sector;
-use subspace_farmer::single_disk_plot::SectorMetadata;
+use subspace_farmer_components::farming::audit_sector;
+use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::plotting::plot_sector;
+use subspace_farmer_components::SectorMetadata;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use utils::BenchPieceReceiver;
 
