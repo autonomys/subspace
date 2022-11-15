@@ -12,8 +12,8 @@ use sc_consensus::ForkChoiceStrategy;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
-    BuildNetworkParams, Configuration, NetworkStarter, PartialComponents, SpawnTasksParams,
-    TFullBackend, TFullClient, TaskManager,
+    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
+    SpawnTasksParams, TFullBackend, TFullClient, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
@@ -22,6 +22,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
+use sp_core::crypto::Ss58Codec;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
 use sp_offchain::OffchainWorkerApi;
@@ -33,7 +34,7 @@ use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_domain_runtime::opaque::Block;
 use system_domain_runtime::{AccountId, Balance, Hash};
-use system_runtime_primitives::SystemDomainApi;
+use system_runtime_primitives::{RelayerId, SystemDomainApi};
 
 /// Native executor instance.
 pub struct SystemDomainRuntimeExecutor;
@@ -67,7 +68,7 @@ pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool
 /// be able to perform chain operations.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, Executor>(
-    config: &Configuration,
+    config: &ServiceConfiguration,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, Executor>,
@@ -199,6 +200,40 @@ where
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
 }
 
+/// Secondary chain configuration.
+pub struct Configuration {
+    service_config: ServiceConfiguration,
+    maybe_relayer_id: Option<RelayerId>,
+}
+
+/// Configuration error for secondary chain.
+#[derive(Debug)]
+pub enum ConfigurationError {
+    /// Emits when the relayer id is invalid.
+    InvalidRelayerId,
+}
+
+impl Configuration {
+    pub fn new(
+        service_config: ServiceConfiguration,
+        maybe_relayer_id: Option<String>,
+    ) -> Result<Self, ConfigurationError> {
+        let maybe_relayer_id = match maybe_relayer_id {
+            None => None,
+            Some(relayer_id) => {
+                let relayer_id = RelayerId::from_ss58check(&relayer_id)
+                    .map_err(|_| ConfigurationError::InvalidRelayerId)?;
+                Some(relayer_id)
+            }
+        };
+
+        Ok(Configuration {
+            service_config,
+            maybe_relayer_id,
+        })
+    }
+}
+
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
@@ -251,23 +286,24 @@ where
     // secondary_chain_config.announce_block = false;
 
     secondary_chain_config
+        .service_config
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial(&secondary_chain_config)?;
+    let params = new_partial(&secondary_chain_config.service_config)?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
 
-    let validator = secondary_chain_config.role.is_authority();
+    let validator = secondary_chain_config.service_config.role.is_authority();
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(BuildNetworkParams {
-            config: &secondary_chain_config,
+            config: &secondary_chain_config.service_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
@@ -280,7 +316,10 @@ where
     let rpc_builder = {
         let client = client.clone();
         let transaction_pool = transaction_pool.clone();
-        let chain_spec = secondary_chain_config.chain_spec.cloned_box();
+        let chain_spec = secondary_chain_config
+            .service_config
+            .chain_spec
+            .cloned_box();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
@@ -299,7 +338,7 @@ where
         client: client.clone(),
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
-        config: secondary_chain_config,
+        config: secondary_chain_config.service_config,
         keystore: params.keystore_container.sync_keystore(),
         backend: backend.clone(),
         network: network.clone(),

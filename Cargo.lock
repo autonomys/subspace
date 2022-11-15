@@ -1623,6 +1623,7 @@ dependencies = [
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
+ "domain-client-message-relayer",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "futures 0.3.21",
