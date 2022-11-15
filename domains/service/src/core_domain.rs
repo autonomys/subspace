@@ -271,7 +271,7 @@ where
     let validator = secondary_chain_config.role.is_authority();
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let (network, system_rpc_tx, network_starter) =
+    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(BuildNetworkParams {
             config: &secondary_chain_config,
             client: client.clone(),
@@ -286,11 +286,13 @@ where
     let rpc_builder = {
         let client = client.clone();
         let transaction_pool = transaction_pool.clone();
+        let chain_spec = secondary_chain_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
                 client: client.clone(),
                 pool: transaction_pool.clone(),
+                chain_spec: chain_spec.cloned_box(),
                 deny_unsafe,
             };
 
@@ -308,6 +310,7 @@ where
         backend: backend.clone(),
         network: network.clone(),
         system_rpc_tx,
+        tx_handler_controller,
         telemetry: telemetry.as_mut(),
     })?;
 

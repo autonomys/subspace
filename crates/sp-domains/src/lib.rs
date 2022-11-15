@@ -373,9 +373,9 @@ impl ExecutionPhase {
     /// Returns the method for generating the proof.
     pub fn proving_method(&self) -> &'static str {
         match self {
-            // TODO: Replace `SecondaryApi_initialize_block_with_post_state_root` with `Core_initalize_block`
+            // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
@@ -388,8 +388,8 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "SecondaryApi_apply_extrinsic_with_post_state_root",
+            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }

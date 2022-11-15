@@ -58,7 +58,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        type Call: Parameter
+        type RuntimeCall: Parameter
             + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin>
             + GetDispatchInfo;
     }
@@ -76,7 +76,7 @@ mod pallet {
         #[pallet::weight((*_weight, call.get_dispatch_info().class, Pays::No))]
         pub fn sudo_unchecked_weight_unsigned(
             origin: OriginFor<T>,
-            call: Box<<T as Config>::Call>,
+            call: Box<<T as Config>::RuntimeCall>,
             _weight: Weight,
         ) -> DispatchResult {
             ensure_none(origin)?;

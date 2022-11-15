@@ -249,7 +249,7 @@ impl pallet_transaction_payment::Config for Runtime {
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type Call = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
 }
 
 parameter_types! {

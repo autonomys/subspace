@@ -68,7 +68,7 @@ impl SecondaryChainCli {
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
-        base_path: Option<PathBuf>,
+        mut base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
         secondary_chain_args: impl Iterator<Item = &'a String>,
     ) -> (Self, Option<CoreDomainCli>) {
@@ -84,7 +84,7 @@ impl SecondaryChainCli {
 
         (
             Self {
-                base_path,
+                base_path: base_path.as_mut().map(|path| path.join("system")),
                 chain_spec,
                 run: domain_cli.run_system,
             },
@@ -191,6 +191,11 @@ impl CliConfiguration<Self> for SecondaryChainCli {
         Ok(self
             .shared_params()
             .base_path()?
+            .as_mut()
+            .map(|base_path| {
+                let path: PathBuf = base_path.path().to_path_buf();
+                BasePath::new(path.join("system"))
+            })
             .or_else(|| self.base_path.clone().map(Into::into)))
     }
 

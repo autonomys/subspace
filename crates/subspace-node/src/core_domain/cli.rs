@@ -52,7 +52,7 @@ pub struct CoreDomainCli {
     #[clap(flatten)]
     pub run: RunCmd,
 
-    #[clap(long, parse(try_from_str = parse_domain_id))]
+    #[clap(long, value_parser = parse_domain_id)]
     pub domain_id: DomainId,
 
     /// The base path that should be used by the secondary chain.
@@ -67,16 +67,17 @@ impl CoreDomainCli {
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
-        mut system_domain_base_path: Option<PathBuf>,
+        system_domain_base_path: Option<PathBuf>,
         core_payments_domain_args: impl Iterator<Item = &'a String>,
     ) -> Self {
-        let base_path = system_domain_base_path
-            .as_mut()
-            .map(|path| path.join("core-payments"));
-        let cli = Self {
-            base_path,
+        let mut cli = Self {
+            base_path: system_domain_base_path,
             ..Self::parse_from(core_payments_domain_args)
         };
+
+        cli.base_path
+            .as_mut()
+            .map(|path| path.join(format!("core-domain-{}", u32::from(cli.domain_id))));
 
         CORE_DOMAIN_ID
             .set(cli.domain_id)
@@ -181,7 +182,12 @@ impl CliConfiguration<Self> for CoreDomainCli {
     fn base_path(&self) -> Result<Option<BasePath>> {
         Ok(self
             .shared_params()
-            .base_path()
+            .base_path()?
+            .as_mut()
+            .map(|base_path| {
+                let path = base_path.path().to_path_buf();
+                BasePath::new(path.join(format!("core-domain-{}", u32::from(self.domain_id))))
+            })
             .or_else(|| self.base_path.clone().map(Into::into)))
     }
 
@@ -217,8 +223,8 @@ impl CliConfiguration<Self> for CoreDomainCli {
         self.run.transaction_pool(is_dev)
     }
 
-    fn state_cache_child_ratio(&self) -> Result<Option<usize>> {
-        self.run.state_cache_child_ratio()
+    fn trie_cache_maximum_size(&self) -> Result<Option<usize>> {
+        self.run.trie_cache_maximum_size()
     }
 
     fn rpc_methods(&self) -> Result<sc_service::config::RpcMethods> {
