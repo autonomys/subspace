@@ -14,7 +14,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
@@ -79,32 +79,38 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
     shuffled_extrinsics
 }
 
-pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    _phantom_data: PhantomData<PBlock>,
+    _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E> Clone
+    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             primary_network: self.primary_network.clone(),
+            system_domain_client: self.system_domain_client.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
             is_authority: self.is_authority,
@@ -116,15 +122,14 @@ where
     }
 }
 
-type SystemAndCoreBundles<Block, PBlock> = (
-    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
-    Vec<SignedOpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
-);
+type CoreBundles<Block, PBlock> =
+    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>;
 
-impl<Block, PBlock, Client, PClient, Backend, E>
-    SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
+    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
@@ -139,6 +144,8 @@ where
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
@@ -147,8 +154,10 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
+        domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+        system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
         is_authority: bool,
@@ -157,8 +166,10 @@ where
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
+            domain_id,
             primary_chain_client,
             primary_network,
+            system_domain_client,
             client,
             backend,
             is_authority,
@@ -177,7 +188,7 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: SystemAndCoreBundles<Block, PBlock>,
+        bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -242,10 +253,13 @@ where
             trace_root,
         };
 
+        // TODO: just make it compile for now, likely wrong, rethink about it.
+        let system_domain_hash = self.system_domain_client.info().best_hash;
+
         let best_execution_chain_number = self
-            .primary_chain_client
+            .system_domain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+            .best_execution_chain_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
 
         let best_execution_chain_number: BlockNumber = best_execution_chain_number
             .try_into()
@@ -279,9 +293,9 @@ where
 
         // Submit fraud proof for the first unconfirmed incorrent ER.
         let oldest_receipt_number = self
-            .primary_chain_client
+            .system_domain_client
             .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+            .oldest_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
@@ -293,7 +307,7 @@ where
         &self,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        bundles: SystemAndCoreBundles<Block, PBlock>,
+        bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
         fork_choice: ForkChoiceStrategy,
@@ -374,10 +388,10 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        (system_bundles, core_bundles): SystemAndCoreBundles<Block, PBlock>,
+        bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let origin_system_extrinsics = system_bundles
+        let mut extrinsics = bundles
             .into_iter()
             .flat_map(|bundle| {
                 bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
@@ -395,27 +409,7 @@ where
                         },
                     }
                 })
-            });
-
-        let mut extrinsics = self
-            .client
-            .runtime_api()
-            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
-            .into_iter()
-            .filter_map(
-                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            error = ?e,
-                            "Failed to decode the opaque extrisic in bundle, this should not happen"
-                        );
-                        None
-                    }
-                },
-            )
-            .chain(origin_system_extrinsics)
+            })
             .collect::<Vec<_>>();
 
         // TODO: or just Vec::new()?
@@ -475,6 +469,7 @@ where
                 ))
             })?;
 
+        // TODO: extract the receipts specific to this domain.
         let receipts = self
             .primary_chain_client
             .runtime_api()
@@ -609,6 +604,7 @@ where
                     )))
                 })?;
 
+            // TODO: self.system_domain_client.runtime_api().submit_fraud_proof_unsigned()
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(

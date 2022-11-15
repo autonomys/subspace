@@ -21,7 +21,7 @@ use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::{DomainId, SignedOpaqueBundle};
 use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
+use sp_runtime::traits::{Block as BlockT, IdentifyAccount, NumberFor, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 
@@ -99,5 +99,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the parameters for the bundle election.
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams;
+
+        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block>;
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+
+        fn maximum_receipt_drift() -> NumberFor<Block>;
     }
 }

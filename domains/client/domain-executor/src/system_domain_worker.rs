@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::{BundleProcessor, BundleProducer, TransactionFor};
+use crate::system_bundle_processor::SystemBundleProcessor;
+use crate::system_bundle_producer::SystemBundleProducer;
+use crate::utils::{BlockInfo, ExecutorSlotInfo};
+use crate::TransactionFor;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
@@ -31,7 +34,6 @@ use sp_runtime::traits::{HashFor, Header as HeaderT, NumberFor, One, Saturating}
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -40,36 +42,6 @@ use system_runtime_primitives::{AccountId, SystemDomainApi};
 use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
-
-/// Data required to produce bundles on executor node.
-#[derive(PartialEq, Clone, Debug)]
-pub(super) struct ExecutorSlotInfo {
-    /// Slot
-    pub(super) slot: Slot,
-    /// Global challenge
-    pub(super) global_challenge: Blake2b256Hash,
-}
-
-/// An event telling the `Overseer` on the particular block
-/// that has been imported or finalized.
-///
-/// This structure exists solely for the purposes of decoupling
-/// `Overseer` code from the client code and the necessity to call
-/// `HeaderBackend::block_number_from_id()`.
-#[derive(Debug, Clone)]
-pub struct BlockInfo<Block>
-where
-    Block: BlockT,
-{
-    /// hash of the block.
-    pub hash: Block::Hash,
-    /// hash of the parent block.
-    pub parent_hash: Block::Hash,
-    /// block's number.
-    pub number: NumberFor<Block>,
-    /// Fork choice of the block.
-    pub fork_choice: ForkChoiceStrategy,
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn start_worker<
@@ -85,8 +57,8 @@ pub(super) async fn start_worker<
 >(
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
-    bundle_producer: BundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
-    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    bundle_producer: SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
+    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,
@@ -153,15 +125,15 @@ pub(super) async fn start_worker<
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
-        move |primary_hash, slot_info| {
+        move |primary_info, slot_info| {
             bundle_producer
                 .clone()
-                .produce_bundle(primary_hash, slot_info)
+                .produce_bundle(primary_info, slot_info)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
                     tracing::error!(
                         target: LOG_TARGET,
-                        relay_parent = ?primary_hash,
+                        ?primary_info,
                         error = ?error,
                         "Error at producing bundle.",
                     );
@@ -194,7 +166,7 @@ async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PBlock::Hash,
+            (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -336,7 +308,7 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
-            PBlock::Hash,
+            (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -350,11 +322,14 @@ where
         + Sync,
 {
     let best_hash = primary_chain_client.info().best_hash;
+    let best_number = primary_chain_client.info().best_hash;
 
     let best_hash = PBlock::Hash::decode(&mut best_hash.encode().as_slice())
         .expect("Hash type must be correct");
+    let best_number = NumberFor::<PBlock>::decode(&mut best_number.encode().as_slice())
+        .expect("BlockNumber type must be correct");
 
-    let opaque_bundle = match bundler(best_hash, executor_slot_info).await {
+    let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
             tracing::debug!(
@@ -460,10 +435,6 @@ where
         Ok(Some(body)) => body,
     };
 
-    let (system_bundles, core_bundles) = primary_chain_client
-        .runtime_api()
-        .extract_system_bundles(&block_id, extrinsics)?;
-
     let header = match primary_chain_client.header(block_id) {
         Err(err) => {
             tracing::error!(
@@ -498,6 +469,10 @@ where
     let shuffling_seed = primary_chain_client
         .runtime_api()
         .extrinsics_shuffling_seed(&block_id, header)?;
+
+    let (system_bundles, core_bundles) = primary_chain_client
+        .runtime_api()
+        .extract_system_bundles(&block_id, extrinsics)?;
 
     processor(
         (block_hash, block_number, fork_choice),

@@ -1,3 +1,4 @@
+#![allow(unused)]
 use crate::bundle_election_solver::BundleElectionSolver;
 use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
@@ -10,7 +11,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{
-    Bundle, BundleHeader, DomainId, ExecutorApi, ExecutorPublicKey, ExecutorSignature,
+    Bundle, BundleHeader, DomainId, ExecutorPublicKey, ExecutorSignature, ProofOfElection,
     SignedBundle, SignedOpaqueBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
@@ -25,32 +26,34 @@ use system_runtime_primitives::{AccountId, SystemDomainApi};
 
 const LOG_TARGET: &str = "bundle-producer";
 
-pub(super) struct SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
+pub(super) struct CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
-    bundle_election_solver: BundleElectionSolver<Block, PBlock, Client>,
-    _phantom_data: PhantomData<PBlock>,
+    bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
+    _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool> Clone
-    for SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
+impl<Block, SBlock, PBlock, Client, SClient, TransactionPool> Clone
+    for CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            primary_chain_client: self.primary_chain_client.clone(),
+            system_domain_client: self.system_domain_client.clone(),
             client: self.client.clone(),
             transaction_pool: self.transaction_pool.clone(),
             bundle_sender: self.bundle_sender.clone(),
@@ -62,35 +65,34 @@ where
     }
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool>
-    SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
+impl<Block, SBlock, PBlock, Client, SClient, TransactionPool>
+    CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block>
-        + BlockBackend<Block>
-        + AuxStore
-        + ProvideRuntimeApi<Block>
-        + ProofProvider<Block>,
-    Client::Api:
-        SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash> + BlockBuilder<Block>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client::Api: BlockBuilder<Block>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(super) fn new(
         domain_id: DomainId,
-        primary_chain_client: Arc<PClient>,
+        system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         transaction_pool: Arc<TransactionPool>,
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::new(client.clone(), keystore.clone());
+        let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
+            system_domain_client.clone(),
+            keystore.clone(),
+        );
         Self {
             domain_id,
-            primary_chain_client,
+            system_domain_client,
             client,
             transaction_pool,
             bundle_sender,
@@ -114,8 +116,8 @@ where
             global_challenge,
         } = slot_info;
 
-        let best_hash = self.client.info().best_hash;
-        let best_number = self.client.info().best_number;
+        let best_hash = self.system_domain_client.info().best_hash;
+        let best_number = self.system_domain_client.info().best_number;
 
         if let Some(proof_of_election) = self
             .bundle_election_solver
@@ -139,9 +141,22 @@ where
                 to_sign.as_ref(),
             ) {
                 Ok(Some(signature)) => {
+                    let as_core_block_hash = |system_block_hash: SBlock::Hash| {
+                        Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
+                    };
                     let signed_bundle = SignedBundle {
                         bundle,
-                        proof_of_election,
+                        proof_of_election: ProofOfElection {
+                            domain_id: proof_of_election.domain_id,
+                            vrf_output: proof_of_election.vrf_output,
+                            vrf_proof: proof_of_election.vrf_proof,
+                            executor_public_key: proof_of_election.executor_public_key,
+                            global_challenge: proof_of_election.global_challenge,
+                            state_root: as_core_block_hash(proof_of_election.state_root),
+                            storage_proof: proof_of_election.storage_proof,
+                            block_number: proof_of_election.block_number,
+                            block_hash: as_core_block_hash(proof_of_election.block_hash),
+                        },
                         signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
                             |err| {
                                 sp_blockchain::Error::Application(Box::from(format!(
@@ -224,7 +239,7 @@ where
         let receipts = if primary_number.is_zero() {
             Vec::new()
         } else {
-            self.collect_system_bundle_receipts(primary_hash, parent_number)?
+            self.collect_core_bundle_receipts(parent_number)?
         };
 
         let bundle = Bundle {
@@ -240,16 +255,16 @@ where
         Ok(bundle)
     }
 
-    /// Returns the receipts in the next system domain bundle.
-    fn collect_system_bundle_receipts(
+    /// Returns the receipts in the next core domain bundle.
+    fn collect_core_bundle_receipts(
         &self,
-        primary_hash: PBlock::Hash,
         header_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
+        let best_system_hash = self.system_domain_client.info().best_hash;
         let best_execution_chain_number = self
-            .primary_chain_client
+            .system_domain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+            .best_execution_chain_number(&BlockId::Hash(best_system_hash), self.domain_id)?;
 
         let best_execution_chain_number: BlockNumber = best_execution_chain_number
             .try_into()
@@ -284,9 +299,9 @@ where
         } else {
             // Receipts for some previous blocks are missing.
             let max_drift = self
-                .primary_chain_client
+                .system_domain_client
                 .runtime_api()
-                .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
+                .maximum_receipt_drift(&BlockId::Hash(best_system_hash))?;
 
             let max_drift: BlockNumber = max_drift
                 .try_into()
