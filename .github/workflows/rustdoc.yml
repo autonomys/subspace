@@ -16,25 +16,21 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v1
+        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Build the rust crate docs
-      # Use `RUSTC_BOOTSTRAP` in order to use the `--enable-index-page` flag of rustdoc
-      # This is needed in order to generate a landing page `index.html` for workspaces
       - name: Build Documentation
         run: cargo doc --all --no-deps --lib
         env:
-          RUSTC_BOOTSTRAP: 1
           RUSTDOCFLAGS: "-Z unstable-options --enable-index-page"
 
       - name: Deploy Docs
-        uses: JamesIves/github-pages-deploy-action@releases/v3
+        uses: JamesIves/github-pages-deploy-action@ba1486788b0490a235422264426c45848eac35c6 # @v4.4.1
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: target/doc
+          branch: gh-pages
+          folder: target/doc
