@@ -773,6 +773,10 @@ impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>, T::StakeWeight> for
         Executors::<T>::get(who).map(|executor_config| executor_config.public_key)
     }
 
+    fn key_owner_storage_key(executor_public_key: &ExecutorPublicKey) -> Vec<u8> {
+        Self::key_owner_hashed_key_for(executor_public_key)
+    }
+
     #[cfg(feature = "std")]
     fn authority_stake_weight(who: &T::AccountId) -> Option<T::StakeWeight> {
         Executors::<T>::get(who).and_then(|executor_config| {
