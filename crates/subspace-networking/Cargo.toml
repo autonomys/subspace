@@ -16,6 +16,7 @@ include = [
 ]
 
 [dependencies]
+actix-web = "4.2.1"
 anyhow = "1.0.61"
 async-trait = "0.1.57"
 bytes = "1.2.1"
@@ -25,7 +26,6 @@ derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 futures = "0.3.21"
 hex = "0.4.3"
-hyper = { version = "0.14.16", default-features = false, features = ["http1", "server", "tcp"] }
 lru = "0.7.8"
 nohash-hasher = "0.2.0"
 parity-db = "0.3.17"

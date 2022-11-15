@@ -37,7 +37,7 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
@@ -258,9 +258,9 @@ where
     // Init prometheus
     if let Some(address) = prometheus_metrics_server_address {
         tokio::task::spawn(async move {
-            start_prometheus_metrics_server(address, metric_registry)
-                .await
-                .unwrap();
+            if let Err(err) = start_prometheus_metrics_server(address, metric_registry).await {
+                error!(?address, ?err, "Prometheus metrics server failed to start.")
+            }
         });
     }
 
