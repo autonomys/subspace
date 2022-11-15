@@ -4,7 +4,6 @@ use crate::behavior::custom_record_store::{
 };
 use crate::behavior::record_binary_heap::RecordBinaryHeap;
 use chrono::Duration;
-use libp2p::kad::kbucket::Sha256Hash;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::ProviderRecord;
@@ -188,7 +187,7 @@ fn binary_heap_limit_works() {
 
 #[test]
 fn binary_heap_eviction_works() {
-    type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T, Sha256Hash>;
+    type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
 
     let peer_id =
         PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
@@ -206,8 +205,8 @@ fn binary_heap_eviction_works() {
     let bucket_key2: KademliaBucketKey<Key> = KademliaBucketKey::new(key2.clone());
 
     let evicted = evicted.unwrap();
-    if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::new(peer_id))
-        > bucket_key2.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::new(peer_id))
+    if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
+        > bucket_key2.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
     {
         assert_eq!(evicted, key1);
     } else {

@@ -432,7 +432,7 @@ where
         + Sync,
 {
     let block_id = BlockId::Hash(block_hash);
-    let extrinsics = match primary_chain_client.block_body(&block_id) {
+    let extrinsics = match primary_chain_client.block_body(block_hash) {
         Err(err) => {
             tracing::error!(
                 target: LOG_TARGET,

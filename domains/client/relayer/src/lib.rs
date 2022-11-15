@@ -101,13 +101,12 @@ where
         block_hash: Block::Hash,
         key: &StorageKey,
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
-        let block_id = BlockId::Hash(block_hash);
         system_domain_client
-            .header(block_id)?
+            .header(BlockId::Hash(block_hash))?
             .map(|header| *header.state_root())
             .and_then(|state_root| {
                 let proof = system_domain_client
-                    .read_proof(&block_id, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -125,13 +124,12 @@ where
         key: &StorageKey,
         core_domain_proof: StorageProof,
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
-        let block_id = BlockId::Hash(block_hash);
         core_domain_client
-            .header(block_id)?
+            .header(BlockId::Hash(block_hash))?
             .map(|header| (*header.number(), *header.state_root()))
             .and_then(|(number, state_root)| {
                 let proof = core_domain_client
-                    .read_proof(&block_id, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -296,8 +294,8 @@ where
         // and generate proof
         let core_domain_state_root_proof = {
             let system_domain_api = system_domain_client.runtime_api();
-            let latest_system_domain_block_id =
-                BlockId::Hash(system_domain_client.info().best_hash);
+            let latest_system_domain_block_hash = system_domain_client.info().best_hash;
+            let latest_system_domain_block_id = BlockId::Hash(latest_system_domain_block_hash);
             let core_domain_id = Self::domain_id(core_domain_client)?;
             let confirmed_block_number = *core_domain_client
                 .header(BlockId::Hash(confirmed_block_hash))?
@@ -311,7 +309,7 @@ where
                 Some(storage_key) => {
                     // construct storage proof for the core domain state root using system domain backend.
                     system_domain_client.read_proof(
-                        &latest_system_domain_block_id,
+                        latest_system_domain_block_hash,
                         &mut [storage_key.as_ref()].into_iter(),
                     )?
                 }

@@ -7,8 +7,9 @@
 
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
-use sc_client_api::AuxStore;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_rpc::DenyUnsafe;
+use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
@@ -24,6 +25,8 @@ pub struct FullDeps<C, P> {
     pub client: Arc<C>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
+    /// A copy of the chain spec.
+    pub chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
     /// Whether to deny unsafe calls
     pub deny_unsafe: DenyUnsafe,
 }
@@ -34,6 +37,7 @@ pub fn create_full<C, P>(
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
         + HeaderBackend<Block>
         + AuxStore
         + HeaderMetadata<Block, Error = BlockChainError>
@@ -49,8 +53,18 @@ where
     let FullDeps {
         client,
         pool,
+        chain_spec,
         deny_unsafe,
     } = deps;
+
+    let chain_name = chain_spec.name().to_string();
+    let genesis_hash = client
+        .block_hash(0)
+        .ok()
+        .flatten()
+        .expect("Genesis block exists; qed");
+    let properties = chain_spec.properties();
+    module.merge(ChainSpec::new(chain_name, genesis_hash, properties).into_rpc())?;
 
     module.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
     module.merge(TransactionPayment::new(client).into_rpc())?;

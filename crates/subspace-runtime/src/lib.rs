@@ -159,7 +159,7 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
     /// We allow for 2 seconds of compute with a 6 second average block time.
-    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(2 * WEIGHT_PER_SECOND, NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(WEIGHT_PER_SECOND.saturating_mul(2).set_proof_size(u64::MAX), NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
 }
@@ -170,12 +170,12 @@ pub type SS58Prefix = ConstU16<2254>;
 
 pub struct CallFilter;
 
-impl Contains<Call> for CallFilter {
-    fn contains(c: &Call) -> bool {
+impl Contains<RuntimeCall> for CallFilter {
+    fn contains(c: &RuntimeCall) -> bool {
         // Disable executor and all balance transfers
         !matches!(
             c,
-            Call::Balances(
+            RuntimeCall::Balances(
                 pallet_balances::Call::transfer { .. }
                     | pallet_balances::Call::transfer_keep_alive { .. }
                     | pallet_balances::Call::transfer_all { .. }
@@ -194,7 +194,7 @@ impl frame_system::Config for Runtime {
     /// The identifier used to distinguish between accounts.
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
-    type Call = Call;
+    type RuntimeCall = RuntimeCall;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The index type for storing how many extrinsics an account has signed.
@@ -208,9 +208,9 @@ impl frame_system::Config for Runtime {
     /// The header type.
     type Header = Header;
     /// The ubiquitous event type.
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     /// The ubiquitous origin type.
-    type Origin = Origin;
+    type RuntimeOrigin = RuntimeOrigin;
     /// Maximum number of block number to block hash mappings to keep (oldest pruned first).
     type BlockHashCount = ConstU32<250>;
     /// The weight of database operations that the runtime can invoke.
@@ -247,7 +247,7 @@ parameter_types! {
 }
 
 impl pallet_subspace::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
@@ -287,7 +287,7 @@ impl pallet_balances::Config for Runtime {
     /// The type for recording an account's balance.
     type Balance = Balance;
     /// The ubiquitous event type.
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type DustRemoval = ();
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
@@ -332,7 +332,7 @@ impl Get<u128> for BlockchainHistorySize {
 }
 
 impl pallet_transaction_fees::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type MinReplicationFactor = ConstU16<MIN_REPLICATION_FACTOR>;
     type StorageFeesEscrowBlockReward = StorageFeesEscrowBlockReward;
     type StorageFeesEscrowBlockTax = StorageFeesEscrowBlockTax;
@@ -345,7 +345,7 @@ impl pallet_transaction_fees::Config for Runtime {
 }
 
 impl pallet_transaction_payment::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = OnChargeTransaction;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
@@ -354,27 +354,27 @@ impl pallet_transaction_payment::Config for Runtime {
 }
 
 impl pallet_utility::Config for Runtime {
-    type Event = Event;
-    type Call = Call;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
     type PalletsOrigin = OriginCaller;
     type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {
-    type Event = Event;
-    type Call = Call;
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
 where
-    Call: From<C>,
+    RuntimeCall: From<C>,
 {
     type Extrinsic = UncheckedExtrinsic;
-    type OverarchingCall = Call;
+    type OverarchingCall = RuntimeCall;
 }
 
 impl pallet_offences_subspace::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type OnOffenceHandler = Subspace;
 }
 
@@ -384,7 +384,7 @@ parameter_types! {
 }
 
 impl pallet_domains::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type SecondaryHash = system_runtime_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
@@ -397,7 +397,7 @@ parameter_types! {
 }
 
 impl pallet_rewards::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type BlockReward = BlockReward;
     type VoteReward = VoteReward;
@@ -414,7 +414,7 @@ parameter_types! {
 }
 
 impl pallet_feeds::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type FeedId = FeedId;
     type FeedProcessorKind = FeedProcessorKind;
     type MaxFeeds = MaxFeeds;
@@ -431,7 +431,7 @@ impl pallet_grandpa_finality_verifier::Config for Runtime {
 }
 
 impl pallet_object_store::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
 }
 
 impl pallet_runtime_configs::Config for Runtime {}
@@ -442,7 +442,7 @@ parameter_types! {
 }
 
 impl orml_vesting::Config for Runtime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type MinVestedTransfer = MinVestedTransfer;
     type VestedTransferOrigin = EnsureNever<AccountId>;
@@ -503,7 +503,8 @@ pub type SignedExtra = (
     DisablePallets,
 );
 /// Unchecked extrinsic type as expected by this runtime.
-pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
+pub type UncheckedExtrinsic =
+    generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -515,7 +516,7 @@ pub type Executive = frame_executive::Executive<
 
 fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
     match &ext.function {
-        Call::Subspace(pallet_subspace::Call::store_root_blocks { root_blocks }) => {
+        RuntimeCall::Subspace(pallet_subspace::Call::store_root_blocks { root_blocks }) => {
             Some(root_blocks.clone())
         }
         _ => None,
@@ -531,7 +532,7 @@ fn extract_system_bundles(
     let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Domains(pallet_domains::Call::submit_bundle {
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -558,7 +559,7 @@ fn extract_core_bundles(
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            Call::Domains(pallet_domains::Call::submit_bundle {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) if signed_opaque_bundle.domain_id() == domain_id => {
                 Some(signed_opaque_bundle.bundle)
@@ -574,7 +575,7 @@ fn extract_receipts(
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Domains(pallet_domains::Call::submit_bundle {
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
             }) = uxt.function
             {
@@ -591,7 +592,7 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
     extrinsics
         .into_iter()
         .filter_map(|uxt| {
-            if let Call::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
                 uxt.function
             {
                 Some(fraud_proof)

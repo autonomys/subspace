@@ -225,7 +225,7 @@ where
     fn collect_storage_changes(
         &self,
     ) -> Result<sp_api::StorageChanges<backend::StateBackendFor<B, Block>, Block>, Error> {
-        let state = self.backend.state_at(self.block_id)?;
+        let state = self.backend.state_at(self.parent_hash)?;
         let parent_hash = self.parent_hash;
         self.api
             .into_storage_changes(&state, parent_hash)

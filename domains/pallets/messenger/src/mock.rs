@@ -52,8 +52,8 @@ macro_rules! impl_runtime {
             type BlockWeights = ();
             type BlockLength = ();
             type DbWeight = ();
-            type Origin = Origin;
-            type Call = Call;
+            type RuntimeOrigin = RuntimeOrigin;
+            type RuntimeCall = RuntimeCall;
             type Index = u64;
             type BlockNumber = u64;
             type Hash = H256;
@@ -61,7 +61,7 @@ macro_rules! impl_runtime {
             type AccountId = u64;
             type Lookup = IdentityLookup<Self::AccountId>;
             type Header = Header;
-            type Event = Event;
+            type RuntimeEvent = RuntimeEvent;
             type BlockHashCount = ConstU64<250>;
             type Version = ();
             type PalletInfo = PalletInfo;
@@ -83,7 +83,7 @@ macro_rules! impl_runtime {
         }
 
         impl pallet_domain_tracker::Config for $runtime {
-            type Event = Event;
+            type RuntimeEvent = RuntimeEvent;
             type StateRootsBound = StateRootsBound;
         }
 
@@ -94,7 +94,7 @@ macro_rules! impl_runtime {
         }
 
         impl crate::Config for $runtime {
-            type Event = Event;
+            type RuntimeEvent = RuntimeEvent;
             type SelfDomainId = SelfDomainId;
             type DomainTracker = DomainTracker;
             type MaximumRelayers = MaximumRelayers;
@@ -118,7 +118,7 @@ macro_rules! impl_runtime {
             type AccountStore = System;
             type Balance = Balance;
             type DustRemoval = ();
-            type Event = Event;
+            type RuntimeEvent = RuntimeEvent;
             type ExistentialDeposit = ExistentialDeposit;
             type MaxLocks = ();
             type MaxReserves = ();
@@ -131,7 +131,7 @@ macro_rules! impl_runtime {
         }
 
         impl pallet_transporter::Config for $runtime {
-            type Event = Event;
+            type RuntimeEvent = RuntimeEvent;
             type SelfDomainId = SelfDomainId;
             type SelfEndpointId = TransporterEndpointId;
             type Currency = Balances;
@@ -163,7 +163,7 @@ macro_rules! impl_runtime {
 
            // add a relayer to messenger
            t.execute_with(|| {
-               let res = Messenger::join_relayer_set(Origin::signed(RELAYER_OWNER_ACCOUNT), RELAYER_ID);
+               let res = Messenger::join_relayer_set(RuntimeOrigin::signed(RELAYER_OWNER_ACCOUNT), RELAYER_ID);
                assert_ok!(res);
            });
            t
@@ -213,7 +213,7 @@ fn storage_proof_for_key<T: Config>(
 ) -> (StateRootOf<T>, StorageProof) {
     let state_version = sp_runtime::StateVersion::default();
     let root = backend.storage_root(std::iter::empty(), state_version).0;
-    let proof = StorageProof::new(prove_read(backend, &[key]).unwrap().iter_nodes());
+    let proof = StorageProof::new(prove_read(backend, &[key]).unwrap().iter_nodes().cloned());
     (root, proof)
 }
 

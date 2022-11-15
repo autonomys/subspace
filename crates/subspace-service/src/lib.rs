@@ -30,7 +30,7 @@ use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::{BlockBackend, ExecutorProvider, HeaderBackend, StateBackendFor};
+use sc_client_api::{BlockBackend, HeaderBackend, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -48,7 +48,8 @@ use sc_service::{
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_consensus::{CanAuthorWithNativeVersion, Error as ConsensusError};
+use sp_blockchain::HeaderMetadata;
+use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_domains::ExecutorApi;
@@ -236,10 +237,9 @@ where
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import(
-        sc_consensus_subspace::Config::get(&*client)?,
+        sc_consensus_subspace::slot_duration(&*client)?,
         fraud_proof_block_import,
         client.clone(),
-        CanAuthorWithNativeVersion::new(client.executor().clone()),
         {
             let client = client.clone();
 
@@ -259,7 +259,7 @@ where
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                             *timestamp,
-                            subspace_link.config().slot_duration(),
+                            subspace_link.slot_duration(),
                             subspace_link.root_blocks_for_block(parent_block_number + 1),
                         );
 
@@ -302,7 +302,7 @@ where
             }
         });
 
-    let slot_duration = subspace_link.config().slot_duration();
+    let slot_duration = subspace_link.slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         block_import.clone(),
         None,
@@ -338,6 +338,7 @@ where
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api:
         TaggedTransactionQueue<Block> + ExecutorApi<Block, system_runtime_primitives::Hash>,
@@ -445,7 +446,7 @@ where
         config.role.is_authority(),
     );
 
-    let (network, system_rpc_tx, network_starter) =
+    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             client: client.clone(),
@@ -510,18 +511,17 @@ where
                         let subspace_inherents =
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                                 *timestamp,
-                                subspace_link.config().slot_duration(),
+                                subspace_link.slot_duration(),
                                 subspace_link.root_blocks_for_block(parent_block_number + 1),
                             );
 
-                        Ok((timestamp, subspace_inherents))
+                        Ok((subspace_inherents, timestamp))
                     }
                 }
             },
             force_authoring: config.force_authoring,
             backoff_authoring_blocks,
             subspace_link,
-            can_author_with: CanAuthorWithNativeVersion::new(client.executor().clone()),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
@@ -550,11 +550,13 @@ where
             let reward_signing_notification_stream = reward_signing_notification_stream.clone();
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
             let transaction_pool = transaction_pool.clone();
+            let chain_spec = config.chain_spec.cloned_box();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = rpc::FullDeps {
                     client: client.clone(),
                     pool: transaction_pool.clone(),
+                    chain_spec: chain_spec.cloned_box(),
                     deny_unsafe,
                     subscription_executor,
                     new_slot_notification_stream: new_slot_notification_stream.clone(),
@@ -573,6 +575,7 @@ where
         system_rpc_tx,
         config: config.into(),
         telemetry: telemetry.as_mut(),
+        tx_handler_controller,
     })?;
 
     Ok(NewFull {

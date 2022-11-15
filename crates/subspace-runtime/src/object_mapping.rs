@@ -1,4 +1,4 @@
-use crate::{Block, Call, Runtime};
+use crate::{Block, Runtime, RuntimeCall};
 use codec::{Compact, CompactLen, Encode};
 use sp_api::HashT;
 use sp_runtime::traits::BlakeTwo256;
@@ -116,7 +116,7 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
 pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     mut base_offset: u32,
     objects: &mut Vec<BlockObject>,
-    call: &Call,
+    call: &RuntimeCall,
     recursion_depth_left: u16,
     successful_calls: &mut Peekable<I>,
 ) {
@@ -124,13 +124,13 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     base_offset += 1;
 
     match call {
-        Call::Feeds(call) => {
+        RuntimeCall::Feeds(call) => {
             extract_feeds_block_object_mapping(base_offset, objects, call, successful_calls);
         }
-        Call::ObjectStore(call) => {
+        RuntimeCall::ObjectStore(call) => {
             extract_object_store_block_object_mapping(base_offset, objects, call);
         }
-        Call::Utility(call) => {
+        RuntimeCall::Utility(call) => {
             extract_utility_block_object_mapping(
                 base_offset,
                 objects,

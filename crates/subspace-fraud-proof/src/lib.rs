@@ -13,13 +13,14 @@ mod tests;
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
-use sp_api::{ProvideRuntimeApi, StateBackend, StorageProof};
+use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
 use sp_domains::{ExecutionPhase, ExecutorApi, FraudProof, VerificationError};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
-use sp_state_machine::{TrieBackend, TrieBackendStorage};
+use sp_state_machine::backend::AsTrieBackend;
+use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -52,16 +53,13 @@ where
     /// the execution by someone who does not own the whole state.
     pub fn prove_execution<DB: HashDB<HashFor<Block>, DBValue>>(
         &self,
-        at: BlockId<Block>,
+        at: Block::Hash,
         execution_phase: &ExecutionPhase,
         delta_changes: Option<(DB, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
         let state = self.backend.state_at(at)?;
 
-        let trie_backend = state.as_trie_backend().ok_or_else(|| {
-            Box::new(sp_state_machine::ExecutionError::UnableToGenerateProof)
-                as Box<dyn sp_state_machine::Error>
-        })?;
+        let trie_backend = state.as_trie_backend();
 
         let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
         let runtime_code = state_runtime_code
@@ -105,17 +103,14 @@ where
     /// so that it can be used to compare with the one specified in the fraud proof.
     pub fn check_execution_proof(
         &self,
-        at: BlockId<Block>,
+        at: Block::Hash,
         execution_phase: &ExecutionPhase,
         pre_execution_root: H256,
         proof: StorageProof,
     ) -> sp_blockchain::Result<Vec<u8>> {
         let state = self.backend.state_at(at)?;
 
-        let trie_backend = state.as_trie_backend().ok_or_else(|| {
-            Box::new(sp_state_machine::ExecutionError::UnableToGenerateProof)
-                as Box<dyn sp_state_machine::Error>
-        })?;
+        let trie_backend = state.as_trie_backend();
 
         let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
         let runtime_code = state_runtime_code
@@ -154,7 +149,7 @@ where
         delta,
         _phantom: PhantomData::<H>,
     };
-    TrieBackend::new(delta_backend, post_delta_root)
+    TrieBackendBuilder::new(delta_backend, post_delta_root).build()
 }
 
 struct DeltaBackend<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>> {

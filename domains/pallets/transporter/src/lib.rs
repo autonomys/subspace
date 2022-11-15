@@ -74,7 +74,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// Event type for this pallet.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Gets the domain_id of the current execution environment.
         type SelfDomainId: Get<DomainId>;
@@ -246,7 +246,7 @@ mod pallet {
 
             // mint the funds to dst_account
             T::Currency::deposit_creating(&req.receiver.account_id, req.amount);
-            frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::Event>::into(
+            frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
                 Event::<T>::IncomingTransferSuccessful {
                     domain_id: src_domain_id,
                     message_id,
@@ -274,24 +274,28 @@ mod pallet {
             match resp {
                 Ok(_) => {
                     // transfer is successful
-                    frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::Event>::into(
-                        Event::<T>::OutgoingTransferSuccessful {
-                            domain_id: dst_domain_id,
-                            message_id,
-                        },
-                    ));
+                    frame_system::Pallet::<T>::deposit_event(
+                        Into::<<T as Config>::RuntimeEvent>::into(
+                            Event::<T>::OutgoingTransferSuccessful {
+                                domain_id: dst_domain_id,
+                                message_id,
+                            },
+                        ),
+                    );
                 }
                 Err(err) => {
                     // transfer failed
                     // revert burned funds
                     T::Currency::deposit_creating(&transfer.sender.account_id, transfer.amount);
-                    frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::Event>::into(
-                        Event::<T>::OutgoingTransferFailed {
-                            domain_id: dst_domain_id,
-                            message_id,
-                            err,
-                        },
-                    ));
+                    frame_system::Pallet::<T>::deposit_event(
+                        Into::<<T as Config>::RuntimeEvent>::into(
+                            Event::<T>::OutgoingTransferFailed {
+                                domain_id: dst_domain_id,
+                                message_id,
+                                err,
+                            },
+                        ),
+                    );
                 }
             }
 

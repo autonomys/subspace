@@ -17,6 +17,8 @@ env:
   # Build smaller artifacts to avoid running out of space in CI
   # TODO: Try to remove once https://github.com/paritytech/substrate/issues/11538 is resolved
   RUSTFLAGS: -C strip=symbols -C opt-level=s
+  # Remove unnecessary WASM build artefacts
+  WASM_BUILD_CLEAN_TARGET: 1
 
 jobs:
   cargo-fmt:
@@ -25,6 +27,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -63,6 +70,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
         # TODO: Below can be removed when https://github.com/actions-rs/toolchain/issues/126 is resolved
@@ -96,6 +108,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -131,6 +148,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rust toolchain
         uses: actions-rs/toolchain@v1

@@ -45,7 +45,7 @@ use sc_consensus::block_import::{
 use sc_consensus::import_queue::{
     BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
 };
-use sc_consensus::{JustificationSyncLink, StateAction};
+use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
@@ -56,8 +56,8 @@ use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, Tr
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, CanAuthorWith, Environment, Error as ConsensusError, Proposer,
-    SelectChain, SyncOracle,
+    BlockOrigin, CacheKeyId, Environment, Error as ConsensusError, Proposer, SelectChain,
+    SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
@@ -267,48 +267,32 @@ where
     }
 }
 
-/// A slot duration.
-///
-/// Create with [`Self::get`].
-#[derive(Clone)]
-pub struct Config(SlotDuration);
+/// Read configuration from the runtime state at current best block.
+pub fn slot_duration<Block: BlockT, Client>(client: &Client) -> ClientResult<SlotDuration>
+where
+    Block: BlockT,
+    Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+{
+    let block_id = if client.usage_info().chain.finalized_state.is_some() {
+        BlockId::Hash(client.usage_info().chain.best_hash)
+    } else {
+        debug!(target: "subspace", "No finalized state is available. Reading config from genesis");
+        BlockId::Hash(client.usage_info().chain.genesis_hash)
+    };
 
-impl Config {
-    /// Fetch the config from the runtime.
-    pub fn get<Block, Client>(client: &Client) -> ClientResult<Self>
-    where
-        Block: BlockT,
-        Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
-        Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-    {
-        trace!(target: "subspace", "Getting slot duration");
-
-        let mut best_block_id = BlockId::Hash(client.usage_info().chain.best_hash);
-        if client.usage_info().chain.finalized_state.is_none() {
-            debug!(
-                target: "subspace",
-                "No finalized state is available. Reading config from genesis"
-            );
-            best_block_id = BlockId::Hash(client.usage_info().chain.genesis_hash);
-        }
-        let slot_duration = client.runtime_api().slot_duration(&best_block_id)?;
-
-        Ok(Self(SlotDuration::from_millis(
-            slot_duration
-                .as_millis()
-                .try_into()
-                .expect("Slot duration in ms never exceeds u64; qed"),
-        )))
-    }
-
-    /// Get the inner slot duration
-    pub fn slot_duration(&self) -> SlotDuration {
-        self.0
-    }
+    Ok(SlotDuration::from_millis(
+        client
+            .runtime_api()
+            .slot_duration(&block_id)?
+            .as_millis()
+            .try_into()
+            .expect("Slot duration in ms never exceeds u64; qed"),
+    ))
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
+pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS> {
     /// The client to use
     pub client: Arc<C>,
 
@@ -341,9 +325,6 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
     /// The source of timestamps for relative slots
     pub subspace_link: SubspaceLink<B>,
 
-    /// Checks if the current native implementation can author with a runtime at a given block.
-    pub can_author_with: CAW,
-
     /// The proportion of the slot dedicated to proposing.
     ///
     /// The block proposing will be limited to this proportion of the slot from the starting of the
@@ -360,7 +341,7 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, CAW> {
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
+pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, L, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -372,11 +353,10 @@ pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, CAW, L, Error>(
         force_authoring,
         backoff_authoring_blocks,
         subspace_link,
-        can_author_with,
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, CAW>,
+    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
     Block: BlockT,
@@ -401,7 +381,6 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     let worker = SubspaceSlotWorker {
@@ -421,7 +400,7 @@ where
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
     let inner = sc_consensus_slots::start_slot_worker(
-        subspace_link.config.0,
+        subspace_link.slot_duration(),
         select_chain,
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
         SlotWorkerSyncOracle {
@@ -429,7 +408,6 @@ where
             inner: sync_oracle,
         },
         create_inherent_data_providers,
-        can_author_with,
     );
 
     Ok(SubspaceWorker {
@@ -457,7 +435,7 @@ impl Future for SubspaceWorker {
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
-    config: Config,
+    slot_duration: SlotDuration,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_sender: SubspaceNotificationSender<RewardSigningNotification>,
@@ -473,9 +451,9 @@ pub struct SubspaceLink<Block: BlockT> {
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
-    /// Get the config of this link.
-    pub fn config(&self) -> &Config {
-        &self.config
+    /// Get the slot duration from this link.
+    pub fn slot_duration(&self) -> SlotDuration {
+        self.slot_duration
     }
 
     /// Get stream with notifications about new slot arrival with ability to send solution back.
@@ -643,7 +621,7 @@ where
                 &pre_digest.solution.public_key,
             )
             .or_else(|error| {
-                if matches!(block.state_action, StateAction::Skip) {
+                if block.state_action.skip_execution_checks() {
                     Ok(false)
                 } else {
                     Err(Error::<Block::Header>::RuntimeApi(error))
@@ -751,21 +729,19 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct SubspaceBlockImport<Block: BlockT, Client, I, CAW, CIDP> {
+pub struct SubspaceBlockImport<Block: BlockT, Client, I, CIDP> {
     inner: I,
     client: Arc<Client>,
     imported_block_notification_sender:
         SubspaceNotificationSender<ImportedBlockNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
-    can_author_with: CAW,
     create_inherent_data_providers: CIDP,
 }
 
-impl<Block, I, Client, CAW, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+impl<Block, I, Client, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CIDP>
 where
     Block: BlockT,
     I: Clone,
-    CAW: Clone,
     CIDP: Clone,
 {
     fn clone(&self) -> Self {
@@ -774,18 +750,16 @@ where
             client: self.client.clone(),
             imported_block_notification_sender: self.imported_block_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
-            can_author_with: self.can_author_with.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
         }
     }
 }
 
-impl<Block, Client, I, CAW, CIDP> SubspaceBlockImport<Block, Client, I, CAW, CIDP>
+impl<Block, Client, I, CIDP> SubspaceBlockImport<Block, Client, I, CIDP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     fn new(
@@ -795,7 +769,6 @@ where
             ImportedBlockNotification<Block>,
         >,
         subspace_link: SubspaceLink<Block>,
-        can_author_with: CAW,
         create_inherent_data_providers: CIDP,
     ) -> Self {
         SubspaceBlockImport {
@@ -803,7 +776,6 @@ where
             inner: block_import,
             imported_block_notification_sender,
             subspace_link,
-            can_author_with,
             create_inherent_data_providers,
         }
     }
@@ -976,39 +948,31 @@ where
             // internally-set timestamp in the inherents actually matches the slot set in the seal
             // and root blocks in the inherents are set correctly.
             if let Some(extrinsics) = extrinsics {
-                if let Err(error) = self.can_author_with.can_author_with(&parent_block_id) {
-                    debug!(
-                        target: "subspace",
-                        "Skipping `check_inherents` as authoring version is not compatible: {}",
-                        error,
-                    );
-                } else {
-                    let create_inherent_data_providers = self
-                        .create_inherent_data_providers
-                        .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
-                        .await
-                        .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
+                let create_inherent_data_providers = self
+                    .create_inherent_data_providers
+                    .create_inherent_data_providers(parent_hash, self.subspace_link.clone())
+                    .await
+                    .map_err(|error| Error::Client(sp_blockchain::Error::from(error)))?;
 
-                    let inherent_data = create_inherent_data_providers
-                        .create_inherent_data()
-                        .map_err(Error::CreateInherents)?;
+                let inherent_data = create_inherent_data_providers
+                    .create_inherent_data()
+                    .map_err(Error::CreateInherents)?;
 
-                    let inherent_res = self.client.runtime_api().check_inherents_with_context(
-                        &parent_block_id,
-                        origin.into(),
-                        Block::new(header, extrinsics),
-                        inherent_data,
-                    )?;
+                let inherent_res = self.client.runtime_api().check_inherents_with_context(
+                    &parent_block_id,
+                    origin.into(),
+                    Block::new(header, extrinsics),
+                    inherent_data,
+                )?;
 
-                    if !inherent_res.ok() {
-                        for (i, e) in inherent_res.into_errors() {
-                            match create_inherent_data_providers
-                                .try_handle_error(&i, &e)
-                                .await
-                            {
-                                Some(res) => res.map_err(Error::CheckInherents)?,
-                                None => return Err(Error::CheckInherentsUnhandled(i)),
-                            }
+                if !inherent_res.ok() {
+                    for (i, e) in inherent_res.into_errors() {
+                        match create_inherent_data_providers
+                            .try_handle_error(&i, &e)
+                            .await
+                        {
+                            Some(res) => res.map_err(Error::CheckInherents)?,
+                            None => return Err(Error::CheckInherentsUnhandled(i)),
                         }
                     }
                 }
@@ -1020,8 +984,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner, CAW, CIDP> BlockImport<Block>
-    for SubspaceBlockImport<Block, Client, Inner, CAW, CIDP>
+impl<Block, Client, Inner, CIDP> BlockImport<Block>
+    for SubspaceBlockImport<Block, Client, Inner, CIDP>
 where
     Block: BlockT,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
@@ -1035,7 +999,6 @@ where
         + Send
         + Sync,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     type Error = ConsensusError;
@@ -1065,7 +1028,7 @@ where
 
         let subspace_digest_items = extract_subspace_digest_items(&block.header)
             .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
-        let skip_state_computation = matches!(block.state_action, StateAction::Skip);
+        let skip_execution_checks = block.state_action.skip_execution_checks();
 
         let root_plot_public_key = self
             .client
@@ -1081,7 +1044,7 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
-            skip_state_computation,
+            skip_execution_checks,
         )
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
@@ -1255,21 +1218,19 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
-pub fn block_import<Client, Block, I, CAW, CIDP>(
-    config: Config,
+pub fn block_import<Client, Block, I, CIDP>(
+    slot_duration: SlotDuration,
     wrapped_block_import: I,
     client: Arc<Client>,
-    can_author_with: CAW,
     create_inherent_data_providers: CIDP,
 ) -> ClientResult<(
-    SubspaceBlockImport<Block, Client, I, CAW, CIDP>,
+    SubspaceBlockImport<Block, Client, I, CIDP>,
     SubspaceLink<Block>,
 )>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    CAW: CanAuthorWith<Block> + Send + Sync + 'static,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
@@ -1289,7 +1250,7 @@ where
     let kzg = Kzg::new(kzg::test_public_parameters());
 
     let link = SubspaceLink {
-        config,
+        slot_duration,
         new_slot_notification_sender,
         new_slot_notification_stream,
         reward_signing_notification_sender,
@@ -1306,7 +1267,6 @@ where
         wrapped_block_import,
         imported_block_notification_sender,
         link.clone(),
-        can_author_with,
         create_inherent_data_providers,
     );
 

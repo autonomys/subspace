@@ -29,9 +29,9 @@ mod tests;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
-use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
+use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo, Pays};
 use frame_support::traits::{Get, OnTimestampSet};
-use frame_support::weights::{Pays, Weight};
+use frame_support::weights::Weight;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -173,7 +173,7 @@ mod pallet {
     #[pallet::disable_frame_system_supertrait_check]
     pub trait Config: pallet_timestamp::Config {
         /// The overarching event type.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// The amount of time, in blocks, between updates of global randomness.
         #[pallet::constant]
@@ -428,7 +428,7 @@ mod pallet {
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
             Self::do_initialize(block_number);
-            0
+            Weight::zero()
         }
 
         fn on_finalize(block_number: T::BlockNumber) {

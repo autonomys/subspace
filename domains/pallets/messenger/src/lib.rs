@@ -110,7 +110,7 @@ mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// Gets the domain_id that is treated as src_domain for outgoing messages.
         type SelfDomainId: Get<DomainId>;
         /// System domain tracker.
@@ -413,7 +413,7 @@ mod pallet {
             let results = RelayerMessages::<T>::clear(u32::MAX, None);
             let db_weight = T::DbWeight::get();
             db_weight
-                .reads(results.loops as Weight)
+                .reads(results.loops as u64)
                 .saturating_add(db_weight.writes(1))
         }
     }

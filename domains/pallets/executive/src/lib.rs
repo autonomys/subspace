@@ -24,12 +24,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::Codec;
-use frame_support::dispatch::PostDispatchInfo;
+use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo, PostDispatchInfo};
 use frame_support::traits::{
     EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
     OnRuntimeUpgrade,
 };
-use frame_support::weights::{DispatchClass, DispatchInfo, GetDispatchInfo};
+use frame_support::weights::Weight;
 pub use pallet::*;
 use sp_runtime::traits::{
     self, Applyable, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One, ValidateUnsigned,
@@ -42,23 +42,25 @@ use sp_std::prelude::*;
 
 pub type CheckedOf<E, C> = <E as Checkable<C>>::Checked;
 pub type CallOf<E, C> = <CheckedOf<E, C> as Applyable>::Call;
-pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::Origin;
+pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
 
 // TODO: not store the intermediate storage root in the state but
 // calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
+    use frame_support::dispatch::GetDispatchInfo;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::UnfilteredDispatchable;
-    use frame_support::weights::GetDispatchInfo;
     use frame_system::pallet_prelude::*;
     use sp_std::boxed::Box;
     use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-        type Call: Parameter + UnfilteredDispatchable<Origin = Self::Origin> + GetDispatchInfo;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+        type Call: Parameter
+            + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin>
+            + GetDispatchInfo;
     }
 
     #[pallet::pallet]
@@ -98,7 +100,8 @@ mod pallet {
         fn on_initialize(_block_number: T::BlockNumber) -> Weight {
             // Reset the intermediate storage roots from last block.
             IntermediateRoots::<T>::kill();
-            1
+            // TODO: Probably needs a different value
+            Weight::from_ref_time(1)
         }
     }
 
@@ -221,7 +224,7 @@ where
     }
 
     /// Wrapped `frame_executive::Executive::execute_on_runtime_upgrade`.
-    pub fn execute_on_runtime_upgrade() -> frame_support::weights::Weight {
+    pub fn execute_on_runtime_upgrade() -> Weight {
         frame_executive::Executive::<
             System,
             Block,
@@ -234,7 +237,7 @@ where
 
     /// Wrapped `frame_executive::Executive::execute_block_no_check`.
     #[cfg(feature = "try-runtime")]
-    pub fn execute_block_no_check(block: Block) -> frame_support::weights::Weight {
+    pub fn execute_block_no_check(block: Block) -> Weight {
         frame_executive::Executive::<
             System,
             Block,
@@ -247,7 +250,7 @@ where
 
     /// Wrapped `frame_executive::Executive::try_runtime_upgrade`.
     #[cfg(feature = "try-runtime")]
-    pub fn try_runtime_upgrade() -> Result<frame_support::weights::Weight, &'static str> {
+    pub fn try_runtime_upgrade() -> Result<Weight, &'static str> {
         frame_executive::Executive::<
             System,
             Block,
@@ -360,7 +363,7 @@ where
         let max_weight = <System::BlockWeights as frame_support::traits::Get<_>>::get().max_block;
         let remaining_weight = max_weight.saturating_sub(weight.total());
 
-        if remaining_weight > 0 {
+        if remaining_weight.all_gt(Weight::zero()) {
             let used_weight = <AllPalletsWithSystem as OnIdle<System::BlockNumber>>::on_idle(
                 block_number,
                 remaining_weight,

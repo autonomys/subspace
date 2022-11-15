@@ -1,5 +1,6 @@
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt, Ready};
+use jsonrpsee::core::async_trait;
 use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{BlockBackend, ExecutorProvider, UsageProvider};
 use sc_service::{Configuration, TaskManager};
@@ -14,6 +15,7 @@ use sc_transaction_pool_api::{
     TransactionStatusStreamFor, TxHash,
 };
 use sp_api::ProvideRuntimeApi;
+use sp_blockchain::{HeaderMetadata, TreeRoute};
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
 use sp_domains::ExecutorApi;
 use sp_runtime::generic::BlockId;
@@ -62,6 +64,7 @@ where
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + Send
         + Sync
         + 'static,
@@ -104,6 +107,7 @@ where
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + Send
         + Sync
         + 'static,
@@ -116,7 +120,7 @@ where
     type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<TransactionValidity>> + Send>>;
     type BodyFuture = Ready<TxPoolResult<Option<Vec<<Self::Block as BlockT>::Extrinsic>>>>;
 
-    fn block_body(&self, id: &BlockId<Self::Block>) -> Self::BodyFuture {
+    fn block_body(&self, id: <Self::Block as BlockT>::Hash) -> Self::BodyFuture {
         self.inner.block_body(id)
     }
 
@@ -209,6 +213,14 @@ where
     ) -> Result<Option<<Self::Block as BlockT>::Header>, Self::Error> {
         self.inner.block_header(at)
     }
+
+    fn tree_route(
+        &self,
+        from: <Self::Block as BlockT>::Hash,
+        to: <Self::Block as BlockT>::Hash,
+    ) -> Result<TreeRoute<Self::Block>, Self::Error> {
+        sp_blockchain::tree_route::<Block, Client>(&*self.client, from, to).map_err(Into::into)
+    }
 }
 
 pub struct BasicPoolWrapper<Block, PoolApi>
@@ -243,6 +255,8 @@ where
             RevalidationType::Full,
             spawner,
             client.usage_info().chain.best_number,
+            client.usage_info().chain.best_hash,
+            client.usage_info().chain.finalized_hash,
         );
 
         Self { inner: basic_pool }
@@ -265,6 +279,7 @@ where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + BlockIdTo<Block>
         + Send
         + Sync
@@ -380,13 +395,14 @@ where
     }
 }
 
+#[async_trait]
 impl<Block, PoolApi> MaintainedTransactionPool for BasicPoolWrapper<Block, PoolApi>
 where
     Block: BlockT,
     PoolApi: ChainApi<Block = Block> + 'static,
 {
-    fn maintain(&self, event: ChainEvent<Self::Block>) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        self.inner.maintain(event)
+    async fn maintain(&self, event: ChainEvent<Self::Block>) {
+        self.inner.maintain(event).await
     }
 }
 
@@ -411,6 +427,7 @@ where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ExecutorProvider<Block>
         + UsageProvider<Block>
         + BlockIdTo<Block>

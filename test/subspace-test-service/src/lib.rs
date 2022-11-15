@@ -22,8 +22,9 @@ use futures::future::Future;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
-use sc_network::config::{NetworkConfiguration, TransportConfig};
+use sc_network::config::NetworkConfiguration;
 use sc_network::{multiaddr, NetworkStateInfo};
+use sc_network_common::config::TransportConfig;
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
 };
@@ -61,8 +62,8 @@ pub fn node_config(
     run_farmer: bool,
     force_authoring: bool,
     force_synced: bool,
+    base_path: BasePath,
 ) -> Configuration {
-    let base_path = BasePath::new_temp_dir().expect("Could not create temporary directory");
     let root = base_path.path();
     let role = if run_farmer {
         Role::Authority
@@ -104,10 +105,9 @@ pub fn node_config(
         database: DatabaseSource::ParityDb {
             path: root.join("paritydb"),
         },
-        state_cache_size: 16777216,
-        state_cache_child_ratio: None,
+        trie_cache_maximum_size: Some(64 * 1024 * 1024),
         state_pruning: Default::default(),
-        blocks_pruning: BlocksPruning::All,
+        blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: Box::new(spec),
         wasm_method: WasmExecutionMethod::Interpreted,
         wasm_runtime_overrides: Default::default(),
@@ -159,6 +159,7 @@ pub async fn run_validator_node(
     run_farmer: bool,
     force_authoring: bool,
     force_synced: bool,
+    base_path: BasePath,
 ) -> (PrimaryTestNode, NetworkStarter) {
     let primary_chain_config = node_config(
         tokio_handle,
@@ -167,6 +168,7 @@ pub async fn run_validator_node(
         run_farmer,
         force_authoring,
         force_synced,
+        base_path,
     );
     let multiaddr = primary_chain_config.network.listen_addresses[0].clone();
     let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
@@ -252,7 +254,7 @@ impl PrimaryTestNode {
     /// Send an extrinsic to this node.
     pub async fn send_extrinsic(
         &self,
-        function: impl Into<subspace_test_runtime::Call>,
+        function: impl Into<subspace_test_runtime::RuntimeCall>,
         caller: Sr25519Keyring,
     ) -> Result<RpcTransactionOutput, RpcTransactionError> {
         let extrinsic = construct_extrinsic(&self.client, function, caller, 0);
@@ -269,7 +271,7 @@ impl PrimaryTestNode {
 /// Construct an extrinsic that can be applied to the test runtime.
 pub fn construct_extrinsic(
     client: &Client,
-    function: impl Into<subspace_test_runtime::Call>,
+    function: impl Into<subspace_test_runtime::RuntimeCall>,
     caller: Sr25519Keyring,
     nonce: u32,
 ) -> UncheckedExtrinsic {
@@ -323,7 +325,7 @@ pub fn construct_transfer_extrinsic(
     dest: sp_keyring::AccountKeyring,
     value: Balance,
 ) -> UncheckedExtrinsic {
-    let function = subspace_test_runtime::Call::Balances(pallet_balances::Call::transfer {
+    let function = subspace_test_runtime::RuntimeCall::Balances(pallet_balances::Call::transfer {
         dest: MultiSigner::from(dest.public()).into_account().into(),
         value,
     });
@@ -334,12 +336,16 @@ pub fn construct_transfer_extrinsic(
 #[cfg(test)]
 mod tests {
     use super::run_validator_node;
+    use sc_service::BasePath;
     use sp_keyring::Sr25519Keyring::{Alice, Bob};
+    use tempfile::TempDir;
 
     // TODO: always enable the test to catch any potential regressions.
     #[substrate_test_utils::test]
     #[ignore]
     async fn test_primary_node_catching_up() {
+        let directory = TempDir::new().expect("Must be able to create temporary directory");
+
         let mut builder = sc_cli::LoggerBuilder::new("");
         builder.with_colors(false);
         let _ = builder.init();
@@ -347,8 +353,16 @@ mod tests {
         let tokio_handle = tokio::runtime::Handle::current();
 
         // start alice
-        let (alice, alice_network_starter) =
-            run_validator_node(tokio_handle.clone(), Alice, vec![], true, true, true).await;
+        let (alice, alice_network_starter) = run_validator_node(
+            tokio_handle.clone(),
+            Alice,
+            vec![],
+            true,
+            true,
+            true,
+            BasePath::new(directory.path().join("alice")),
+        )
+        .await;
 
         alice_network_starter.start_network();
 
@@ -359,6 +373,7 @@ mod tests {
             false,
             false,
             false,
+            BasePath::new(directory.path().join("bob")),
         )
         .await;
 

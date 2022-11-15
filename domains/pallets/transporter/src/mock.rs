@@ -32,8 +32,8 @@ impl frame_system::Config for MockRuntime {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = u64;
     type Hash = H256;
@@ -41,7 +41,7 @@ impl frame_system::Config for MockRuntime {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -62,7 +62,7 @@ impl pallet_balances::Config for MockRuntime {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = ();
     type MaxReserves = ();
@@ -90,7 +90,7 @@ impl Sender<AccountId> for MockMessenger {
 }
 
 impl Config for MockRuntime {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = SelfDomainId;
     type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;

@@ -1,6 +1,6 @@
 use crate::mock::{
-    new_test_ext, AccountId, Balance, Balances, Event, MockRuntime, Origin, SelfDomainId,
-    SelfEndpointId, System, Transporter, USER_ACCOUNT,
+    new_test_ext, AccountId, Balance, Balances, MockRuntime, RuntimeEvent, RuntimeOrigin,
+    SelfDomainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
@@ -25,7 +25,7 @@ fn test_initiate_transfer_failed() {
             domain_id: dst_domain_id,
             account_id: account,
         };
-        let res = Transporter::transfer(Origin::signed(account), dst_location, 500);
+        let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
         assert_err!(res, Error::<MockRuntime>::LowBalance);
     })
 }
@@ -45,13 +45,13 @@ fn test_initiate_transfer() {
             domain_id: dst_domain_id,
             account_id: account,
         };
-        let res = Transporter::transfer(Origin::signed(account), dst_location, 500);
+        let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
         assert_ok!(res);
         let balance = Balances::free_balance(&account);
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
-        System::assert_has_event(Event::Transporter(
+        System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferInitiated {
                 domain_id: dst_domain_id,
                 message_id: 0,
@@ -103,9 +103,9 @@ fn initiate_transfer(dst_domain_id: DomainId, account: AccountId, amount: Balanc
         account_id: account,
     };
 
-    let res = Transporter::transfer(Origin::signed(account), dst_location, amount);
+    let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, amount);
     assert_ok!(res);
-    System::assert_has_event(Event::Transporter(
+    System::assert_has_event(RuntimeEvent::Transporter(
         crate::Event::<MockRuntime>::OutgoingTransferInitiated {
             domain_id: dst_domain_id,
             message_id: 0,
@@ -218,7 +218,7 @@ fn test_transfer_response_revert() {
         assert_eq!(balance, 1000);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
-        System::assert_has_event(Event::Transporter(
+        System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferFailed {
                 domain_id: dst_domain_id,
                 message_id: 0,
@@ -272,7 +272,7 @@ fn test_transfer_response_successful() {
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
-        System::assert_has_event(Event::Transporter(
+        System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferSuccessful {
                 domain_id: dst_domain_id,
                 message_id: 0,
