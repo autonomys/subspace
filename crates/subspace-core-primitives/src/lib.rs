@@ -195,30 +195,9 @@ impl TryFrom<&[u8]> for Scalar {
 
     /// Number of bytes must be exactly [`Self::SAFE_BYTES`] bytes.
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.len() != Self::SAFE_BYTES {
-            return Err(());
-        }
-
-        let mut bigint_bytes = [0u64; 4];
-        // NOTE: `bigint_bytes` has one more byte than `bytes`, the last byte will always be zero.
-        bigint_bytes
-            .iter_mut()
-            .zip(value.chunks(mem::size_of::<u64>()))
-            .for_each(|(output, input): (&mut u64, &[u8])| {
-                let mut tmp = 0u64.to_le_bytes();
-
-                tmp.iter_mut().zip(input).for_each(|(output, input)| {
-                    *output = *input;
-                });
-
-                *output = u64::from_le_bytes(tmp);
-            });
-
-        // Bypass `from_repr` because of https://github.com/arkworks-rs/algebra/issues/516
-        Ok(Scalar(Fr {
-            0: BigInteger256::new(bigint_bytes),
-            1: PhantomData::default(),
-        }))
+        <&[u8; Self::SAFE_BYTES]>::try_from(value)
+            .map(Self::from)
+            .map_err(|_| ())
     }
 }
 
