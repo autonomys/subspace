@@ -20,11 +20,11 @@
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(int_log)]
 
-#[cfg(test)]
-mod tests;
-
 pub mod crypto;
 pub mod objects;
+pub mod sector_codec;
+#[cfg(test)]
+mod tests;
 
 extern crate alloc;
 
@@ -32,29 +32,43 @@ use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
+use ark_bls12_381::Fr;
+use ark_ff::BigInteger256;
 use bitvec::prelude::*;
 use core::convert::AsRef;
-use core::fmt;
-use core::num::{NonZeroU16, NonZeroU64};
+use core::marker::PhantomData;
+use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
+use core::{fmt, mem};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode};
-use scale_info::TypeInfo;
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+use scale_info::{Type, TypeInfo};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Byte size of a piece in Subspace Network, 32KiB.
+/// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
+/// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
+/// BLS12-381 scalar safely).
+///
+/// TODO: Requirement of being a multiple of 2 bytes may go away eventually as we switch erasure
+///  coding implementation, so we might be able to bump it by one field element in size.
 ///
 /// This can not changed after the network is launched.
-pub const PIECE_SIZE: usize = 32 * 1024;
+pub const PIECE_SIZE: usize = 31_744;
 /// Size of witness for a segment record (in bytes).
 pub const WITNESS_SIZE: u32 = 48;
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+/// Size of one plotted sector.
+///
+/// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
+/// equal to number of columns.
+pub const PLOT_SECTOR_SIZE: u64 =
+    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::SAFE_BYTES as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -103,6 +117,170 @@ pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
 
+/// Representation of a single BLS12-381 scalar value.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
+pub struct Scalar(Fr);
+
+impl Encode for Scalar {
+    fn size_hint(&self) -> usize {
+        48
+    }
+
+    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+        f(&self.to_bytes())
+    }
+
+    fn encoded_size(&self) -> usize {
+        48
+    }
+}
+
+impl EncodeLike for Scalar {}
+
+impl Decode for Scalar {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        Ok(Self::from(&<[u8; Self::SAFE_BYTES]>::decode(input)?))
+    }
+
+    fn encoded_fixed_size() -> Option<usize> {
+        Some(Self::SAFE_BYTES)
+    }
+}
+
+impl TypeInfo for Scalar {
+    type Identity = Self;
+
+    fn type_info() -> Type {
+        Type::builder()
+            .path(scale_info::Path::new(stringify!(Scalar), module_path!()))
+            .docs(&["BLS12-381 scalar"])
+            .composite(scale_info::build::Fields::named().field(|f| {
+                f.ty::<[u8; Self::SAFE_BYTES]>()
+                    .name(stringify!(inner))
+                    .type_name("Fr")
+            }))
+    }
+}
+
+#[cfg(feature = "serde")]
+mod scalar_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    // Custom wrapper so we don't have to write serialization/deserialization code manually
+    #[derive(Serialize, Deserialize)]
+    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::SAFE_BYTES]);
+
+    impl Serialize for super::Scalar {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Scalar(self.to_bytes()).serialize(serializer)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for super::Scalar {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let Scalar(bytes) = Scalar::deserialize(deserializer)?;
+            Ok(Self::from(&bytes))
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for Scalar {
+    type Error = ();
+
+    /// Number of bytes must be exactly [`Self::SAFE_BYTES`] bytes.
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        <&[u8; Self::SAFE_BYTES]>::try_from(value)
+            .map(Self::from)
+            .map_err(|_| ())
+    }
+}
+
+impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
+    fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
+        let mut bigint_bytes = [0u64; 4];
+        // NOTE: `bigint_bytes` has one more byte than `bytes`, the last byte will always be zero.
+        bigint_bytes
+            .iter_mut()
+            .zip(value.chunks(mem::size_of::<u64>()))
+            .for_each(|(output, input): (&mut u64, &[u8])| {
+                let mut tmp = 0u64.to_le_bytes();
+
+                tmp.iter_mut().zip(input).for_each(|(output, input)| {
+                    *output = *input;
+                });
+
+                *output = u64::from_le_bytes(tmp);
+            });
+
+        // Bypass `from_repr` because of https://github.com/arkworks-rs/algebra/issues/516
+        Scalar(Fr {
+            0: BigInteger256::new(bigint_bytes),
+            1: PhantomData::default(),
+        })
+    }
+}
+
+impl From<&Scalar> for [u8; Scalar::SAFE_BYTES] {
+    fn from(value: &Scalar) -> [u8; Scalar::SAFE_BYTES] {
+        let mut bytes = [0u8; Scalar::SAFE_BYTES];
+
+        bytes
+            .chunks_mut(mem::size_of::<u64>())
+            .zip(&value.0 .0 .0)
+            .for_each(|(output, input): (&mut [u8], &u64)| {
+                output
+                    .iter_mut()
+                    .zip(input.to_le_bytes())
+                    .for_each(|(output, input)| {
+                        *output = input;
+                    });
+            });
+
+        bytes
+    }
+}
+
+impl Scalar {
+    /// How many full bytes can be stored in BLS12-381 scalar (it is actually 254 bits, but bits are
+    /// mut harder to work with and likely not worth it)
+    pub const SAFE_BYTES: usize = 31;
+
+    /// Convert scalar into bytes
+    pub fn to_bytes(&self) -> [u8; Scalar::SAFE_BYTES] {
+        self.into()
+    }
+
+    /// Converts scalar to bytes that will be written to `bytes`.
+    ///
+    /// Returns `Err(())` if number of bytes in slice provided is not exactly [`Self::SAFE_BYTES`].
+    #[allow(clippy::result_unit_err)]
+    pub fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), ()> {
+        if bytes.len() != Self::SAFE_BYTES {
+            return Err(());
+        }
+
+        bytes
+            .chunks_mut(mem::size_of::<u64>())
+            .zip(&self.0 .0 .0)
+            .for_each(|(output, input): (&mut [u8], &u64)| {
+                output
+                    .iter_mut()
+                    .zip(input.to_le_bytes())
+                    .for_each(|(output, input)| {
+                        *output = input;
+                    });
+            });
+
+        Ok(())
+    }
+}
+
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
     Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
@@ -114,7 +292,7 @@ pub struct PublicKey(
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(&self.0))
+        write!(f, "{}", hex::encode(self.0))
     }
 }
 
@@ -869,21 +1047,4 @@ impl SectorId {
             hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ])
     }
-}
-
-/// Size of a plotted sector on disk
-///
-/// Depends on `space_l` (specified in bits).
-///
-/// PANICS: Panics if `space_l` is smaller than `3`
-pub fn plot_sector_size(space_l: NonZeroU16) -> u64 {
-    let plot_sector_size_bits = u64::from(space_l.get())
-        .checked_mul(2u64.pow(u32::from(space_l.get())))
-        .expect("u16 is not big enough to cause overflow here; qed");
-
-    // When `space_l` is at least `3` it is guaranteed that we can divide above by `8` (2^3) without
-    // remainder
-    plot_sector_size_bits
-        .checked_div(u64::from(u8::BITS))
-        .expect("`space_l` must be 3 or more")
 }

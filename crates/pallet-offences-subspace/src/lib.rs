@@ -56,7 +56,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// The overarching event type.
-        type Event: From<Event> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// A handler called for every offence report.
         type OnOffenceHandler: OnOffenceHandler<FarmerPublicKey>;
     }
@@ -137,7 +137,7 @@ impl<T: Config, O: Offence<FarmerPublicKey>> ReportOffence<FarmerPublicKey, O> f
     fn is_known_offence(offenders: &[FarmerPublicKey], time_slot: &O::TimeSlot) -> bool {
         let any_unknown = offenders.iter().any(|offender| {
             let report_id = Self::report_id::<O>(time_slot, offender);
-            !<Reports<T>>::contains_key(&report_id)
+            !<Reports<T>>::contains_key(report_id)
         });
 
         !any_unknown
@@ -167,9 +167,9 @@ impl<T: Config> Pallet<T> {
         for offender in offenders {
             let report_id = Self::report_id::<O>(time_slot, &offender);
 
-            if !<Reports<T>>::contains_key(&report_id) {
+            if !<Reports<T>>::contains_key(report_id) {
                 any_new = true;
-                <Reports<T>>::insert(&report_id, OffenceDetails { offender });
+                <Reports<T>>::insert(report_id, OffenceDetails { offender });
 
                 storage.insert(time_slot, report_id);
             }
@@ -216,12 +216,12 @@ impl<T: Config, O: Offence<FarmerPublicKey>> ReportIndexStorage<T, O> {
     fn load(time_slot: &O::TimeSlot) -> Self {
         let opaque_time_slot = time_slot.encode();
 
-        let same_kind_reports = ReportsByKindIndex::<T>::get(&O::ID);
+        let same_kind_reports = ReportsByKindIndex::<T>::get(O::ID);
         let same_kind_reports =
             Vec::<(O::TimeSlot, ReportIdOf<T>)>::decode(&mut &same_kind_reports[..])
                 .unwrap_or_default();
 
-        let concurrent_reports = <ConcurrentReportsIndex<T>>::get(&O::ID, &opaque_time_slot);
+        let concurrent_reports = <ConcurrentReportsIndex<T>>::get(O::ID, &opaque_time_slot);
 
         Self {
             opaque_time_slot,
@@ -246,9 +246,9 @@ impl<T: Config, O: Offence<FarmerPublicKey>> ReportIndexStorage<T, O> {
 
     /// Dump the indexes to the storage.
     fn save(self) {
-        ReportsByKindIndex::<T>::insert(&O::ID, self.same_kind_reports.encode());
+        ReportsByKindIndex::<T>::insert(O::ID, self.same_kind_reports.encode());
         <ConcurrentReportsIndex<T>>::insert(
-            &O::ID,
+            O::ID,
             &self.opaque_time_slot,
             &self.concurrent_reports,
         );

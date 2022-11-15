@@ -28,7 +28,7 @@ impl<H: Hasher> StorageProofVerifier<H> {
         key: StorageKey,
     ) -> Result<V, VerificationError> {
         let db = proof.into_memory_db::<H>();
-        let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref())
+        let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref(), None, None)
             .map_err(|_| VerificationError::InvalidProof)?
             .ok_or(VerificationError::MissingValue)?;
 

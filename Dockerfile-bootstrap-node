@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-ARG RUSTC_VERSION=nightly-2022-08-12
+ARG RUSTC_VERSION=nightly-2022-11-08
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583
@@ -38,6 +38,7 @@ COPY test /code/test
 
 RUN \
     /root/.cargo/bin/cargo build \
+        --locked \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-bootstrap-node \

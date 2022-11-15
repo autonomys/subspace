@@ -4,7 +4,6 @@
     hash_drain_filter,
     int_log,
     io_error_other,
-    map_first_last,
     trait_alias,
     try_blocks,
     type_changing_struct_update
@@ -31,8 +30,6 @@
 //! are `target ± ½ * solution range` (while also handing overflow/underflow) when interpreted as
 //! 64-bit unsigned integers.
 
-#[doc(hidden)]
-pub mod file_ext;
 pub(crate) mod identity;
 pub(crate) mod object_mappings;
 pub mod reward_signing;

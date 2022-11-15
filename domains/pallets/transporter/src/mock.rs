@@ -4,6 +4,7 @@ use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use pallet_balances::AccountData;
 use sp_core::H256;
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -12,7 +13,6 @@ use sp_runtime::DispatchError;
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<MockRuntime>;
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type Balance = u64;
-pub(crate) type DomainId = u64;
 pub(crate) type AccountId = u64;
 
 frame_support::construct_runtime!(
@@ -32,8 +32,8 @@ impl frame_system::Config for MockRuntime {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = u64;
     type Hash = H256;
@@ -41,7 +41,7 @@ impl frame_system::Config for MockRuntime {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -62,7 +62,7 @@ impl pallet_balances::Config for MockRuntime {
     type AccountStore = System;
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type MaxLocks = ();
     type MaxReserves = ();
@@ -71,13 +71,13 @@ impl pallet_balances::Config for MockRuntime {
 }
 
 parameter_types! {
-    pub const SelfDomainId: DomainId = 1;
+    pub const SelfDomainId: DomainId = DomainId::new(1);
     pub const SelfEndpointId: EndpointId = 100;
 }
 
 #[derive(Debug)]
 pub struct MockMessenger {}
-impl Sender<AccountId, DomainId> for MockMessenger {
+impl Sender<AccountId> for MockMessenger {
     type MessageId = u64;
 
     fn send_message(
@@ -90,8 +90,7 @@ impl Sender<AccountId, DomainId> for MockMessenger {
 }
 
 impl Config for MockRuntime {
-    type Event = Event;
-    type DomainId = DomainId;
+    type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = SelfDomainId;
     type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;

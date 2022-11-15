@@ -30,15 +30,17 @@ pub enum FraudProofError {
     RuntimeApi(#[from] sp_api::ApiError),
 }
 
-pub(crate) struct FraudProofGenerator<Block, Client, Backend, E> {
+pub(crate) struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     backend: Arc<Backend>,
     code_executor: Arc<E>,
-    _phantom: PhantomData<Block>,
+    _phantom: PhantomData<(Block, PBlock)>,
 }
 
-impl<Block, Client, Backend, E> Clone for FraudProofGenerator<Block, Client, Backend, E> {
+impl<Block, PBlock, Client, Backend, E> Clone
+    for FraudProofGenerator<Block, PBlock, Client, Backend, E>
+{
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
@@ -50,12 +52,13 @@ impl<Block, Client, Backend, E> Clone for FraudProofGenerator<Block, Client, Bac
     }
 }
 
-impl<Block, Client, Backend, E> FraudProofGenerator<Block, Client, Backend, E>
+impl<Block, PBlock, Client, Backend, E> FraudProofGenerator<Block, PBlock, Client, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId>
+    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -80,7 +83,7 @@ where
         }
     }
 
-    pub(crate) fn generate_proof<PBlock: BlockT>(
+    pub(crate) fn generate_proof(
         &self,
         local_trace_index: u32,
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
@@ -135,7 +138,7 @@ where
             };
 
             let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 None,
             )?;
@@ -170,7 +173,7 @@ where
             let post_delta_root = storage_changes.transaction_storage_root;
 
             let proof = prover.prove_execution(
-                BlockId::Hash(parent_header.hash()),
+                parent_header.hash(),
                 &execution_phase,
                 Some((delta, post_delta_root)),
             )?;
@@ -218,7 +221,7 @@ where
     }
 
     fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        self.client.block_body(&BlockId::Hash(at))?.ok_or_else(|| {
+        self.client.block_body(at)?.ok_or_else(|| {
             sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at))
         })
     }
@@ -258,7 +261,7 @@ where
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
         let execution_proof = prover.prove_execution(
-            BlockId::Hash(parent_header.hash()),
+            parent_header.hash(),
             &execution_phase,
             Some((delta, post_delta_root)),
         )?;

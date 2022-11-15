@@ -1,19 +1,22 @@
 use crate::{
-    self as pallet_domain_registry, DomainConfig, DomainCreators, DomainOperators, Domains, Error,
-    NextDomainId,
+    self as pallet_domain_registry, DomainAuthorities, DomainCreators, DomainOperators,
+    DomainTotalStakeWeight, Domains, Error, NextDomainId,
 };
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
+use frame_support::dispatch::Weight;
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
-use sp_domains::{ExecutorPair, StakeWeight};
+use sp_domains::{DomainId, ExecutorPair, StakeWeight};
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::Percent;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+type DomainConfig = crate::DomainConfig<Test>;
 
 frame_support::construct_runtime!(
     pub struct Test
@@ -39,8 +42,8 @@ impl frame_system::Config for Test {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = BlockNumber;
     type Hash = Hash;
@@ -48,7 +51,7 @@ impl frame_system::Config for Test {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<2>;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -71,7 +74,7 @@ impl pallet_balances::Config for Test {
     type ReserveIdentifier = [u8; 8];
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
@@ -88,7 +91,7 @@ parameter_types! {
 }
 
 impl pallet_executor_registry::Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type StakeWeight = StakeWeight;
     type MinExecutorStake = MinExecutorStake;
@@ -98,27 +101,27 @@ impl pallet_executor_registry::Config for Test {
     type EpochDuration = EpochDuration;
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
-}
-
-impl crate::ExecutorRegistry<AccountId, Balance> for ExecutorRegistry {
-    fn executor_stake(who: &AccountId) -> Option<Balance> {
-        ExecutorRegistry::executor_stake(who)
-    }
+    type OnNewEpoch = DomainRegistry;
 }
 
 parameter_types! {
     pub const MinDomainDeposit: Balance = 10;
     pub const MaxDomainDeposit: Balance = 1000;
     pub const MinDomainOperatorStake: u32 = 10;
+    pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const ReceiptsPruningDepth: BlockNumber = 256;
 }
 
 impl pallet_domain_registry::Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
+    type StakeWeight = StakeWeight;
     type ExecutorRegistry = ExecutorRegistry;
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -146,6 +149,12 @@ fn new_test_ext() -> sp_io::TestExternalities {
                 2 + 10000,
                 ExecutorPair::from_seed(&U256::from(2u32).into()).public(),
             ),
+            (
+                3,
+                300,
+                3 + 10000,
+                ExecutorPair::from_seed(&U256::from(3u32).into()).public(),
+            ),
         ],
         slot_probability: (1u64, 1u64),
     }
@@ -160,7 +169,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
                 wasm_runtime_hash: Hash::repeat_byte(1),
                 bundle_frequency: 100,
                 max_bundle_size: 1024 * 1024,
-                max_bundle_weight: 100_000_000_000,
+                max_bundle_weight: Weight::from_ref_time(100_000_000_000),
                 min_operator_stake: 20,
             },
             1,
@@ -176,40 +185,44 @@ fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn create_domain_should_work() {
     new_test_ext().execute_with(|| {
+        let genesis_domain_id = DomainId::from(0);
         let genesis_domain_config = DomainConfig {
             wasm_runtime_hash: Hash::repeat_byte(1),
             bundle_frequency: 100,
             max_bundle_size: 1024 * 1024,
-            max_bundle_weight: 100_000_000_000,
+            max_bundle_weight: Weight::from_ref_time(100_000_000_000),
             min_operator_stake: 20,
         };
-        assert_eq!(Domains::<Test>::get(0).unwrap(), genesis_domain_config);
-        assert_eq!(NextDomainId::<Test>::get(), 1);
-        assert_eq!(DomainCreators::<Test>::get(0, 1), Some(100));
+        assert_eq!(
+            Domains::<Test>::get(genesis_domain_id).unwrap(),
+            genesis_domain_config
+        );
+        assert_eq!(NextDomainId::<Test>::get(), 1.into());
+        assert_eq!(DomainCreators::<Test>::get(genesis_domain_id, 1), Some(100));
 
         let domain_config = DomainConfig {
             wasm_runtime_hash: Hash::random(),
             bundle_frequency: 100,
             max_bundle_size: 1024 * 1024,
-            max_bundle_weight: 100_000_000_000,
+            max_bundle_weight: Weight::from_ref_time(100_000_000_000),
             min_operator_stake: 20,
         };
 
         assert_noop!(
-            DomainRegistry::create_domain(Origin::signed(1), 1, domain_config.clone()),
+            DomainRegistry::create_domain(RuntimeOrigin::signed(1), 1, domain_config.clone()),
             Error::<Test>::DepositTooSmall
         );
         assert_noop!(
-            DomainRegistry::create_domain(Origin::signed(1), 10_000, domain_config.clone()),
+            DomainRegistry::create_domain(RuntimeOrigin::signed(1), 10_000, domain_config.clone()),
             Error::<Test>::DepositTooLarge
         );
         assert_noop!(
-            DomainRegistry::create_domain(Origin::signed(8), 100, domain_config.clone()),
+            DomainRegistry::create_domain(RuntimeOrigin::signed(8), 100, domain_config.clone()),
             Error::<Test>::InsufficientBalance
         );
         assert_noop!(
             DomainRegistry::create_domain(
-                Origin::signed(1),
+                RuntimeOrigin::signed(1),
                 100,
                 DomainConfig {
                     min_operator_stake: 1,
@@ -222,12 +235,12 @@ fn create_domain_should_work() {
         let (creator, deposit) = (2, 200);
         let next_domain_id = NextDomainId::<Test>::get();
         assert_ok!(DomainRegistry::create_domain(
-            Origin::signed(creator),
+            RuntimeOrigin::signed(creator),
             deposit,
             domain_config.clone(),
         ));
         assert_eq!(
-            frame_system::Account::<Test>::get(&creator).data,
+            frame_system::Account::<Test>::get(creator).data,
             AccountData {
                 free: 2000,
                 reserved: 0,
@@ -249,34 +262,38 @@ fn create_domain_should_work() {
 fn register_domain_operator_and_update_domain_stake_should_work() {
     new_test_ext().execute_with(|| {
         assert_eq!(
-            DomainOperators::<Test>::get(1, 0).unwrap(),
+            DomainOperators::<Test>::get(1, DomainId::from(0)).unwrap(),
             Percent::from_percent(80)
         );
 
         assert_noop!(
-            DomainRegistry::update_domain_stake(Origin::signed(1), 0, Percent::from_percent(10),),
+            DomainRegistry::update_domain_stake(
+                RuntimeOrigin::signed(1),
+                DomainId::from(0),
+                Percent::from_percent(10),
+            ),
             Error::<Test>::OperatorStakeTooSmall
         );
 
         assert_ok!(DomainRegistry::update_domain_stake(
-            Origin::signed(1),
-            0,
+            RuntimeOrigin::signed(1),
+            DomainId::from(0),
             Percent::from_percent(20),
         ));
 
         assert_eq!(
-            DomainOperators::<Test>::get(1, 0).unwrap(),
+            DomainOperators::<Test>::get(1, DomainId::from(0)).unwrap(),
             Percent::from_percent(20)
         );
 
         assert_ok!(DomainRegistry::create_domain(
-            Origin::signed(2),
+            RuntimeOrigin::signed(2),
             200,
             DomainConfig {
                 wasm_runtime_hash: Hash::random(),
                 bundle_frequency: 100,
                 max_bundle_size: 1024 * 1024,
-                max_bundle_weight: 100_000_000_000,
+                max_bundle_weight: Weight::from_ref_time(100_000_000_000),
                 min_operator_stake: 20,
             }
         ));
@@ -284,34 +301,34 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
         // only 80% is available.
         assert_noop!(
             DomainRegistry::register_domain_operator(
-                Origin::signed(1),
-                1,
+                RuntimeOrigin::signed(1),
+                DomainId::from(1),
                 Percent::from_percent(90),
             ),
             Error::<Test>::StakeAllocationTooLarge
         );
 
         assert_ok!(DomainRegistry::register_domain_operator(
-            Origin::signed(1),
-            1,
+            RuntimeOrigin::signed(1),
+            DomainId::from(1),
             Percent::from_percent(80),
         ));
 
         assert_ok!(DomainRegistry::register_domain_operator(
-            Origin::signed(2),
-            0,
+            RuntimeOrigin::signed(2),
+            DomainId::from(0),
             Percent::from_percent(50),
         ));
 
         assert_eq!(
-            DomainOperators::<Test>::get(2, 0).unwrap(),
+            DomainOperators::<Test>::get(2, DomainId::from(0)).unwrap(),
             Percent::from_percent(50)
         );
 
         assert_noop!(
             DomainRegistry::register_domain_operator(
-                Origin::signed(3),
-                1,
+                RuntimeOrigin::signed(8),
+                DomainId::from(1),
                 Percent::from_percent(30),
             ),
             Error::<Test>::NotExecutor
@@ -323,21 +340,68 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
 fn deregister_domain_operator_should_work() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            DomainRegistry::deregister_domain_operator(Origin::signed(3), 0,),
+            DomainRegistry::deregister_domain_operator(RuntimeOrigin::signed(3), DomainId::from(0)),
             Error::<Test>::NotOperator
         );
 
         assert_ok!(DomainRegistry::register_domain_operator(
-            Origin::signed(2),
-            0,
+            RuntimeOrigin::signed(2),
+            DomainId::from(0),
             Percent::from_percent(50),
         ));
 
         assert_ok!(DomainRegistry::deregister_domain_operator(
-            Origin::signed(1),
-            0,
+            RuntimeOrigin::signed(1),
+            DomainId::from(0)
         ));
 
-        assert!(DomainOperators::<Test>::get(1, 0).is_none());
+        assert!(DomainOperators::<Test>::get(1, DomainId::from(0)).is_none());
+    });
+}
+
+#[test]
+fn rotate_domain_authorities_should_work() {
+    new_test_ext().execute_with(|| {
+        let genesis_domain_id = DomainId::from(0);
+        assert_eq!(
+            DomainAuthorities::<Test>::iter().collect::<Vec<_>>(),
+            vec![(genesis_domain_id, 1, 80)]
+        );
+        assert_eq!(
+            DomainTotalStakeWeight::<Test>::iter().collect::<Vec<_>>(),
+            vec![(genesis_domain_id, 80)]
+        );
+
+        assert_ok!(DomainRegistry::register_domain_operator(
+            RuntimeOrigin::signed(2),
+            DomainId::from(0),
+            Percent::from_percent(20),
+        ));
+
+        assert_ok!(DomainRegistry::register_domain_operator(
+            RuntimeOrigin::signed(3),
+            DomainId::from(0),
+            Percent::from_percent(30),
+        ));
+
+        let epoch_end = EpochDuration::get();
+
+        for b in (System::block_number() + 1)..=epoch_end {
+            System::set_block_number(b);
+            <ExecutorRegistry as Hooks<BlockNumber>>::on_initialize(b);
+        }
+
+        assert_eq!(
+            DomainAuthorities::<Test>::iter().collect::<Vec<_>>(),
+            vec![
+                (genesis_domain_id, 3, 90),
+                (genesis_domain_id, 1, 80),
+                (genesis_domain_id, 2, 40)
+            ]
+        );
+        assert_eq!(
+            DomainTotalStakeWeight::<Test>::iter().collect::<Vec<_>>(),
+            vec![(genesis_domain_id, 90 + 80 + 40)]
+        );
     });
 }

@@ -114,7 +114,7 @@ where
         Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
     type Claim = PreDigest<FarmerPublicKey, FarmerPublicKey>;
-    type EpochData = ();
+    type AuxData = ();
 
     fn logging_target(&self) -> &'static str {
         "subspace"
@@ -124,15 +124,15 @@ where
         &mut self.block_import
     }
 
-    fn epoch_data(
+    fn aux_data(
         &self,
         _parent: &Block::Header,
         _slot: Slot,
-    ) -> Result<Self::EpochData, ConsensusError> {
+    ) -> Result<Self::AuxData, ConsensusError> {
         Ok(())
     }
 
-    fn authorities_len(&self, _epoch_data: &Self::EpochData) -> Option<usize> {
+    fn authorities_len(&self, _epoch_data: &Self::AuxData) -> Option<usize> {
         // This function is used in `sc-consensus-slots` in order to determine whether it is
         // possible to skip block production under certain circumstances, returning `None` or any
         // number smaller or equal to `1` disables that functionality and we don't want that.
@@ -143,7 +143,7 @@ where
         &self,
         parent_header: &Block::Header,
         slot: Slot,
-        _epoch_data: &Self::EpochData,
+        _epoch_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
@@ -302,7 +302,7 @@ where
         body: Vec<Block::Extrinsic>,
         storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, Block>,
         pre_digest: Self::Claim,
-        _epoch_data: Self::EpochData,
+        _epoch_data: Self::AuxData,
     ) -> Result<BlockImportParams<Block, I::Transaction>, ConsensusError> {
         let signature = self
             .sign_reward(

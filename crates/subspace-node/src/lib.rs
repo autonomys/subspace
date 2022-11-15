@@ -101,7 +101,7 @@ impl PurgeChainCmd {
         }
 
         for db_path in &db_paths {
-            match fs::remove_dir_all(&db_path) {
+            match fs::remove_dir_all(db_path) {
                 Ok(_) => {
                     println!("{:?} removed.", &db_path);
                 }
@@ -118,6 +118,7 @@ impl PurgeChainCmd {
 
 /// Utilities for working with a node.
 #[derive(Debug, clap::Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
     /// Key management cli utilities
     #[clap(subcommand)]
@@ -177,11 +178,11 @@ pub struct Cli {
 
     /// DSN configuration arguments: DSN 'listen-on' multi-address
     // TODO: Add more DSN-related parameters
-    #[clap(long)]
+    #[arg(long)]
     pub dsn_listen_on: Vec<Multiaddr>,
 
     /// DSN configuration arguments: DSN 'bootstrap-node' multi-address
-    #[clap(long)]
+    #[arg(long)]
     pub dsn_bootstrap_node: Vec<Multiaddr>,
 
     /// Secondary chain arguments
@@ -190,7 +191,7 @@ pub struct Cli {
     /// while the arguments provided after -- will be passed to the executor node.
     ///
     /// subspace-node [primarychain-args] -- [secondarychain-args]
-    #[clap(raw = true)]
+    #[arg(raw = true)]
     pub secondary_chain_args: Vec<String>,
 }
 

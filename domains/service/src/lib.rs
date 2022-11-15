@@ -2,7 +2,7 @@
 
 mod rpc;
 
-use domain_client_executor::Executor;
+use domain_client_executor::SystemExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
 use futures::channel::mpsc;
 use futures::Stream;
@@ -152,7 +152,7 @@ where
     Ok(params)
 }
 
-type CirrusExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Executor<
+type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<
     Block,
     PBlock,
     FullClient<RuntimeApi, ExecutorDispatch>,
@@ -176,7 +176,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SystemDomainApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -196,7 +196,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Executor.
-    pub executor: CirrusExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -241,7 +241,7 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SystemDomainApi<Block, AccountId>
+        + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>,
@@ -265,7 +265,7 @@ where
     let validator = secondary_chain_config.role.is_authority();
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let (network, system_rpc_tx, network_starter) =
+    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(BuildNetworkParams {
             config: &secondary_chain_config,
             client: client.clone(),
@@ -280,11 +280,13 @@ where
     let rpc_builder = {
         let client = client.clone();
         let transaction_pool = transaction_pool.clone();
+        let chain_spec = secondary_chain_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
                 client: client.clone(),
                 pool: transaction_pool.clone(),
+                chain_spec: chain_spec.cloned_box(),
                 deny_unsafe,
             };
 
@@ -302,6 +304,7 @@ where
         backend: backend.clone(),
         network: network.clone(),
         system_rpc_tx,
+        tx_handler_controller,
         telemetry: telemetry.as_mut(),
     })?;
 
@@ -310,7 +313,7 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
-    let executor = Executor::new(
+    let executor = SystemExecutor::new(
         primary_chain_client,
         primary_network,
         &spawn_essential,

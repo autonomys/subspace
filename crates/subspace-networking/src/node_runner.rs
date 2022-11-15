@@ -10,7 +10,7 @@ use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
-use libp2p::identify::IdentifyEvent;
+use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, PutRecordOk,
@@ -383,10 +383,12 @@ where
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
-            let kademlia_enabled = info
-                .protocols
-                .iter()
-                .any(|protocol| protocol.as_bytes() == kademlia.protocol_name());
+            let kademlia_enabled = info.protocols.iter().any(|protocol_a| {
+                kademlia
+                    .protocol_names()
+                    .iter()
+                    .any(|protocol_b| protocol_a.as_bytes() == protocol_b.as_ref())
+            });
 
             if kademlia_enabled {
                 for address in info.listen_addrs {
@@ -405,8 +407,12 @@ where
                         %local_peer_id,
                         %peer_id,
                         %address,
-                        "Adding self-reported address to Kademlia DHT ({}).",
-                        String::from_utf8_lossy(kademlia.protocol_name()),
+                        "Adding self-reported address to Kademlia DHT ({:?}).",
+                        kademlia
+                            .protocol_names()
+                            .iter()
+                            .map(|p| String::from_utf8_lossy(p.as_ref()))
+                            .collect::<Vec<_>>(),
                     );
                     kademlia.add_address(&peer_id, address);
                 }
@@ -414,8 +420,12 @@ where
                 trace!(
                     %local_peer_id,
                     %peer_id,
-                    "Peer doesn't support our Kademlia DHT protocol ({}). Adding to the DTH skipped.",
-                    String::from_utf8_lossy(kademlia.protocol_name())
+                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Adding to the DTH skipped.",
+                    kademlia
+                        .protocol_names()
+                        .iter()
+                        .map(|p| String::from_utf8_lossy(p.as_ref()))
+                        .collect::<Vec<_>>(),
                 )
             }
         }
@@ -453,7 +463,7 @@ where
                         Ok(GetClosestPeersOk { key, peers }) => {
                             trace!(
                                 "Get closest peers query for {} yielded {} results",
-                                hex::encode(&key),
+                                hex::encode(key),
                                 peers.len(),
                             );
 
@@ -475,7 +485,7 @@ where
 
                             debug!(
                                 "Get closest peers query for {} timed out with {} results",
-                                hex::encode(&key),
+                                hex::encode(key),
                                 peers.len(),
                             );
                         }

@@ -7,7 +7,7 @@ mod utils;
 use crate::utils::get_usable_plot_space;
 use anyhow::Result;
 use bytesize::ByteSize;
-use clap::{ArgEnum, Parser, ValueHint};
+use clap::{Parser, ValueEnum, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::num::NonZeroU16;
@@ -36,19 +36,19 @@ static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 #[derive(Debug, Parser)]
 struct FarmingArgs {
     /// WebSocket RPC URL of the Subspace node to connect to
-    #[clap(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
+    #[arg(long, value_hint = ValueHint::Url, default_value = "ws://127.0.0.1:9944")]
     node_rpc_url: String,
     /// Address for farming rewards
-    #[clap(long, parse(try_from_str = parse_ss58_reward_address))]
+    #[arg(long, value_parser = parse_ss58_reward_address)]
     reward_address: PublicKey,
     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    #[clap(long, default_value_t)]
+    #[arg(long, default_value_t)]
     plot_size: ByteSize,
     /// Number of major concurrent operations to allow for disk
-    #[clap(long, default_value = "2")]
+    #[arg(long, default_value = "2")]
     disk_concurrency: NonZeroU16,
     /// Disable farming
-    #[clap(long)]
+    #[arg(long)]
     disable_farming: bool,
     /// DSN parameters
     #[clap(flatten)]
@@ -59,21 +59,21 @@ struct FarmingArgs {
 #[derive(Debug, Parser)]
 struct DsnArgs {
     /// Enable DSN and use DSN piece provider for plotting
-    #[clap(long)]
+    #[arg(long)]
     enable_dsn: bool,
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[clap(long)]
+    #[arg(long)]
     bootstrap_nodes: Vec<Multiaddr>,
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
-    #[clap(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
+    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
     listen_on: Vec<Multiaddr>,
     /// Record cache size in items.
-    #[clap(long, default_value_t = 32768)]
+    #[arg(long, default_value_t = 32768)]
     record_cache_size: usize,
 }
 
-#[derive(Debug, Clone, Copy, ArgEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum WriteToDisk {
     Nothing,
     Everything,
@@ -97,10 +97,10 @@ enum Subcommand {
     // /// Benchmark disk in order to see a throughput of the disk for plotting
     // Bench {
     //     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    //     #[clap(long)]
+    //     #[arg(long)]
     //     plot_size: ByteSize,
     //     /// Number of major concurrent operations to allow for disk
-    //     #[clap(long, default_value = "2")]
+    //     #[arg(long, default_value = "2")]
     //     disk_concurrency: NonZeroU16,
     //     /// How much things to write on disk (the more we write during benchmark, the more accurate
     //     /// it is)
@@ -109,15 +109,15 @@ enum Subcommand {
     //     /// Amount of data to plot for benchmarking.
     //     ///
     //     /// Only `G` and `T` endings are supported.
-    //     #[clap(long)]
+    //     #[arg(long)]
     //     write_pieces_size: ByteSize,
     //     /// Skip recommitment benchmark
-    //     #[clap(long)]
+    //     #[arg(long)]
     //     no_recommitments: bool,
     // },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DiskFarm {
     /// Path to directory where data is stored.
     directory: PathBuf,
@@ -189,7 +189,7 @@ struct Command {
     #[clap(subcommand)]
     subcommand: Subcommand,
     /// Base path for data storage.
-    #[clap(
+    #[arg(
         long,
         default_value_os_t = utils::default_base_path(),
         value_hint = ValueHint::FilePath,
@@ -206,11 +206,11 @@ struct Command {
     /// TODO: Update overhead number here or account for it automatically
     /// Note that `size` is how much data will be plotted, you also need to account for metadata,
     /// which right now occupies up to 8% of the disk space.
-    #[clap(long, conflicts_with = "base-path", conflicts_with = "tmp")]
+    #[arg(long)]
     farm: Vec<DiskFarm>,
     /// Run temporary farmer, this will create a temporary directory for storing farmer data that
     /// will be delete at the end of the process
-    #[clap(long, conflicts_with = "base-path", conflicts_with = "farm")]
+    #[arg(long, conflicts_with = "base_path", conflicts_with = "farm")]
     tmp: bool,
 }
 

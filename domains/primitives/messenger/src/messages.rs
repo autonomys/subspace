@@ -1,6 +1,7 @@
 use crate::endpoint::{EndpointRequest, EndpointResponse};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::traits::CheckedAdd;
@@ -98,7 +99,7 @@ pub enum VersionedPayload<Balance> {
 
 /// Message contains information to be sent to or received from another domain
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Message<DomainId, Balance> {
+pub struct Message<Balance> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -115,18 +116,19 @@ pub struct Message<DomainId, Balance> {
 
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Proof<StateRoot> {
+pub struct Proof<BlockNumber, StateRoot> {
     pub state_root: StateRoot,
     /// Storage proof that src_domain state_root is registered on System domain.
     /// This is optional when the src_domain is the system domain.
-    pub core_domain_proof: Option<StorageProof>,
+    /// BlockNumber is used with storage proof to validate and fetch its state root.
+    pub core_domain_proof: Option<(BlockNumber, StorageProof)>,
     /// Storage proof that message is processed on src_domain.
     pub message_proof: StorageProof,
 }
 
 /// Cross Domain message contains Message and its proof on src_domain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<DomainId, StateRoot> {
+pub struct CrossDomainMessage<StateRoot, BlockNumber> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -136,12 +138,12 @@ pub struct CrossDomainMessage<DomainId, StateRoot> {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
-    pub proof: Proof<StateRoot>,
+    pub proof: Proof<BlockNumber, StateRoot>,
 }
 
 /// Relayer message with storage key to generate storage proof using the backend.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq)]
-pub struct RelayerMessageWithStorageKey<DomainId> {
+pub struct RelayerMessageWithStorageKey {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -156,15 +158,15 @@ pub struct RelayerMessageWithStorageKey<DomainId> {
 
 /// Set of messages with storage keys to be relayed by a given relayer.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq)]
-pub struct RelayerMessagesWithStorageKey<DomainId> {
-    pub outbox: Vec<RelayerMessageWithStorageKey<DomainId>>,
-    pub inbox_responses: Vec<RelayerMessageWithStorageKey<DomainId>>,
+pub struct RelayerMessagesWithStorageKey {
+    pub outbox: Vec<RelayerMessageWithStorageKey>,
+    pub inbox_responses: Vec<RelayerMessageWithStorageKey>,
 }
 
-impl<DomainId, StateRoot> CrossDomainMessage<DomainId, StateRoot> {
+impl<StateRoot, BlockNumber> CrossDomainMessage<StateRoot, BlockNumber> {
     pub fn from_relayer_msg_with_proof(
-        r_msg: RelayerMessageWithStorageKey<DomainId>,
-        proof: Proof<StateRoot>,
+        r_msg: RelayerMessageWithStorageKey,
+        proof: Proof<BlockNumber, StateRoot>,
     ) -> Self {
         CrossDomainMessage {
             src_domain_id: r_msg.src_domain_id,

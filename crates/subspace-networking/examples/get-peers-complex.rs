@@ -1,5 +1,5 @@
 use futures::channel::oneshot;
-use libp2p::identity::sr25519::Keypair;
+use libp2p::identity::ed25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::PeerId;

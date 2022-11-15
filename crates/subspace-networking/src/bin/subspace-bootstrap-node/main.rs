@@ -1,7 +1,7 @@
 //! Simple bootstrap node implementation
 
 use clap::Parser;
-use libp2p::identity::sr25519::Keypair;
+use libp2p::identity::ed25519::Keypair;
 use libp2p::Multiaddr;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -19,7 +19,7 @@ enum Command {
     /// Start bootstrap node
     Start {
         /// Multiaddresses of bootstrap nodes to connect to on startup, multiple are supported
-        #[clap(long, alias = "bootstrap-node")]
+        #[arg(long, alias = "bootstrap-node")]
         bootstrap_nodes: Vec<Multiaddr>,
         /// Keypair for node identity, can be obtained with `generate-keypair` command
         keypair: String,
@@ -27,13 +27,13 @@ enum Command {
         #[clap(default_value = "/ip4/0.0.0.0/tcp/0")]
         listen_on: Vec<Multiaddr>,
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
-        #[clap(long, alias = "reserved-peer")]
+        #[arg(long, alias = "reserved-peer")]
         reserved_peers: Vec<Multiaddr>,
         /// Defines max incoming connections limit for the peer.
-        #[clap(long)]
+        #[arg(long)]
         in_peers: Option<u32>,
         /// Defines max outgoing connections limit for the peer.
-        #[clap(long)]
+        #[arg(long)]
         out_peers: Option<u32>,
     },
     /// Generate a new keypair
@@ -71,7 +71,9 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
                 ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
             };
-            let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+            let (node, mut node_runner) = subspace_networking::create(config)
+                .await
+                .expect("Networking stack creation failed.");
 
             node.on_new_listener(Arc::new({
                 let node_id = node.id();

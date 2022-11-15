@@ -6,6 +6,7 @@ use crate::{
 use frame_support::ensure;
 use frame_support::traits::ReservableCurrency;
 use sp_core::storage::StorageKey;
+use sp_domains::DomainId;
 use sp_messenger::messages::{
     MessageId, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
@@ -26,7 +27,7 @@ pub struct RelayerInfo<AccountId, Balance> {
 
 /// Set of messages to be relayed by a given relayer.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct RelayerMessages<DomainId> {
+pub struct RelayerMessages {
     pub outbox: Vec<(DomainId, MessageId)>,
     pub inbox_responses: Vec<(DomainId, MessageId)>,
 }
@@ -134,9 +135,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn relayer_assigned_messages(
-        relayer_id: RelayerId<T>,
-    ) -> RelayerMessagesWithStorageKey<T::DomainId> {
+    pub fn relayer_assigned_messages(relayer_id: RelayerId<T>) -> RelayerMessagesWithStorageKey {
         let assigned_messages = match RelayerMessageStore::<T>::get(relayer_id) {
             None => return Default::default(),
             Some(messages) => messages,

@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
 use memmap2::Mmap;
+use schnorrkel::Keypair;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
@@ -11,12 +12,13 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    plot_sector_size, Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT,
+    Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE,
     RECORD_SIZE,
 };
-use subspace_farmer::file_ext::FileExt;
-use subspace_farmer::single_disk_plot::farming::audit_sector;
-use subspace_farmer::single_disk_plot::plotting::plot_sector;
+use subspace_farmer_components::farming::audit_sector;
+use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::plotting::plot_sector;
+use subspace_farmer_components::SectorMetadata;
 use subspace_rpc_primitives::FarmerProtocolInfo;
 use utils::BenchPieceReceiver;
 
@@ -33,7 +35,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .map(|sectors_count| sectors_count.parse().unwrap())
         .unwrap_or(10);
 
-    let public_key = PublicKey::default();
+    let keypair = Keypair::from_bytes(&[0; 96]).unwrap();
+    let public_key = PublicKey::from(keypair.public.to_bytes());
     let sector_index = 0;
     let input = vec![1u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     let kzg = Kzg::new(kzg::test_public_parameters());
@@ -62,11 +65,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     };
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
+    let reward_address = PublicKey::default();
 
-    let plot_sector_size = plot_sector_size(farmer_protocol_info.space_l);
-
-    let plotted_sector = {
-        let mut plotted_sector = vec![0u8; plot_sector_size as usize];
+    let (plotted_sector, sector_metadata) = {
+        let mut plotted_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+        let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
 
         block_on(plot_sector(
             &public_key,
@@ -75,33 +78,44 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &cancelled,
             &farmer_protocol_info,
             plotted_sector.as_mut_slice(),
-            io::sink(),
+            sector_metadata.as_mut_slice(),
         ))
         .unwrap();
 
-        plotted_sector
+        (plotted_sector, sector_metadata)
     };
 
-    let mut group = c.benchmark_group("audit");
+    let eligible_sector = audit_sector(
+        &public_key,
+        sector_index,
+        &farmer_protocol_info,
+        &global_challenge,
+        solution_range,
+        io::Cursor::new(plotted_sector),
+    )
+    .unwrap()
+    .unwrap();
+
+    let mut group = c.benchmark_group("proving");
     group.throughput(Throughput::Elements(1));
     group.bench_function("memory", |b| {
         b.iter(|| {
-            audit_sector(
-                black_box(&public_key),
-                black_box(sector_index),
-                black_box(&farmer_protocol_info),
-                black_box(&global_challenge),
-                black_box(solution_range),
-                black_box(io::Cursor::new(&plotted_sector)),
-            )
-            .unwrap();
+            eligible_sector
+                .clone()
+                .try_into_solution(
+                    black_box(&keypair),
+                    black_box(reward_address),
+                    black_box(&farmer_protocol_info),
+                    black_box(sector_metadata.as_slice()),
+                )
+                .unwrap();
         })
     });
 
     group.throughput(Throughput::Elements(sectors_count));
     group.bench_function("disk", |b| {
         let plot_file_path = base_path.join("subspace_bench_sector.bin");
-        let mut plot_file = OpenOptions::new()
+        let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -109,45 +123,43 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .open(&plot_file_path)
             .unwrap();
 
-        plot_file
-            .preallocate(plot_sector_size * sectors_count)
+        metadata_file
+            .preallocate(SectorMetadata::encoded_size() as u64 * sectors_count)
             .unwrap();
-        plot_file.advise_random_access().unwrap();
+        metadata_file.advise_random_access().unwrap();
 
         for _i in 0..sectors_count {
-            plot_file.write_all(plotted_sector.as_slice()).unwrap();
+            metadata_file.write_all(sector_metadata.as_slice()).unwrap();
         }
 
-        let plot_mmap = unsafe { Mmap::map(&plot_file).unwrap() };
+        let sector_metadata_mmap = unsafe { Mmap::map(&metadata_file).unwrap() };
 
         #[cfg(unix)]
         {
-            plot_mmap.advise(memmap2::Advice::Random).unwrap();
+            sector_metadata_mmap
+                .advise(memmap2::Advice::Random)
+                .unwrap();
         }
 
         b.iter_custom(|iters| {
             let start = Instant::now();
             for _i in 0..iters {
-                for (sector_index, sector) in plot_mmap
-                    .chunks_exact(plot_sector_size as usize)
-                    .enumerate()
-                    .map(|(sector_index, sector)| (sector_index as u64, sector))
-                {
-                    audit_sector(
-                        black_box(&public_key),
-                        black_box(sector_index),
-                        black_box(&farmer_protocol_info),
-                        black_box(&global_challenge),
-                        black_box(solution_range),
-                        black_box(io::Cursor::new(sector)),
-                    )
-                    .unwrap();
+                for metadata in sector_metadata_mmap.chunks_exact(SectorMetadata::encoded_size()) {
+                    eligible_sector
+                        .clone()
+                        .try_into_solution(
+                            black_box(&keypair),
+                            black_box(reward_address),
+                            black_box(&farmer_protocol_info),
+                            black_box(metadata),
+                        )
+                        .unwrap();
                 }
             }
             start.elapsed()
         });
 
-        drop(plot_file);
+        drop(metadata_file);
         fs::remove_file(plot_file_path).unwrap();
     });
     group.finish();

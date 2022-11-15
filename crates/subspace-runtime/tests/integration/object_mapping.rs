@@ -6,7 +6,8 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{crypto, Blake2b256Hash};
 use subspace_runtime::{
-    Block, Call, FeedProcessorKind, Feeds, Header, Origin, Runtime, System, UncheckedExtrinsic,
+    Block, FeedProcessorKind, Feeds, Header, Runtime, RuntimeCall, RuntimeOrigin, System,
+    UncheckedExtrinsic,
 };
 use subspace_runtime_primitives::Hash;
 
@@ -28,14 +29,14 @@ fn object_mapping() {
         extrinsics: vec![
             UncheckedExtrinsic {
                 signature: None,
-                function: Call::Feeds(pallet_feeds::Call::put {
+                function: RuntimeCall::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
                     object: data0.clone(),
                 }),
             },
             UncheckedExtrinsic {
                 signature: None,
-                function: Call::Feeds(pallet_feeds::Call::put {
+                function: RuntimeCall::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
                     object: data1.clone(),
                 }),
@@ -43,20 +44,20 @@ fn object_mapping() {
             // assuming this call fails, we will remove the 3rd hash from calls
             UncheckedExtrinsic {
                 signature: None,
-                function: Call::Feeds(pallet_feeds::Call::put {
+                function: RuntimeCall::Feeds(pallet_feeds::Call::put {
                     feed_id: 0,
                     object: data0.clone(),
                 }),
             },
             UncheckedExtrinsic {
                 signature: None,
-                function: Call::Utility(pallet_utility::Call::batch {
+                function: RuntimeCall::Utility(pallet_utility::Call::batch {
                     calls: vec![
-                        Call::Feeds(pallet_feeds::Call::put {
+                        RuntimeCall::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data2.clone(),
                         }),
-                        Call::Feeds(pallet_feeds::Call::put {
+                        RuntimeCall::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data3.clone(),
                         }),
@@ -65,9 +66,9 @@ fn object_mapping() {
             },
             UncheckedExtrinsic {
                 signature: None,
-                function: Call::Utility(pallet_utility::Call::as_derivative {
+                function: RuntimeCall::Utility(pallet_utility::Call::as_derivative {
                     index: 0,
-                    call: Box::new(Call::Feeds(pallet_feeds::Call::put {
+                    call: Box::new(RuntimeCall::Feeds(pallet_feeds::Call::put {
                         feed_id: 0,
                         object: data0.clone(),
                     })),
@@ -75,13 +76,13 @@ fn object_mapping() {
             },
             UncheckedExtrinsic {
                 signature: None,
-                function: Call::Utility(pallet_utility::Call::batch_all {
+                function: RuntimeCall::Utility(pallet_utility::Call::batch_all {
                     calls: vec![
-                        Call::Feeds(pallet_feeds::Call::put {
+                        RuntimeCall::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data2.clone(),
                         }),
-                        Call::Feeds(pallet_feeds::Call::put {
+                        RuntimeCall::Feeds(pallet_feeds::Call::put {
                             feed_id: 0,
                             object: data3.clone(),
                         }),
@@ -100,7 +101,7 @@ fn object_mapping() {
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed
         Feeds::create(
-            Origin::signed([0u8; 32].into()),
+            RuntimeOrigin::signed([0u8; 32].into()),
             FeedProcessorKind::default(),
             None,
         )
@@ -157,20 +158,20 @@ fn get_successful_calls(block: Block) -> Vec<Hash> {
         .extrinsics
         .iter()
         .filter_map(|ext| match &ext.function {
-            Call::Feeds(call) => Some(vec![call.encode()]),
-            Call::Utility(call) => match call {
+            RuntimeCall::Feeds(call) => Some(vec![call.encode()]),
+            RuntimeCall::Utility(call) => match call {
                 pallet_utility::Call::batch { calls }
                 | pallet_utility::Call::batch_all { calls } => Some(
                     calls
                         .iter()
                         .filter_map(|call| match &call {
-                            Call::Feeds(call) => Some(call.encode()),
+                            RuntimeCall::Feeds(call) => Some(call.encode()),
                             _ => None,
                         })
                         .collect(),
                 ),
                 pallet_utility::Call::as_derivative { call, .. } => match call.as_ref() {
-                    Call::Feeds(call) => Some(vec![call.encode()]),
+                    RuntimeCall::Feeds(call) => Some(vec![call.encode()]),
                     _ => None,
                 },
                 _ => None,
@@ -199,7 +200,7 @@ fn grandpa_object_mapping() {
         },
         extrinsics: vec![UncheckedExtrinsic {
             signature: None,
-            function: Call::Feeds(pallet_feeds::Call::put {
+            function: RuntimeCall::Feeds(pallet_feeds::Call::put {
                 feed_id: 0,
                 object: object.clone(),
             }),
@@ -210,7 +211,7 @@ fn grandpa_object_mapping() {
     let BlockObjectMapping { objects } = new_test_ext().execute_with(|| {
         // init feed
         Feeds::create(
-            Origin::signed([0u8; 32].into()),
+            RuntimeOrigin::signed([0u8; 32].into()),
             FeedProcessorKind::PolkadotLike,
             Some(init_data),
         )

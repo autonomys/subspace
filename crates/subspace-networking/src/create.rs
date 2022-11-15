@@ -18,7 +18,8 @@ use libp2p::dns::TokioDnsConfig;
 use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
 };
-use libp2p::identify::IdentifyConfig;
+use libp2p::identify::Config as IdentifyConfig;
+use libp2p::identity::Keypair;
 use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
 use libp2p::metrics::Metrics;
 use libp2p::mplex::MplexConfig;
@@ -134,13 +135,13 @@ impl fmt::Debug for Config {
 
 impl Config {
     pub fn with_generated_keypair() -> Self {
-        Self::with_keypair(identity::sr25519::Keypair::generate())
+        Self::with_keypair(identity::ed25519::Keypair::generate())
     }
 
-    pub fn with_keypair(keypair: identity::sr25519::Keypair) -> Self {
+    pub fn with_keypair(keypair: identity::ed25519::Keypair) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
-            .set_protocol_name(KADEMLIA_PROTOCOL)
+            .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
             .set_max_packet_size(2 * PIECE_SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
             .set_replication_factor(KADEMLIA_RECORD_REPLICATION_FACTOR)
@@ -178,7 +179,7 @@ impl Config {
             .build()
             .expect("Default config for gossipsub is always correct; qed");
 
-        let keypair = identity::Keypair::Sr25519(keypair);
+        let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
         Self {
@@ -221,6 +222,12 @@ pub enum CreationError {
     TransportError(#[from] TransportError<io::Error>),
 }
 
+/// Converts public key from keypair to PeerId.
+/// It serves as the shared PeerId generating algorithm.
+pub fn peer_id(keypair: &Keypair) -> PeerId {
+    keypair.public().to_peer_id()
+}
+
 /// Create a new network node and node runner instances.
 pub async fn create<RecordStore>(
     config: Config<RecordStore>,
@@ -248,7 +255,7 @@ where
         max_established_outgoing_connections,
         prometheus_metrics_server_address,
     } = config;
-    let local_peer_id = keypair.public().to_peer_id();
+    let local_peer_id = peer_id(&keypair);
 
     let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
 

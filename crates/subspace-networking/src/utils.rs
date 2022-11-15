@@ -1,4 +1,3 @@
-pub mod circular_buffer;
 pub mod multihash;
 pub(crate) mod prometheus;
 #[cfg(test)]

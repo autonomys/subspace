@@ -37,14 +37,15 @@ mod pallet {
     use frame_system::pallet_prelude::{BlockNumberFor, OriginFor};
     use sp_core::storage::StorageKey;
     use sp_domain_tracker::{InherentType, NoFatalError, INHERENT_IDENTIFIER};
+    use sp_domains::DomainId;
     use sp_messenger::DomainTracker;
+    use sp_runtime::traits::{CheckedSub, One};
     use sp_std::vec::Vec;
-    use system_runtime_primitives::{is_core_domain, is_system_domain, DomainId};
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// Event type for this pallet.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Total number of confirmed state roots to store at a time.
         type StateRootsBound: Get<u32>;
@@ -60,6 +61,21 @@ mod pallet {
     #[pallet::getter(fn system_domain_state_roots)]
     pub(super) type SystemDomainStateRoots<T: Config> =
         StorageValue<_, Vec<StateRootOf<T>>, ValueQuery>;
+
+    /// Latest Confirmed Core domain state roots bounded to the StateRootBound value.
+    /// This is essentially used by relayer and updated by the system domain runtime when there is
+    /// a new state root confirmed for a given core domain.
+    #[pallet::storage]
+    #[pallet::getter(fn core_domains_state_root)]
+    pub(super) type CoreDomainsStateRoot<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        DomainId,
+        Identity,
+        T::BlockNumber,
+        StateRootOf<T>,
+        OptionQuery,
+    >;
 
     /// Flag to allow only one update per block through inherent.
     #[pallet::storage]
@@ -96,7 +112,7 @@ mod pallet {
                 Error::<T>::StateRootsAlreadyUpdated
             );
 
-            Self::do_update_state_root(state_root);
+            Self::do_update_system_domain_state_root(state_root);
             StateRootsUpdated::<T>::set(true);
             Self::deposit_event(Event::<T>::StateRootsUpdated);
             Ok(())
@@ -135,27 +151,24 @@ mod pallet {
         }
     }
 
-    impl<T: Config> DomainTracker<DomainId, StateRootOf<T>> for Pallet<T> {
-        fn is_system_domain(domain_id: DomainId) -> bool {
-            is_system_domain(domain_id)
-        }
-
+    impl<T: Config> DomainTracker<T::BlockNumber, StateRootOf<T>> for Pallet<T> {
         fn system_domain_state_roots() -> Vec<StateRootOf<T>> {
             SystemDomainStateRoots::<T>::get()
         }
 
-        fn domain_state_root_storage_key(_domain_id: DomainId) -> StorageKey {
-            // TODO(ved): return well know key once the storage item for domain registry is defined.
-            todo!()
-        }
-
-        fn is_core_domain(domain_id: DomainId) -> bool {
-            is_core_domain(domain_id)
+        fn storage_key_for_core_domain_state_root(
+            domain_id: DomainId,
+            block_number: T::BlockNumber,
+        ) -> StorageKey {
+            StorageKey(CoreDomainsStateRoot::<T>::hashed_key_for(
+                domain_id,
+                block_number,
+            ))
         }
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn do_update_state_root(state_root: StateRootOf<T>) {
+        pub fn do_update_system_domain_state_root(state_root: StateRootOf<T>) {
             SystemDomainStateRoots::<T>::mutate(|state_roots| {
                 state_roots.push(state_root);
                 if state_roots.len() > T::StateRootsBound::get() as usize {
@@ -163,6 +176,48 @@ mod pallet {
                     *state_roots = state_roots.split_off(first_idx);
                 }
             });
+        }
+
+        /// Adds a new state root for the core domain mapped to domain_id.
+        /// This is only called on system domain runtime by the domain registry.
+        /// TODO(ved): ensure this is called when the core domain state roots are available.
+        pub fn add_confirmed_core_domain_state_root(
+            domain_id: DomainId,
+            block_number: T::BlockNumber,
+            state_root: StateRootOf<T>,
+        ) {
+            CoreDomainsStateRoot::<T>::insert(domain_id, block_number, state_root);
+            // ensure to bound the total state roots
+            match block_number.checked_sub(&T::StateRootsBound::get().into()) {
+                // nothing to clean up yet
+                None => (),
+                Some(mut from) => {
+                    while CoreDomainsStateRoot::<T>::take(domain_id, from).is_some() {
+                        from = match from.checked_sub(&One::one()) {
+                            None => return,
+                            Some(from) => from,
+                        }
+                    }
+                }
+            }
+        }
+
+        /// Returns storage key to generate storage proof for the relayer.
+        /// If the domain is not core, or block number is not confirmed yet, then we return None.
+        pub fn storage_key_for_core_domain_state_root(
+            domain_id: DomainId,
+            block_number: T::BlockNumber,
+        ) -> Option<StorageKey> {
+            if !domain_id.is_core()
+                || !CoreDomainsStateRoot::<T>::contains_key(domain_id, block_number)
+            {
+                return None;
+            };
+
+            Some(StorageKey(CoreDomainsStateRoot::<T>::hashed_key_for(
+                domain_id,
+                block_number,
+            )))
         }
     }
 }

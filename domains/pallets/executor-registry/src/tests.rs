@@ -37,8 +37,8 @@ impl frame_system::Config for Test {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = BlockNumber;
     type Hash = Hash;
@@ -46,7 +46,7 @@ impl frame_system::Config for Test {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<2>;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -69,7 +69,7 @@ impl pallet_balances::Config for Test {
     type ReserveIdentifier = [u8; 8];
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
@@ -86,16 +86,17 @@ parameter_types! {
 }
 
 impl pallet_executor_registry::Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type StakeWeight = StakeWeight;
     type MinExecutorStake = MinExecutorStake;
     type MaxExecutorStake = MaxExecutorStake;
     type MinExecutors = MinExecutors;
     type MaxExecutors = MaxExecutors;
-    type EpochDuration = EpochDuration;
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
+    type EpochDuration = EpochDuration;
+    type OnNewEpoch = ();
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -133,7 +134,7 @@ fn register_should_work() {
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 1);
         assert_eq!(
-            KeyOwner::<Test>::get(&genesis_executor_public_key).unwrap(),
+            KeyOwner::<Test>::get(genesis_executor_public_key).unwrap(),
             1
         );
 
@@ -144,7 +145,7 @@ fn register_should_work() {
 
         assert_noop!(
             ExecutorRegistry::register(
-                Origin::signed(1),
+                RuntimeOrigin::signed(1),
                 public_key.clone(),
                 reward_address,
                 is_active,
@@ -154,7 +155,7 @@ fn register_should_work() {
         );
         assert_noop!(
             ExecutorRegistry::register(
-                Origin::signed(1),
+                RuntimeOrigin::signed(1),
                 public_key.clone(),
                 reward_address,
                 true,
@@ -164,7 +165,7 @@ fn register_should_work() {
         );
         assert_noop!(
             ExecutorRegistry::register(
-                Origin::signed(8),
+                RuntimeOrigin::signed(8),
                 public_key.clone(),
                 reward_address,
                 true,
@@ -174,7 +175,7 @@ fn register_should_work() {
         );
         assert_noop!(
             ExecutorRegistry::register(
-                Origin::signed(1),
+                RuntimeOrigin::signed(1),
                 public_key.clone(),
                 reward_address,
                 true,
@@ -184,14 +185,14 @@ fn register_should_work() {
         );
 
         assert_ok!(ExecutorRegistry::register(
-            Origin::signed(2),
+            RuntimeOrigin::signed(2),
             public_key.clone(),
             reward_address,
             is_active,
             stake,
         ));
         assert_eq!(
-            frame_system::Account::<Test>::get(&2).data,
+            frame_system::Account::<Test>::get(2).data,
             AccountData {
                 free: 2000,
                 reserved: 0,
@@ -201,7 +202,7 @@ fn register_should_work() {
         );
         assert_eq!(KeyOwner::<Test>::get(&public_key).unwrap(), 2);
         assert_eq!(
-            Executors::<Test>::get(&2),
+            Executors::<Test>::get(2),
             Some(ExecutorConfig {
                 public_key,
                 reward_address,
@@ -218,9 +219,9 @@ fn register_should_work() {
 #[test]
 fn stake_extra_should_work() {
     new_test_ext().execute_with(|| {
-        let executor_config = Executors::<Test>::get(&1).unwrap();
+        let executor_config = Executors::<Test>::get(1).unwrap();
         assert_eq!(
-            frame_system::Account::<Test>::get(&1).data,
+            frame_system::Account::<Test>::get(1).data,
             AccountData {
                 free: 1000,
                 reserved: 0,
@@ -229,16 +230,19 @@ fn stake_extra_should_work() {
             }
         );
         let extra = 200;
-        assert_ok!(ExecutorRegistry::increase_stake(Origin::signed(1), extra));
+        assert_ok!(ExecutorRegistry::increase_stake(
+            RuntimeOrigin::signed(1),
+            extra
+        ));
         assert_eq!(
-            Executors::<Test>::get(&1).unwrap(),
+            Executors::<Test>::get(1).unwrap(),
             ExecutorConfig {
                 stake: executor_config.stake + extra,
                 ..executor_config
             }
         );
         assert_eq!(
-            frame_system::Account::<Test>::get(&1).data,
+            frame_system::Account::<Test>::get(1).data,
             AccountData {
                 free: 1000,
                 reserved: 0,
@@ -255,7 +259,7 @@ fn decrease_and_withdraw_stake_should_work() {
         System::set_block_number(1);
 
         assert_eq!(
-            frame_system::Account::<Test>::get(&1).data,
+            frame_system::Account::<Test>::get(1).data,
             AccountData {
                 free: 1000,
                 reserved: 0,
@@ -264,23 +268,23 @@ fn decrease_and_withdraw_stake_should_work() {
             }
         );
         assert_noop!(
-            ExecutorRegistry::decrease_stake(Origin::signed(1), 1000),
+            ExecutorRegistry::decrease_stake(RuntimeOrigin::signed(1), 1000),
             Error::<Test>::InsufficientStake
         );
         assert_noop!(
-            ExecutorRegistry::decrease_stake(Origin::signed(1), Balance::MAX),
+            ExecutorRegistry::decrease_stake(RuntimeOrigin::signed(1), Balance::MAX),
             Error::<Test>::InsufficientStake
         );
-        let executor_config = Executors::<Test>::get(&1).unwrap();
+        let executor_config = Executors::<Test>::get(1).unwrap();
         let to_decrease = 10;
 
         assert_ok!(ExecutorRegistry::decrease_stake(
-            Origin::signed(1),
+            RuntimeOrigin::signed(1),
             to_decrease
         ));
 
         assert_eq!(
-            frame_system::Account::<Test>::get(&1).data,
+            frame_system::Account::<Test>::get(1).data,
             AccountData {
                 free: 1000,
                 reserved: 0,
@@ -290,7 +294,7 @@ fn decrease_and_withdraw_stake_should_work() {
         );
 
         assert_eq!(
-            Executors::<Test>::get(&1).unwrap(),
+            Executors::<Test>::get(1).unwrap(),
             ExecutorConfig {
                 withdrawals: bounded_vec![Withdrawal {
                     amount: 10,
@@ -303,25 +307,25 @@ fn decrease_and_withdraw_stake_should_work() {
 
         System::set_block_number(11);
         assert_noop!(
-            ExecutorRegistry::withdraw_decreased_stake(Origin::signed(1), 0),
+            ExecutorRegistry::withdraw_decreased_stake(RuntimeOrigin::signed(1), 0),
             Error::<Test>::PrematureWithdrawal
         );
 
         System::set_block_number(12);
-        let executor_config = Executors::<Test>::get(&1).unwrap();
+        let executor_config = Executors::<Test>::get(1).unwrap();
         assert_ok!(ExecutorRegistry::withdraw_decreased_stake(
-            Origin::signed(1),
+            RuntimeOrigin::signed(1),
             0
         ));
         assert_eq!(
-            Executors::<Test>::get(&1).unwrap(),
+            Executors::<Test>::get(1).unwrap(),
             ExecutorConfig {
                 withdrawals: Default::default(),
                 ..executor_config
             }
         );
         assert_eq!(
-            frame_system::Account::<Test>::get(&1).data,
+            frame_system::Account::<Test>::get(1).data,
             AccountData {
                 free: 1000,
                 reserved: 0,
@@ -336,7 +340,7 @@ fn decrease_and_withdraw_stake_should_work() {
 fn pause_and_resume_execution_should_work() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            ExecutorRegistry::pause_execution(Origin::signed(1)),
+            ExecutorRegistry::pause_execution(RuntimeOrigin::signed(1)),
             Error::<Test>::TooFewActiveExecutors
         );
 
@@ -346,7 +350,7 @@ fn pause_and_resume_execution_should_work() {
         let stake = 200;
 
         assert_ok!(ExecutorRegistry::register(
-            Origin::signed(2),
+            RuntimeOrigin::signed(2),
             public_key,
             reward_address,
             is_active,
@@ -356,12 +360,12 @@ fn pause_and_resume_execution_should_work() {
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 1);
 
-        assert_ok!(ExecutorRegistry::resume_execution(Origin::signed(2)));
+        assert_ok!(ExecutorRegistry::resume_execution(RuntimeOrigin::signed(2)));
 
         assert_eq!(TotalActiveStake::<Test>::get(), 100 + 200);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 2);
 
-        assert_ok!(ExecutorRegistry::pause_execution(Origin::signed(2)));
+        assert_ok!(ExecutorRegistry::pause_execution(RuntimeOrigin::signed(2)));
 
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalActiveExecutors::<Test>::get(), 1);
@@ -371,13 +375,13 @@ fn pause_and_resume_execution_should_work() {
 #[test]
 fn update_reward_address_should_work() {
     new_test_ext().execute_with(|| {
-        let executor_config = Executors::<Test>::get(&1).unwrap();
+        let executor_config = Executors::<Test>::get(1).unwrap();
         assert_ok!(ExecutorRegistry::update_reward_address(
-            Origin::signed(1),
+            RuntimeOrigin::signed(1),
             888
         ));
         assert_eq!(
-            Executors::<Test>::get(&1).unwrap(),
+            Executors::<Test>::get(1).unwrap(),
             ExecutorConfig {
                 reward_address: 888,
                 ..executor_config

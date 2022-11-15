@@ -38,7 +38,7 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// `pallet-object-store` events
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
     }
 
     /// Pallet object-store, used for storing arbitrary user-provided data combined into object-store.
@@ -74,7 +74,7 @@ mod pallet {
             debug!(
                 target: "runtime:object-store",
                 "New object {}, size {} bytes",
-                hex::encode(&object_id),
+                hex::encode(object_id),
                 object_size
             );
 

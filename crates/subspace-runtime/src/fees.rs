@@ -1,4 +1,4 @@
-use crate::{Balances, Call, Runtime, TransactionFees};
+use crate::{Balances, Runtime, RuntimeCall, TransactionFees};
 use codec::Encode;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use pallet_balances::NegativeImbalance;
@@ -33,8 +33,8 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
 
     fn withdraw_fee(
         who: &AccountId,
-        call: &Call,
-        _info: &DispatchInfoOf<Call>,
+        call: &RuntimeCall,
+        _info: &DispatchInfoOf<RuntimeCall>,
         fee: Self::Balance,
         tip: Self::Balance,
     ) -> Result<Self::LiquidityInfo, TransactionValidityError> {
@@ -69,8 +69,8 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransa
 
     fn correct_and_deposit_fee(
         who: &AccountId,
-        _dispatch_info: &DispatchInfoOf<Call>,
-        _post_info: &PostDispatchInfoOf<Call>,
+        _dispatch_info: &DispatchInfoOf<RuntimeCall>,
+        _post_info: &PostDispatchInfoOf<RuntimeCall>,
         corrected_fee: Self::Balance,
         tip: Self::Balance,
         liquidity_info: Self::LiquidityInfo,

@@ -21,44 +21,63 @@
 mod tests;
 
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
+use frame_support::weights::Weight;
 pub use pallet::*;
-use sp_domains::{BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionProof};
-use sp_runtime::traits::Zero;
+use sp_domains::{
+    BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
+};
+use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
+use sp_runtime::traits::{One, Saturating, Zero};
 use sp_runtime::Percent;
+use sp_std::collections::btree_map::BTreeMap;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
+type DomainConfig<T> =
+    sp_domains::DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>, Weight>;
 
-// TODO: Move to an appropriate place when using it.
-/// Executor registry interface.
-pub trait ExecutorRegistry<AccountId, Balance> {
-    /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not an executor.
-    fn executor_stake(who: &AccountId) -> Option<Balance>;
-}
+const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, ExecutorRegistry};
-    use frame_support::pallet_prelude::*;
+    use super::{BalanceOf, DomainConfig};
+    use codec::Codec;
+    use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
+    use sp_core::H256;
     use sp_domains::{
-        BundleEquivocationProof, DomainId, FraudProof, InvalidTransactionCode,
-        InvalidTransactionProof,
+        BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
+        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
     };
-    use sp_runtime::traits::Zero;
-    use sp_runtime::Percent;
+    use sp_executor_registry::ExecutorRegistry;
+    use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, One};
+    use sp_runtime::{FixedPointOperand, Percent};
+    use sp_std::fmt::Debug;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
+        /// The stake weight of an executor.
+        type StakeWeight: Parameter
+            + Member
+            + AtLeast32BitUnsigned
+            + Codec
+            + Default
+            + Copy
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaxEncodedLen
+            + TypeInfo
+            + FixedPointOperand
+            + From<BalanceOf<Self>>;
+
         /// Interface to access the executor info.
-        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>>;
+        type ExecutorRegistry: ExecutorRegistry<Self::AccountId, BalanceOf<Self>, Self::StakeWeight>;
 
         /// Minimum amount of deposit to create a domain.
         #[pallet::constant]
@@ -76,34 +95,24 @@ mod pallet {
         // the new stake amount still meets the operator stake threshold on all domains he stakes.
         #[pallet::constant]
         type MinDomainOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Maximum execution receipt drift.
+        ///
+        /// If the primary number of an execution receipt plus the maximum drift is bigger than the
+        /// best execution chain number, this receipt will be rejected as being too far in the
+        /// future.
+        #[pallet::constant]
+        type MaximumReceiptDrift: Get<Self::BlockNumber>;
+
+        /// Number of execution receipts kept in the state.
+        #[pallet::constant]
+        type ReceiptsPruningDepth: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
-
-    /// Domain configuration.
-    #[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
-    #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-    pub struct DomainConfig<Hash, Balance> {
-        /// Hash of the domain wasm runtime blob.
-        pub wasm_runtime_hash: Hash,
-
-        // May be supported later.
-        //pub upgrade_keys: Vec<AccountId>,
-        // TODO: elaborate this field.
-        pub bundle_frequency: u32,
-
-        /// Maximum domain bundle size in bytes.
-        pub max_bundle_size: u32,
-
-        /// Maximum domain bundle weight.
-        pub max_bundle_weight: Weight,
-
-        /// Minimum executor stake value to be an operator on this domain.
-        pub min_operator_stake: Balance,
-    }
 
     /// Domain id for the next domain.
     #[pallet::storage]
@@ -124,7 +133,7 @@ mod pallet {
     /// A map tracking all the non-system domains.
     #[pallet::storage]
     pub(super) type Domains<T: Config> =
-        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T::Hash, BalanceOf<T>>, OptionQuery>;
+        StorageMap<_, Twox64Concat, DomainId, DomainConfig<T>, OptionQuery>;
 
     /// (executor, domain_id, allocated_stake_proportion)
     #[pallet::storage]
@@ -138,6 +147,71 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// (domain_id, domain_authority, domain_stake_weight)
+    #[pallet::storage]
+    pub(super) type DomainAuthorities<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        T::AccountId,
+        T::StakeWeight,
+        OptionQuery,
+    >;
+
+    /// A map tracking the total stake weight of each domain.
+    #[pallet::storage]
+    pub(super) type DomainTotalStakeWeight<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, T::StakeWeight, OptionQuery>;
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////  Same receipt tracking data structure as in pallet-domains, with the dimension `domain_id` added.
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    #[pallet::storage]
+    pub(super) type ReceiptHead<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, (T::Hash, T::BlockNumber), ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type OldestReceiptNumber<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, T::BlockNumber, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type Receipts<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        H256,
+        ExecutionReceipt<T::BlockNumber, T::Hash, T::Hash>,
+        OptionQuery,
+    >;
+
+    /// (core_domain_id, primary_block_hash, receipt_hash, receipt_count)
+    #[pallet::storage]
+    pub(super) type ReceiptVotes<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Twox64Concat, DomainId>,
+            NMapKey<Twox64Concat, T::Hash>,
+            NMapKey<Twox64Concat, H256>,
+        ),
+        u32,
+        ValueQuery,
+    >;
+
+    /// (core_domain_id, core_block_number, core_block_hash, core_state_root)
+    #[pallet::storage]
+    pub(super) type StateRoots<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Twox64Concat, DomainId>,
+            NMapKey<Twox64Concat, T::BlockNumber>,
+            NMapKey<Twox64Concat, T::Hash>,
+        ),
+        T::Hash,
+        OptionQuery,
+    >;
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
@@ -146,7 +220,7 @@ mod pallet {
         pub fn create_domain(
             origin: OriginFor<T>,
             deposit: BalanceOf<T>,
-            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            domain_config: DomainConfig<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -171,7 +245,7 @@ mod pallet {
         pub fn update_domain_config(
             origin: OriginFor<T>,
             domain_id: DomainId,
-            _domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            _domain_config: DomainConfig<T>,
         ) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
@@ -257,6 +331,54 @@ mod pallet {
 
         // TODO: proper weight
         #[pallet::weight((10_000, Pays::No))]
+        pub fn submit_core_bundle(
+            origin: OriginFor<T>,
+            signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::Hash>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+
+            // TODO: validate_bundle()
+
+            let domain_id = signed_opaque_bundle.proof_of_election.domain_id;
+
+            let oldest_receipt_number = OldestReceiptNumber::<T>::get(domain_id);
+            let (_, mut best_number) = <ReceiptHead<T>>::get(domain_id);
+
+            for receipt in &signed_opaque_bundle.bundle.receipts {
+                // Ignore the receipt if it has already been pruned.
+                if receipt.primary_number < oldest_receipt_number {
+                    continue;
+                }
+
+                if receipt.primary_number <= best_number {
+                    // Either increase the vote for a known receipt or add a fork receipt at this height.
+                    Self::apply_non_new_best_receipt(domain_id, receipt);
+                } else if receipt.primary_number == best_number + One::one() {
+                    Self::apply_new_best_receipt(domain_id, receipt);
+                    best_number += One::one();
+                } else {
+                    /*
+                    // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
+                    //
+                    // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
+                    return Err(Error::<T>::Bundle(BundleError::Receipt(
+                        ExecutionReceiptError::MissingParent,
+                    ))
+                    .into());
+                    */
+                }
+            }
+
+            Self::deposit_event(Event::CoreBundleStored {
+                bundle_hash: signed_opaque_bundle.hash(),
+                bundle_author: signed_opaque_bundle.proof_of_election.executor_public_key,
+            });
+
+            Ok(())
+        }
+
+        // TODO: proper weight
+        #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             _fraud_proof: FraudProof,
@@ -301,10 +423,11 @@ mod pallet {
         }
     }
 
+    #[cfg(feature = "std")]
     type GenesisDomainInfo<T> = (
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
-        DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>>,
+        DomainConfig<T>,
         <T as frame_system::Config>::AccountId,
         Percent,
     );
@@ -340,6 +463,16 @@ mod pallet {
                     *operator_stake,
                 )
                 .expect("Failed to apply the genesis domain operator registration");
+
+                let stake_weight = T::ExecutorRegistry::authority_stake_weight(domain_operator)
+                    .expect("Genesis domain operator must be a genesis executor authority; qed");
+                let domain_stake_weight: T::StakeWeight = operator_stake.mul_floor(stake_weight);
+
+                DomainAuthorities::<T>::insert(domain_id, domain_operator, domain_stake_weight);
+                DomainTotalStakeWeight::<T>::mutate(domain_id, |maybe_total| {
+                    let old = maybe_total.unwrap_or_default();
+                    maybe_total.replace(old + domain_stake_weight);
+                });
             }
         }
     }
@@ -383,7 +516,7 @@ mod pallet {
             creator: T::AccountId,
             domain_id: DomainId,
             deposit: BalanceOf<T>,
-            domain_config: DomainConfig<T::Hash, BalanceOf<T>>,
+            domain_config: DomainConfig<T>,
         },
 
         /// A new domain operator.
@@ -406,22 +539,21 @@ mod pallet {
             domain_id: DomainId,
         },
 
+        CoreBundleStored {
+            bundle_hash: H256,
+            bundle_author: ExecutorPublicKey,
+        },
+
+        NewCoreDomainReceipt {
+            primary_number: T::BlockNumber,
+            primary_hash: T::Hash,
+        },
+
         FraudProofProcessed,
 
         BundleEquivocationProofProcessed,
 
         InvalidTransactionProofProcessed,
-    }
-
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
-            // TODO: Need a hook in pallet-executor-registry to snapshot the domain
-            // authorities as well as the stake weight on each new epoch.
-
-            // TODO: proper weight
-            Weight::zero()
-        }
     }
 
     /// Constructs a `TransactionValidity` with pallet-domain-registry specific defaults.
@@ -509,11 +641,56 @@ mod pallet {
     }
 }
 
+impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
+    // TODO: similar to the executors, bench how many domain operators can be supported.
+    /// Rotate the domain authorities on each new epoch.
+    fn on_new_epoch(executor_weights: BTreeMap<T::AccountId, T::StakeWeight>) {
+        let _ = DomainAuthorities::<T>::clear(u32::MAX, None);
+        let _ = DomainTotalStakeWeight::<T>::clear(u32::MAX, None);
+
+        let mut total_stake_weights = BTreeMap::new();
+
+        for (operator, domain_id, stake_allocation) in DomainOperators::<T>::iter() {
+            // TODO: Need to confirm whether an inactive executor can still be the domain authority.
+            if let Some(stake_weight) = executor_weights.get(&operator) {
+                let domain_stake_weight: T::StakeWeight = stake_allocation.mul_floor(*stake_weight);
+
+                total_stake_weights
+                    .entry(domain_id)
+                    .and_modify(|total| *total += domain_stake_weight)
+                    .or_insert(domain_stake_weight);
+
+                DomainAuthorities::<T>::insert(domain_id, operator, domain_stake_weight);
+            }
+        }
+
+        for (domain_id, total_stake_weight) in total_stake_weights {
+            DomainTotalStakeWeight::<T>::insert(domain_id, total_stake_weight);
+        }
+    }
+}
+
 impl<T: Config> Pallet<T> {
+    pub fn best_execution_chain_number(domain_id: DomainId) -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
+        best_number
+    }
+
+    /// Returns the block number of the oldest receipt still being tracked in the state.
+    pub fn oldest_receipt_number(domain_id: DomainId) -> T::BlockNumber {
+        Self::finalized_receipt_number(domain_id) + One::one()
+    }
+
+    /// Returns the block number of latest _finalized_ receipt.
+    pub fn finalized_receipt_number(domain_id: DomainId) -> T::BlockNumber {
+        let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
+        best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
     fn can_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,
-        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+        domain_config: &DomainConfig<T>,
     ) -> Result<(), Error<T>> {
         if deposit < T::MinDomainDeposit::get() {
             return Err(Error::<T>::DepositTooSmall);
@@ -537,14 +714,14 @@ impl<T: Config> Pallet<T> {
     fn apply_create_domain(
         who: &T::AccountId,
         deposit: BalanceOf<T>,
-        domain_config: &DomainConfig<T::Hash, BalanceOf<T>>,
+        domain_config: &DomainConfig<T>,
     ) -> DomainId {
         T::Currency::set_lock(DOMAIN_LOCK_ID, who, deposit, WithdrawReasons::all());
 
         let domain_id = NextDomainId::<T>::get();
 
-        Domains::<T>::insert(domain_id, &domain_config);
-        DomainCreators::<T>::insert(domain_id, &who, deposit);
+        Domains::<T>::insert(domain_id, domain_config);
+        DomainCreators::<T>::insert(domain_id, who, deposit);
         NextDomainId::<T>::put(domain_id + 1);
 
         domain_id
@@ -567,7 +744,7 @@ impl<T: Config> Pallet<T> {
         }
 
         // Exclude the potential existing stake allocation on this domain.
-        let already_allocated: Percent = DomainOperators::<T>::iter_prefix(&who)
+        let already_allocated: Percent = DomainOperators::<T>::iter_prefix(who)
             .filter_map(|(id, value)| if domain_id == id { None } else { Some(value) })
             .fold(Zero::zero(), |acc, x| acc + x);
 
@@ -622,5 +799,85 @@ impl<T: Config> Pallet<T> {
         _invalid_transaction_proof: &InvalidTransactionProof,
     ) -> Result<(), Error<T>> {
         Ok(())
+    }
+
+    fn apply_new_best_receipt(
+        domain_id: DomainId,
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::Hash>,
+    ) {
+        let primary_hash = execution_receipt.primary_hash;
+        let primary_number = execution_receipt.primary_number;
+        let receipt_hash = execution_receipt.hash();
+
+        // Apply the new best receipt.
+        <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
+        <ReceiptHead<T>>::insert(domain_id, (primary_hash, primary_number));
+        <ReceiptVotes<T>>::mutate((domain_id, primary_hash, receipt_hash), |count| {
+            *count += 1;
+        });
+
+        if !primary_number.is_zero() {
+            let state_root = execution_receipt
+                .trace
+                .last()
+                .expect("There are at least 2 elements in trace after the genesis block; qed");
+
+            <StateRoots<T>>::insert(
+                (domain_id, primary_number, execution_receipt.secondary_hash),
+                state_root,
+            );
+        }
+
+        /* TODO:
+        // Remove the expired receipts once the receipts cache is full.
+        if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
+            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
+                if let Some(block_hash) = maybe_block_hash.take() {
+                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                        Receipts::<T>::remove(receipt_hash);
+                    }
+                }
+            });
+            OldestReceiptNumber::<T>::put(to_prune + One::one());
+            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
+        }
+        */
+
+        Self::deposit_event(Event::NewCoreDomainReceipt {
+            primary_number,
+            primary_hash,
+        });
+    }
+
+    fn apply_non_new_best_receipt(
+        domain_id: DomainId,
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::Hash>,
+    ) {
+        let primary_hash = execution_receipt.primary_hash;
+        let primary_number = execution_receipt.primary_number;
+        let receipt_hash = execution_receipt.hash();
+
+        // Track the fork receipt if it's not seen before.
+        if !<Receipts<T>>::contains_key(domain_id, receipt_hash) {
+            <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
+            if !primary_number.is_zero() {
+                let state_root = execution_receipt
+                    .trace
+                    .last()
+                    .expect("There are at least 2 elements in trace after the genesis block; qed");
+
+                <StateRoots<T>>::insert(
+                    (domain_id, primary_number, execution_receipt.secondary_hash),
+                    state_root,
+                );
+            }
+            Self::deposit_event(Event::NewCoreDomainReceipt {
+                primary_number,
+                primary_hash,
+            });
+        }
+        <ReceiptVotes<T>>::mutate((domain_id, primary_hash, receipt_hash), |count| {
+            *count += 1;
+        });
     }
 }

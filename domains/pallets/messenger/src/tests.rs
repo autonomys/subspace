@@ -1,10 +1,10 @@
 use crate::mock::domain_a::{
-    new_test_ext as new_domain_a_ext, Event, Messenger, Origin, RelayerDeposit, Runtime, System,
-    RELAYER_ID,
+    new_test_ext as new_domain_a_ext, Messenger, RelayerDeposit, Runtime, RuntimeEvent,
+    RuntimeOrigin, System, RELAYER_ID,
 };
 use crate::mock::{
     domain_a, domain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
-    AccountId, Balance, DomainId, TestExternalities,
+    AccountId, Balance, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
 use crate::verification::{StorageProofVerifier, VerificationError};
@@ -17,6 +17,7 @@ use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::Blake2Hasher;
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
@@ -30,12 +31,12 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeMode
         fee_model,
     };
     assert_ok!(Messenger::initiate_channel(
-        Origin::root(),
+        RuntimeOrigin::root(),
         domain_id,
         params,
     ));
 
-    System::assert_has_event(Event::Messenger(
+    System::assert_has_event(RuntimeEvent::Messenger(
         crate::Event::<Runtime>::ChannelInitiated {
             domain_id,
             channel_id,
@@ -62,12 +63,14 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeMode
         )))
     );
 
-    System::assert_last_event(Event::Messenger(crate::Event::<Runtime>::OutboxMessage {
-        domain_id,
-        channel_id,
-        nonce: Nonce::zero(),
-        relayer_id: RELAYER_ID,
-    }));
+    System::assert_last_event(RuntimeEvent::Messenger(
+        crate::Event::<Runtime>::OutboxMessage {
+            domain_id,
+            channel_id,
+            nonce: Nonce::zero(),
+            relayer_id: RELAYER_ID,
+        },
+    ));
 
     // check outbox relayer storage key generation
     let messages_with_keys = domain_a::Messenger::relayer_assigned_messages(domain_a::RELAYER_ID);
@@ -83,17 +86,19 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeMode
 
 fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonce: Option<Nonce>) {
     assert_ok!(Messenger::close_channel(
-        Origin::root(),
+        RuntimeOrigin::root(),
         domain_id,
         channel_id,
     ));
 
     let channel = Messenger::channels(domain_id, channel_id).unwrap();
     assert_eq!(channel.state, ChannelState::Closed);
-    System::assert_has_event(Event::Messenger(crate::Event::<Runtime>::ChannelClosed {
-        domain_id,
-        channel_id,
-    }));
+    System::assert_has_event(RuntimeEvent::Messenger(
+        crate::Event::<Runtime>::ChannelClosed {
+            domain_id,
+            channel_id,
+        },
+    ));
 
     let msg = Outbox::<Runtime>::get((domain_id, channel_id, Nonce::one())).unwrap();
     assert_eq!(msg.dst_domain_id, domain_id);
@@ -109,18 +114,20 @@ fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonc
         )))
     );
 
-    System::assert_last_event(Event::Messenger(crate::Event::<Runtime>::OutboxMessage {
-        domain_id,
-        channel_id,
-        nonce: Nonce::one(),
-        relayer_id: RELAYER_ID,
-    }));
+    System::assert_last_event(RuntimeEvent::Messenger(
+        crate::Event::<Runtime>::OutboxMessage {
+            domain_id,
+            channel_id,
+            nonce: Nonce::one(),
+            relayer_id: RELAYER_ID,
+        },
+    ));
 }
 
 #[test]
 fn test_initiate_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default())
     });
@@ -129,10 +136,10 @@ fn test_initiate_channel() {
 #[test]
 fn test_close_missing_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         assert_err!(
-            Messenger::close_channel(Origin::root(), domain_id, channel_id,),
+            Messenger::close_channel(RuntimeOrigin::root(), domain_id, channel_id,),
             Error::<Runtime>::MissingChannel
         );
     });
@@ -141,11 +148,11 @@ fn test_close_missing_channel() {
 #[test]
 fn test_close_not_open_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default());
         assert_err!(
-            Messenger::close_channel(Origin::root(), domain_id, channel_id,),
+            Messenger::close_channel(RuntimeOrigin::root(), domain_id, channel_id,),
             Error::<Runtime>::InvalidChannelState
         );
     });
@@ -154,7 +161,7 @@ fn test_close_not_open_channel() {
 #[test]
 fn test_close_open_channel() {
     new_domain_a_ext().execute_with(|| {
-        let domain_id = 2;
+        let domain_id = 2.into();
         let channel_id = U256::zero();
         create_channel(domain_id, channel_id, Default::default());
 
@@ -162,10 +169,12 @@ fn test_close_open_channel() {
         assert_ok!(Messenger::do_open_channel(domain_id, channel_id));
         let channel = Messenger::channels(domain_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Open);
-        System::assert_has_event(Event::Messenger(crate::Event::<Runtime>::ChannelOpen {
-            domain_id,
-            channel_id,
-        }));
+        System::assert_has_event(RuntimeEvent::Messenger(
+            crate::Event::<Runtime>::ChannelOpen {
+                domain_id,
+                channel_id,
+            },
+        ));
 
         // close channel
         close_channel(domain_id, channel_id, None)
@@ -175,7 +184,7 @@ fn test_close_open_channel() {
 #[test]
 fn test_storage_proof_verification_invalid() {
     let mut t = new_domain_a_ext();
-    let domain_id = 2;
+    let domain_id = 2.into();
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id, Default::default());
@@ -184,7 +193,7 @@ fn test_storage_proof_verification_invalid() {
 
     let (_, _, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
-    let proof = Proof {
+    let proof: Proof<u64, _> = Proof {
         state_root: Default::default(),
         core_domain_proof: None,
         message_proof: storage_proof,
@@ -201,7 +210,7 @@ fn test_storage_proof_verification_invalid() {
 #[test]
 fn test_storage_proof_verification_missing_value() {
     let mut t = new_domain_a_ext();
-    let domain_id = 2;
+    let domain_id = 2.into();
     let channel_id = U256::zero();
     t.execute_with(|| {
         create_channel(domain_id, channel_id, Default::default());
@@ -210,7 +219,7 @@ fn test_storage_proof_verification_missing_value() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, U256::one());
-    let proof = Proof {
+    let proof: Proof<u64, _> = Proof {
         state_root,
         core_domain_proof: None,
         message_proof: storage_proof,
@@ -227,7 +236,7 @@ fn test_storage_proof_verification_missing_value() {
 #[test]
 fn test_storage_proof_verification() {
     let mut t = new_domain_a_ext();
-    let domain_id = 2;
+    let domain_id = 2.into();
     let channel_id = U256::zero();
     let mut expected_channel = None;
     t.execute_with(|| {
@@ -238,7 +247,7 @@ fn test_storage_proof_verification() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
-    let proof = Proof {
+    let proof: Proof<u64, _> = Proof {
         state_root,
         core_domain_proof: None,
         message_proof: storage_proof,
@@ -280,13 +289,13 @@ fn open_channel_between_domains(
     domain_b_test_ext.execute_with(|| {
         let channel = domain_b::Messenger::channels(domain_a_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Open);
-        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Messenger(crate::Event::<
             domain_b::Runtime,
         >::ChannelInitiated {
             domain_id: domain_a_id,
             channel_id,
         }));
-        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Messenger(crate::Event::<
             domain_b::Runtime,
         >::ChannelOpen {
             domain_id: domain_a_id,
@@ -319,7 +328,7 @@ fn open_channel_between_domains(
         );
         assert_eq!(channel.next_inbox_nonce, Nonce::zero());
         assert_eq!(channel.next_outbox_nonce, Nonce::one());
-        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Messenger(crate::Event::<
             domain_a::Runtime,
         >::ChannelOpen {
             domain_id: domain_b_id,
@@ -341,7 +350,7 @@ fn send_message_between_domains(
 
     // send message form outbox
     domain_a_test_ext.execute_with(|| {
-        let resp = <domain_a::Messenger as Sender<AccountId, DomainId>>::send_message(
+        let resp = <domain_a::Messenger as Sender<AccountId>>::send_message(
             sender,
             domain_b_id,
             EndpointRequest {
@@ -351,7 +360,7 @@ fn send_message_between_domains(
             },
         );
         assert_ok!(resp);
-        domain_a::System::assert_last_event(Event::Messenger(
+        domain_a::System::assert_last_event(RuntimeEvent::Messenger(
             crate::Event::<Runtime>::OutboxMessage {
                 domain_id: domain_b_id,
                 channel_id,
@@ -419,7 +428,7 @@ fn close_channel_between_domains(
     domain_b_test_ext.execute_with(|| {
         let channel = domain_b::Messenger::channels(domain_a_id, channel_id).unwrap();
         assert_eq!(channel.state, ChannelState::Closed);
-        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Messenger(crate::Event::<
             domain_b::Runtime,
         >::ChannelClosed {
             domain_id: domain_a_id,
@@ -455,7 +464,7 @@ fn close_channel_between_domains(
             channel.next_outbox_nonce,
             Nonce::one().checked_add(Nonce::one()).unwrap()
         );
-        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Messenger(crate::Event::<
             domain_a::Runtime,
         >::ChannelClosed {
             domain_id: domain_b_id,
@@ -500,7 +509,7 @@ fn channel_relay_request_and_response(
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
-        domain_b::DomainTracker::do_update_state_root(xdm.proof.state_root);
+        domain_b::DomainTracker::do_update_system_domain_state_root(xdm.proof.state_root);
 
         // validate the message
         let pre_check =
@@ -510,10 +519,10 @@ fn channel_relay_request_and_response(
         assert_ok!(pre_check);
 
         // process inbox message
-        let result = domain_b::Messenger::relay_message(domain_b::Origin::none(), xdm);
+        let result = domain_b::Messenger::relay_message(domain_b::RuntimeOrigin::none(), xdm);
         assert_ok!(result);
 
-        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Messenger(crate::Event::<
             domain_b::Runtime,
         >::InboxMessage {
             domain_id: domain_a_id,
@@ -521,14 +530,14 @@ fn channel_relay_request_and_response(
             nonce,
         }));
 
-        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
-            domain_b::Runtime,
-        >::InboxMessageResponse {
-            domain_id: domain_a_id,
-            channel_id,
-            nonce,
-            relayer_id: domain_b::RELAYER_ID,
-        }));
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Messenger(
+            crate::Event::<domain_b::Runtime>::InboxMessageResponse {
+                domain_id: domain_a_id,
+                channel_id,
+                nonce,
+                relayer_id: domain_b::RELAYER_ID,
+            },
+        ));
 
         let response =
             domain_b::Messenger::inbox_responses((domain_a_id, channel_id, nonce)).unwrap();
@@ -563,7 +572,7 @@ fn channel_relay_request_and_response(
         },
     };
     domain_a_test_ext.execute_with(|| {
-        domain_a::DomainTracker::do_update_state_root(xdm.proof.state_root);
+        domain_a::DomainTracker::do_update_system_domain_state_root(xdm.proof.state_root);
 
         // validate message response
         let pre_check = crate::Pallet::<domain_a::Runtime>::pre_dispatch(
@@ -572,7 +581,8 @@ fn channel_relay_request_and_response(
         assert_ok!(pre_check);
 
         // process outbox message response
-        let result = domain_a::Messenger::relay_message_response(domain_a::Origin::none(), xdm);
+        let result =
+            domain_a::Messenger::relay_message_response(domain_a::RuntimeOrigin::none(), xdm);
         assert_ok!(result);
 
         // outbox message and message response should not exists
@@ -585,14 +595,14 @@ fn channel_relay_request_and_response(
             None
         );
 
-        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
-            domain_a::Runtime,
-        >::OutboxMessageResult {
-            domain_id: domain_b_id,
-            channel_id,
-            nonce,
-            result: OutboxMessageResult::Ok,
-        }));
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Messenger(
+            crate::Event::<domain_a::Runtime>::OutboxMessageResult {
+                domain_id: domain_b_id,
+                channel_id,
+                nonce,
+                result: OutboxMessageResult::Ok,
+            },
+        ));
     })
 }
 
@@ -652,7 +662,7 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
     let account_id = 1;
     domain_a_ext.execute_with(|| {
         let res = domain_a::Transporter::transfer(
-            domain_a::Origin::signed(account_id),
+            domain_a::RuntimeOrigin::signed(account_id),
             Location {
                 domain_id: domain_b::SelfDomainId::get(),
                 account_id,
@@ -660,13 +670,13 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
             500,
         );
         assert_ok!(res);
-        domain_a::System::assert_has_event(domain_a::Event::Transporter(
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Transporter(
             pallet_transporter::Event::<domain_a::Runtime>::OutgoingTransferInitiated {
                 domain_id: domain_b::SelfDomainId::get(),
                 message_id: (U256::zero(), U256::one()),
             },
         ));
-        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Messenger(crate::Event::<
             domain_a::Runtime,
         >::OutboxMessage {
             domain_id: domain_b::SelfDomainId::get(),
@@ -707,19 +717,19 @@ fn verify_transfer_on_domain(
     //   empty state
     let account_id = 1;
     domain_a_ext.execute_with(|| {
-        domain_a::System::assert_has_event(domain_a::Event::Transporter(
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Transporter(
             pallet_transporter::Event::<domain_a::Runtime>::OutgoingTransferSuccessful {
                 domain_id: domain_b::SelfDomainId::get(),
                 message_id: (U256::zero(), U256::one()),
             },
         ));
-        domain_a::System::assert_has_event(domain_a::Event::Messenger(crate::Event::<
-            domain_a::Runtime,
-        >::OutboxMessageResponse {
-            domain_id: domain_b::SelfDomainId::get(),
-            channel_id: U256::zero(),
-            nonce: U256::one(),
-        }));
+        domain_a::System::assert_has_event(domain_a::RuntimeEvent::Messenger(
+            crate::Event::<domain_a::Runtime>::OutboxMessageResponse {
+                domain_id: domain_b::SelfDomainId::get(),
+                channel_id: U256::zero(),
+                nonce: U256::one(),
+            },
+        ));
         assert_eq!(domain_a::Balances::free_balance(&account_id), 496);
         assert_eq!(
             domain_a::Balances::free_balance(&domain_a::Messenger::messenger_account_id()),
@@ -738,20 +748,20 @@ fn verify_transfer_on_domain(
     //   a successful event incoming event
     //   increased balance
     domain_b_ext.execute_with(|| {
-        domain_b::System::assert_has_event(domain_b::Event::Transporter(
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Transporter(
             pallet_transporter::Event::<domain_b::Runtime>::IncomingTransferSuccessful {
                 domain_id: domain_a::SelfDomainId::get(),
                 message_id: (U256::zero(), U256::one()),
             },
         ));
-        domain_b::System::assert_has_event(domain_b::Event::Messenger(crate::Event::<
-            domain_b::Runtime,
-        >::InboxMessageResponse {
-            domain_id: domain_a::SelfDomainId::get(),
-            channel_id: U256::zero(),
-            nonce: U256::one(),
-            relayer_id: domain_b::RELAYER_ID,
-        }));
+        domain_b::System::assert_has_event(domain_b::RuntimeEvent::Messenger(
+            crate::Event::<domain_b::Runtime>::InboxMessageResponse {
+                domain_id: domain_a::SelfDomainId::get(),
+                channel_id: U256::zero(),
+                nonce: U256::one(),
+                relayer_id: domain_b::RELAYER_ID,
+            },
+        ));
         assert_eq!(domain_b::Balances::free_balance(&account_id), 1500);
         assert_eq!(
             domain_b::Balances::free_balance(&domain_b::Messenger::messenger_account_id()),
@@ -822,7 +832,7 @@ fn test_transport_funds_between_domains_failed_low_balance() {
     let account_id = 100;
     domain_a_test_ext.execute_with(|| {
         let res = domain_a::Transporter::transfer(
-            domain_a::Origin::signed(account_id),
+            domain_a::RuntimeOrigin::signed(account_id),
             Location {
                 domain_id: domain_b::SelfDomainId::get(),
                 account_id,
@@ -844,7 +854,7 @@ fn test_transport_funds_between_domains_failed_no_open_channel() {
     let account_id = 1;
     domain_a_test_ext.execute_with(|| {
         let res = domain_a::Transporter::transfer(
-            domain_a::Origin::signed(account_id),
+            domain_a::RuntimeOrigin::signed(account_id),
             Location {
                 domain_id: domain_b::SelfDomainId::get(),
                 account_id,
@@ -863,8 +873,10 @@ fn test_join_relayer_low_balance() {
     let relayer_id = 100;
 
     domain_a_test_ext.execute_with(|| {
-        let res =
-            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        let res = domain_a::Messenger::join_relayer_set(
+            domain_a::RuntimeOrigin::signed(account_id),
+            relayer_id,
+        );
         assert_err!(
             res,
             pallet_balances::Error::<domain_a::Runtime>::InsufficientBalance
@@ -881,8 +893,10 @@ fn test_join_relayer_set() {
 
     domain_a_test_ext.execute_with(|| {
         assert_eq!(domain_a::Balances::free_balance(&account_id), 1000);
-        let res =
-            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        let res = domain_a::Messenger::join_relayer_set(
+            domain_a::RuntimeOrigin::signed(account_id),
+            relayer_id,
+        );
         assert_ok!(res);
         assert_eq!(
             domain_a::Messenger::relayers_info(relayer_id).unwrap(),
@@ -894,8 +908,10 @@ fn test_join_relayer_set() {
         assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
 
         // cannot rejoin again
-        let res =
-            domain_a::Messenger::join_relayer_set(domain_a::Origin::signed(account_id), relayer_id);
+        let res = domain_a::Messenger::join_relayer_set(
+            domain_a::RuntimeOrigin::signed(account_id),
+            relayer_id,
+        );
         assert_err!(res, crate::Error::<domain_a::Runtime>::AlreadyRelayer);
 
         // get relayer, idx should increment
@@ -929,7 +945,7 @@ fn test_exit_relayer_set() {
         assert_eq!(domain_a::Balances::free_balance(&account_id), 2000);
         for relayer in [relayer_id_1, relayer_id_2, relayer_id_3] {
             let res = domain_a::Messenger::join_relayer_set(
-                domain_a::Origin::signed(account_id),
+                domain_a::RuntimeOrigin::signed(account_id),
                 relayer,
             );
             assert_ok!(res);
@@ -953,7 +969,7 @@ fn test_exit_relayer_set() {
 
         // relayer_1 exits
         let res = domain_a::Messenger::exit_relayer_set(
-            domain_a::Origin::signed(account_id),
+            domain_a::RuntimeOrigin::signed(account_id),
             relayer_id_1,
         );
         assert_ok!(res);
@@ -961,7 +977,7 @@ fn test_exit_relayer_set() {
 
         // relayer_3 exits
         let res = domain_a::Messenger::exit_relayer_set(
-            domain_a::Origin::signed(account_id),
+            domain_a::RuntimeOrigin::signed(account_id),
             relayer_id_3,
         );
         assert_ok!(res);
