@@ -69,7 +69,7 @@ fn test_state_roots_bounded() {
 #[test]
 fn test_core_domain_state_roots_bounded() {
     new_test_ext().execute_with(|| {
-        let domain_id = DomainId::new(101);
+        let domain_id = DomainId::new(11);
         CoreDomainsStateRoot::<MockRuntime>::insert(domain_id, 1, BlakeTwo256::hash_of(&1));
         CoreDomainsStateRoot::<MockRuntime>::insert(domain_id, 2, BlakeTwo256::hash_of(&2));
 
