@@ -24,7 +24,8 @@ clap = { version = "4.0.22", features = ["derive"] }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "4.0.0"
 domain-service = { version = "0.1.0", path = "../../domains/service" }
-frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false, features = ["runtime-benchmarks"] }
+frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false }
+frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 futures = "0.3.21"
 log = "0.4.17"
@@ -54,7 +55,7 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 system-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/system" }
 thiserror = "1.0.32"
-tokio = { version = "1.20.1" }
+tokio = "1.20.1"
 
 [build-dependencies]
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
@@ -65,6 +66,8 @@ do-not-enforce-cost-of-storage = [
 	"subspace-runtime/do-not-enforce-cost-of-storage"
 ]
 runtime-benchmarks = [
+	"frame-benchmarking/runtime-benchmarks",
+	"frame-benchmarking-cli/runtime-benchmarks",
 	"domain-service/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 	"system-domain-runtime/runtime-benchmarks",

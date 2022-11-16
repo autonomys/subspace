@@ -22,8 +22,6 @@ frame-support = { default-features = false, git = "https://github.com/subspace/s
 frame-system = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 frame-system-benchmarking = { default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-hex-literal = { version = '0.3.1', optional = true }
-log = { version = "0.4.17", default-features = false }
 pallet-balances = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 pallet-domain-registry = { path = "../../pallets/domain-registry", default-features = false }
 pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
@@ -63,7 +61,6 @@ std = [
 	"frame-system/std",
 	"frame-system-benchmarking?/std",
 	"frame-system-rpc-runtime-api/std",
-	"log/std",
 	"pallet-balances/std",
 	"pallet-domain-registry/std",
 	"pallet-executor-registry/std",
@@ -88,11 +85,10 @@ std = [
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
 runtime-benchmarks = [
-	"frame-benchmarking",
-	"frame-system-benchmarking",
+	"frame-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
-	'hex-literal',
+	"frame-system-benchmarking/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
