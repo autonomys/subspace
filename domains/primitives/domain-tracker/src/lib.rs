@@ -20,24 +20,13 @@
 use codec::{Decode, Encode};
 use sp_core::sp_std;
 use sp_domains::DomainId;
-use sp_inherents::{InherentIdentifier, IsFatalError};
 use sp_std::vec::Vec;
 
-/// The identifier for the `domain-tracker` inherent.
-pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"dmn-trkr";
-
-#[derive(Encode)]
-pub struct NoFatalError<E: codec::Encode>(E);
-impl<E: codec::Encode> IsFatalError for NoFatalError<E> {
-    fn is_fatal_error(&self) -> bool {
-        false
-    }
-}
-
-/// Inherent type provided by the domain-tracker.
-#[derive(Encode, Decode)]
-pub struct InherentType<StateRoot> {
-    pub system_domain_state_root: StateRoot,
+/// Predigest item that contains the Confirmed Block's state root for domain tracker
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct StateRootUpdate<Number, StateRoot> {
+    pub number: Number,
+    pub state_root: StateRoot,
 }
 
 sp_api::decl_runtime_apis! {

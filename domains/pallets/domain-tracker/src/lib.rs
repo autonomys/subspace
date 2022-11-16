@@ -33,10 +33,9 @@ pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>:
 mod pallet {
     use crate::StateRootOf;
     use frame_support::pallet_prelude::*;
-    use frame_system::ensure_none;
-    use frame_system::pallet_prelude::{BlockNumberFor, OriginFor};
+    use frame_system::pallet_prelude::BlockNumberFor;
     use sp_core::storage::StorageKey;
-    use sp_domain_tracker::{InherentType, NoFatalError, INHERENT_IDENTIFIER};
+    use sp_domain_digests::AsPredigest;
     use sp_domains::DomainId;
     use sp_messenger::DomainTracker;
     use sp_runtime::traits::{CheckedSub, One};
@@ -77,77 +76,24 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// Flag to allow only one update per block through inherent.
-    #[pallet::storage]
-    #[pallet::getter(fn state_roots_updated)]
-    pub(super) type StateRootsUpdated<T: Config> = StorageValue<_, bool, ValueQuery>;
-
     /// Events emitted by pallet-domain-tracker.
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event<T: Config> {
-        /// Emits when state roots are updated.
-        StateRootsUpdated,
-    }
-
-    /// Errors emitted by pallet-domain-tracker.
-    #[pallet::error]
-    pub enum Error<T> {
-        /// Emits on second call to set state roots of the domain.
-        StateRootsAlreadyUpdated,
-    }
-
-    #[pallet::call]
-    impl<T: Config> Pallet<T> {
-        /// Updates the state root of the system domain.
-        /// Also ensures the state root count is bounded to the max limit for each domain.
-        #[pallet::weight((10_000, Pays::No))]
-        pub fn update_system_domain_state_root(
-            origin: OriginFor<T>,
-            state_root: StateRootOf<T>,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-            ensure!(
-                !StateRootsUpdated::<T>::get(),
-                Error::<T>::StateRootsAlreadyUpdated
-            );
-
-            Self::do_update_system_domain_state_root(state_root);
-            StateRootsUpdated::<T>::set(true);
-            Self::deposit_event(Event::<T>::StateRootsUpdated);
-            Ok(())
-        }
-    }
-
-    #[pallet::inherent]
-    impl<T: Config> ProvideInherent for Pallet<T> {
-        type Call = Call<T>;
-        type Error = NoFatalError<()>;
-        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
-
-        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
-            let inherent_data = data
-                .get_data::<InherentType<StateRootOf<T>>>(&INHERENT_IDENTIFIER)
-                .expect("Domain tracker inherent data is not correctly encoded")
-                .expect("Domain tracker inherent data must be provided.");
-
-            Some(Call::update_system_domain_state_root {
-                state_root: inherent_data.system_domain_state_root,
-            })
-        }
-
-        fn is_inherent(call: &Self::Call) -> bool {
-            matches!(call, Call::update_system_domain_state_root { .. })
-        }
-    }
+    pub enum Event<T: Config> {}
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_finalize(_n: BlockNumberFor<T>) {
-            assert!(
-                StateRootsUpdated::<T>::take(),
-                "StateRoots must be updated once a block."
-            );
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            if let Some(state_root_update) = <frame_system::Pallet<T>>::digest()
+                .logs
+                .iter()
+                .find_map(|s| {
+                    s.as_system_domain_state_root_update::<T::BlockNumber, StateRootOf<T>>()
+                })
+            {
+                Self::add_confirmed_system_domain_state_root(state_root_update.state_root);
+            }
+
+            Weight::zero()
         }
     }
 
@@ -168,7 +114,7 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn do_update_system_domain_state_root(state_root: StateRootOf<T>) {
+        pub fn add_confirmed_system_domain_state_root(state_root: StateRootOf<T>) {
             SystemDomainStateRoots::<T>::mutate(|state_roots| {
                 state_roots.push(state_root);
                 if state_roots.len() > T::StateRootsBound::get() as usize {

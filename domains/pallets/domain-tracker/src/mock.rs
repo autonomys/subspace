@@ -15,7 +15,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        DomainTracker: crate::{Pallet, Call, Storage, Event<T>},
+        DomainTracker: crate::{Pallet, Storage, Event<T>},
     }
 );
 

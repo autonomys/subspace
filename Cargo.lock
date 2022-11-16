@@ -4524,6 +4524,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-domain-digests",
  "sp-domain-tracker",
  "sp-domains",
  "sp-io",
@@ -7553,6 +7554,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-domain-digests"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domain-tracker",
+ "sp-runtime",
+]
+
+[[package]]
 name = "sp-domain-tracker"
 version = "0.1.0"
 dependencies = [
@@ -7560,7 +7572,6 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-domains",
- "sp-inherents",
 ]
 
 [[package]]
