@@ -141,6 +141,16 @@ pub struct BundleElectionParams {
     pub slot_probability: (u64, u64),
 }
 
+impl BundleElectionParams {
+    pub fn empty() -> Self {
+        Self {
+            authorities: Vec::new(),
+            total_stake_weight: 0,
+            slot_probability: (0, 0),
+        }
+    }
+}
+
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum VrfProofError {
     /// Can not construct the vrf public_key/output/proof from the raw bytes.

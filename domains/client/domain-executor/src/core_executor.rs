@@ -5,6 +5,7 @@ use crate::utils::BlockInfo;
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -29,7 +30,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 /// The implementation of the Domain `Executor`.
 pub struct Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
@@ -80,7 +81,7 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -92,7 +93,8 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -436,7 +438,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -448,7 +450,8 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>

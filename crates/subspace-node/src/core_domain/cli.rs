@@ -14,19 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_domain::cli::CoreDomainCli;
+use crate::core_domain::core_payments_chain_spec;
 use clap::Parser;
+use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd, RuntimeVersion, SharedParams, SubstrateCli,
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
-use sc_subspace_chain_specs::ExecutionChainSpec;
-use serde_json::Value;
+use sp_domains::DomainId;
 use std::net::SocketAddr;
+use std::num::ParseIntError;
 use std::path::PathBuf;
-use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -42,60 +42,54 @@ pub enum Subcommand {
     Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
 }
 
+fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
+    s.parse::<u32>().map(Into::into)
+}
+
 #[derive(Debug, Parser)]
-struct DomainCli {
+pub struct CoreDomainCli {
     /// Run a node.
     #[clap(flatten)]
-    pub run_system: RunCmd,
-
-    #[clap(raw = true)]
-    pub core_domain_args: Vec<String>,
-}
-
-pub struct SecondaryChainCli {
-    /// Run a node.
     pub run: RunCmd,
 
-    /// The base path that should be used by the secondary chain.
-    pub base_path: Option<PathBuf>,
+    #[clap(long, value_parser = parse_domain_id)]
+    pub domain_id: DomainId,
 
-    /// Specification of the secondary chain derived from primary chain spec.
-    pub chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
+    /// The base path that should be used by the secondary chain.
+    #[clap(skip)]
+    pub base_path: Option<PathBuf>,
 }
 
-impl SecondaryChainCli {
-    /// Constructs a new instance of [`SecondaryChainCli`].
+static CORE_DOMAIN_ID: OnceCell<DomainId> = OnceCell::new();
+
+impl CoreDomainCli {
+    /// Constructs a new instance of [`CoreDomainCli`].
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
-        mut base_path: Option<PathBuf>,
-        chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
-        secondary_chain_args: impl Iterator<Item = &'a String>,
-    ) -> (Self, Option<CoreDomainCli>) {
-        let domain_cli = DomainCli::parse_from(secondary_chain_args);
-
-        let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
-            let core_domain_cli =
-                CoreDomainCli::new(base_path.clone(), domain_cli.core_domain_args.iter());
-            Some(core_domain_cli)
-        } else {
-            None
+        system_domain_base_path: Option<PathBuf>,
+        core_payments_domain_args: impl Iterator<Item = &'a String>,
+    ) -> Self {
+        let mut cli = Self {
+            base_path: system_domain_base_path,
+            ..Self::parse_from(core_payments_domain_args)
         };
 
-        (
-            Self {
-                base_path: base_path.as_mut().map(|path| path.join("system")),
-                chain_spec,
-                run: domain_cli.run_system,
-            },
-            maybe_core_domain_cli,
-        )
+        cli.base_path
+            .as_mut()
+            .map(|path| path.join(format!("core-domain-{}", u32::from(cli.domain_id))));
+
+        CORE_DOMAIN_ID
+            .set(cli.domain_id)
+            .expect("Initialization must succeed as the cell has never been set; qed");
+
+        cli
     }
 }
 
-impl SubstrateCli for SecondaryChainCli {
+impl SubstrateCli for CoreDomainCli {
     fn impl_name() -> String {
-        "Subspace Executor".into()
+        "Subspace".into()
     }
 
     fn impl_version() -> String {
@@ -109,7 +103,7 @@ impl SubstrateCli for SecondaryChainCli {
     }
 
     fn description() -> String {
-        "Subspace Executor".into()
+        "Subspace Core Domain Operator".into()
     }
 
     fn author() -> String {
@@ -124,53 +118,51 @@ impl SubstrateCli for SecondaryChainCli {
         2022
     }
 
-    fn load_spec(&self, _id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
-        let mut chain_spec = self.chain_spec.clone();
-
-        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
-        // chain spec
-        if !self.run.network_params.bootnodes.is_empty() {
-            let mut chain_spec_value: Value = serde_json::from_str(&chain_spec.as_json(true)?)
-                .map_err(|error| error.to_string())?;
-            if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
-                if let Some(boot_nodes) = boot_nodes.as_array_mut() {
-                    boot_nodes.clear();
-                }
-            }
-            // Such mess because native serialization of the chain spec serializes it twice, see
-            // docs on `sc_subspace_chain_specs::utils::SerializableChainSpec`.
-            chain_spec = serde_json::to_string(&chain_spec_value.to_string())
-                .and_then(|chain_spec_string| serde_json::from_str(&chain_spec_string))
-                .map_err(|error| error.to_string())?;
-        }
-
+    fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
+        let chain_spec = match self.domain_id {
+            DomainId::CORE_PAYMENTS => match id {
+                "x-net-2" => core_payments_chain_spec::x_net_2_config(),
+                "dev" => core_payments_chain_spec::development_config(),
+                "" | "local" => core_payments_chain_spec::local_testnet_config(),
+                path => core_payments_chain_spec::ChainSpec::from_json_file(
+                    std::path::PathBuf::from(path),
+                )?,
+            },
+            domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
+        };
         Ok(Box::new(chain_spec))
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &system_domain_runtime::VERSION
+        match CORE_DOMAIN_ID
+            .get()
+            .expect("Initialized when constructing this struct")
+        {
+            &DomainId::CORE_PAYMENTS => &core_payments_domain_runtime::VERSION,
+            domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
+        }
     }
 }
 
-impl DefaultConfigurationValues for SecondaryChainCli {
+impl DefaultConfigurationValues for CoreDomainCli {
     fn p2p_listen_port() -> u16 {
-        30334
+        30335
     }
 
     fn rpc_ws_listen_port() -> u16 {
-        9945
+        9946
     }
 
     fn rpc_http_listen_port() -> u16 {
-        9934
+        9935
     }
 
     fn prometheus_listen_port() -> u16 {
-        9616
+        9617
     }
 }
 
-impl CliConfiguration<Self> for SecondaryChainCli {
+impl CliConfiguration<Self> for CoreDomainCli {
     fn shared_params(&self) -> &SharedParams {
         self.run.shared_params()
     }
@@ -193,8 +185,8 @@ impl CliConfiguration<Self> for SecondaryChainCli {
             .base_path()?
             .as_mut()
             .map(|base_path| {
-                let path: PathBuf = base_path.path().to_path_buf();
-                BasePath::new(path.join("system"))
+                let path = base_path.path().to_path_buf();
+                BasePath::new(path.join(format!("core-domain-{}", u32::from(self.domain_id))))
             })
             .or_else(|| self.base_path.clone().map(Into::into)))
     }

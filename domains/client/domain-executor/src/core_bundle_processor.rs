@@ -2,6 +2,7 @@ use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -24,7 +25,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, Randomness};
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 const LOG_TARGET: &str = "bundle-processor";
 
@@ -133,7 +134,7 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -145,7 +146,8 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
@@ -470,10 +472,11 @@ where
             })?;
 
         // TODO: extract the receipts specific to this domain.
-        let receipts = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
+        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
+            &BlockId::Hash(primary_hash),
+            extrinsics.clone(),
+            self.domain_id,
+        )?;
 
         let mut bad_receipts_to_write = vec![];
 

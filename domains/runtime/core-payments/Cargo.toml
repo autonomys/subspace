@@ -1,20 +1,15 @@
 [package]
-name = "domain-test-runtime"
+name = "core-payments-domain-runtime"
 version = "0.1.0"
-authors = ["Anonymous"]
-description = "A new Cumulus FRAME-based Substrate Runtime, ready for hacking together a parachain."
-license = "Unlicense"
-homepage = "https://substrate.io"
-repository = "https://github.com/paritytech/cumulus/"
+authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace/"
 edition = "2021"
-links = "domain-test-runtime"
+links = "core-payments-domain-runtime"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
-
-[build-dependencies]
-subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-wasm-tools" }
-substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 
 [dependencies]
 hex-literal = { version = '0.3.1', optional = true }
@@ -54,7 +49,10 @@ pallet-domain-registry = { path = "../../pallets/domain-registry", default-featu
 pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
 sp-domains = { path = "../../../crates/sp-domains", default-features = false }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives", default-features = false }
-system-runtime-primitives = { path = "../../primitives/system-runtime", default-features = false }
+
+[build-dependencies]
+subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-wasm-tools" }
+substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 
 [features]
 default = [
@@ -87,7 +85,15 @@ std = [
 	"pallet-executor-registry/std",
 	"sp-domains/std",
 	"subspace-runtime-primitives/std",
-	"system-runtime-primitives/std",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
+runtime-benchmarks = [
+	'hex-literal',
+	"sp-runtime/runtime-benchmarks",
+	"frame-benchmarking",
+	"frame-system-benchmarking",
+	"frame-support/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"pallet-balances/runtime-benchmarks",
+]

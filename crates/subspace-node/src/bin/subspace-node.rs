@@ -25,16 +25,17 @@ use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
+use sp_domains::DomainId;
 use std::any::TypeId;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
-/// Secondary executor instance.
-pub struct SecondaryExecutorDispatch;
+/// System domain executor instance.
+pub struct SystemDomainExecutorDispatch;
 
-impl NativeExecutionDispatch for SecondaryExecutorDispatch {
+impl NativeExecutionDispatch for SystemDomainExecutorDispatch {
     #[cfg(feature = "runtime-benchmarks")]
     type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -46,6 +47,24 @@ impl NativeExecutionDispatch for SecondaryExecutorDispatch {
 
     fn native_version() -> sc_executor::NativeVersion {
         system_domain_runtime::native_version()
+    }
+}
+
+/// Core payments domain executor instance.
+pub struct CorePaymentsDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_payments_domain_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_payments_domain_runtime::native_version()
     }
 }
 
@@ -209,7 +228,7 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
-                let secondary_chain_cli = SecondaryChainCli::new(
+                let (secondary_chain_cli, _maybe_core_domain_cli) = SecondaryChainCli::new(
                     cmd.base
                         .base_path()?
                         .map(|base_path| base_path.path().to_path_buf()),
@@ -397,7 +416,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let mut secondary_chain_cli = SecondaryChainCli::new(
+                    let (mut secondary_chain_cli, maybe_core_domain_cli) = SecondaryChainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -415,7 +434,7 @@ fn main() -> Result<(), Error> {
                     let secondary_chain_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
                         &secondary_chain_cli,
-                        tokio_handle,
+                        tokio_handle.clone(),
                     )
                     .map_err(|error| {
                         sc_service::Error::Other(format!(
@@ -423,19 +442,7 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                    let secondary_chain_node_fut = domain_service::new_full::<
-                        _,
-                        _,
-                        _,
-                        _,
-                        _,
-                        system_domain_runtime::RuntimeApi,
-                        SecondaryExecutorDispatch,
-                    >(
-                        secondary_chain_config,
-                        primary_chain_node.client.clone(),
-                        primary_chain_node.network.clone(),
-                        &primary_chain_node.select_chain,
+                    let imported_block_notification_stream = || {
                         primary_chain_node
                             .imported_block_notification_stream
                             .subscribe()
@@ -445,7 +452,10 @@ fn main() -> Result<(), Error> {
                                     imported_block_notification.fork_choice,
                                     imported_block_notification.block_import_acknowledgement_sender,
                                 )
-                            }),
+                            })
+                    };
+
+                    let new_slot_notification_stream = || {
                         primary_chain_node
                             .new_slot_notification_stream
                             .subscribe()
@@ -454,15 +464,94 @@ fn main() -> Result<(), Error> {
                                     slot_notification.new_slot_info.slot,
                                     slot_notification.new_slot_info.global_challenge,
                                 )
-                            }),
-                        block_import_throttling_buffer_size,
-                    );
+                            })
+                    };
 
-                    let secondary_chain_node = secondary_chain_node_fut.await?;
+                    let secondary_chain_node = domain_service::new_full::<
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        system_domain_runtime::RuntimeApi,
+                        SystemDomainExecutorDispatch,
+                    >(
+                        secondary_chain_config,
+                        primary_chain_node.client.clone(),
+                        primary_chain_node.network.clone(),
+                        &primary_chain_node.select_chain,
+                        imported_block_notification_stream(),
+                        new_slot_notification_stream(),
+                        block_import_throttling_buffer_size,
+                    )
+                    .await?;
 
                     primary_chain_node
                         .task_manager
                         .add_child(secondary_chain_node.task_manager);
+
+                    if let Some(mut core_domain_cli) = maybe_core_domain_cli {
+                        let span = sc_tracing::tracing::info_span!(
+                            sc_tracing::logging::PREFIX_LOG_SPAN,
+                            name = "CoreDomain"
+                        );
+                        let _enter = span.enter();
+
+                        // Increase default number of peers
+                        if core_domain_cli.run.network_params.out_peers == 25 {
+                            core_domain_cli.run.network_params.out_peers = 50;
+                        }
+
+                        let core_domain_config = SubstrateCli::create_configuration(
+                            &core_domain_cli,
+                            &core_domain_cli,
+                            tokio_handle,
+                        )
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create core domain configuration: {error:?}"
+                            ))
+                        })?;
+
+                        let core_domain_node = match core_domain_cli.domain_id {
+                            DomainId::CORE_PAYMENTS => {
+                                domain_service::new_full_core::<
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    _,
+                                    core_payments_domain_runtime::RuntimeApi,
+                                    CorePaymentsDomainExecutorDispatch,
+                                >(
+                                    core_domain_cli.domain_id,
+                                    core_domain_config,
+                                    secondary_chain_node.client.clone(),
+                                    primary_chain_node.client.clone(),
+                                    primary_chain_node.network.clone(),
+                                    &primary_chain_node.select_chain,
+                                    imported_block_notification_stream(),
+                                    new_slot_notification_stream(),
+                                    block_import_throttling_buffer_size,
+                                )
+                                .await?
+                            }
+                            _ => {
+                                return Err(Error::Other(format!(
+                                    "Invalid domain id, currently only core-payments domain is supported, please rerun with `--domain-id={:?}`",
+                                    u32::from(DomainId::CORE_PAYMENTS)
+                                )));
+                            }
+                        };
+
+                        primary_chain_node
+                            .task_manager
+                            .add_child(core_domain_node.task_manager);
+
+                        core_domain_node.network_starter.start_network();
+                    }
 
                     secondary_chain_node.network_starter.start_network();
                 }

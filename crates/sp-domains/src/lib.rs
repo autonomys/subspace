@@ -104,12 +104,14 @@ impl core::ops::Sub<u32> for DomainId {
     }
 }
 
-// TODO: confirm the range of different domain types.
-const CORE_DOMAIN_ID_START: u32 = 100;
-const OPEN_DOMAIN_ID_START: u32 = 1000;
+const OPEN_DOMAIN_ID_START: u32 = 100;
 
 impl DomainId {
     pub const SYSTEM: Self = Self::new(0);
+
+    pub const CORE_DOMAIN_ID_START: Self = Self::new(1);
+
+    pub const CORE_PAYMENTS: Self = Self::new(1);
 
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
@@ -118,12 +120,12 @@ impl DomainId {
 
     /// Returns `true` if a domain is a system domain.
     pub fn is_system(&self) -> bool {
-        self.0 < CORE_DOMAIN_ID_START
+        self.0 == Self::SYSTEM.0
     }
 
     /// Returns `true` if a domain is a core domain.
     pub fn is_core(&self) -> bool {
-        self.0 >= CORE_DOMAIN_ID_START && self.0 < OPEN_DOMAIN_ID_START
+        self.0 >= Self::CORE_DOMAIN_ID_START.0 && self.0 < OPEN_DOMAIN_ID_START
     }
 
     /// Returns `true` if a domain is an open domain.
@@ -146,8 +148,8 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
     // May be supported later.
     //pub upgrade_keys: Vec<AccountId>,
-    // TODO: elaborate this field.
-    pub bundle_frequency: u32,
+    /// Slot probability
+    pub bundle_slot_probability: (u64, u64),
 
     /// Maximum domain bundle size in bytes.
     pub max_bundle_size: u32,
@@ -371,9 +373,9 @@ impl ExecutionPhase {
     /// Returns the method for generating the proof.
     pub fn proving_method(&self) -> &'static str {
         match self {
-            // TODO: Replace `SecondaryApi_initialize_block_with_post_state_root` with `Core_initalize_block`
+            // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
+            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
@@ -386,8 +388,8 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock { .. } => "SecondaryApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "SecondaryApi_apply_extrinsic_with_post_state_root",
+            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
@@ -571,6 +573,7 @@ sp_api::decl_runtime_apis! {
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(
             extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, SecondaryHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.

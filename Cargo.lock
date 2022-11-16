@@ -1018,6 +1018,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
+name = "core-payments-domain-runtime"
+version = "0.1.0"
+dependencies = [
+ "domain-pallet-executive",
+ "domain-runtime-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-domain-registry",
+ "pallet-executor-registry",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "subspace-wasm-tools",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "core2"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1609,6 +1646,7 @@ dependencies = [
  "crossbeam",
  "domain-block-builder",
  "domain-client-executor-gossip",
+ "domain-runtime-primitives",
  "domain-test-service",
  "futures 0.3.21",
  "futures-timer",
@@ -1675,6 +1713,7 @@ dependencies = [
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "futures 0.3.21",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -1691,7 +1730,6 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
- "system-runtime-primitives",
  "tracing",
 ]
 
@@ -1717,6 +1755,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-runtime-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
@@ -1724,6 +1773,7 @@ dependencies = [
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "futures 0.3.21",
@@ -1771,6 +1821,7 @@ name = "domain-test-runtime"
 version = "0.1.0"
 dependencies = [
  "domain-pallet-executive",
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -7723,6 +7774,7 @@ name = "sp-executor-registry"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
+ "sp-domains",
  "sp-std",
 ]
 
@@ -8430,6 +8482,7 @@ name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
  "domain-block-builder",
+ "domain-runtime-primitives",
  "domain-test-service",
  "futures 0.3.21",
  "hash-db",
@@ -8448,7 +8501,6 @@ dependencies = [
  "sp-state-machine",
  "sp-trie",
  "substrate-test-utils",
- "system-runtime-primitives",
  "tempfile",
  "tokio",
  "tracing",
@@ -8490,12 +8542,14 @@ name = "subspace-node"
 version = "0.1.0"
 dependencies = [
  "clap 4.0.22",
+ "core-payments-domain-runtime",
  "dirs",
  "domain-service",
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.21",
  "log",
+ "once_cell",
  "parity-scale-codec",
  "sc-cli",
  "sc-client-api",
@@ -8538,6 +8592,7 @@ dependencies = [
 name = "subspace-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",
@@ -8583,7 +8638,6 @@ dependencies = [
  "subspace-wasm-tools",
  "substrate-wasm-builder",
  "system-domain-runtime",
- "system-runtime-primitives",
 ]
 
 [[package]]
@@ -8604,6 +8658,7 @@ name = "subspace-service"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.21",
@@ -8653,7 +8708,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "system-runtime-primitives",
  "thiserror",
  "tracing",
 ]
@@ -8697,6 +8751,7 @@ dependencies = [
 name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "domain-test-runtime",
  "frame-executive",
  "frame-support",
@@ -8738,7 +8793,6 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
- "system-runtime-primitives",
 ]
 
 [[package]]
@@ -9042,7 +9096,9 @@ dependencies = [
 name = "system-domain-runtime"
 version = "0.1.0"
 dependencies = [
+ "core-payments-domain-runtime",
  "domain-pallet-executive",
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",

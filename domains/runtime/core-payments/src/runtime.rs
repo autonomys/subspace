@@ -12,9 +12,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
-use sp_domains::bundle_election::BundleElectionParams;
-use sp_domains::{DomainId, SignedOpaqueBundle};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -22,10 +20,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
-
-// Make core-payments WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
+use subspace_runtime_primitives::SHANNON;
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -98,8 +93,8 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace-system-domain"),
-    impl_name: create_runtime_str!("subspace-system-domain"),
+    spec_name: create_runtime_str!("subspace-core-payments-domain"),
+    impl_name: create_runtime_str!("subspace-core-payments-domain"),
     authoring_version: 0,
     spec_version: 0,
     impl_version: 0,
@@ -120,7 +115,7 @@ const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 /// We allow for 0.5 of a second of compute with a 12 second average block time.
-const MAXIMUM_BLOCK_WEIGHT: Weight = WEIGHT_PER_SECOND.div(2).set_proof_size(u64::MAX);
+const MAXIMUM_BLOCK_WEIGHT: Weight = WEIGHT_PER_SECOND.saturating_div(2).set_proof_size(u64::MAX);
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -252,53 +247,6 @@ impl domain_pallet_executive::Config for Runtime {
     type RuntimeCall = RuntimeCall;
 }
 
-parameter_types! {
-    // TODO: proper parameters
-    pub const MinExecutorStake: Balance = SSC;
-    pub const MaxExecutorStake: Balance = 1000 * SSC;
-    pub const MinExecutors: u32 = 1;
-    pub const MaxExecutors: u32 = 10;
-    // One hour in blocks.
-    pub const EpochDuration: BlockNumber = 3600 / 6;
-    pub const MaxWithdrawals: u32 = 1;
-    // One day in blocks.
-    pub const WithdrawalDuration: BlockNumber = 3600 * 24 / 6;
-}
-
-impl pallet_executor_registry::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type StakeWeight = sp_domains::StakeWeight;
-    type MinExecutorStake = MinExecutorStake;
-    type MaxExecutorStake = MaxExecutorStake;
-    type MinExecutors = MinExecutors;
-    type MaxExecutors = MaxExecutors;
-    type MaxWithdrawals = MaxWithdrawals;
-    type WithdrawalDuration = WithdrawalDuration;
-    type EpochDuration = EpochDuration;
-    type OnNewEpoch = DomainRegistry;
-}
-
-parameter_types! {
-    pub const MinDomainDeposit: Balance = 10 * SSC;
-    pub const MaxDomainDeposit: Balance = 1000 * SSC;
-    pub const MinDomainOperatorStake: Balance = 10 * SSC;
-    pub const ReceiptsPruningDepth: BlockNumber = 256;
-    pub const MaximumReceiptDrift: BlockNumber = 128;
-}
-
-impl pallet_domain_registry::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type StakeWeight = sp_domains::StakeWeight;
-    type ExecutorRegistry = ExecutorRegistry;
-    type MinDomainDeposit = MinDomainDeposit;
-    type MaxDomainDeposit = MaxDomainDeposit;
-    type MinDomainOperatorStake = MinDomainOperatorStake;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
-}
-
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -315,13 +263,6 @@ construct_runtime!(
         // Monetary stuff.
         Balances: pallet_balances = 2,
         TransactionPayment: pallet_transaction_payment = 3,
-
-        // System domain.
-        //
-        // Must be after Balances pallet so that its genesis is built after the Balances genesis is
-        // built.
-        ExecutorRegistry: pallet_executor_registry = 4,
-        DomainRegistry: pallet_domain_registry = 5,
     }
 );
 
@@ -445,64 +386,9 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
-                    weight: Weight::zero(),
+                    weight: Weight::from_ref_time(0),
                 }.into()
             ).encode()
-        }
-    }
-
-    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
-        fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
-        ) -> Vec<Vec<u8>> {
-            use codec::Encode;
-            signed_opaque_bundles
-                .into_iter()
-                .map(|signed_opaque_bundle| {
-                    UncheckedExtrinsic::new_unsigned(
-                        pallet_domain_registry::Call::submit_core_bundle {
-                            signed_opaque_bundle
-                        }.into()
-                    ).encode()
-                })
-                .collect()
-        }
-
-        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
-            if domain_id.is_system() {
-                BundleElectionParams {
-                    authorities: ExecutorRegistry::authorities().into(),
-                    total_stake_weight: ExecutorRegistry::total_stake_weight(),
-                    slot_probability: ExecutorRegistry::slot_probability(),
-                }
-            } else {
-                match (
-                    DomainRegistry::domain_authorities(domain_id),
-                    DomainRegistry::domain_total_stake_weight(domain_id),
-                    DomainRegistry::domain_slot_probability(domain_id),
-                ) {
-                    (authorities, Some(total_stake_weight), Some(slot_probability)) => {
-                        BundleElectionParams {
-                            authorities,
-                            total_stake_weight,
-                            slot_probability,
-                        }
-                    }
-                    _ => BundleElectionParams::empty(),
-                }
-            }
-        }
-
-        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::best_execution_chain_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
         }
     }
 
@@ -540,7 +426,7 @@ impl_runtime_apis! {
                 hex_literal::hex!("c2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80").to_vec().into(),
                 // Execution Phase
                 hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef7ff553b5a9862a516939d82b3d3d8661a").to_vec().into(),
-                // Event Count
+                // RuntimeEvent Count
                 hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef70a98fdbe9ce6c55837576c60c7af3850").to_vec().into(),
                 // System Events
                 hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7").to_vec().into(),
