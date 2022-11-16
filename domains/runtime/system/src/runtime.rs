@@ -1,3 +1,7 @@
+use domain_runtime_primitives::RelayerId;
+pub use domain_runtime_primitives::{
+    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
+};
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
 use frame_support::weights::constants::{
@@ -24,10 +28,9 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
-use system_runtime_primitives::RelayerId;
-pub use system_runtime_primitives::{
-    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
-};
+
+// Make core-payments WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -248,7 +251,7 @@ impl pallet_transaction_payment::Config for Runtime {
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type Call = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
 }
 
 parameter_types! {
@@ -459,11 +462,11 @@ impl_runtime_apis! {
         }
     }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, AccountId, BlockNumber, Hash> for Runtime {
+    impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
-            use system_runtime_primitives::Signer;
+            use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
             extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
         }
@@ -492,7 +495,9 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+    }
 
+    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {
@@ -509,12 +514,28 @@ impl_runtime_apis! {
                 .collect()
         }
 
-        fn bundle_elections_params(_domain_id: DomainId) -> BundleElectionParams {
-            // TODO: support all kinds of domains.
-            BundleElectionParams {
-                authorities: ExecutorRegistry::authorities().into(),
-                total_stake_weight: ExecutorRegistry::total_stake_weight(),
-                slot_probability: ExecutorRegistry::slot_probability(),
+        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
+            if domain_id.is_system() {
+                BundleElectionParams {
+                    authorities: ExecutorRegistry::authorities().into(),
+                    total_stake_weight: ExecutorRegistry::total_stake_weight(),
+                    slot_probability: ExecutorRegistry::slot_probability(),
+                }
+            } else {
+                match (
+                    DomainRegistry::domain_authorities(domain_id),
+                    DomainRegistry::domain_total_stake_weight(domain_id),
+                    DomainRegistry::domain_slot_probability(domain_id),
+                ) {
+                    (authorities, Some(total_stake_weight), Some(slot_probability)) => {
+                        BundleElectionParams {
+                            authorities,
+                            total_stake_weight,
+                            slot_probability,
+                        }
+                    }
+                    _ => BundleElectionParams::empty(),
+                }
             }
         }
 

@@ -25,6 +25,7 @@ use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
 use sp_domains::ExecutorPublicKey;
 use sp_runtime::Percent;
+use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_runtime_primitives::SSC;
 use system_domain_runtime::{
     AccountId, Balance, BalancesConfig, DomainRegistryConfig, ExecutorRegistryConfig,
@@ -61,7 +62,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     DomainConfig {
                         wasm_runtime_hash: Hash::random(),
                         max_bundle_size: 1024 * 1024,
-                        bundle_frequency: 100,
+                        bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },
@@ -115,7 +116,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     DomainConfig {
                         wasm_runtime_hash: Hash::zero(),
                         max_bundle_size: 1024 * 1024,
-                        bundle_frequency: 100,
+                        bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },
@@ -168,9 +169,12 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
                     1_000 * SSC,
                     // TODO: proper genesis domain config
                     DomainConfig {
-                        wasm_runtime_hash: Hash::random(),
+                        wasm_runtime_hash: blake2b_256_hash(
+                            system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                        )
+                        .into(),
                         max_bundle_size: 1024 * 1024,
-                        bundle_frequency: 100,
+                        bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },

@@ -47,6 +47,7 @@ RUN \
 
 RUN \
     /root/.cargo/bin/cargo build \
+        --locked \
         -Z build-std \
         --profile $PROFILE \
         --bin subspace-node \

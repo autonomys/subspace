@@ -1,4 +1,5 @@
 use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use domain_runtime_primitives::RelayerId;
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
 use sp_api::ProvideRuntimeApi;
@@ -9,7 +10,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::sync::Arc;
-use system_runtime_primitives::RelayerId;
 
 /// Starts relaying system domain messages to other domains.
 /// If the node is in major sync, worker waits waits until the sync is finished.

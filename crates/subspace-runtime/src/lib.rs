@@ -385,7 +385,7 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SecondaryHash = system_runtime_primitives::Hash;
+    type SecondaryHash = domain_runtime_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -526,8 +526,8 @@ fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
 fn extract_system_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
 ) -> (
-    sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash>,
-    sp_domains::SignedOpaqueBundles<Block, system_runtime_primitives::Hash>,
+    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
+    sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
 ) {
     let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
@@ -555,7 +555,7 @@ fn extract_system_bundles(
 fn extract_core_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash> {
+) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
@@ -571,18 +571,17 @@ fn extract_core_bundles(
 
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, system_runtime_primitives::Hash>> {
+    domain_id: DomainId,
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
     extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) = uxt.function
-            {
+            }) if signed_opaque_bundle.domain_id() == domain_id => {
                 Some(signed_opaque_bundle.bundle.receipts)
-            } else {
-                None
             }
+            _ => None,
         })
         .flatten()
         .collect()
@@ -795,8 +794,8 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::ExecutorApi<Block, system_runtime_primitives::Hash> for Runtime {
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>) {
+    impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
@@ -819,8 +818,8 @@ impl_runtime_apis! {
         fn extract_system_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> (
-            sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash>,
-            sp_domains::SignedOpaqueBundles<Block, system_runtime_primitives::Hash>,
+            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
+            sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
         ) {
             extract_system_bundles(extrinsics)
         }
@@ -828,14 +827,15 @@ impl_runtime_apis! {
         fn extract_core_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
             domain_id: DomainId,
-        ) -> sp_domains::OpaqueBundles<Block, system_runtime_primitives::Hash> {
+        ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
             extract_core_bundles(extrinsics, domain_id)
         }
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, system_runtime_primitives::Hash>> {
-            extract_receipts(extrinsics)
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
+            extract_receipts(extrinsics, domain_id)
         }
 
         fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {

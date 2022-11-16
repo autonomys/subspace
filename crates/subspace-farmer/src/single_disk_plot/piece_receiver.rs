@@ -6,6 +6,7 @@ use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, PieceByHashRequest, PieceKey, ToMultihash};
@@ -14,14 +15,6 @@ use tracing::{debug, error, info, trace, warn};
 
 /// Defines a duration between get_piece calls.
 const GET_PIECE_WAITING_DURATION_IN_SECS: u64 = 1;
-
-#[async_trait]
-pub trait PieceReceiver {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
 
 // Temporary struct serving pieces from different providers using configuration arguments.
 pub(crate) struct MultiChannelPieceReceiver<'a, RC: RpcClient> {

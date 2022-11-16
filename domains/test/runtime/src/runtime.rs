@@ -1,3 +1,7 @@
+use domain_runtime_primitives::RelayerId;
+pub use domain_runtime_primitives::{
+    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
+};
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
 use frame_support::weights::constants::{
@@ -22,10 +26,6 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
-use system_runtime_primitives::RelayerId;
-pub use system_runtime_primitives::{
-    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
-};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -252,7 +252,7 @@ impl pallet_transaction_payment::Config for Runtime {
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type Call = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
 }
 
 parameter_types! {
@@ -459,11 +459,11 @@ impl_runtime_apis! {
         }
     }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, AccountId, BlockNumber, Hash> for Runtime {
+    impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
-            use system_runtime_primitives::Signer;
+            use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
             extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
         }
@@ -493,7 +493,9 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+    }
 
+    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {

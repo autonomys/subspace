@@ -67,6 +67,7 @@ domain-client-consensus-relay-chain = { path = "../client/consensus-relay-chain"
 domain-client-executor = { path = "../client/domain-executor" }
 domain-client-executor-gossip = { path = "../client/executor-gossip" }
 domain-client-message-relayer = { path = "../client/relayer" }
+domain-runtime-primitives = { path = "../primitives/runtime" }
 system-runtime-primitives = { path = "../primitives/system-runtime" }
 
 # Subspace dependencies

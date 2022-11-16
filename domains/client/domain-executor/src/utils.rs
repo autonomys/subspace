@@ -1,8 +1,9 @@
 use sc_consensus::ForkChoiceStrategy;
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use std::convert::TryInto;
 use std::fmt::Debug;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
@@ -32,4 +33,17 @@ where
     pub number: NumberFor<Block>,
     /// Fork choice of the block.
     pub fork_choice: ForkChoiceStrategy,
+}
+
+/// Converts the block number from the generic type `N1` to `N2`.
+pub(crate) fn translate_number_type<N1, N2>(block_number: N1) -> N2
+where
+    N1: TryInto<BlockNumber>,
+    N2: From<BlockNumber>,
+{
+    let concrete_block_number: BlockNumber = block_number
+        .try_into()
+        .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"));
+
+    N2::from(concrete_block_number)
 }

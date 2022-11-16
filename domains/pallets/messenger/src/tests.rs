@@ -604,6 +604,7 @@ fn channel_relay_request_and_response(
 }
 
 #[test]
+#[ignore]
 fn test_open_channel_between_domains() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     let mut domain_b_test_ext = domain_b::new_test_ext();
@@ -617,6 +618,7 @@ fn test_open_channel_between_domains() {
 }
 
 #[test]
+#[ignore]
 fn test_close_channel_between_domains() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     let mut domain_b_test_ext = domain_b::new_test_ext();
@@ -633,6 +635,7 @@ fn test_close_channel_between_domains() {
 }
 
 #[test]
+#[ignore]
 fn test_send_message_between_domains() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     let mut domain_b_test_ext = domain_b::new_test_ext();
@@ -770,6 +773,7 @@ fn verify_transfer_on_domain(
 }
 
 #[test]
+#[ignore]
 fn test_transport_funds_between_domains() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     let mut domain_b_test_ext = domain_b::new_test_ext();
@@ -814,6 +818,7 @@ fn test_transport_funds_between_domains() {
 }
 
 #[test]
+#[ignore]
 fn test_transport_funds_between_domains_failed_low_balance() {
     let mut domain_a_test_ext = domain_a::new_test_ext();
     let mut domain_b_test_ext = domain_b::new_test_ext();

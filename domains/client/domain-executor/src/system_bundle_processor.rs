@@ -2,6 +2,7 @@ use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -27,7 +28,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, Randomness};
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 const LOG_TARGET: &str = "bundle-processor";
 
@@ -131,7 +132,8 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block, AccountId>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -491,10 +493,11 @@ where
                 ))
             })?;
 
-        let receipts = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
+        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
+            &BlockId::Hash(primary_hash),
+            extrinsics.clone(),
+            sp_domains::DomainId::SYSTEM,
+        )?;
 
         let mut bad_receipts_to_write = vec![];
 

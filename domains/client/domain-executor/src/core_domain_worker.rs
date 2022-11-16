@@ -19,6 +19,7 @@ use crate::core_bundle_producer::CoreBundleProducer;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
 use codec::{Decode, Encode};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -38,7 +39,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
 const LOG_TARGET: &str = "executor-worker";
@@ -85,7 +86,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block, AccountId>
         + BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
@@ -97,7 +98,8 @@ pub(super) async fn start_worker<
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -338,12 +340,11 @@ where
         + Sync,
 {
     let best_hash = primary_chain_client.info().best_hash;
-    let best_number = primary_chain_client.info().best_hash;
+    let best_number = primary_chain_client.info().best_number;
 
     let best_hash = PBlock::Hash::decode(&mut best_hash.encode().as_slice())
         .expect("Hash type must be correct");
-    let best_number = NumberFor::<PBlock>::decode(&mut best_number.encode().as_slice())
-        .expect("BlockNumber type must be correct");
+    let best_number = crate::utils::translate_number_type(best_number);
 
     let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
