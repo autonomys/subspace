@@ -673,17 +673,4 @@ mod tests {
             vec![100, 30, 10, 1, 11, 101, 31, 12, 102, 2]
         );
     }
-
-    #[test]
-    fn construct_trace_merkle_tree_should_work() {
-        let root1 = [1u8; 32];
-        let root2 = [2u8; 32];
-        let root3 = [3u8; 32];
-
-        let roots = vec![root1, root2];
-        crate::merkle_tree::construct_trace_merkle_tree(roots).unwrap();
-
-        let roots = vec![root1, root2, root3];
-        crate::merkle_tree::construct_trace_merkle_tree(roots).unwrap();
-    }
 }
