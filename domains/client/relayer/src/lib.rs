@@ -6,7 +6,7 @@ pub mod worker;
 
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
-use sp_api::{ProvideRuntimeApi, StateBackend};
+use sp_api::ProvideRuntimeApi;
 use sp_domain_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
@@ -72,11 +72,7 @@ impl From<sp_api::ApiError> for Error {
 impl<Client, Block> Relayer<Client, Block>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
 {
     pub(crate) fn domain_id(client: &Arc<Client>) -> Result<DomainId, Error> {

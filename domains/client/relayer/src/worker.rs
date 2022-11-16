@@ -1,4 +1,4 @@
-use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, StateBackend, LOG_TARGET};
+use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
 use sp_api::ProvideRuntimeApi;
@@ -18,26 +18,29 @@ pub async fn relay_system_domain_messages<Client, Block, DBI, SO>(
     system_domain_client: Arc<Client>,
     system_domain_block_import: DBI,
     system_domain_sync_oracle: SO,
-) -> Result<(), Error>
-where
+) where
     Block: BlockT,
-    Client: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
     SO: SyncOracle,
 {
-    relay_domain_messages(
+    let result = relay_domain_messages(
         relayer_id,
         system_domain_client,
         system_domain_block_import,
         Relayer::submit_messages_from_system_domain,
         system_domain_sync_oracle,
     )
-    .await
+    .await;
+
+    if let Err(err) = result {
+        tracing::error!(
+            target: LOG_TARGET,
+            ?err,
+            "Failed to start relayer for system domain"
+        )
+    }
 }
 
 /// Starts relaying core domain messages to other domains.
@@ -50,14 +53,9 @@ pub async fn relay_core_domain_messages<CDC, SDC, Block, DBI, SO>(
     core_domain_block_import: DBI,
     system_domain_sync_oracle: SO,
     core_domain_sync_oracle: SO,
-) -> Result<(), Error>
-where
+) where
     Block: BlockT,
-    CDC: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    CDC: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
     SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
@@ -67,7 +65,7 @@ where
     let combined_sync_oracle =
         CombinedSyncOracle::new(&system_domain_sync_oracle, &core_domain_sync_oracle);
 
-    relay_domain_messages(
+    let result = relay_domain_messages(
         relayer_id,
         core_domain_client,
         core_domain_block_import,
@@ -81,7 +79,14 @@ where
         },
         combined_sync_oracle,
     )
-    .await
+    .await;
+    if let Err(err) = result {
+        tracing::error!(
+            target: LOG_TARGET,
+            ?err,
+            "Failed to start relayer for core domain"
+        )
+    }
 }
 
 async fn relay_domain_messages<Client, Block, SDBI, MP, SO>(
@@ -93,11 +98,7 @@ async fn relay_domain_messages<Client, Block, SDBI, MP, SO>(
 ) -> Result<(), Error>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDBI: Stream<Item = NumberFor<Block>> + Unpin,
     MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,

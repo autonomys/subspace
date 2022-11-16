@@ -42,6 +42,7 @@ pub enum Subcommand {
 }
 
 #[derive(Debug, Clone, Parser)]
+#[group(skip)]
 pub struct RunCmd {
     /// Substrate run commands.
     #[clap(flatten)]

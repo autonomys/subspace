@@ -6,6 +6,7 @@ use domain_client_executor::SystemExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
 use futures::channel::mpsc;
 use futures::Stream;
+use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
@@ -26,7 +27,7 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::Ss58Codec;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
-// use sp_messenger::RelayerApi;
+use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -288,7 +289,8 @@ where
         + SystemDomainApi<Block, AccountId, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
-        + TransactionPaymentRuntimeApi<Block, Balance>,
+        + TransactionPaymentRuntimeApi<Block, Balance>
+        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     // TODO: Do we even need block announcement on secondary node?
@@ -302,7 +304,7 @@ where
 
     let params = new_partial(&secondary_chain_config.service_config)?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor, _import_block_notification_stream) =
+    let (mut telemetry, _telemetry_worker_handle, code_executor, import_block_notification_stream) =
         params.other;
 
     let client = params.client.clone();
@@ -389,19 +391,23 @@ where
         });
     spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
 
-    if let Some(_relayer_id) = secondary_chain_config.maybe_relayer_id {
-        // let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
-        //     relayer_id,
-        //     client.clone(),
-        //     import_block_notification_stream.subscribe(),
-        //     network.clone(),
-        // );
-        //
-        // spawn_essential.spawn_essential_blocking(
-        //     "system-domain-relayer",
-        //     None,
-        //     Box::pin(relayer_worker),
-        // );
+    if let Some(relayer_id) = secondary_chain_config.maybe_relayer_id {
+        tracing::info!(
+            "Starting system domain relayer with relayer_id[{:?}]",
+            relayer_id
+        );
+        let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
+            relayer_id,
+            client.clone(),
+            import_block_notification_stream.subscribe(),
+            network.clone(),
+        );
+
+        spawn_essential.spawn_essential_blocking(
+            "system-domain-relayer",
+            None,
+            Box::pin(relayer_worker),
+        );
     }
 
     let new_full = NewFull {

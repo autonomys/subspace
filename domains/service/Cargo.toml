@@ -73,6 +73,8 @@ system-runtime-primitives = { path = "../primitives/system-runtime" }
 # Subspace dependencies
 sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
 sp-domains = { path = "../../crates/sp-domains" }
+sp-domain-tracker = { path = "../../domains/primitives/domain-tracker" }
+sp-messenger = { path = "../../domains/primitives/messenger" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 
