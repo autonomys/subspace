@@ -1,4 +1,4 @@
-# Subspace Node
+# Subspace Farmer
 
 Reference implementation of Subspace Farmer for Subspace Network Blockchain.
 

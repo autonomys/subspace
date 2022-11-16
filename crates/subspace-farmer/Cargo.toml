@@ -2,7 +2,7 @@
 name = "subspace-farmer"
 description = "Farmer for the Subspace Network Blockchain"
 license = "MIT OR Apache-2.0"
-version = "0.3.0"
+version = "0.1.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
 edition = "2021"
 include = [
@@ -11,16 +11,9 @@ include = [
     "/README.md",
 ]
 
-[lib]
-# Necessary for CLI options to work on benches
-bench = false
-
 [dependencies]
 anyhow = "1.0.61"
-arc-swap = "1.5.1"
-async-oneshot = "0.5.0"
 async-trait = "0.1.57"
-backoff = { version = "0.4.0", features = ["tokio"] }
 base58 = "0.2.0"
 bitvec = "1.0.1"
 blake2-rfc = "0.2.18"
@@ -30,12 +23,9 @@ derive_more = "0.99.17"
 dirs = "4.0.0"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
-fs2 = "0.4.3"
 futures = "0.3.21"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.15.1", features = ["client", "macros", "server"] }
-libc = "0.2.131"
-lru = "0.7.8"
 memmap2 = "0.5.7"
 num-traits = "0.2.15"
 parity-db = "0.3.17"
@@ -43,18 +33,17 @@ parity-scale-codec = "3.1.5"
 parking_lot = "0.12.1"
 rand = "0.8.5"
 schnorrkel = "0.9.1"
-scopeguard = "1.1.0"
 serde = { version = "1.0.143", features = ["derive"] }
 serde_json = "1.0.83"
 static_assertions = "1.1.0"
 std-semaphore = "0.1.0"
 ss58-registry = "1.25.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
-subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.32"
@@ -69,17 +58,4 @@ zeroize = "1.5.7"
 jemallocator = "0.5.0"
 
 [dev-dependencies]
-criterion = "0.4.0"
 rayon = "1.5.3"
-
-[[bench]]
-name = "plotting"
-harness = false
-
-[[bench]]
-name = "auditing"
-harness = false
-
-[[bench]]
-name = "proving"
-harness = false

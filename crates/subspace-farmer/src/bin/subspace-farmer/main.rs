@@ -4,7 +4,7 @@ mod commands;
 mod ss58;
 mod utils;
 
-use crate::utils::get_usable_plot_space;
+use crate::utils::{get_required_plot_space_with_overhead, get_usable_plot_space};
 use anyhow::Result;
 use bytesize::ByteSize;
 use clap::{Parser, ValueEnum, ValueHint};
@@ -13,7 +13,7 @@ use std::fs;
 use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::str::FromStr;
-use subspace_core_primitives::PublicKey;
+use subspace_core_primitives::{PublicKey, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::SingleDiskPlot;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
@@ -279,11 +279,13 @@ async fn main() -> Result<()> {
                 }
 
                 let plot_size = farming_args.plot_size.as_u64();
+                let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
 
-                if plot_size < 1024 * 1024 {
+                if plot_size < minimum_plot_size {
                     return Err(anyhow::anyhow!(
-                        "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
-                        plot_size
+                        "Plot size is too low ({} bytes). Minimum is {}",
+                        plot_size,
+                        minimum_plot_size
                     ));
                 }
 
