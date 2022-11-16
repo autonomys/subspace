@@ -23,11 +23,12 @@ mod tests;
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
 pub use pallet::*;
+use sp_domain_tracker::CoreDomainTracker;
 use sp_domains::{
     BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::{One, Saturating, Zero};
+use sp_runtime::traits::{Hash, One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 
@@ -37,16 +38,20 @@ type BalanceOf<T> =
 type DomainConfig<T> =
     sp_domains::DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>, Weight>;
 
+type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
+
 const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
 #[frame_support::pallet]
 mod pallet {
     use super::{BalanceOf, DomainConfig};
+    use crate::StateRootOf;
     use codec::Codec;
     use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::{
         BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
         InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
@@ -107,6 +112,9 @@ mod pallet {
         /// Number of execution receipts kept in the state.
         #[pallet::constant]
         type ReceiptsPruningDepth: Get<Self::BlockNumber>;
+
+        /// Core domain tracker that tracks the state roots of the core domains.
+        type CoreDomainTracker: CoreDomainTracker<Self::BlockNumber, StateRootOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -826,6 +834,8 @@ impl<T: Config> Pallet<T> {
                 (domain_id, primary_number, execution_receipt.secondary_hash),
                 state_root,
             );
+
+            T::CoreDomainTracker::add_core_domain_state_root(domain_id, primary_number, *state_root)
         }
 
         /* TODO:

@@ -47,12 +47,14 @@ impl frame_system::Config for MockRuntime {
 }
 
 parameter_types! {
-     pub const StateRootsBound: u32 = 2;
+    pub const StateRootsBound: u32 = 2;
+    pub const RelayConfirmationDepth: u64 = 2;
 }
 
 impl crate::Config for MockRuntime {
     type RuntimeEvent = RuntimeEvent;
-    type StateRootsBound = StateRootsBound;
+    type ConfirmedStateRootsBound = StateRootsBound;
+    type RelayerConfirmationDepth = RelayConfirmationDepth;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

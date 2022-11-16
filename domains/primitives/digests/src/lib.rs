@@ -1,9 +1,12 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 use codec::{Decode, Encode};
 use sp_domain_tracker::StateRootUpdate;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 
 const DOMAIN_ENGINE_ID: ConsensusEngineId = *b"DMN_";
 
+/// Trait to provide simpler abstractions to create predigests for runtime.
 pub trait AsPredigest {
     /// Returns state root update digest
     fn as_system_domain_state_root_update<Number: Decode, StateRoot: Decode>(

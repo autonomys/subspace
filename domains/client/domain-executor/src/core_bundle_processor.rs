@@ -14,10 +14,13 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_domain_digests::AsPredigest;
+use sp_domain_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
+use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
@@ -324,12 +327,27 @@ where
             extrinsics.push(set_code_extrinsic);
         }
 
+        // include the latest state root of the system domain
+        let system_domain_hash = self.system_domain_client.info().best_hash;
+        let digests = self
+            .system_domain_client
+            .header(BlockId::Hash(system_domain_hash))?
+            .map(|header| {
+                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                    number: *header.number(),
+                    state_root: *header.state_root(),
+                });
+
+                Digest { logs: vec![item] }
+            })
+            .unwrap_or_default();
+
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,
             parent_number,
             RecordProof::No,
-            Default::default(),
+            digests,
             &*self.backend,
             extrinsics,
         )?;

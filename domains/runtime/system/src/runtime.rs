@@ -296,6 +296,7 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainOperatorStake = MinDomainOperatorStake;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
+    type CoreDomainTracker = DomainTracker;
 }
 
 parameter_types! {
@@ -305,7 +306,8 @@ parameter_types! {
 
 impl pallet_domain_tracker::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type StateRootsBound = StateRootsBound;
+    type ConfirmedStateRootsBound = StateRootsBound;
+    type RelayerConfirmationDepth = RelayConfirmationDepth;
 }
 
 parameter_types! {
