@@ -16,32 +16,12 @@
 //! Primitives for Subspace RPC.
 
 use serde::{Deserialize, Serialize};
-use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RewardSignature, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    Blake2b256Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
 };
 
 /// Defines a limit for segment indexes array. It affects storage access on the runtime side.
 pub const MAX_SEGMENT_INDEXES_PER_REQUEST: usize = 300;
-
-/// Information about the protocol necessary for farmer operation
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FarmerProtocolInfo {
-    /// Genesis hash of the chain
-    #[serde(with = "hex::serde")]
-    pub genesis_hash: [u8; 32],
-    /// The size of data in one piece (in bytes).
-    pub record_size: NonZeroU32,
-    /// Recorded history is encoded and plotted in segments of this size (in bytes).
-    pub recorded_history_segment_size: u32,
-    /// Total number of pieces stored on the network
-    pub total_pieces: NonZeroU64,
-    /// Space parameter for proof-of-replication in bits
-    pub space_l: NonZeroU16,
-    /// Number of segments after which sector expires
-    pub sector_expiration: SegmentIndex,
-}
 
 /// Information about new slot that just arrived
 #[derive(Clone, Debug, Serialize, Deserialize)]

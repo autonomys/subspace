@@ -33,4 +33,5 @@ sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", re
 sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }

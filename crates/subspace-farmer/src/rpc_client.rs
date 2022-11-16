@@ -6,8 +6,9 @@ use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_rpc_primitives::{
-    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// To become error type agnostic

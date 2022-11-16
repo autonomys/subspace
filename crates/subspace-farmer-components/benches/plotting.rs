@@ -14,7 +14,7 @@ use subspace_core_primitives::{
     Piece, PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE,
 };
 use subspace_farmer_components::plotting::plot_sector;
-use subspace_rpc_primitives::FarmerProtocolInfo;
+use subspace_farmer_components::FarmerProtocolInfo;
 use utils::BenchPieceReceiver;
 
 mod utils;

@@ -17,7 +17,7 @@ use subspace_core_primitives::{
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::plot_sector;
-use subspace_rpc_primitives::FarmerProtocolInfo;
+use subspace_farmer_components::FarmerProtocolInfo;
 use utils::BenchPieceReceiver;
 
 mod utils;

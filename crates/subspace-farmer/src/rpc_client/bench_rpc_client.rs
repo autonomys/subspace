@@ -8,8 +8,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_rpc_primitives::{
-    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 use tokio::sync::Mutex;
 

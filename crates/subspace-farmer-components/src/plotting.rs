@@ -1,4 +1,4 @@
-use crate::SectorMetadata;
+use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
 use bitvec::order::Lsb0;
 use bitvec::prelude::*;
@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::{
     Piece, PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
-use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::derive_chunk_otp;
 use thiserror::Error;
 use tracing::debug;
