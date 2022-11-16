@@ -2,7 +2,6 @@
     const_option,
     drain_filter,
     hash_drain_filter,
-    int_log,
     io_error_other,
     trait_alias,
     try_blocks,

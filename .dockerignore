@@ -1,6 +1,6 @@
 *
 !/crates
-!/cumulus
+!/domains
 !/orml
 !/substrate
 !/test
