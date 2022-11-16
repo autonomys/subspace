@@ -477,10 +477,11 @@ where
                 ))
             })?;
 
-        let receipts = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_receipts(&BlockId::Hash(primary_hash), extrinsics.clone())?;
+        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
+            &BlockId::Hash(primary_hash),
+            extrinsics.clone(),
+            sp_domains::DomainId::SYSTEM,
+        )?;
 
         let mut bad_receipts_to_write = vec![];
 

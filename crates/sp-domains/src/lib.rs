@@ -573,6 +573,7 @@ sp_api::decl_runtime_apis! {
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(
             extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, SecondaryHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.

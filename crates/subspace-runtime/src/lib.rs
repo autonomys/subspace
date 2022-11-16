@@ -571,18 +571,17 @@ fn extract_core_bundles(
 
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
+    domain_id: DomainId,
 ) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
     extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) = uxt.function
-            {
+            }) if signed_opaque_bundle.domain_id() == domain_id => {
                 Some(signed_opaque_bundle.bundle.receipts)
-            } else {
-                None
             }
+            _ => None,
         })
         .flatten()
         .collect()
@@ -834,8 +833,9 @@ impl_runtime_apis! {
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
-            extract_receipts(extrinsics)
+            extract_receipts(extrinsics, domain_id)
         }
 
         fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
