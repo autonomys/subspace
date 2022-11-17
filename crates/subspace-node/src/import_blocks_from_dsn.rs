@@ -15,14 +15,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use clap::Parser;
-use futures::stream::FuturesOrdered;
-use futures::StreamExt;
-use log::info;
 use parity_scale_codec::Encode;
 use sc_cli::{CliConfiguration, ImportParams, SharedParams};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
 use sc_service::ImportQueue;
+use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
@@ -148,6 +146,10 @@ where
         node_runner.run().await;
     });
 
+    debug!("Waiting for connected peers...");
+    let _ = node.wait_for_connected_peers().await;
+    debug!("Connected to peers.");
+
     let best_block_number = client.info().best_number;
     let mut link = WaitLink::new();
     let mut imported_blocks = 0;
@@ -159,23 +161,26 @@ where
     // TODO: Check latest known root block on chain and skip downloading of corresponding segments
     // Collection is intentional to make sure downloading starts right away and not lazily
     for segment_index in 0.. {
-        let source_pieces_results = (0..pieces_in_segment / 2)
-            .map(|piece_position| {
-                let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
+        let pieces_indexes = (0..pieces_in_segment / 2).map(|piece_position| {
+            let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
 
-                node.get_value(multihash::create_multihash_by_piece_index(piece_index))
-            })
-            .collect::<FuturesOrdered<_>>()
-            .collect::<Vec<_>>()
-            .await;
+            piece_index
+        });
 
         let mut pieces = vec![None::<Piece>; pieces_in_segment as usize];
         let mut found_one_piece = false;
 
-        for (source_piece_result, piece) in source_pieces_results.into_iter().zip(pieces.iter_mut())
-        {
-            let maybe_piece =
-                source_piece_result.map_err(|error| sc_service::Error::Other(error.to_string()))?;
+        for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
+            let maybe_piece = node
+                .get_value(multihash::create_multihash_by_piece_index(piece_index))
+                .await
+                .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+
+            trace!(
+                ?piece_index,
+                success = maybe_piece.is_some(),
+                "Piece request completed.",
+            );
 
             if let Some(piece_vec) = maybe_piece {
                 found_one_piece = true;
@@ -259,7 +264,7 @@ where
     }
 
     info!(
-        "🎉 Imported {} blocks, best #{}, exiting",
+        "🎉 Imported {} blocks, best #{}, exiting...",
         imported_blocks,
         client.info().best_number
     );
