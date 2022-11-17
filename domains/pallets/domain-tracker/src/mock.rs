@@ -9,13 +9,14 @@ type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type AccountId = u64;
 
 frame_support::construct_runtime!(
-    pub struct MockRuntime where
+    pub struct MockRuntime
+    where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        DomainTracker: crate::{Pallet, Storage, Event<T>},
+        System: frame_system,
+        DomainTracker: crate,
     }
 );
 
