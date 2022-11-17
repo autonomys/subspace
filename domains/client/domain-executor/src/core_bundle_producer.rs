@@ -17,7 +17,7 @@ use sp_domains::{
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -143,9 +143,12 @@ where
                 to_sign.as_ref(),
             ) {
                 Ok(Some(signature)) => {
+                    let best_hash = self.client.info().best_hash;
+
                     let as_core_block_hash = |system_block_hash: SBlock::Hash| {
                         Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
                     };
+
                     let signed_bundle = SignedBundle {
                         bundle,
                         proof_of_election: ProofOfElection {
@@ -158,6 +161,16 @@ where
                             storage_proof: proof_of_election.storage_proof,
                             block_number: proof_of_election.block_number,
                             block_hash: as_core_block_hash(proof_of_election.block_hash),
+                            // TODO: override the core block info, see if there is a nicer way
+                            // later.
+                            core_block_hash: Some(best_hash),
+                            core_state_root: Some(
+                                *self
+                                    .client
+                                    .header(BlockId::Hash(best_hash))?
+                                    .expect("Best block header must exist; qed")
+                                    .state_root(),
+                            ),
                         },
                         signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
                             |err| {

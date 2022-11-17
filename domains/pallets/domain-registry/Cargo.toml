@@ -24,6 +24,7 @@ sp-domain-tracker = { version = "0.1.0", path = "../../primitives/domain-tracker
 sp-executor-registry = { version = "0.1.0", path = "../../primitives/executor-registry", default-features = false }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false }
 sp-std = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false }
+sp-trie = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false }
 
 [dev-dependencies]
 pallet-balances = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
@@ -47,5 +48,6 @@ std = [
 	"sp-executor-registry/std",
 	"sp-runtime/std",
 	"sp-std/std",
+	"sp-trie/std",
 ]
 try-runtime = ["frame-support/try-runtime"]

@@ -14,7 +14,7 @@ use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
-use sp_domains::{DomainId, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
@@ -519,6 +519,16 @@ impl_runtime_apis! {
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),
             }
+        }
+
+        fn core_bundle_election_storage_keys(
+            domain_id: DomainId,
+            executor_public_key: ExecutorPublicKey,
+        ) -> Option<Vec<Vec<u8>>> {
+            let executor = ExecutorRegistry::key_owner(&executor_public_key)?;
+            let mut storage_keys = DomainRegistry::core_bundle_election_storage_keys(domain_id, executor);
+            storage_keys.push(ExecutorRegistry::key_owner_hashed_key_for(&executor_public_key));
+            Some(storage_keys)
         }
 
         fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {

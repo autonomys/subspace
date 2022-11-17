@@ -19,7 +19,7 @@
 
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionParams;
-use sp_domains::{DomainId, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_std::vec::Vec;
 
@@ -33,6 +33,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the parameters for the bundle election.
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams;
+
+        fn core_bundle_election_storage_keys(
+            domain_id: DomainId,
+            executor_public_key: ExecutorPublicKey,
+        ) -> Option<Vec<Vec<u8>>>;
 
         fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block>;
 
