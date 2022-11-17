@@ -24,6 +24,7 @@ clap = { version = "4.0.26", features = ["derive"] }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "4.0.0"
 domain-service = { version = "0.1.0", path = "../../domains/service" }
+domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }

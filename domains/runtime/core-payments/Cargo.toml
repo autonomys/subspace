@@ -87,13 +87,13 @@ std = [
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
 	"pallet-domain-registry/std",
-    "pallet-domain-tracker/std",
+	"pallet-domain-tracker/std",
 	"pallet-executor-registry/std",
-    "pallet-messenger/std",
+	"pallet-messenger/std",
 	"pallet-transporter/std",
 	"sp-domains/std",
-    "sp-domain-tracker/std",
-    "sp-messenger/std",
+	"sp-domain-tracker/std",
+	"sp-messenger/std",
 	"subspace-runtime-primitives/std",
 ]
 # Internal implementation detail, enabled during building of wasm blob.

@@ -8805,6 +8805,7 @@ dependencies = [
  "clap 4.0.26",
  "core-payments-domain-runtime",
  "dirs",
+ "domain-runtime-primitives",
  "domain-service",
  "frame-benchmarking",
  "frame-benchmarking-cli",

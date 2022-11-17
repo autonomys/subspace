@@ -16,6 +16,8 @@
 
 use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
+use core_payments_domain_runtime::RelayerId;
+use domain_runtime_primitives::parser::parse_relayer_id;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams, SubstrateCli,
@@ -49,8 +51,8 @@ pub struct DomainCli {
     pub run_system: SubstrateRunCmd,
 
     /// Optional relayer address to relay messages on behalf.
-    #[arg(long)]
-    pub relayer_id: Option<String>,
+    #[clap(long, value_parser = parse_relayer_id)]
+    pub relayer_id: Option<RelayerId>,
 
     #[clap(raw = true)]
     pub core_domain_args: Vec<String>,

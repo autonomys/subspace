@@ -70,6 +70,35 @@ where
     }
 }
 
+#[cfg(feature = "std")]
+pub mod parser {
+    use crate::RelayerId;
+    use sp_core::crypto::Ss58Codec;
+    use std::error::Error;
+    use std::fmt::{Display, Formatter};
+
+    #[derive(Debug)]
+    pub enum RelayerParseError {
+        /// Passed relayer id is invalid.
+        InvalidRelayerId,
+    }
+
+    impl Display for RelayerParseError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                RelayerParseError::InvalidRelayerId => "Invalid RelayerId".fmt(f),
+            }
+        }
+    }
+
+    impl Error for RelayerParseError {}
+
+    /// Parses relayer id in string format. Used for Cli.
+    pub fn parse_relayer_id(s: &str) -> Result<RelayerId, RelayerParseError> {
+        RelayerId::from_ss58check(s).map_err(|_| RelayerParseError::InvalidRelayerId)
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     pub trait DomainCoreApi<AccountId: Encode + Decode> {

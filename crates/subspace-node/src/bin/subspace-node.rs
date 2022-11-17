@@ -444,12 +444,7 @@ fn main() -> Result<(), Error> {
                     })?;
 
                     let secondary_chain_config =
-                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id)
-                            .map_err(|error| {
-                                sc_service::Error::Other(format!(
-                                    "Failed to create secondary chain configuration: {error:?}"
-                                ))
-                            })?;
+                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id);
 
                     let imported_block_notification_stream = || {
                         primary_chain_node
@@ -522,11 +517,7 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                        let core_domain_config = Configuration::new(core_domain_service_config, core_domain_cli.relayer_id).map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to create core domain chain configuration: {error:?}"
-                            ))
-                        })?;
+                        let core_domain_config = Configuration::new(core_domain_service_config, core_domain_cli.relayer_id);
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
