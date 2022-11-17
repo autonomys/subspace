@@ -13,6 +13,7 @@ pub type SegmentIndexGetter = Arc<dyn Fn() -> u64 + Send + Sync + 'static>;
 
 pub struct AuxRecordStorage<AS> {
     piece_cache: AuxPieceCache<AS>,
+    // TODO: Remove it when we delete RPC-endpoint for farmers.
     last_segment_index_getter: SegmentIndexGetter,
 }
 

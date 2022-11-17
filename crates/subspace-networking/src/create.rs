@@ -20,6 +20,7 @@ use libp2p::gossipsub::{
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::identity::Keypair;
 use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
+use libp2p::metrics::Metrics;
 use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
@@ -34,7 +35,7 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
@@ -82,7 +83,6 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-#[derive(Clone)]
 pub struct Config<RecordStore = CustomRecordStore> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -119,6 +119,8 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// Optional external prometheus metrics. None will disable metrics gathering.
+    pub metrics: Option<Metrics>,
 }
 
 impl fmt::Debug for Config {
@@ -174,8 +176,8 @@ impl Config {
             .expect("Default config for gossipsub is always correct; qed");
 
         let keypair = identity::Keypair::Ed25519(keypair);
-
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
+
         Self {
             keypair,
             listen_on: vec![],
@@ -194,6 +196,7 @@ impl Config {
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            metrics: None,
         }
     }
 }
@@ -246,6 +249,7 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        metrics,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -305,6 +309,7 @@ where
             reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            metrics,
         });
 
         Ok((node, node_runner))
