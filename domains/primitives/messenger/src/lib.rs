@@ -24,6 +24,8 @@ use codec::{Decode, Encode};
 use messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::storage::StorageKey;
+use sp_runtime::sp_std;
+use sp_std::vec::Vec;
 
 /// Implemented by domain registry on system domain or system domain tracker on core domains.
 /// This trait supports utilities to verify the message coming from src_domain to system domain.

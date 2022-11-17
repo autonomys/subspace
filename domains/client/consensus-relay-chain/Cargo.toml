@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.57"
 sc-consensus = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sc-consensus-subspace = { version = "0.1.0", path = "../../../crates/sc-consensus-subspace" }
 sp-blockchain = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 sp-consensus = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 sp-core = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }

@@ -18,25 +18,26 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
-use sp_core::storage::StorageKey;
+use sp_core::sp_std;
 use sp_domains::DomainId;
-use sp_inherents::{InherentIdentifier, IsFatalError};
+use sp_std::vec::Vec;
 
-/// The identifier for the `domain-tracker` inherent.
-pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"dmn-trkr";
-
-#[derive(Encode)]
-pub struct NoFatalError<E: codec::Encode>(E);
-impl<E: codec::Encode> IsFatalError for NoFatalError<E> {
-    fn is_fatal_error(&self) -> bool {
-        false
-    }
+/// Predigest item that contains the Confirmed Block's state root for domain tracker
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct StateRootUpdate<Number, StateRoot> {
+    pub number: Number,
+    pub state_root: StateRoot,
 }
 
-/// Inherent type provided by the domain-tracker.
-#[derive(Encode, Decode)]
-pub struct InherentType<StateRoot> {
-    pub system_domain_state_root: StateRoot,
+/// Implemented by the Domain tracker and used by the domain registry on System domain to
+/// add the new state roots of the core domain.
+pub trait CoreDomainTracker<BlockNumber, StateRoot> {
+    /// Adds the latest state root for a given domain.
+    fn add_core_domain_state_root(
+        domain_id: DomainId,
+        block_number: BlockNumber,
+        state_root: StateRoot,
+    );
 }
 
 sp_api::decl_runtime_apis! {
@@ -48,6 +49,6 @@ sp_api::decl_runtime_apis! {
         /// Returns the storage key for the state root at a block number for core domain
         /// as present on the system domain.
         /// Returns None if the block number is not confirmed yet.
-        fn storage_key_for_core_domain_state_root(domain_id: DomainId, block_number: BlockNumber) -> Option<StorageKey>;
+        fn storage_key_for_core_domain_state_root(domain_id: DomainId, block_number: BlockNumber) -> Option<Vec<u8>>;
     }
 }

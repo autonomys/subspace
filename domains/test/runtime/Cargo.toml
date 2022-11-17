@@ -51,8 +51,12 @@ pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "
 domain-pallet-executive = { path = "../../pallets/executive", default-features = false }
 domain-runtime-primitives = { path = "../../primitives/runtime", default-features = false }
 pallet-domain-registry = { path = "../../pallets/domain-registry", default-features = false }
+pallet-domain-tracker = { path = "../../pallets/domain-tracker", default-features = false }
 pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
+pallet-messenger = { path = "../../pallets/messenger", default-features = false }
 sp-domains = { path = "../../../crates/sp-domains", default-features = false }
+sp-domain-tracker = { path = "../../primitives/domain-tracker", default-features = false }
+sp-messenger = { path = "../../primitives/messenger", default-features = false }
 subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives", default-features = false }
 system-runtime-primitives = { path = "../../primitives/system-runtime", default-features = false }
 
@@ -84,8 +88,12 @@ std = [
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
 	"pallet-domain-registry/std",
+	"pallet-domain-tracker/std",
+	"pallet-messenger/std",
 	"pallet-executor-registry/std",
 	"sp-domains/std",
+	"sp-domain-tracker/std",
+	"sp-messenger/std",
 	"subspace-runtime-primitives/std",
 	"system-runtime-primitives/std",
 ]
