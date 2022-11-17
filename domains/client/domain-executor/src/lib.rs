@@ -24,13 +24,13 @@
 //! farmers. Please refer to the white paper [Computation section] for more in-depth description
 //! and analysis.
 //!
-//! Specifically, executors are responsible for producing a [`Bundle`] on each slot from
+//! Specifically, executors are responsible for producing a [`SignedBundle`] on each slot from
 //! the primary chain and producing an [`ExecutionReceipt`] on each primary block.
 //!
 //! On each new primary chain slot, executors will collect a set of extrinsics from the transaction
 //! pool which are verified to be able to cover the transaction fee, and then use these extrinsics
-//! to create a [`Bundle`], submitting it to the primary chain. The submitted bundles are mere blob
-//! from the point of primary chain.
+//! to create a [`SignedBundle`], submitting it to the primary chain. The submitted bundles are mere
+//! blob from the point of primary chain.
 //!
 //! On each imported primary block, executors will extract all the bundles from the primary block and
 //! convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to build a secondary

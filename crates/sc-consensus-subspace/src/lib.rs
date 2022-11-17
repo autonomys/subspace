@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![doc = include_str!("../README.md")]
-#![feature(drain_filter, int_log, try_blocks)]
+#![feature(drain_filter, try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

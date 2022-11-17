@@ -177,7 +177,7 @@ pub mod module {
 
 	/// Vesting schedules of an account.
 	///
-	/// VestingSchedules: map AccountId => Vec<VestingSchedule>
+	/// VestingSchedules: map AccountId => Vec\<VestingSchedule>
 	#[pallet::storage]
 	#[pallet::getter(fn vesting_schedules)]
 	pub type VestingSchedules<T: Config> = StorageMap<
