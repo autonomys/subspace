@@ -262,15 +262,17 @@ where
         Ok(())
     }
 
-    pub(crate) fn submit_messages_from_core_domain<SDC>(
+    pub(crate) fn submit_messages_from_core_domain<SDC, SBlock>(
         relayer_id: RelayerId,
         core_domain_client: &Arc<Client>,
         system_domain_client: &Arc<SDC>,
         confirmed_block_hash: Block::Hash,
     ) -> Result<(), Error>
     where
-        SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
-        SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
+        SBlock: BlockT,
+        NumberFor<SBlock>: From<NumberFor<Block>>,
+        SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+        SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
     {
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
@@ -300,7 +302,7 @@ where
             match system_domain_api.storage_key_for_core_domain_state_root(
                 &latest_system_domain_block_id,
                 core_domain_id,
-                confirmed_block_number,
+                confirmed_block_number.into(),
             )? {
                 Some(storage_key) => {
                     // construct storage proof for the core domain state root using system domain backend.

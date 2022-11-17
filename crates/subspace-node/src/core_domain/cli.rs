@@ -55,6 +55,10 @@ pub struct CoreDomainCli {
     #[clap(long, value_parser = parse_domain_id)]
     pub domain_id: DomainId,
 
+    /// Optional relayer address to relay messages on behalf.
+    #[arg(long)]
+    pub relayer_id: Option<String>,
+
     /// The base path that should be used by the secondary chain.
     #[clap(skip)]
     pub base_path: Option<PathBuf>,

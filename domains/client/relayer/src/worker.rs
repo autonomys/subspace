@@ -46,24 +46,27 @@ pub async fn relay_system_domain_messages<Client, Block, DBI, SO>(
 /// Starts relaying core domain messages to other domains.
 /// If the either system domain or core domain node is in major sync,
 /// worker waits waits until the sync is finished.
-pub async fn relay_core_domain_messages<CDC, SDC, Block, DBI, SO>(
+pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, DBI, SDSO, CDSO>(
     relayer_id: RelayerId,
     core_domain_client: Arc<CDC>,
     system_domain_client: Arc<SDC>,
     core_domain_block_import: DBI,
-    system_domain_sync_oracle: SO,
-    core_domain_sync_oracle: SO,
+    system_domain_sync_oracle: SDSO,
+    core_domain_sync_oracle: CDSO,
 ) where
     Block: BlockT,
+    SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
     CDC: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
-    SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
-    SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
-    SO: SyncOracle,
+    SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+    SDSO: SyncOracle + Send,
+    CDSO: SyncOracle + Send,
 {
     let combined_sync_oracle =
-        CombinedSyncOracle::new(&system_domain_sync_oracle, &core_domain_sync_oracle);
+        CombinedSyncOracle::new(system_domain_sync_oracle, core_domain_sync_oracle);
 
     let result = relay_domain_messages(
         relayer_id,
@@ -159,12 +162,16 @@ where
 }
 
 /// Combines both system and core domain sync oracles into one.
-struct CombinedSyncOracle<'a> {
-    system_domain_sync_oracle: &'a dyn SyncOracle,
-    core_domain_sync_oracle: &'a dyn SyncOracle,
+struct CombinedSyncOracle<SDSO, CDSO> {
+    system_domain_sync_oracle: SDSO,
+    core_domain_sync_oracle: CDSO,
 }
 
-impl<'a> SyncOracle for CombinedSyncOracle<'a> {
+impl<SDSO, CDSO> SyncOracle for CombinedSyncOracle<SDSO, CDSO>
+where
+    SDSO: SyncOracle,
+    CDSO: SyncOracle,
+{
     /// Returns true if either of the domains are in major sync.
     fn is_major_syncing(&self) -> bool {
         self.system_domain_sync_oracle.is_major_syncing()
@@ -177,12 +184,9 @@ impl<'a> SyncOracle for CombinedSyncOracle<'a> {
     }
 }
 
-impl<'a> CombinedSyncOracle<'a> {
+impl<SDSO, CDSO> CombinedSyncOracle<SDSO, CDSO> {
     /// Returns a new sync oracle that wraps system domain and core domain sync oracle.
-    fn new(
-        system_domain_sync_oracle: &'a dyn SyncOracle,
-        core_domain_sync_oracle: &'a dyn SyncOracle,
-    ) -> Self {
+    fn new(system_domain_sync_oracle: SDSO, core_domain_sync_oracle: CDSO) -> Self {
         CombinedSyncOracle {
             system_domain_sync_oracle,
             core_domain_sync_oracle,
