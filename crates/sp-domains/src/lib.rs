@@ -221,6 +221,10 @@ pub struct ProofOfElection<SecondaryHash> {
     pub block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
     pub block_hash: SecondaryHash,
+    /// Block hash of the core domain block at which the proof of election was created.
+    pub core_block_hash: Option<SecondaryHash>,
+    /// Core domain state root corresponding to the `core_block_hash` above.
+    pub core_state_root: Option<SecondaryHash>,
 }
 
 impl<SecondaryHash: Default> ProofOfElection<SecondaryHash> {
@@ -236,6 +240,8 @@ impl<SecondaryHash: Default> ProofOfElection<SecondaryHash> {
             storage_proof: StorageProof::empty(),
             block_number: Default::default(),
             block_hash: Default::default(),
+            core_block_hash: None,
+            core_state_root: None,
         }
     }
 }
@@ -338,6 +344,7 @@ pub struct ExecutionReceipt<Number, Hash, SecondaryHash> {
     pub primary_number: Number,
     /// Primary block hash.
     pub primary_hash: Hash,
+    // TODO: rename to `domain_hash`.
     /// Secondary block hash.
     pub secondary_hash: SecondaryHash,
     /// List of storage roots collected during the block execution.

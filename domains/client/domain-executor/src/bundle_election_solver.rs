@@ -106,12 +106,33 @@ where
                 );
 
                 if is_election_solution_within_threshold(election_solution, threshold) {
-                    let storage_keys = well_known_keys::bundle_election_storage_keys(domain_id);
                     // TODO: bench how large the storage proof we can afford and try proving a single
                     // electioned executor storage instead of the whole authority set.
-                    let storage_proof = self
-                        .client
-                        .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?;
+                    let storage_proof = if domain_id.is_system() {
+                        let storage_keys = well_known_keys::bundle_election_storage_keys(domain_id);
+                        self.client
+                            .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
+                    } else if domain_id.is_core() {
+                        let storage_keys = self
+                            .client
+                            .runtime_api()
+                            .core_bundle_election_storage_keys(
+                                &best_block_id,
+                                domain_id,
+                                authority_id.clone(),
+                            )?
+                            .ok_or_else(|| {
+                                sp_blockchain::Error::Backend(
+                                    "Empty core bundle election storage keys".to_string(),
+                                )
+                            })?;
+                        self.client
+                            .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
+                    } else {
+                        return Err(sp_blockchain::Error::Application(Box::from(
+                            "Only system and core domain are supported".to_string(),
+                        )));
+                    };
 
                     let state_root = *self
                         .client
@@ -133,6 +154,8 @@ where
                         storage_proof,
                         block_number: best_number,
                         block_hash: best_hash,
+                        core_block_hash: None,
+                        core_state_root: None,
                     };
 
                     return Ok(Some(proof_of_election));
