@@ -23,21 +23,21 @@ bitvec = { version = "1.0.1", default-features = false, features = ["alloc", "at
 # Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
 blake2-rfc = { version = "0.2.18", default-features = false }
 derive_more = "0.99.17"
-dusk-bls12_381 = { version = "0.11", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
+dusk-bls12_381 = { version = "0.11.2", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
 dusk-bytes = "0.1"
 dusk-plonk = { version = "0.12.0", default-features = false, features = ["alloc"], git = "https://github.com/subspace/plonk", rev = "193e68ba3d20f737d730e4b6edc757e4f639e7c3" }
 hex = { version  = "0.4.3", default-features = false, features = ["alloc"] }
 num-integer = { version = "0.1.45", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
-parity-scale-codec = { version = "3.1.5", default-features = false, features = ["derive"] }
+parity-scale-codec = { version = "3.2.1", default-features = false, features = ["derive"] }
 rand = { version = "0.8.5", features = ["min_const_gen"], optional = true }
 rand_chacha = { version = "0.3.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false, features = ["alloc"] }
-scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
-serde = { version = "1.0.143", optional = true, features = ["derive"] }
+scale-info = { version = "2.3.0", default-features = false, features = ["derive"] }
+serde = { version = "1.0.147", optional = true, features = ["derive"] }
 serde_arrays = "0.1.0"
 thiserror = { version = "1.0.37", optional = true }
-uint = { version = "0.9", default-features = false }
+uint = { version = "0.9.4", default-features = false }
 
 [dev-dependencies]
 criterion = "0.4.0"

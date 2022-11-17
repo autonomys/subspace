@@ -16,27 +16,27 @@ include = [
 bench = false
 
 [dependencies]
-async-trait = "0.1.57"
+async-trait = "0.1.58"
 bitvec = "1.0.1"
 blake2-rfc = "0.2.18"
 fs2 = "0.4.3"
 hex = { version = "0.4.3", features = ["serde"] }
 libc = "0.2.131"
-parity-scale-codec = "3.1.5"
+parity-scale-codec = "3.2.1"
 rand = "0.8.5"
 schnorrkel = "0.9.1"
-serde = { version = "1.0.143", features = ["derive"] }
+serde = { version = "1.0.147", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.32"
-tracing = "0.1.36"
+tracing = "0.1.37"
 
 [dev-dependencies]
 criterion = "0.4.0"
-futures = "0.3.21"
-memmap2 = "0.5.7"
+futures = "0.3.25"
+memmap2 = "0.5.8"
 rayon = "1.5.3"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 

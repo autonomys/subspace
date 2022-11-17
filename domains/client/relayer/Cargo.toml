@@ -24,10 +24,10 @@ sp-core = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d
 sp-consensus = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 
-futures = "0.3.21"
-parity-scale-codec = { version = "3.1.5", features = ["derive"] }
+futures = "0.3.25"
+parity-scale-codec = { version = "3.2.1", features = ["derive"] }
 parking_lot = "0.12.1"
-tracing = "0.1.36"
+tracing = "0.1.37"
 
 domain-runtime-primitives = { path = "../../primitives/runtime" }
 sp-domains = { path = "../../../crates/sp-domains" }

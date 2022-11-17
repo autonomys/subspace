@@ -19,10 +19,10 @@ targets = ["x86_64-unknown-linux-gnu"]
 derive_more = "0.99.17"
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
-futures = "0.3.21"
+futures = "0.3.25"
 jsonrpsee = { version = "0.15.1", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
-parity-scale-codec = "3.1.5"
+parity-scale-codec = "3.2.1"
 parity-util-mem = { version = "0.12.0", default-features = false, features = ["primitive-types"] }
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
@@ -65,7 +65,7 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 thiserror = "1.0.32"
-tracing = "0.1.36"
+tracing = "0.1.37"
 
 sp-session = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }

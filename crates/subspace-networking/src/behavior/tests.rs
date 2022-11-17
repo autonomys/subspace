@@ -12,6 +12,7 @@ use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -22,8 +23,8 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let addresses = vec![addr1.clone(), addr2.clone()];
     let expiration = Duration::nanoseconds(1);
 
-    let mut peers_cache = LruCache::new(100);
-    let mut addresses_cache = LruCache::new(100);
+    let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+    let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
 
     for addr in addresses.clone() {
         addresses_cache.push(addr, None);

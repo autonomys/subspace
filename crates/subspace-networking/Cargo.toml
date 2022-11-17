@@ -16,28 +16,28 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.61"
-async-trait = "0.1.57"
+anyhow = "1.0.66"
+async-trait = "0.1.58"
 bytes = "1.2.1"
 chrono = {version = "0.4.21", features = ["clock", "serde", "std",]}
-clap = { version = "4.0.22", features = ["color", "derive"] }
+clap = { version = "4.0.26", features = ["color", "derive"] }
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
-futures = "0.3.21"
+futures = "0.3.25"
 hex = "0.4.3"
-lru = "0.7.8"
+lru = "0.8.1"
 nohash-hasher = "0.2.0"
-parity-db = "0.3.17"
-parity-scale-codec = "3.1.5"
+parity-db = "0.4.2"
+parity-scale-codec = "3.2.1"
 parking_lot = "0.12.1"
 pin-project = "1.0.11"
-serde = { version = "1.0.143", features = ["derive"] }
+serde = { version = "1.0.147", features = ["derive"] }
 serde_json = "1.0.83"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 thiserror = "1.0.32"
-tokio = { version = "1.20.1", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
-tracing = "0.1.36"
-tracing-subscriber = "0.3.15"
+tokio = { version = "1.21.2", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
 [dependencies.libp2p]

@@ -12,12 +12,12 @@ description = "System domain pallet for the domains management"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
 frame-support = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 frame-system = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 log = { version = "0.4.17", default-features = false }
-scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
-serde = { version = "1.0.143", optional = true }
+scale-info = { version = "2.3.0", default-features = false, features = ["derive"] }
+serde = { version = "1.0.147", optional = true }
 sp-core = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-executor-registry = { version = "0.1.0", path = "../../primitives/executor-registry", default-features = false }

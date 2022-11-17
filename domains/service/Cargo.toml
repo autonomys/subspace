@@ -13,11 +13,11 @@ build = "build.rs"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-futures = "0.3.21"
+futures = "0.3.25"
 hex-literal = "0.3.1"
 log = "0.4.17"
-serde = { version = "1.0.143", features = ["derive"] }
-clap = { version = "4.0.22", features = ["derive"] }
+serde = { version = "1.0.147", features = ["derive"] }
+clap = { version = "4.0.26", features = ["derive"] }
 
 # RPC related Dependencies
 jsonrpsee = { version = "0.15.1", features = ["server"] }

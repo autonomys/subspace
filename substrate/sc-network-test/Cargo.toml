@@ -14,14 +14,14 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-std = "1.12.0"
-async-trait = "0.1.57"
+async-trait = "0.1.58"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 log = "0.4.17"
 parking_lot = "0.12.1"
-futures = "0.3.21"
+futures = "0.3.25"
 futures-timer = "3.0.1"
 rand = "0.8.5"
 libp2p = { version = "0.49.0", default-features = false }
