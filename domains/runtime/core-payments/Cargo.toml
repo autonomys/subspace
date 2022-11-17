@@ -49,6 +49,7 @@ pallet-domain-registry = { path = "../../pallets/domain-registry", default-featu
 pallet-domain-tracker = { path = "../../pallets/domain-tracker", default-features = false }
 pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
 pallet-messenger = { path = "../../pallets/messenger", default-features = false }
+pallet-transporter = { path = "../../pallets/transporter", default-features = false }
 sp-domains = { path = "../../../crates/sp-domains", default-features = false }
 sp-domain-tracker = { path = "../../primitives/domain-tracker", default-features = false }
 sp-messenger = { path = "../../primitives/messenger", default-features = false }
@@ -89,6 +90,7 @@ std = [
     "pallet-domain-tracker/std",
 	"pallet-executor-registry/std",
     "pallet-messenger/std",
+	"pallet-transporter/std",
 	"sp-domains/std",
     "sp-domain-tracker/std",
     "sp-messenger/std",

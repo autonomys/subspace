@@ -1,5 +1,3 @@
-// TODO(ved): remove once the code is connected.
-#![allow(dead_code)]
 #![warn(rust_2018_idioms)]
 
 pub mod worker;
