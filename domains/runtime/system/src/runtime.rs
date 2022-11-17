@@ -1,3 +1,4 @@
+use domain_runtime_primitives::RelayerId;
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -14,8 +15,12 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler};
+use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
+#[cfg(any(feature = "std", test))]
+pub use sp_runtime::BuildStorage;
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::prelude::*;
@@ -26,9 +31,6 @@ use subspace_runtime_primitives::{SHANNON, SSC};
 
 // Make core-payments WASM runtime available.
 include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
-
-#[cfg(any(feature = "std", test))]
-pub use sp_runtime::BuildStorage;
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -297,6 +299,48 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainOperatorStake = MinDomainOperatorStake;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
+    type CoreDomainTracker = DomainTracker;
+}
+
+parameter_types! {
+    pub const StateRootsBound: u32 = 50;
+    pub const RelayConfirmationDepth: BlockNumber = 7;
+}
+
+impl pallet_domain_tracker::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type ConfirmedStateRootsBound = StateRootsBound;
+    type RelayerConfirmationDepth = RelayConfirmationDepth;
+}
+
+parameter_types! {
+    pub const MaximumRelayers: u32 = 100;
+    pub const RelayerDeposit: Balance = 100 * SSC;
+    pub const SystemDomainId: DomainId = DomainId::SYSTEM;
+}
+
+impl pallet_messenger::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = SystemDomainId;
+    type DomainTracker = DomainTracker;
+
+    fn get_endpoint_response_handler(
+        _endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
+        None
+    }
+
+    type Currency = Balances;
+    type MaximumRelayers = MaximumRelayers;
+    type RelayerDeposit = RelayerDeposit;
+}
+
+impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    type Extrinsic = UncheckedExtrinsic;
+    type OverarchingCall = RuntimeCall;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -322,6 +366,8 @@ construct_runtime!(
         // built.
         ExecutorRegistry: pallet_executor_registry = 4,
         DomainRegistry: pallet_domain_registry = 5,
+        DomainTracker: pallet_domain_tracker = 6,
+        Messenger: pallet_messenger = 7,
     }
 );
 
@@ -515,6 +561,46 @@ impl_runtime_apis! {
             MaximumReceiptDrift::get()
         }
     }
+
+    impl sp_domain_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
+        fn storage_key_for_core_domain_state_root(
+            domain_id: DomainId,
+            block_number: BlockNumber,
+        ) -> Option<Vec<u8>> {
+            DomainTracker::storage_key_for_core_domain_state_root(domain_id, block_number)
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
+        fn domain_id() -> DomainId {
+            SystemDomainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
+            Messenger::relayer_assigned_messages(relayer_id)
+        }
+
+        fn submit_outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) {
+            Messenger::submit_outbox_message_unsigned(msg)
+        }
+
+        fn submit_inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) {
+            Messenger::submit_inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_domain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
+        }
+    }
+
 
     #[cfg(feature = "runtime-benchmarks")]
     impl frame_benchmarking::Benchmark<Block> for Runtime {

@@ -9,13 +9,14 @@ type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type AccountId = u64;
 
 frame_support::construct_runtime!(
-    pub struct MockRuntime where
+    pub struct MockRuntime
+    where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        DomainTracker: crate::{Pallet, Call, Storage, Event<T>},
+        System: frame_system,
+        DomainTracker: crate,
     }
 );
 
@@ -47,12 +48,14 @@ impl frame_system::Config for MockRuntime {
 }
 
 parameter_types! {
-     pub const StateRootsBound: u32 = 2;
+    pub const StateRootsBound: u32 = 2;
+    pub const RelayConfirmationDepth: u64 = 2;
 }
 
 impl crate::Config for MockRuntime {
     type RuntimeEvent = RuntimeEvent;
-    type StateRootsBound = StateRootsBound;
+    type ConfirmedStateRootsBound = StateRootsBound;
+    type RelayerConfirmationDepth = RelayConfirmationDepth;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
