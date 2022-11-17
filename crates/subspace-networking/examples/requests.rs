@@ -5,8 +5,10 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler,
+    start_prometheus_metrics_server, BootstrappedNetworkingParameters, Config, GenericRequest,
+    GenericRequestHandler,
 };
+use tracing::error;
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;
@@ -31,10 +33,26 @@ async fn main() {
             println!("Request handler for request");
             Some(ExampleResponse)
         })],
-        prometheus_metrics_server_address: Some("127.0.0.1:63000".parse().unwrap()),
+        metrics_registry: Some(Default::default()),
         ..Config::with_generated_keypair()
     };
-    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1, metric_registry) =
+        subspace_networking::create(config_1).await.unwrap();
+
+    // Init prometheus
+    let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
+    tokio::task::spawn(async move {
+        if let Err(err) =
+            start_prometheus_metrics_server(prometheus_metrics_server_address, metric_registry)
+                .await
+        {
+            error!(
+                ?prometheus_metrics_server_address,
+                ?err,
+                "Prometheus metrics server failed to start."
+            )
+        }
+    });
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -70,7 +88,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2, _) = subspace_networking::create(config_2).await.unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 

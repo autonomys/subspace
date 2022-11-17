@@ -135,7 +135,7 @@ where
     B: BlockT + for<'de> serde::Deserialize<'de>,
     IQ: ImportQueue<B> + 'static,
 {
-    let (node, mut node_runner) = subspace_networking::create(Config {
+    let (node, mut node_runner, _) = subspace_networking::create(Config {
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         allow_non_globals_in_dht: true,

@@ -328,6 +328,6 @@ async fn configure_dsn(
 
     create::<ConfiguredRecordStore>(config)
         .await
-        .map(|(node, node_runner)| (Some(node), Some(node_runner)))
+        .map(|(node, node_runner, _)| (Some(node), Some(node_runner)))
         .map_err(Into::into)
 }

@@ -9,7 +9,6 @@ use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::utils::convert_multiaddresses;
-use crate::utils::prometheus::start_prometheus_metrics_server;
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -31,7 +30,6 @@ use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
 use prometheus_client::registry::Registry;
-use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -86,7 +84,6 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-#[derive(Clone)]
 pub struct Config<RecordStore = CustomRecordStore> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -123,8 +120,8 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
-    /// Defines optional prometheus metrics server address. None will prevent the server start.
-    pub prometheus_metrics_server_address: Option<SocketAddr>,
+    /// Optional external prometheus metrics registry. None will create the default registry.
+    pub metrics_registry: Option<Registry>,
 }
 
 impl fmt::Debug for Config {
@@ -200,7 +197,7 @@ impl Config {
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
-            prometheus_metrics_server_address: None,
+            metrics_registry: None,
         }
     }
 }
@@ -231,7 +228,7 @@ pub fn peer_id(keypair: &Keypair) -> PeerId {
 /// Create a new network node and node runner instances.
 pub async fn create<RecordStore>(
     config: Config<RecordStore>,
-) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
+) -> Result<(Node, NodeRunner<RecordStore>, Registry), CreationError>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
 {
@@ -253,23 +250,14 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
-        prometheus_metrics_server_address,
+        metrics_registry,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
     let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
 
-    let mut metric_registry = Registry::default();
+    let mut metric_registry = metrics_registry.unwrap_or_default();
     let metrics = Metrics::new(&mut metric_registry);
-
-    // Init prometheus
-    if let Some(address) = prometheus_metrics_server_address {
-        tokio::task::spawn(async move {
-            if let Err(err) = start_prometheus_metrics_server(address, metric_registry).await {
-                error!(?address, ?err, "Prometheus metrics server failed to start.")
-            }
-        });
-    }
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -328,7 +316,7 @@ where
             metrics,
         });
 
-        Ok((node, node_runner))
+        Ok((node, node_runner, metric_registry))
     });
 
     create_swarm_fut.await.expect(

@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
                 ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
             };
-            let (node, mut node_runner) = subspace_networking::create(config)
+            let (node, mut node_runner, _) = subspace_networking::create(config)
                 .await
                 .expect("Networking stack creation failed.");
 

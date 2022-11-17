@@ -76,7 +76,7 @@ where
         ..subspace_networking::Config::with_generated_keypair()
     };
 
-    let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
+    let (node, mut node_runner, _) = subspace_networking::create(networking_config).await?;
 
     info!("Subspace networking initialized: Node ID is {}", node.id());
 

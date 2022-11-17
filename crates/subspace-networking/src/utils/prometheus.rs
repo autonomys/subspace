@@ -8,7 +8,7 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
-use tracing::error;
+use tracing::{error, info};
 
 type SharedRegistry = Arc<Mutex<Registry>>;
 
@@ -29,6 +29,8 @@ pub async fn start_prometheus_metrics_server(
 ) -> std::io::Result<()> {
     let shared_registry = Arc::new(Mutex::new(registry));
     let data = Data::new(shared_registry);
+
+    info!("Starting metrics server on {} ...", address);
 
     let server = HttpServer::new(move || App::new().app_data(data.clone()).service(metrics))
         .bind(address)?
