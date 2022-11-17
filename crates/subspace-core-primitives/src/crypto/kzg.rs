@@ -35,7 +35,7 @@ fn test_public_parameters_generate() -> PublicParameters {
     use rand_core::SeedableRng;
 
     let mut rng = rand_chacha::ChaChaRng::seed_from_u64(1969897683899915189);
-    PublicParameters::setup(256, &mut rng).expect("Static value, doesn't error")
+    PublicParameters::setup(1024, &mut rng).expect("Static value, doesn't error")
 }
 
 #[test]

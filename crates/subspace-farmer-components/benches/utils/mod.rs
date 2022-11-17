@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::error::Error;
 use subspace_core_primitives::{Piece, PieceIndex};
-use subspace_farmer::single_disk_plot::piece_receiver::PieceReceiver;
+use subspace_farmer_components::plotting::PieceReceiver;
 
 pub struct BenchPieceReceiver {
     piece: Piece,

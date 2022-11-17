@@ -2,7 +2,9 @@ use bitvec::prelude::*;
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
 use std::num::{NonZeroU16, NonZeroU32};
-use subspace_core_primitives::{Piece, PublicKey, SectorId, SectorIndex, PIECE_SIZE};
+use subspace_core_primitives::{
+    Piece, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
+};
 use subspace_solving::derive_chunk_otp;
 use tracing::warn;
 
@@ -57,7 +59,6 @@ pub(super) fn read_piece(
     sector_count: u64,
     public_key: &PublicKey,
     first_sector_index: SectorIndex,
-    plot_sector_size: u64,
     record_size: NonZeroU32,
     space_l: NonZeroU16,
     global_plot: &[u8],
@@ -85,7 +86,7 @@ pub(super) fn read_piece(
         return None;
     }
     // Piece must be within sector
-    if piece_offset >= plot_sector_size / PIECE_SIZE as u64 {
+    if piece_offset >= PLOT_SECTOR_SIZE / PIECE_SIZE as u64 {
         warn!(
             %sector_index,
             %piece_offset,
@@ -95,7 +96,7 @@ pub(super) fn read_piece(
         );
         return None;
     }
-    let sector_bytes = &global_plot[(sector_offset * plot_sector_size) as usize..];
+    let sector_bytes = &global_plot[(sector_offset * PLOT_SECTOR_SIZE) as usize..];
     let piece_bytes = &sector_bytes[piece_offset as usize * PIECE_SIZE..][..PIECE_SIZE];
     let mut piece = Piece::try_from(piece_bytes).ok()?;
 
