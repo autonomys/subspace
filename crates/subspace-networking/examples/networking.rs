@@ -31,7 +31,7 @@ async fn main() {
         allow_non_globals_in_dht: true,
         ..Config::with_generated_keypair()
     };
-    let (node_1, mut node_runner_1, _) = subspace_networking::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -68,7 +68,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, mut node_runner_2, _) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 

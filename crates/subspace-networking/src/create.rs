@@ -29,7 +29,6 @@ use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
-use prometheus_client::registry::Registry;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -120,8 +119,8 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
-    /// Optional external prometheus metrics registry. None will create the default registry.
-    pub metrics_registry: Option<Registry>,
+    /// Optional external prometheus metrics. None will disable metrics gathering.
+    pub metrics: Option<Metrics>,
 }
 
 impl fmt::Debug for Config {
@@ -197,7 +196,7 @@ impl Config {
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
-            metrics_registry: None,
+            metrics: None,
         }
     }
 }
@@ -228,7 +227,7 @@ pub fn peer_id(keypair: &Keypair) -> PeerId {
 /// Create a new network node and node runner instances.
 pub async fn create<RecordStore>(
     config: Config<RecordStore>,
-) -> Result<(Node, NodeRunner<RecordStore>, Registry), CreationError>
+) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
 {
@@ -250,14 +249,11 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
-        metrics_registry,
+        metrics,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
     let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
-
-    let mut metric_registry = metrics_registry.unwrap_or_default();
-    let metrics = Metrics::new(&mut metric_registry);
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -316,7 +312,7 @@ where
             metrics,
         });
 
-        Ok((node, node_runner, metric_registry))
+        Ok((node, node_runner))
     });
 
     create_swarm_fut.await.expect(

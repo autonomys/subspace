@@ -32,7 +32,7 @@ async fn main() {
             ..Config::with_keypair(keypair.clone())
         };
 
-        let (node, mut node_runner, _) = subspace_networking::create(config).await.unwrap();
+        let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
         println!("Node {} ID is {}", i, node.id());
 
@@ -91,7 +91,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node, mut node_runner, _) = subspace_networking::create(config).await.unwrap();
+    let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
     println!("Source Node ID is {}", node.id());
     println!("Expected Peer ID:{}", expected_node_id);

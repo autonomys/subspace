@@ -80,7 +80,7 @@ where
     /// Outgoing swarm connection limit.
     max_established_outgoing_connections: u32,
     /// Prometheus metrics.
-    metrics: Metrics,
+    metrics: Option<Metrics>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -97,7 +97,7 @@ where
     pub reserved_peers: HashMap<PeerId, Multiaddr>,
     pub max_established_incoming_connections: u32,
     pub max_established_outgoing_connections: u32,
-    pub metrics: Metrics,
+    pub metrics: Option<Metrics>,
 }
 
 impl<RecordStore> NodeRunner<RecordStore>
@@ -872,25 +872,27 @@ where
     }
 
     fn register_event_metrics<E: Debug>(&mut self, swarm_event: &SwarmEvent<Event, E>) {
-        match swarm_event {
-            SwarmEvent::Behaviour(Event::Ping(ping_event)) => {
-                self.metrics.record(ping_event);
-            }
-            SwarmEvent::Behaviour(Event::Identify(identify_event)) => {
-                self.metrics.record(identify_event);
-            }
-            SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
-                self.metrics.record(kademlia_event);
-            }
-            SwarmEvent::Behaviour(Event::Gossipsub(gossipsub_event)) => {
-                self.metrics.record(gossipsub_event);
-            }
-            // TODO: implement in the upstream repository
-            // SwarmEvent::Behaviour(Event::RequestResponse(request_response_event)) => {
-            //     self.metrics.record(request_response_event);
-            // }
-            swarm_event => {
-                self.metrics.record(swarm_event);
+        if let Some(ref mut metrics) = self.metrics {
+            match swarm_event {
+                SwarmEvent::Behaviour(Event::Ping(ping_event)) => {
+                    metrics.record(ping_event);
+                }
+                SwarmEvent::Behaviour(Event::Identify(identify_event)) => {
+                    metrics.record(identify_event);
+                }
+                SwarmEvent::Behaviour(Event::Kademlia(kademlia_event)) => {
+                    metrics.record(kademlia_event);
+                }
+                SwarmEvent::Behaviour(Event::Gossipsub(gossipsub_event)) => {
+                    metrics.record(gossipsub_event);
+                }
+                // TODO: implement in the upstream repository
+                // SwarmEvent::Behaviour(Event::RequestResponse(request_response_event)) => {
+                //     self.metrics.record(request_response_event);
+                // }
+                swarm_event => {
+                    metrics.record(swarm_event);
+                }
             }
         }
     }

@@ -1,7 +1,9 @@
 use futures::channel::oneshot;
+use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::{
@@ -26,6 +28,9 @@ struct ExampleResponse;
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let mut metric_registry = Registry::default();
+    let metrics = Metrics::new(&mut metric_registry);
+
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
@@ -33,11 +38,10 @@ async fn main() {
             println!("Request handler for request");
             Some(ExampleResponse)
         })],
-        metrics_registry: Some(Default::default()),
+        metrics: Some(metrics),
         ..Config::with_generated_keypair()
     };
-    let (node_1, mut node_runner_1, metric_registry) =
-        subspace_networking::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
     // Init prometheus
     let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
@@ -88,7 +92,7 @@ async fn main() {
         ..Config::with_generated_keypair()
     };
 
-    let (node_2, mut node_runner_2, _) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 
