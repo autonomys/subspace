@@ -1,3 +1,6 @@
+pub use domain_runtime_primitives::{
+    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
+};
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
 use frame_support::weights::constants::{
@@ -10,7 +13,7 @@ use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
-use sp_domains::{DomainId, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
@@ -20,9 +23,6 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
-pub use system_runtime_primitives::{
-    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
-};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -249,7 +249,7 @@ impl pallet_transaction_payment::Config for Runtime {
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type Call = RuntimeCall;
+    type RuntimeCall = RuntimeCall;
 }
 
 parameter_types! {
@@ -412,11 +412,11 @@ impl_runtime_apis! {
         }
     }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, AccountId, BlockNumber, Hash> for Runtime {
+    impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
-            use system_runtime_primitives::Signer;
+            use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
             extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
         }
@@ -446,7 +446,9 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+    }
 
+    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {
@@ -470,6 +472,16 @@ impl_runtime_apis! {
                 total_stake_weight: ExecutorRegistry::total_stake_weight(),
                 slot_probability: ExecutorRegistry::slot_probability(),
             }
+        }
+
+        fn core_bundle_election_storage_keys(
+            domain_id: DomainId,
+            executor_public_key: ExecutorPublicKey,
+        ) -> Option<Vec<Vec<u8>>> {
+            let executor = ExecutorRegistry::key_owner(&executor_public_key)?;
+            let mut storage_keys = DomainRegistry::core_bundle_election_storage_keys(domain_id, executor);
+            storage_keys.push(ExecutorRegistry::key_owner_hashed_key_for(&executor_public_key));
+            Some(storage_keys)
         }
 
         fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {

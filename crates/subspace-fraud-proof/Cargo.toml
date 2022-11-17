@@ -26,6 +26,7 @@ tracing = "0.1.36"
 
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
+domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
 futures = "0.3.21"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
@@ -34,6 +35,5 @@ sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/subs
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false }
 sp-keyring = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-system-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/system-runtime" }
 tempfile = "3.3.0"
 tokio = "1.20.1"

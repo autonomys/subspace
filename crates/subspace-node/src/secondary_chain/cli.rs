@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -41,6 +42,16 @@ pub enum Subcommand {
     Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
 }
 
+#[derive(Debug, Parser)]
+struct DomainCli {
+    /// Run a node.
+    #[clap(flatten)]
+    pub run_system: RunCmd,
+
+    #[clap(raw = true)]
+    pub core_domain_args: Vec<String>,
+}
+
 pub struct SecondaryChainCli {
     /// Run a node.
     pub run: RunCmd,
@@ -57,15 +68,28 @@ impl SecondaryChainCli {
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
     pub fn new<'a>(
-        base_path: Option<PathBuf>,
+        mut base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
         secondary_chain_args: impl Iterator<Item = &'a String>,
-    ) -> Self {
-        Self {
-            base_path,
-            chain_spec,
-            run: RunCmd::parse_from(secondary_chain_args),
-        }
+    ) -> (Self, Option<CoreDomainCli>) {
+        let domain_cli = DomainCli::parse_from(secondary_chain_args);
+
+        let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
+            let core_domain_cli =
+                CoreDomainCli::new(base_path.clone(), domain_cli.core_domain_args.iter());
+            Some(core_domain_cli)
+        } else {
+            None
+        };
+
+        (
+            Self {
+                base_path: base_path.as_mut().map(|path| path.join("system")),
+                chain_spec,
+                run: domain_cli.run_system,
+            },
+            maybe_core_domain_cli,
+        )
     }
 }
 
@@ -167,6 +191,11 @@ impl CliConfiguration<Self> for SecondaryChainCli {
         Ok(self
             .shared_params()
             .base_path()?
+            .as_mut()
+            .map(|base_path| {
+                let path: PathBuf = base_path.path().to_path_buf();
+                BasePath::new(path.join("system"))
+            })
             .or_else(|| self.base_path.clone().map(Into::into)))
     }
 

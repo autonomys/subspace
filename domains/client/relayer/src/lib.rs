@@ -4,6 +4,7 @@
 
 mod worker;
 
+use domain_runtime_primitives::RelayerId;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey, StorageProof};
 use sp_api::{ProvideRuntimeApi, StateBackend};
@@ -18,7 +19,6 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use system_runtime_primitives::RelayerId;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";

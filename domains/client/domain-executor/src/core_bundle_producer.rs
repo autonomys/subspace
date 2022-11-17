@@ -3,6 +3,7 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_transaction_pool_api::InPoolTransaction;
@@ -16,13 +17,13 @@ use sp_domains::{
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::BlockNumber;
-use system_runtime_primitives::{AccountId, SystemDomainApi};
+use system_runtime_primitives::SystemDomainApi;
 
 const LOG_TARGET: &str = "bundle-producer";
 
@@ -74,7 +75,8 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, AccountId, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(super) fn new(
@@ -141,9 +143,12 @@ where
                 to_sign.as_ref(),
             ) {
                 Ok(Some(signature)) => {
+                    let best_hash = self.client.info().best_hash;
+
                     let as_core_block_hash = |system_block_hash: SBlock::Hash| {
                         Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
                     };
+
                     let signed_bundle = SignedBundle {
                         bundle,
                         proof_of_election: ProofOfElection {
@@ -156,6 +161,16 @@ where
                             storage_proof: proof_of_election.storage_proof,
                             block_number: proof_of_election.block_number,
                             block_hash: as_core_block_hash(proof_of_election.block_hash),
+                            // TODO: override the core block info, see if there is a nicer way
+                            // later.
+                            core_block_hash: Some(best_hash),
+                            core_state_root: Some(
+                                *self
+                                    .client
+                                    .header(BlockId::Hash(best_hash))?
+                                    .expect("Best block header must exist; qed")
+                                    .state_root(),
+                            ),
                         },
                         signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
                             |err| {

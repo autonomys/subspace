@@ -27,11 +27,7 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
-use sp_domains::bundle_election::{
-    calculate_bundle_election_threshold, derive_bundle_election_solution,
-    is_election_solution_within_threshold, read_bundle_election_params, verify_vrf_proof,
-    BundleElectionParams,
-};
+use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
 use sp_domains::{
     BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
     InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
@@ -112,14 +108,8 @@ mod pallet {
         BadStateRoot,
         /// The type of state root is not H256.
         StateRootNotH256,
-        /// Failed to derive the bundle election solution.
-        FailedToDeriveBundleElectionSolution,
-        /// Can not retrieve the state needed from the storage proof.
-        BadStorageProof,
-        /// Bundle author is not found in the authority set.
-        AuthorityNotFound,
-        /// Election solution does not satisfy the threshold.
-        InvalidElectionSolution,
+        /// Invalid system bundle election solution.
+        BadElectionSolution,
         /// An invalid execution receipt found in the bundle.
         Receipt(ExecutionReceiptError),
     }
@@ -578,24 +568,16 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle_election(
+    fn validate_system_bundle_solution(
         receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
         proof_of_election: &ProofOfElection<T::SecondaryHash>,
     ) -> Result<(), BundleError> {
         let ProofOfElection {
-            domain_id,
-            vrf_output,
-            vrf_proof,
-            executor_public_key,
-            global_challenge,
             state_root,
-            storage_proof,
             block_number,
             block_hash,
+            ..
         } = proof_of_election;
-
-        verify_vrf_proof(executor_public_key, vrf_output, vrf_proof, global_challenge)
-            .map_err(|_| BundleError::BadVrfProof)?;
 
         if !block_number.is_zero() {
             let block_number = T::BlockNumber::from(*block_number);
@@ -626,41 +608,8 @@ impl<T: Config> Pallet<T> {
         let state_root = H256::decode(&mut state_root.encode().as_slice())
             .map_err(|_| BundleError::StateRootNotH256)?;
 
-        let BundleElectionParams {
-            authorities,
-            total_stake_weight,
-            slot_probability,
-        } = read_bundle_election_params(storage_proof.clone(), &state_root)
-            .map_err(|_| BundleError::BadStorageProof)?;
-
-        let stake_weight = authorities
-            .iter()
-            .find_map(|(authority, weight)| {
-                if authority == executor_public_key {
-                    Some(weight)
-                } else {
-                    None
-                }
-            })
-            .ok_or(BundleError::AuthorityNotFound)?;
-
-        let election_solution = derive_bundle_election_solution(
-            *domain_id,
-            *vrf_output,
-            executor_public_key,
-            global_challenge,
-        )
-        .map_err(|_| BundleError::FailedToDeriveBundleElectionSolution)?;
-
-        let threshold = calculate_bundle_election_threshold(
-            *stake_weight,
-            total_stake_weight,
-            slot_probability,
-        );
-
-        if !is_election_solution_within_threshold(election_solution, threshold) {
-            return Err(BundleError::InvalidElectionSolution);
-        }
+        verify_system_bundle_solution(proof_of_election, state_root)
+            .map_err(|_| BundleError::BadElectionSolution)?;
 
         Ok(())
     }
@@ -730,7 +679,17 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        Self::validate_bundle_election(&bundle.receipts, proof_of_election)?;
+        verify_vrf_proof(
+            &proof_of_election.executor_public_key,
+            &proof_of_election.vrf_output,
+            &proof_of_election.vrf_proof,
+            &proof_of_election.global_challenge,
+        )
+        .map_err(|_| BundleError::BadVrfProof)?;
+
+        if proof_of_election.domain_id.is_system() {
+            Self::validate_system_bundle_solution(&bundle.receipts, proof_of_election)?;
+        }
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 

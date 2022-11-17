@@ -39,6 +39,7 @@ tokio = { version = "1.20.1", features = ["macros"] }
 
 domain-block-builder = { path = "../block-builder" }
 domain-client-executor-gossip = { path = "../executor-gossip" }
+domain-runtime-primitives = { path = "../../primitives/runtime" }
 sp-domains = { path = "../../../crates/sp-domains" }
 subspace-fraud-proof = { path = "../../../crates/subspace-fraud-proof" }
 subspace-core-primitives = { path = "../../../crates/subspace-core-primitives" }

@@ -20,16 +20,23 @@
 #[cfg(test)]
 mod tests;
 
+use codec::{Decode, Encode};
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
 pub use pallet::*;
+use sp_domains::bundle_election::{
+    verify_bundle_solution_threshold, ReadBundleElectionParamsError,
+};
 use sp_domains::{
-    BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
+    BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
+    InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::{One, Saturating, Zero};
+use sp_runtime::traits::{BlakeTwo256, One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec;
+use sp_std::vec::Vec;
 
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -47,6 +54,7 @@ mod pallet {
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::{
         BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
         InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
@@ -114,7 +122,7 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    /// Domain id for the next domain.
+    /// Domain id for the next core domain.
     #[pallet::storage]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
 
@@ -337,8 +345,6 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            // TODO: validate_bundle()
-
             let domain_id = signed_opaque_bundle.proof_of_election.domain_id;
 
             let oldest_receipt_number = OldestReceiptNumber::<T>::get(domain_id);
@@ -449,6 +455,8 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            NextDomainId::<T>::put(DomainId::CORE_DOMAIN_ID_START);
+
             for (creator, deposit, domain_config, domain_operator, operator_stake) in &self.domains
             {
                 Pallet::<T>::can_create_domain(creator, *deposit, domain_config)
@@ -474,6 +482,12 @@ mod pallet {
                     maybe_total.replace(old + domain_stake_weight);
                 });
             }
+        }
+    }
+
+    impl<T> From<ReadBundleElectionParamsError> for Error<T> {
+        fn from(_error: ReadBundleElectionParamsError) -> Self {
+            Self::FailedToReadBundleElectionParams
         }
     }
 
@@ -506,6 +520,21 @@ mod pallet {
 
         /// Domain stake allocation exceeds the maximum available value.
         StakeAllocationTooLarge,
+
+        /// An error occurred while reading the state needed for verifying the bundle solution.
+        FailedToReadBundleElectionParams,
+
+        /// Invalid core domain bundle solution.
+        BadBundleElectionSolution,
+
+        /// Either `core_block_hash` or `core_state_root` is missing in the proof of election.
+        CoreBlockInfoNotFound,
+
+        /// Cannot verify the core domain state root.
+        StateRootUnverifiable,
+
+        /// Invalid core domain state root.
+        BadStateRoot,
     }
 
     #[pallet::event]
@@ -574,6 +603,14 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
+                Call::submit_core_bundle {
+                    signed_opaque_bundle
+                } => {
+                    Self::pre_dispatch_submit_core_bundle(signed_opaque_bundle).map_err(|e| {
+                        log::error!(target: "runtime::subspace::executor", "Invalid core bundle: {e:?}");
+                        TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
+                    })
+                }
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -634,7 +671,6 @@ mod pallet {
                         invalid_transaction_proof,
                     )
                 }
-
                 _ => InvalidTransaction::Call.into(),
             }
         }
@@ -685,6 +721,145 @@ impl<T: Config> Pallet<T> {
     pub fn finalized_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
         best_number.saturating_sub(T::ReceiptsPruningDepth::get())
+    }
+
+    pub fn domain_authorities(domain_id: DomainId) -> Vec<(ExecutorPublicKey, T::StakeWeight)> {
+        DomainAuthorities::<T>::iter_prefix(domain_id)
+            .filter_map(|(who, stake_weight)| {
+                T::ExecutorRegistry::executor_public_key(&who)
+                    .map(|executor_public_key| (executor_public_key, stake_weight))
+            })
+            .collect()
+    }
+
+    pub fn domain_total_stake_weight(domain_id: DomainId) -> Option<T::StakeWeight> {
+        DomainTotalStakeWeight::<T>::get(domain_id)
+    }
+
+    pub fn domain_slot_probability(domain_id: DomainId) -> Option<(u64, u64)> {
+        Domains::<T>::get(domain_id).map(|domain_config| domain_config.bundle_slot_probability)
+    }
+
+    pub fn core_bundle_election_storage_keys(
+        domain_id: DomainId,
+        executor: T::AccountId,
+    ) -> Vec<Vec<u8>> {
+        vec![
+            DomainAuthorities::<T>::hashed_key_for(domain_id, executor),
+            DomainTotalStakeWeight::<T>::hashed_key_for(domain_id),
+            Domains::<T>::hashed_key_for(domain_id),
+        ]
+    }
+
+    fn pre_dispatch_submit_core_bundle(
+        signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::Hash>,
+    ) -> Result<(), Error<T>> {
+        // The validity of vrf proof itself has been verified on the primary chain, thus only the
+        // proof_of_election is necessary to be checked here.
+        let ProofOfElection {
+            domain_id,
+            vrf_output,
+            storage_proof,
+            state_root,
+            executor_public_key,
+            global_challenge,
+            block_number,
+            block_hash,
+            core_block_hash,
+            core_state_root,
+            ..
+        } = &signed_opaque_bundle.proof_of_election;
+
+        if !block_number.is_zero() {
+            let block_number = T::BlockNumber::from(*block_number);
+
+            let core_block_hash = core_block_hash.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
+            let core_state_root = core_state_root.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
+
+            let maybe_state_root =
+                signed_opaque_bundle
+                    .bundle
+                    .receipts
+                    .iter()
+                    .find_map(|receipt| {
+                        receipt.trace.last().and_then(|state_root| {
+                            if (receipt.primary_number, receipt.secondary_hash)
+                                == (block_number, *block_hash)
+                                || (receipt.primary_number, receipt.secondary_hash)
+                                    == (block_number, core_block_hash)
+                            {
+                                Some(*state_root)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+
+            let expected_state_root = match maybe_state_root {
+                Some(v) => v,
+                None => StateRoots::<T>::get((domain_id, block_number, core_block_hash))
+                    .ok_or(Error::<T>::StateRootUnverifiable)?,
+            };
+
+            if expected_state_root != core_state_root {
+                return Err(Error::<T>::BadStateRoot);
+            }
+        }
+
+        let db = storage_proof.clone().into_memory_db::<BlakeTwo256>();
+
+        let state_root =
+            sp_core::H256::decode(&mut state_root.encode().as_slice()).expect("StateRootNotH256");
+
+        let read_value = |storage_key| {
+            sp_trie::read_trie_value::<sp_trie::LayoutV1<BlakeTwo256>, _>(
+                &db,
+                &state_root,
+                storage_key,
+                None,
+                None,
+            )
+            .map_err(|_| ReadBundleElectionParamsError::TrieError)
+        };
+
+        let executor_key = T::ExecutorRegistry::key_owner_storage_key(executor_public_key);
+        let executor_value =
+            read_value(&executor_key)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+        let executor: T::AccountId = Decode::decode(&mut executor_value.as_slice())
+            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+        let stake_weight_key = DomainAuthorities::<T>::hashed_key_for(domain_id, executor);
+        let stake_weight_value =
+            read_value(&stake_weight_key)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+        let stake_weight: StakeWeight = Decode::decode(&mut stake_weight_value.as_slice())
+            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+        let total_stake_weight_key = DomainTotalStakeWeight::<T>::hashed_key_for(domain_id);
+        let total_stake_weight_value = read_value(&total_stake_weight_key)?
+            .ok_or(ReadBundleElectionParamsError::MissingValue)?;
+        let total_stake_weight: StakeWeight =
+            Decode::decode(&mut total_stake_weight_value.as_slice())
+                .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+        let domain_config_value = read_value(&Domains::<T>::hashed_key_for(domain_id))?
+            .ok_or(ReadBundleElectionParamsError::MissingValue)?;
+        let domain_config: DomainConfig<T> = Decode::decode(&mut domain_config_value.as_slice())
+            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+
+        let slot_probability = domain_config.bundle_slot_probability;
+
+        verify_bundle_solution_threshold(
+            *domain_id,
+            *vrf_output,
+            stake_weight,
+            total_stake_weight,
+            slot_probability,
+            executor_public_key,
+            global_challenge,
+        )
+        .map_err(|_| Error::<T>::BadBundleElectionSolution)?;
+
+        Ok(())
     }
 
     fn can_create_domain(

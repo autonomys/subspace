@@ -1,9 +1,9 @@
-use crate::{DomainId, ExecutorPublicKey, StakeWeight};
+use crate::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRFOutput, VRFProof, VRF_OUTPUT_LENGTH};
-use schnorrkel::SignatureResult;
+use schnorrkel::{SignatureError, SignatureResult};
 use sp_core::H256;
 #[cfg(feature = "std")]
 use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
@@ -141,6 +141,16 @@ pub struct BundleElectionParams {
     pub slot_probability: (u64, u64),
 }
 
+impl BundleElectionParams {
+    pub fn empty() -> Self {
+        Self {
+            authorities: Vec::new(),
+            total_stake_weight: 0,
+            slot_probability: (0, 0),
+        }
+    }
+}
+
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum VrfProofError {
     /// Can not construct the vrf public_key/output/proof from the raw bytes.
@@ -215,4 +225,87 @@ pub fn read_bundle_election_params(
         total_stake_weight,
         slot_probability,
     })
+}
+
+#[derive(Debug)]
+pub enum BundleSolutionError {
+    /// Can not retrieve the state needed from the storage proof.
+    BadStorageProof(ReadBundleElectionParamsError),
+    /// Bundle author is not found in the authority set.
+    AuthorityNotFound,
+    /// Failed to derive the bundle election solution.
+    FailedToDeriveBundleElectionSolution(SignatureError),
+    /// Election solution does not satisfy the threshold.
+    InvalidElectionSolution,
+}
+
+pub fn verify_system_bundle_solution<SecondaryHash>(
+    proof_of_election: &ProofOfElection<SecondaryHash>,
+    verified_state_root: H256,
+) -> Result<(), BundleSolutionError> {
+    let ProofOfElection {
+        domain_id,
+        vrf_output,
+        executor_public_key,
+        global_challenge,
+        storage_proof,
+        ..
+    } = proof_of_election;
+
+    let BundleElectionParams {
+        authorities,
+        total_stake_weight,
+        slot_probability,
+    } = read_bundle_election_params(storage_proof.clone(), &verified_state_root)
+        .map_err(BundleSolutionError::BadStorageProof)?;
+
+    let stake_weight = authorities
+        .iter()
+        .find_map(|(authority, weight)| {
+            if authority == executor_public_key {
+                Some(weight)
+            } else {
+                None
+            }
+        })
+        .ok_or(BundleSolutionError::AuthorityNotFound)?;
+
+    verify_bundle_solution_threshold(
+        *domain_id,
+        *vrf_output,
+        *stake_weight,
+        total_stake_weight,
+        slot_probability,
+        executor_public_key,
+        global_challenge,
+    )?;
+
+    Ok(())
+}
+
+pub fn verify_bundle_solution_threshold(
+    domain_id: DomainId,
+    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    stake_weight: StakeWeight,
+    total_stake_weight: StakeWeight,
+    slot_probability: (u64, u64),
+    executor_public_key: &ExecutorPublicKey,
+    global_challenge: &Blake2b256Hash,
+) -> Result<(), BundleSolutionError> {
+    let election_solution = derive_bundle_election_solution(
+        domain_id,
+        vrf_output,
+        executor_public_key,
+        global_challenge,
+    )
+    .map_err(BundleSolutionError::FailedToDeriveBundleElectionSolution)?;
+
+    let threshold =
+        calculate_bundle_election_threshold(stake_weight, total_stake_weight, slot_probability);
+
+    if !is_election_solution_within_threshold(election_solution, threshold) {
+        return Err(BundleSolutionError::InvalidElectionSolution);
+    }
+
+    Ok(())
 }

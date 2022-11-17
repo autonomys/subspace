@@ -72,7 +72,7 @@ pub enum RelayMode {
     /// Client relay configuration (enables relay client behavior).
     /// It uses a circuit relay server address as a parameter.
     ///
-    /// Example: /memory/<port>/p2p/<server_peer_id>/p2p-circuit
+    /// Example: /memory/\<port>/p2p/\<server_peer_id>/p2p-circuit
     Client(Multiaddr),
 }
 

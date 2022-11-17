@@ -17,12 +17,20 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use sp_domains::ExecutorPublicKey;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec::Vec;
 
 /// Executor registry interface.
 pub trait ExecutorRegistry<AccountId, Balance, StakeWeight> {
-    /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not an executor.
+    /// Returns `Some(stake_amount)` if the given account is an executor, `None` if not.
     fn executor_stake(who: &AccountId) -> Option<Balance>;
+
+    /// Returns `Some(executor_public_key)` if the given account is an executor, `None` if not.
+    fn executor_public_key(who: &AccountId) -> Option<ExecutorPublicKey>;
+
+    /// Return the storage key of `KeyOwner` entry in pallet-executor-registry.
+    fn key_owner_storage_key(executor_public_key: &ExecutorPublicKey) -> Vec<u8>;
 
     /// Returns `Some(stake_weight)` if the given account is an authority.
     #[cfg(feature = "std")]
@@ -32,6 +40,14 @@ pub trait ExecutorRegistry<AccountId, Balance, StakeWeight> {
 impl<AccountId, Balance, StakeWeight> ExecutorRegistry<AccountId, Balance, StakeWeight> for () {
     fn executor_stake(_who: &AccountId) -> Option<Balance> {
         None
+    }
+
+    fn executor_public_key(_who: &AccountId) -> Option<ExecutorPublicKey> {
+        None
+    }
+
+    fn key_owner_storage_key(_executor_public_key: &ExecutorPublicKey) -> Vec<u8> {
+        Vec::new()
     }
 
     #[cfg(feature = "std")]

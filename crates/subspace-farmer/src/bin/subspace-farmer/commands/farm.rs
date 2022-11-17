@@ -1,4 +1,4 @@
-use crate::utils::shutdown_signal;
+use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, DsnArgs, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, SectorIndex};
+use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::NodeRpcClient;
@@ -73,10 +73,13 @@ pub(crate) async fn farm_multi_disk(
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for disk_farm in disk_farms {
-        if disk_farm.allocated_plotting_space < 1024 * 1024 {
+        let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
+
+        if disk_farm.allocated_plotting_space < minimum_plot_size {
             return Err(anyhow::anyhow!(
-                "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
-                disk_farm.allocated_plotting_space
+                "Plot size is too low ({} bytes). Minimum is {}",
+                disk_farm.allocated_plotting_space,
+                minimum_plot_size
             ));
         }
 
