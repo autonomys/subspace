@@ -1,3 +1,4 @@
+use crate::domain_block_processor::DomainBlockResult;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::utils::shuffle_extrinsics;
 use crate::TransactionFor;
@@ -134,6 +135,77 @@ where
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
 
+        let DomainBlockResult {
+            header_hash,
+            header_number,
+            execution_receipt,
+        } = self
+            .execute_bundles(
+                (primary_hash, primary_number),
+                (parent_hash, parent_number),
+                bundles,
+                shuffling_seed,
+                maybe_new_runtime,
+                fork_choice,
+            )
+            .await?;
+
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
+
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        let best_execution_chain_number = best_execution_chain_number.into();
+
+        assert!(
+            header_number > best_execution_chain_number,
+            "Consensus chain number must larger than execution chain number by at least 1"
+        );
+
+        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+            &*self.client,
+            (header_hash, header_number),
+            best_execution_chain_number,
+            &execution_receipt,
+        )?;
+
+        // TODO: The applied txs can be fully removed from the transaction pool
+
+        self.check_receipts_in_primary_block(primary_hash)?;
+
+        if self.primary_network.is_major_syncing() {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Skip checking the receipts as the primary node is still major syncing..."
+            );
+            return Ok(());
+        }
+
+        // Submit fraud proof for the first unconfirmed incorrent ER.
+        let oldest_receipt_number = self
+            .primary_chain_client
+            .runtime_api()
+            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+        crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+
+        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
+
+        Ok(())
+    }
+
+    async fn execute_bundles(
+        &self,
+        (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
+        (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
+        bundles: SystemAndCoreBundles<Block, PBlock>,
+        shuffling_seed: Randomness,
+        maybe_new_runtime: Option<Cow<'static, [u8]>>,
+        fork_choice: ForkChoiceStrategy,
+    ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number: BlockNumber = primary_number
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
@@ -192,51 +264,11 @@ where
             trace_root,
         };
 
-        let best_execution_chain_number = self
-            .primary_chain_client
-            .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
-
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let best_execution_chain_number = best_execution_chain_number.into();
-
-        assert!(
-            header_number > best_execution_chain_number,
-            "Consensus chain number must larger than execution chain number by at least 1"
-        );
-
-        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
-            &*self.client,
-            (header_hash, header_number),
-            best_execution_chain_number,
-            &execution_receipt,
-        )?;
-
-        // TODO: The applied txs can be fully removed from the transaction pool
-
-        self.check_receipts_in_primary_block(primary_hash)?;
-
-        if self.primary_network.is_major_syncing() {
-            tracing::debug!(
-                target: LOG_TARGET,
-                "Skip checking the receipts as the primary node is still major syncing..."
-            );
-            return Ok(());
-        }
-
-        // Submit fraud proof for the first unconfirmed incorrent ER.
-        let oldest_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
-        crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
-
-        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
-
-        Ok(())
+        Ok(DomainBlockResult {
+            header_hash,
+            header_number,
+            execution_receipt,
+        })
     }
 
     async fn build_and_import_block(
