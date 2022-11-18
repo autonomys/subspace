@@ -15,10 +15,13 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_domain_digests::AsPredigest;
+use sp_domain_tracker::StateRootUpdate;
 use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
+use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
@@ -312,12 +315,25 @@ where
             extrinsics.push(set_code_extrinsic);
         }
 
+        let digests = self
+            .client
+            .header(BlockId::Hash(parent_hash))?
+            .map(|header| {
+                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                    number: parent_number,
+                    state_root: *header.state_root(),
+                });
+
+                Digest { logs: vec![item] }
+            })
+            .unwrap_or_default();
+
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,
             parent_number,
             RecordProof::No,
-            Default::default(),
+            digests,
             &*self.backend,
             extrinsics,
         )?;

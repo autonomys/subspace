@@ -55,3 +55,4 @@ pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
 pub use utils::multihash::ToMultihash;
+pub use utils::prometheus::start_prometheus_metrics_server;

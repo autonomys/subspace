@@ -114,7 +114,7 @@ where
         client.clone(),
     );
 
-    let import_queue = domain_client_consensus_relay_chain::import_queue(
+    let (import_queue, _) = domain_client_consensus_relay_chain::import_queue(
         client.clone(),
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),

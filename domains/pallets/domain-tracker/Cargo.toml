@@ -20,6 +20,7 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 scale-info = { version = "2.3.0", default-features = false, features = ["derive"] }
 sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
+sp-domain-digests = { version = "0.1.0", default-features = false, path = "../../primitives/digests" }
 sp-domain-tracker = { version = "0.1.0", default-features = false, path = "../../primitives/domain-tracker" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
@@ -39,6 +40,7 @@ std = [
   "scale-info/std",
   "sp-core/std",
   "sp-domains/std",
+  "sp-domain-digests/std",
   "sp-domain-tracker/std",
   "sp-messenger/std",
   "sp-runtime/std",

@@ -16,6 +16,7 @@
 
 //! Subspace node implementation.
 
+use domain_service::Configuration;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -427,11 +428,11 @@ fn main() -> Result<(), Error> {
                     );
 
                     // Increase default number of peers
-                    if secondary_chain_cli.run.network_params.out_peers == 25 {
-                        secondary_chain_cli.run.network_params.out_peers = 50;
+                    if secondary_chain_cli.run.run_system.network_params.out_peers == 25 {
+                        secondary_chain_cli.run.run_system.network_params.out_peers = 50;
                     }
 
-                    let secondary_chain_config = SubstrateCli::create_configuration(
+                    let service_config = SubstrateCli::create_configuration(
                         &secondary_chain_cli,
                         &secondary_chain_cli,
                         tokio_handle.clone(),
@@ -441,6 +442,14 @@ fn main() -> Result<(), Error> {
                             "Failed to create secondary chain configuration: {error:?}"
                         ))
                     })?;
+
+                    let secondary_chain_config =
+                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id)
+                            .map_err(|error| {
+                                sc_service::Error::Other(format!(
+                                    "Failed to create secondary chain configuration: {error:?}"
+                                ))
+                            })?;
 
                     let imported_block_notification_stream = || {
                         primary_chain_node

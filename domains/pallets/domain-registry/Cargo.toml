@@ -20,12 +20,15 @@ scale-info = { version = "2.3.0", default-features = false, features = ["derive"
 serde = { version = "1.0.147", optional = true }
 sp-core = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
+sp-domain-tracker = { version = "0.1.0", path = "../../primitives/domain-tracker", default-features = false }
 sp-executor-registry = { version = "0.1.0", path = "../../primitives/executor-registry", default-features = false }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 sp-std = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
+sp-trie = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
 
 [dev-dependencies]
 pallet-balances = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+pallet-domain-tracker = { path = "../../pallets/domain-tracker" }
 pallet-executor-registry = { path = "../executor-registry" }
 sp-core = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-io = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
@@ -41,8 +44,10 @@ std = [
 	"serde/std",
 	"sp-core/std",
 	"sp-domains/std",
+	"sp-domain-tracker/std",
 	"sp-executor-registry/std",
 	"sp-runtime/std",
 	"sp-std/std",
+	"sp-trie/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
