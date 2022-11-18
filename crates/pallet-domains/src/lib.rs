@@ -28,6 +28,7 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
+use sp_domains::domain_txns::DomainExtrinsic;
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{ExecutionReceipt, InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
@@ -41,6 +42,7 @@ mod pallet {
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domains::domain_txns::DomainExtrinsic;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::{
         ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
@@ -158,6 +160,8 @@ mod pallet {
         Bundle(BundleError),
         /// Invalid fraud proof.
         FraudProof(FraudProofError),
+        /// Encountered domain extrinsic.
+        DomainExtrinsic,
     }
 
     #[pallet::event]
@@ -306,6 +310,17 @@ mod pallet {
             Self::deposit_event(Event::InvalidTransactionProofProcessed);
 
             Ok(())
+        }
+
+        /// Call to generate and submit a domain extrinsic in primary network.
+        /// This call should never make it to the runtime of the primary chain.
+        /// Always reject with an error.
+        #[pallet::weight((10_000, Pays::Yes))]
+        pub fn submit_domain_extrinsic(
+            _origin: OriginFor<T>,
+            _domain_extrinsic: DomainExtrinsic,
+        ) -> DispatchResult {
+            Err(Error::<T>::DomainExtrinsic.into())
         }
     }
 
@@ -884,6 +899,23 @@ where
                 log::error!(
                     target: "runtime::subspace::executor",
                     "Error submitting invalid transaction proof",
+                );
+            }
+        }
+    }
+
+    /// Submits an unsigned domain extrinsic.
+    pub fn submit_domain_extrinsic_unsigned(domain_extrinsic: DomainExtrinsic) {
+        let call = Call::submit_domain_extrinsic { domain_extrinsic };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(target: "runtime::subspace::executor", "Submitted domain extrinsic")
+            }
+            Err(()) => {
+                log::error!(
+                    target: "runtime::subspace::executor",
+                    "Error submitting domain extrinsic",
                 );
             }
         }

@@ -18,9 +18,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod bundle_election;
+pub mod domain_txns;
 pub mod fraud_proof;
 
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use domain_txns::DomainExtrinsic;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
@@ -379,6 +381,9 @@ sp_api::decl_runtime_apis! {
             invalid_transaction_proof: InvalidTransactionProof,
         );
 
+        /// Submits a domain extrinsic as a wrapped unsigned extrinsic in primary network.
+        fn submit_domain_extrinsic_unsigned(domain_extrinsic: DomainExtrinsic);
+
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
             extrinsics: Vec<Block::Extrinsic>,
@@ -398,6 +403,9 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the fraud proofs from the given extrinsics.
         fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
+
+        /// Extract domain extrinsic from the wrapped unsigned primary chain extrinsic.
+        fn extract_domain_extrinsic(extrinsic: Block::Extrinsic) -> Option<DomainExtrinsic>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;

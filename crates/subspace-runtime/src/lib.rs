@@ -59,6 +59,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
+use sp_domains::domain_txns::DomainExtrinsic;
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
@@ -605,6 +606,17 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
         .collect()
 }
 
+fn extract_domain_extrinsic(extrinsic: UncheckedExtrinsic) -> Option<DomainExtrinsic> {
+    if let RuntimeCall::Domains(pallet_domains::Call::submit_domain_extrinsic {
+        domain_extrinsic,
+    }) = extrinsic.function
+    {
+        Some(domain_extrinsic)
+    } else {
+        None
+    }
+}
+
 fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
     if header.number().is_zero() {
         Randomness::default()
@@ -828,6 +840,10 @@ impl_runtime_apis! {
             Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
+        fn submit_domain_extrinsic_unsigned(domain_extrinsic: DomainExtrinsic){
+            Domains::submit_domain_extrinsic_unsigned(domain_extrinsic)
+        }
+
         fn extract_system_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> (
@@ -853,6 +869,10 @@ impl_runtime_apis! {
 
         fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
             extract_fraud_proofs(extrinsics)
+        }
+
+        fn extract_domain_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> Option<DomainExtrinsic>{
+            extract_domain_extrinsic(extrinsic)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {

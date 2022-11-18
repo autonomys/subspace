@@ -50,6 +50,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
+use sp_domains::domain_txns::DomainExtrinsic;
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{
@@ -1105,6 +1106,10 @@ impl_runtime_apis! {
             Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
+        fn submit_domain_extrinsic_unsigned(domain_extrinsic: DomainExtrinsic){
+            Domains::submit_domain_extrinsic_unsigned(domain_extrinsic)
+        }
+
         fn extract_system_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> (
@@ -1130,6 +1135,10 @@ impl_runtime_apis! {
 
         fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
             extract_fraud_proofs(extrinsics)
+        }
+
+        fn extract_domain_extrinsic(_extrinsic: <Block as BlockT>::Extrinsic) -> Option<DomainExtrinsic>{
+            None
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
