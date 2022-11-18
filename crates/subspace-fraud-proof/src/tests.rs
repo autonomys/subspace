@@ -114,7 +114,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let dummy_receipt = ExecutionReceipt {
         primary_number: ferdie.client.info().best_number,
         primary_hash: ferdie.client.info().best_hash,
-        secondary_hash: alice.client.info().best_hash,
+        domain_hash: alice.client.info().best_hash,
         trace: Vec::new(),
         trace_root: Default::default(),
     };

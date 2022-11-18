@@ -239,8 +239,8 @@ pub enum BundleSolutionError {
     InvalidElectionSolution,
 }
 
-pub fn verify_system_bundle_solution<SecondaryHash>(
-    proof_of_election: &ProofOfElection<SecondaryHash>,
+pub fn verify_system_bundle_solution<DomainHash>(
+    proof_of_election: &ProofOfElection<DomainHash>,
     verified_state_root: H256,
 ) -> Result<(), BundleSolutionError> {
     let ProofOfElection {
