@@ -70,17 +70,6 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-pub mod parser {
-    use crate::RelayerId;
-    use sp_core::crypto::Ss58Codec;
-
-    /// Parses relayer id in string format. Used for Cli.
-    pub fn parse_relayer_id(s: &str) -> Result<RelayerId, sp_core::crypto::PublicError> {
-        RelayerId::from_ss58check(s)
-    }
-}
-
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     pub trait DomainCoreApi<AccountId: Encode + Decode> {

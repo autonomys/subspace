@@ -15,9 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::core_domain::core_payments_chain_spec;
+use crate::parser::parse_relayer_id;
 use clap::Parser;
-use core_payments_domain_runtime::RelayerId;
-use domain_runtime_primitives::parser::parse_relayer_id;
+use domain_runtime_primitives::RelayerId;
 use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
