@@ -9,13 +9,13 @@ fn piece_distance_middle() {
 }
 
 #[test]
-fn piece_size_multiple_of_and_scalar() {
+fn piece_size_multiple_of_scalar() {
     assert_eq!(PIECE_SIZE % Scalar::SAFE_BYTES, 0);
 }
 
 #[test]
 fn sector_side_size_in_scalars_power_of_two() {
-    let sector_size_in_scalars = PLOT_SECTOR_SIZE / Scalar::SAFE_BYTES as u64;
+    let sector_size_in_scalars = PLOT_SECTOR_SIZE / Scalar::FULL_BYTES as u64;
     let sector_side_size_in_scalars = sector_size_in_scalars.sqrt();
 
     assert!(sector_side_size_in_scalars.is_power_of_two());
@@ -29,7 +29,12 @@ fn bytes_scalars_conversion() {
 
         let scalars = bytes
             .chunks_exact(Scalar::SAFE_BYTES)
-            .map(Scalar::try_from)
+            .map(|bytes| {
+                Scalar::try_from(
+                    <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
+                        .expect("Chunked into correct size; qed"),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
@@ -39,7 +44,9 @@ fn bytes_scalars_conversion() {
                 .chunks_exact_mut(Scalar::SAFE_BYTES)
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
-                    scalar.write_to_bytes(bytes).unwrap();
+                    let mut tmp = [0u8; Scalar::FULL_BYTES];
+                    scalar.write_to_bytes(&mut tmp);
+                    bytes.copy_from_slice(&tmp[..Scalar::SAFE_BYTES]);
                 });
 
             assert_eq!(bytes, decoded_bytes);
@@ -51,7 +58,7 @@ fn bytes_scalars_conversion() {
                 .chunks_exact_mut(Scalar::SAFE_BYTES)
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
-                    bytes.copy_from_slice(&scalar.to_bytes());
+                    bytes.copy_from_slice(&scalar.to_bytes()[..Scalar::SAFE_BYTES]);
                 });
 
             assert_eq!(bytes, decoded_bytes);
@@ -59,7 +66,12 @@ fn bytes_scalars_conversion() {
     }
 
     {
-        let bytes = rand::random::<[u8; Scalar::SAFE_BYTES]>();
+        let bytes = {
+            let mut bytes = [0u8; Scalar::FULL_BYTES];
+            bytes[..Scalar::SAFE_BYTES]
+                .copy_from_slice(&rand::random::<[u8; Scalar::SAFE_BYTES]>());
+            bytes
+        };
 
         {
             let scalar = Scalar::try_from(&bytes).unwrap();

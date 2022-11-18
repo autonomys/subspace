@@ -32,13 +32,12 @@ use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
 use alloc::vec;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
-use ark_ff::BigInteger256;
+use ark_ff::{BigInteger, PrimeField};
 use bitvec::prelude::*;
 use core::convert::AsRef;
-use core::marker::PhantomData;
+use core::fmt;
 use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
-use core::{fmt, mem};
 use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
@@ -65,9 +64,14 @@ pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 /// Size of one plotted sector.
 ///
 /// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
-/// equal to number of columns.
+/// equal to number of columns, but we need to account for the fact that [`Scalar::SAFE_BYTES`] will
+/// be expanded to [`Scalar::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
+/// and decoding operate on the same amount of data.
 pub const PLOT_SECTOR_SIZE: u64 =
-    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::SAFE_BYTES as u64;
+    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
+/// How many pieces we have in a sector
+pub const PIECES_IN_SECTOR: u64 =
+    PLOT_SECTOR_SIZE / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -138,11 +142,11 @@ impl EncodeLike for Scalar {}
 
 impl Decode for Scalar {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        Ok(Self::from(&<[u8; Self::SAFE_BYTES]>::decode(input)?))
+        Ok(Self::from(&<[u8; Self::FULL_BYTES]>::decode(input)?))
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(Self::SAFE_BYTES)
+        Some(Self::FULL_BYTES)
     }
 }
 
@@ -154,7 +158,7 @@ impl TypeInfo for Scalar {
             .path(scale_info::Path::new(stringify!(Scalar), module_path!()))
             .docs(&["BLS12-381 scalar"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; Self::SAFE_BYTES]>()
+                f.ty::<[u8; Self::FULL_BYTES]>()
                     .name(stringify!(inner))
                     .type_name("Fr")
             }))
@@ -167,7 +171,7 @@ mod scalar_serde {
 
     // Custom wrapper so we don't have to write serialization/deserialization code manually
     #[derive(Serialize, Deserialize)]
-    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::SAFE_BYTES]);
+    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::FULL_BYTES]);
 
     impl Serialize for super::Scalar {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -189,94 +193,49 @@ mod scalar_serde {
     }
 }
 
-impl TryFrom<&[u8]> for Scalar {
-    type Error = ();
-
-    /// Number of bytes must be exactly [`Self::SAFE_BYTES`] bytes.
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        <&[u8; Self::SAFE_BYTES]>::try_from(value)
-            .map(Self::from)
-            .map_err(|_| ())
-    }
-}
-
 impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
     fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
-        let mut bigint_bytes = [0u64; 4];
-        // NOTE: `bigint_bytes` has one more byte than `bytes`, the last byte will always be zero.
-        bigint_bytes
-            .iter_mut()
-            .zip(value.chunks(mem::size_of::<u64>()))
-            .for_each(|(output, input): (&mut u64, &[u8])| {
-                let mut tmp = 0u64.to_le_bytes();
-
-                tmp.iter_mut().zip(input).for_each(|(output, input)| {
-                    *output = *input;
-                });
-
-                *output = u64::from_le_bytes(tmp);
-            });
-
-        // Bypass `from_repr` because of https://github.com/arkworks-rs/algebra/issues/516
-        Scalar(Fr {
-            0: BigInteger256::new(bigint_bytes),
-            1: PhantomData::default(),
-        })
+        Scalar(Fr::from_le_bytes_mod_order(value))
     }
 }
 
-impl From<&Scalar> for [u8; Scalar::SAFE_BYTES] {
-    fn from(value: &Scalar) -> [u8; Scalar::SAFE_BYTES] {
-        let mut bytes = [0u8; Scalar::SAFE_BYTES];
+impl From<&[u8; Self::FULL_BYTES]> for Scalar {
+    fn from(value: &[u8; Self::FULL_BYTES]) -> Self {
+        Scalar(Fr::from_le_bytes_mod_order(value))
+    }
+}
 
-        bytes
-            .chunks_mut(mem::size_of::<u64>())
-            .zip(&value.0 .0 .0)
-            .for_each(|(output, input): (&mut [u8], &u64)| {
-                output
-                    .iter_mut()
-                    .zip(input.to_le_bytes())
-                    .for_each(|(output, input)| {
-                        *output = input;
-                    });
-            });
-
+impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
+    fn from(value: &Scalar) -> [u8; Scalar::FULL_BYTES] {
+        let mut bytes = [0u8; Scalar::FULL_BYTES];
+        value.write_to_bytes(&mut bytes);
         bytes
     }
 }
 
 impl Scalar {
-    /// How many full bytes can be stored in BLS12-381 scalar (it is actually 254 bits, but bits are
-    /// mut harder to work with and likely not worth it)
+    /// How many full bytes can be stored in BLS12-381 scalar (for instance before encoding). It is
+    /// actually 254 bits, but bits are mut harder to work with and likely not worth it.
+    ///
+    /// NOTE: After encoding more bytes can be used, so don't rely on this as the max number of
+    /// bytes stored within at all times!
     pub const SAFE_BYTES: usize = 31;
+    /// How many bytes Scalar contains physically, use [`Self::SAFE_BYTES`] for the amount of data
+    /// that you can put into it safely (for instance before encoding).
+    pub const FULL_BYTES: usize = 32;
 
     /// Convert scalar into bytes
-    pub fn to_bytes(&self) -> [u8; Scalar::SAFE_BYTES] {
+    pub fn to_bytes(&self) -> [u8; Scalar::FULL_BYTES] {
         self.into()
     }
 
     /// Converts scalar to bytes that will be written to `bytes`.
-    ///
-    /// Returns `Err(())` if number of bytes in slice provided is not exactly [`Self::SAFE_BYTES`].
     #[allow(clippy::result_unit_err)]
-    pub fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), ()> {
-        if bytes.len() != Self::SAFE_BYTES {
-            return Err(());
-        }
-
-        bytes
-            .chunks_mut(mem::size_of::<u64>())
-            .zip(&self.0 .0 .0)
-            .for_each(|(output, input): (&mut [u8], &u64)| {
-                output
-                    .iter_mut()
-                    .zip(input.to_le_bytes())
-                    .for_each(|(output, input)| {
-                        *output = input;
-                    });
-            });
-
-        Ok(())
+    pub fn write_to_bytes(&self, bytes: &mut [u8; Self::FULL_BYTES]) {
+        self.0
+            .into_repr()
+            .write_le(&mut bytes.as_mut())
+            .expect("Correct length input was provided; qed");
     }
 }
 
