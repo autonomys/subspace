@@ -10,12 +10,13 @@ use frame_support::weights::constants::{
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
-use sp_messenger::endpoint::{Endpoint, EndpointHandler};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
@@ -23,6 +24,7 @@ use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 pub use sp_runtime::BuildStorage;
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -325,9 +327,13 @@ impl pallet_messenger::Config for Runtime {
     type DomainTracker = DomainTracker;
 
     fn get_endpoint_response_handler(
-        _endpoint: &Endpoint,
-    ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
-        None
+        endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>::default())))
+        } else {
+            None
+        }
     }
 
     type Currency = Balances;
@@ -341,6 +347,18 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type OverarchingCall = RuntimeCall;
+}
+
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = SystemDomainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -368,6 +386,7 @@ construct_runtime!(
         DomainRegistry: pallet_domain_registry = 5,
         DomainTracker: pallet_domain_tracker = 6,
         Messenger: pallet_messenger = 7,
+        Transporter: pallet_transporter = 8,
     }
 );
 

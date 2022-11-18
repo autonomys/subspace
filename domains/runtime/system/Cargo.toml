@@ -29,6 +29,7 @@ pallet-executor-registry = { path = "../../pallets/executor-registry", default-f
 pallet-messenger = { path = "../../pallets/messenger", default-features = false }
 pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+pallet-transporter = { path = "../../pallets/transporter", default-features = false }
 scale-info = { version = "2.3.0", default-features = false, features = ["derive"] }
 sp-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-block-builder = { default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
@@ -72,6 +73,7 @@ std = [
 	"pallet-messenger/std",
 	"pallet-transaction-payment/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
+	"pallet-transporter/std",
 	"scale-info/std",
 	"sp-api/std",
 	"sp-block-builder/std",

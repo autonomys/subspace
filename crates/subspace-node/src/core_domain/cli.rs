@@ -15,7 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::core_domain::core_payments_chain_spec;
+use crate::parser::parse_relayer_id;
 use clap::Parser;
+use domain_runtime_primitives::RelayerId;
 use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -54,6 +56,10 @@ pub struct CoreDomainCli {
 
     #[clap(long, value_parser = parse_domain_id)]
     pub domain_id: DomainId,
+
+    /// Optional relayer address to relay messages on behalf.
+    #[clap(long, value_parser = parse_relayer_id)]
+    pub relayer_id: Option<RelayerId>,
 
     /// The base path that should be used by the secondary chain.
     #[clap(skip)]

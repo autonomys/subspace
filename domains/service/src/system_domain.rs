@@ -1,3 +1,4 @@
+use crate::Configuration;
 use domain_client_executor::SystemExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
@@ -21,7 +22,6 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
-use sp_core::crypto::Ss58Codec;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
 use sp_messenger::RelayerApi;
@@ -142,40 +142,6 @@ where
     };
 
     Ok(params)
-}
-
-/// Secondary chain configuration.
-pub struct Configuration {
-    service_config: ServiceConfiguration,
-    maybe_relayer_id: Option<RelayerId>,
-}
-
-/// Configuration error for secondary chain.
-#[derive(Debug)]
-pub enum ConfigurationError {
-    /// Emits when the relayer id is invalid.
-    InvalidRelayerId,
-}
-
-impl Configuration {
-    pub fn new(
-        service_config: ServiceConfiguration,
-        maybe_relayer_id: Option<String>,
-    ) -> Result<Self, ConfigurationError> {
-        let maybe_relayer_id = match maybe_relayer_id {
-            None => None,
-            Some(relayer_id) => {
-                let relayer_id = RelayerId::from_ss58check(&relayer_id)
-                    .map_err(|_| ConfigurationError::InvalidRelayerId)?;
-                Some(relayer_id)
-            }
-        };
-
-        Ok(Configuration {
-            service_config,
-            maybe_relayer_id,
-        })
-    }
 }
 
 type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<

@@ -15,7 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::core_domain::cli::CoreDomainCli;
+use crate::parser::parse_relayer_id;
 use clap::Parser;
+use domain_runtime_primitives::RelayerId;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams, SubstrateCli,
@@ -49,8 +51,8 @@ pub struct DomainCli {
     pub run_system: SubstrateRunCmd,
 
     /// Optional relayer address to relay messages on behalf.
-    #[arg(long)]
-    pub relayer_id: Option<String>,
+    #[clap(long, value_parser = parse_relayer_id)]
+    pub relayer_id: Option<RelayerId>,
 
     #[clap(raw = true)]
     pub core_domain_args: Vec<String>,

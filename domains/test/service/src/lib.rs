@@ -136,9 +136,7 @@ async fn run_executor(
         })?
     };
 
-    let secondary_chain_config = Configuration::new(secondary_chain_config, None).map_err(|e| {
-        sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
-    })?;
+    let secondary_chain_config = Configuration::new(secondary_chain_config, None);
     let block_import_throttling_buffer_size = 10;
     let secondary_chain_node = domain_service::new_full::<
         _,
