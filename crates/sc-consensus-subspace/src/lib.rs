@@ -75,6 +75,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
@@ -205,7 +206,10 @@ pub enum Error<Header: HeaderT> {
     #[error("Stored root block extrinsic was not found: {0:?}")]
     RootBlocksExtrinsicNotFound(Vec<RootBlock>),
     /// Duplicated records root
-    #[error("Different records root for segment index {0} was found in storage, likely fork below archiving point")]
+    #[error(
+        "Different records root for segment index {0} was found in storage, likely fork below \
+        archiving point"
+    )]
     DifferentRecordsRoot(u64),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
@@ -1258,7 +1262,11 @@ where
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
-        root_blocks: Arc::new(Mutex::new(LruCache::new(confirmation_depth_k as usize))),
+        // TODO: Consider making `confirmation_depth_k` non-zero
+        root_blocks: Arc::new(Mutex::new(LruCache::new(
+            NonZeroUsize::new(confirmation_depth_k as usize)
+                .expect("Confirmation depth of zero is not supported"),
+        ))),
         kzg,
     };
 
