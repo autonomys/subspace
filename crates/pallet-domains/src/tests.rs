@@ -3,9 +3,10 @@ use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::{
-    Bundle, BundleHeader, ExecutionPhase, ExecutionReceipt, ExecutorPair, FraudProof,
-    InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle,
+    Bundle, BundleHeader, ExecutionReceipt, ExecutorPair, InvalidTransactionCode, ProofOfElection,
+    SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};

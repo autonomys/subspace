@@ -17,10 +17,8 @@ use sp_consensus::{BlockStatus, SelectChain};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
-use sp_domains::{
-    Bundle, BundleEquivocationProof, DomainId, ExecutorApi, ExecutorPublicKey,
-    InvalidTransactionProof, OpaqueBundle, SignedBundle,
-};
+use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
+use sp_domains::{Bundle, DomainId, ExecutorApi, ExecutorPublicKey, OpaqueBundle, SignedBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{
