@@ -7,7 +7,7 @@ use sp_std::vec::Vec;
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct DomainExtrinsic {
     /// Domain Id this transaction is destined to.
-    domain_id: DomainId,
+    pub domain_id: DomainId,
     /// Encoded transaction.
-    txn: Vec<u8>,
+    pub txn: Vec<u8>,
 }

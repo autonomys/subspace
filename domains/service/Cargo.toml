@@ -14,6 +14,8 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 clap = { version = "4.0.26", features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.2.1", features = ["derive"]}
+core-payments-domain-runtime = { version = "0.1.0", path = "../runtime/core-payments" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
 domain-client-executor = { version = "0.1.0", path = "../client/domain-executor" }
 domain-client-executor-gossip = { version = "0.1.0", path = "../client/executor-gossip" }

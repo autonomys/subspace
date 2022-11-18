@@ -16,13 +16,14 @@
 
 //! Subspace node implementation.
 
-use domain_service::Configuration;
+use domain_service::{
+    Configuration, CorePaymentsDomainExecutorDispatch, SystemDomainExecutorDispatch,
+};
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
-use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
@@ -32,42 +33,6 @@ use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
-
-/// System domain executor instance.
-pub struct SystemDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for SystemDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        system_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        system_domain_runtime::native_version()
-    }
-}
-
-/// Core payments domain executor instance.
-pub struct CorePaymentsDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        core_payments_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        core_payments_domain_runtime::native_version()
-    }
-}
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]

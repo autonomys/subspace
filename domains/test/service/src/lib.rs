@@ -183,6 +183,7 @@ async fn run_executor(
         network_starter,
         rpc_handlers,
         executor,
+        transaction_pool: _system_domain_tx_pool,
     } = secondary_chain_node;
 
     task_manager.add_child(primary_chain_full_node.task_manager);

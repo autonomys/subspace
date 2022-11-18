@@ -606,12 +606,12 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
         .collect()
 }
 
-fn extract_domain_extrinsic(extrinsic: UncheckedExtrinsic) -> Option<DomainExtrinsic> {
+fn extract_domain_extrinsic(extrinsic: &UncheckedExtrinsic) -> Option<DomainExtrinsic> {
     if let RuntimeCall::Domains(pallet_domains::Call::submit_domain_extrinsic {
         domain_extrinsic,
-    }) = extrinsic.function
+    }) = &extrinsic.function
     {
-        Some(domain_extrinsic)
+        Some(domain_extrinsic.clone())
     } else {
         None
     }
@@ -871,7 +871,7 @@ impl_runtime_apis! {
             extract_fraud_proofs(extrinsics)
         }
 
-        fn extract_domain_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> Option<DomainExtrinsic>{
+        fn extract_domain_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<DomainExtrinsic>{
             extract_domain_extrinsic(extrinsic)
         }
 

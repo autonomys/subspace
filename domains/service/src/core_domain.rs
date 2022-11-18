@@ -42,10 +42,26 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 
-pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool<
-    sc_transaction_pool::FullChainApi<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    Block,
->;
+pub type FullPool<Client> =
+    sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>;
+
+/// Core payments domain executor instance.
+pub struct CorePaymentsDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_payments_domain_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_payments_domain_runtime::native_version()
+    }
+}
 
 /// Starts a `ServiceBuilder` for a full service.
 ///
@@ -153,7 +169,7 @@ type SystemDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, Executor
         FullClient<RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
-        FullPool<RuntimeApi, ExecutorDispatch>,
+        FullPool<FullClient<RuntimeApi, ExecutorDispatch>>,
         FullBackend,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
@@ -196,6 +212,9 @@ where
     /// Executor.
     pub executor:
         SystemDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+    /// Core domain tx pool.
+    pub transaction_pool:
+        Arc<sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -398,6 +417,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        transaction_pool: params.transaction_pool,
     };
 
     Ok(new_full)

@@ -1137,7 +1137,7 @@ impl_runtime_apis! {
             extract_fraud_proofs(extrinsics)
         }
 
-        fn extract_domain_extrinsic(_extrinsic: <Block as BlockT>::Extrinsic) -> Option<DomainExtrinsic>{
+        fn extract_domain_extrinsic(_extrinsic: &<Block as BlockT>::Extrinsic) -> Option<DomainExtrinsic>{
             None
         }
 

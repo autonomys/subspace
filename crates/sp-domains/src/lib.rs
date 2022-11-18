@@ -405,7 +405,7 @@ sp_api::decl_runtime_apis! {
         fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
 
         /// Extract domain extrinsic from the wrapped unsigned primary chain extrinsic.
-        fn extract_domain_extrinsic(extrinsic: Block::Extrinsic) -> Option<DomainExtrinsic>;
+        fn extract_domain_extrinsic(extrinsic: &Block::Extrinsic) -> Option<DomainExtrinsic>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;

@@ -1,3 +1,4 @@
+use domain_service::DomainTransactionPoolWrapper;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt, Ready};
 use jsonrpsee::core::async_trait;
@@ -17,6 +18,7 @@ use sc_transaction_pool_api::{
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
+use sp_domains::domain_txns::DomainExtrinsic;
 use sp_domains::ExecutorApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
@@ -41,7 +43,7 @@ type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
 pub type FullPool<Block, Client, Verifier> =
-    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>;
+    BasicPoolWrapper<Block, Client, FullChainApiWrapper<Block, Client, Verifier>>;
 
 type BoxedReadyIterator<Hash, Data> =
     Box<dyn ReadyTransactions<Item = Arc<Transaction<Hash, Data>>> + Send>;
@@ -223,20 +225,27 @@ where
     }
 }
 
-pub struct BasicPoolWrapper<Block, PoolApi>
-where
-    Block: BlockT,
-    PoolApi: ChainApi<Block = Block>,
-{
-    inner: BasicPool<PoolApi, Block>,
-}
-
-impl<Block, PoolApi> BasicPoolWrapper<Block, PoolApi>
+/// Transaction pool router that is domain aware and add extrinsic to domain specific tx pool.
+pub struct BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
     PoolApi: ChainApi<Block = Block> + 'static,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
 {
-    fn with_revalidation_type<Client, Spawn>(
+    primary_tx_pool: BasicPool<PoolApi, Block>,
+    primary_client: Arc<Client>,
+    pub domain_tx_pool_wrapper: DomainTransactionPoolWrapper<TxHash<Self>>,
+}
+
+impl<Block, Client, PoolApi> BasicPoolWrapper<Block, Client, PoolApi>
+where
+    Block: BlockT,
+    PoolApi: ChainApi<Block = Block> + 'static,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
+    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
+{
+    fn with_revalidation_type<Spawn>(
         config: &Configuration,
         pool_api: Arc<PoolApi>,
         prometheus: Option<&PrometheusRegistry>,
@@ -259,21 +268,34 @@ where
             client.usage_info().chain.finalized_hash,
         );
 
-        Self { inner: basic_pool }
+        Self {
+            primary_tx_pool: basic_pool,
+            primary_client: client,
+            domain_tx_pool_wrapper: DomainTransactionPoolWrapper::<TxHash<Self>>::new(),
+        }
     }
 
     /// Gets shared reference to the underlying pool.
     pub fn pool(&self) -> &Arc<Pool<PoolApi>> {
-        self.inner.pool()
+        self.primary_tx_pool.pool()
     }
 
     pub fn api(&self) -> &PoolApi {
-        self.inner.api()
+        self.primary_tx_pool.api()
+    }
+
+    fn extract_domain_extrinsic(&self, xt: &TransactionFor<Self>) -> Option<DomainExtrinsic> {
+        let latest_block_hash = self.primary_client.info().best_hash;
+        self.primary_client
+            .runtime_api()
+            .extract_domain_extrinsic(&BlockId::Hash(latest_block_hash), xt)
+            .ok()
+            .flatten()
     }
 }
 
 impl<Block, Client, Verifier> sc_transaction_pool_api::LocalTransactionPool
-    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>
+    for BasicPoolWrapper<Block, Client, FullChainApiWrapper<Block, Client, Verifier>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -325,10 +347,12 @@ where
     }
 }
 
-impl<Block, PoolApi> TransactionPool for BasicPoolWrapper<Block, PoolApi>
+impl<Block, Client, PoolApi> TransactionPool for BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
     PoolApi: ChainApi<Block = Block> + 'static,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
+    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
 {
     type Block = Block;
     type Hash = ExtrinsicHash<PoolApi>;
@@ -341,7 +365,7 @@ where
         source: TransactionSource,
         xts: Vec<TransactionFor<Self>>,
     ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error> {
-        self.inner.submit_at(at, source, xts)
+        self.primary_tx_pool.submit_at(at, source, xts)
     }
 
     fn submit_one(
@@ -349,8 +373,17 @@ where
         at: &BlockId<Self::Block>,
         source: TransactionSource,
         xt: TransactionFor<Self>,
-    ) -> PoolFuture<TxHash<Self>, Self::Error> {
-        self.inner.submit_one(at, source, xt)
+    ) -> PoolFuture<TxHash<Self>, PoolApi::Error> {
+        if let Some(domain_extrinsic) = self.extract_domain_extrinsic(&xt) {
+            let res = self.domain_tx_pool_wrapper.submit_domain_extrinsic(
+                domain_extrinsic.domain_id,
+                source,
+                domain_extrinsic.txn,
+            );
+            return Box::pin(async move { res.await.map_err(Into::into) });
+        }
+
+        self.primary_tx_pool.submit_one(at, source, xt)
     }
 
     fn submit_and_watch(
@@ -359,60 +392,65 @@ where
         source: TransactionSource,
         xt: TransactionFor<Self>,
     ) -> PoolFuture<Pin<Box<TransactionStatusStreamFor<Self>>>, Self::Error> {
-        self.inner.submit_and_watch(at, source, xt)
-    }
-
-    fn remove_invalid(&self, hashes: &[TxHash<Self>]) -> Vec<Arc<Self::InPoolTransaction>> {
-        self.inner.remove_invalid(hashes)
-    }
-
-    fn status(&self) -> PoolStatus {
-        self.inner.status()
-    }
-
-    fn import_notification_stream(&self) -> ImportNotificationStream<TxHash<Self>> {
-        self.inner.import_notification_stream()
-    }
-
-    fn hash_of(&self, xt: &TransactionFor<Self>) -> TxHash<Self> {
-        self.inner.hash_of(xt)
-    }
-
-    fn on_broadcasted(&self, propagations: HashMap<TxHash<Self>, Vec<String>>) {
-        self.inner.on_broadcasted(propagations)
-    }
-
-    fn ready_transaction(&self, hash: &TxHash<Self>) -> Option<Arc<Self::InPoolTransaction>> {
-        self.inner.ready_transaction(hash)
+        self.primary_tx_pool.submit_and_watch(at, source, xt)
     }
 
     fn ready_at(&self, at: NumberFor<Self::Block>) -> PolledIterator<PoolApi> {
-        self.inner.ready_at(at)
+        self.primary_tx_pool.ready_at(at)
     }
 
     fn ready(&self) -> ReadyIteratorFor<PoolApi> {
-        self.inner.ready()
+        self.primary_tx_pool.ready()
+    }
+
+    fn remove_invalid(&self, hashes: &[TxHash<Self>]) -> Vec<Arc<Self::InPoolTransaction>> {
+        self.primary_tx_pool.remove_invalid(hashes)
+    }
+
+    fn status(&self) -> PoolStatus {
+        self.primary_tx_pool.status()
+    }
+
+    fn import_notification_stream(&self) -> ImportNotificationStream<TxHash<Self>> {
+        self.primary_tx_pool.import_notification_stream()
+    }
+
+    fn on_broadcasted(&self, propagations: HashMap<TxHash<Self>, Vec<String>>) {
+        self.primary_tx_pool.on_broadcasted(propagations)
+    }
+
+    fn hash_of(&self, xt: &TransactionFor<Self>) -> TxHash<Self> {
+        self.primary_tx_pool.hash_of(xt)
+    }
+
+    fn ready_transaction(&self, hash: &TxHash<Self>) -> Option<Arc<Self::InPoolTransaction>> {
+        self.primary_tx_pool.ready_transaction(hash)
     }
 }
 
 #[async_trait]
-impl<Block, PoolApi> MaintainedTransactionPool for BasicPoolWrapper<Block, PoolApi>
+impl<Block, Client, PoolApi> MaintainedTransactionPool for BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
     PoolApi: ChainApi<Block = Block> + 'static,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
+    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
 {
     async fn maintain(&self, event: ChainEvent<Self::Block>) {
-        self.inner.maintain(event).await
+        self.primary_tx_pool.maintain(event).await
     }
 }
 
-impl<Block, PoolApi> parity_util_mem::MallocSizeOf for BasicPoolWrapper<Block, PoolApi>
+impl<Block, Client, PoolApi> parity_util_mem::MallocSizeOf
+    for BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
-    PoolApi: ChainApi<Block = Block>,
+    PoolApi: ChainApi<Block = Block> + 'static,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
+    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
 {
     fn size_of(&self, ops: &mut parity_util_mem::MallocSizeOfOps) -> usize {
-        self.inner.size_of(ops)
+        self.primary_tx_pool.size_of(ops)
     }
 }
 
@@ -421,7 +459,7 @@ pub(super) fn new_full<Block, Client, Verifier>(
     task_manager: &TaskManager,
     client: Arc<Client>,
     verifier: Verifier,
-) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>>
+) -> Arc<FullPool<Block, Client, Verifier>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>

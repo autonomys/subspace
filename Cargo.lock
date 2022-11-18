@@ -2006,6 +2006,7 @@ name = "domain-service"
 version = "0.1.0"
 dependencies = [
  "clap 4.0.26",
+ "core-payments-domain-runtime",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
@@ -2018,6 +2019,7 @@ dependencies = [
  "jsonrpsee",
  "log",
  "pallet-transaction-payment-rpc",
+ "parity-scale-codec",
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
@@ -8920,6 +8922,7 @@ version = "0.1.0"
 dependencies = [
  "derive_more",
  "domain-runtime-primitives",
+ "domain-service",
  "frame-support",
  "frame-system-rpc-runtime-api",
  "futures 0.3.25",
