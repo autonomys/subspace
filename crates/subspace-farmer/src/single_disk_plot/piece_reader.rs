@@ -1,11 +1,7 @@
-use bitvec::prelude::*;
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
-use std::num::{NonZeroU16, NonZeroU32};
-use subspace_core_primitives::{
-    Piece, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
-};
-use subspace_solving::derive_chunk_otp;
+use subspace_core_primitives::sector_codec::SectorCodec;
+use subspace_core_primitives::{Piece, Scalar, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
 use tracing::warn;
 
 #[derive(Debug)]
@@ -52,15 +48,12 @@ impl PieceReader {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn read_piece(
     sector_index: SectorIndex,
     piece_offset: u64,
     sector_count: u64,
-    public_key: &PublicKey,
     first_sector_index: SectorIndex,
-    record_size: NonZeroU32,
-    space_l: NonZeroU16,
+    sector_codec: &SectorCodec,
     global_plot: &[u8],
 ) -> Option<Piece> {
     if sector_index < first_sector_index {
@@ -96,30 +89,39 @@ pub(super) fn read_piece(
         );
         return None;
     }
-    let sector_bytes = &global_plot[(sector_offset * PLOT_SECTOR_SIZE) as usize..];
-    let piece_bytes = &sector_bytes[piece_offset as usize * PIECE_SIZE..][..PIECE_SIZE];
-    let mut piece = Piece::try_from(piece_bytes).ok()?;
 
-    let sector_id = SectorId::new(public_key, sector_index);
+    let piece = {
+        let sector_bytes = &global_plot[(sector_offset * PLOT_SECTOR_SIZE) as usize..]
+            [..PLOT_SECTOR_SIZE as usize];
 
-    // Decode piece
-    let (record, witness_bytes) = piece.split_at_mut(record_size.get() as usize);
-    // TODO: Extract encoding into separate function reusable in farmer and
-    //  otherwise
-    record
-        .view_bits_mut::<Lsb0>()
-        .chunks_mut(space_l.get() as usize)
-        .enumerate()
-        .for_each(|(chunk_index, bits)| {
-            // Derive one-time pad
-            let mut otp = derive_chunk_otp(&sector_id, witness_bytes, chunk_index as u32);
-            // XOR chunk bit by bit with one-time pad
-            bits.iter_mut()
-                .zip(otp.view_bits_mut::<Lsb0>().iter())
-                .for_each(|(mut a, b)| {
-                    *a ^= *b;
-                });
-        });
+        let mut sector_bytes_scalars = sector_bytes
+            .chunks_exact(Scalar::FULL_BYTES)
+            .map(|bytes| {
+                Scalar::from(
+                    <&[u8; Scalar::FULL_BYTES]>::try_from(bytes)
+                        .expect("Chunked into scalar full bytes above; qed"),
+                )
+            })
+            .collect::<Vec<_>>();
+        sector_codec.decode(&mut sector_bytes_scalars).ok()?;
+
+        let scalars_in_piece = PIECE_SIZE / Scalar::SAFE_BYTES;
+        let piece_scalars =
+            &sector_bytes_scalars[piece_offset as usize * scalars_in_piece..][..scalars_in_piece];
+
+        let mut piece = Piece::default();
+        piece
+            .chunks_exact_mut(Scalar::SAFE_BYTES)
+            .zip(piece_scalars)
+            .for_each(|(output, input)| {
+                // After decoding we get piece scalar bytes padded with zero byte, so we can read
+                // the whole thing first and then copy just first `Scalar::SAFE_BYTES` we actually
+                // care about
+                output.copy_from_slice(&input.to_bytes()[..Scalar::SAFE_BYTES]);
+            });
+
+        piece
+    };
 
     Some(piece)
 }

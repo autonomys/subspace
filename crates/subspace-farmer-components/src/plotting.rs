@@ -1,15 +1,15 @@
 use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
-use bitvec::order::Lsb0;
-use bitvec::prelude::*;
 use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
+use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
-use subspace_solving::derive_chunk_otp;
 use thiserror::Error;
 use tracing::debug;
 
@@ -54,6 +54,12 @@ pub enum PlottingError {
         /// Lower-level error
         error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+    /// Failed to encode sector
+    #[error("Failed to encode sector: {0}")]
+    FailedToEncodeSector(#[from] SectorCodecError),
+    /// Failed to commit
+    #[error("Failed to commit: {0}")]
+    FailedToCommit(#[from] kzg::Error),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -64,12 +70,15 @@ pub enum PlottingError {
 ///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
+#[allow(clippy::too_many_arguments)]
 pub async fn plot_sector<PR, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
     piece_receiver: &PR,
     cancelled: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
+    kzg: &Kzg,
+    sector_codec: &SectorCodec,
     mut sector_output: S,
     mut sector_metadata_output: SM,
 ) -> Result<PlottedSector, PlottingError>
@@ -89,7 +98,7 @@ where
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (0u64..)
-        .take(PLOT_SECTOR_SIZE as usize / PIECE_SIZE)
+        .take(PLOT_SECTOR_SIZE as usize / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
         .map(|piece_offset| {
             sector_id.derive_piece_index(
                 piece_offset as PieceIndex,
@@ -98,6 +107,8 @@ where
         })
         .collect();
 
+    let mut in_memory_sector_scalars =
+        Vec::with_capacity(PLOT_SECTOR_SIZE as usize / Scalar::FULL_BYTES);
     for piece_index in piece_indexes.iter().copied() {
         if cancelled.load(Ordering::Acquire) {
             debug!(
@@ -107,42 +118,61 @@ where
             return Err(PlottingError::Cancelled);
         }
 
-        let mut piece = piece_receiver
+        let piece = piece_receiver
             .get_piece(piece_index)
             .await
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
-        // TODO: We are skipping witness part of the piece or else it is not
-        //  decodable
-        // TODO: Last bits may not be encoded if record size is not multiple
-        //  of `space_l`
-        // Encode piece
-        let (record, witness_bytes) =
-            piece.split_at_mut(farmer_protocol_info.record_size.get() as usize);
-        // TODO: Extract encoding into separate function reusable in
-        //  farmer and otherwise
-        record
-            .view_bits_mut::<Lsb0>()
-            .chunks_mut(farmer_protocol_info.space_l.get() as usize)
-            .enumerate()
-            .for_each(|(chunk_index, bits)| {
-                // Derive one-time pad
-                let mut otp = derive_chunk_otp(&sector_id, witness_bytes, chunk_index as u32);
-                // XOR chunk bit by bit with one-time pad
-                bits.iter_mut()
-                    .zip(otp.view_bits_mut::<Lsb0>().iter())
-                    .for_each(|(mut a, b)| {
-                        *a ^= *b;
-                    });
-            });
-
-        sector_output.write_all(&piece)?;
+        in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
+            Scalar::from(
+                <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
+                    .expect("Chunked into scalar safe bytes above; qed"),
+            )
+        }));
     }
+
+    sector_codec
+        .encode(&mut in_memory_sector_scalars)
+        .map_err(PlottingError::FailedToEncodeSector)?;
+
+    let mut in_memory_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+
+    in_memory_sector
+        .chunks_exact_mut(Scalar::FULL_BYTES)
+        .zip(in_memory_sector_scalars)
+        .for_each(|(output, input)| {
+            input.write_to_bytes(
+                <&mut [u8; Scalar::FULL_BYTES]>::try_from(output)
+                    .expect("Chunked into scalar full bytes above; qed"),
+            );
+        });
+
+    sector_output
+        .write_all(&in_memory_sector)
+        .map_err(PlottingError::Io)?;
+
+    let commitments = in_memory_sector
+        .chunks_exact(PIECE_SIZE)
+        .map(|piece| {
+            // TODO: This is a workaround to the fact that `kzg.poly()` expects `data` to be a slice
+            //  32-byte chunks that have up to 254 bits of data in them and in sector encoding we're
+            //  dealing with 31-byte chunks instead. This workaround will not be necessary once we
+            //  change `kzg.poly()` API to use 31-byte chunks as well.
+            let mut expanded_piece = Vec::with_capacity(PIECE_SIZE / Scalar::SAFE_BYTES * 32);
+            piece.chunks_exact(Scalar::SAFE_BYTES).for_each(|chunk| {
+                expanded_piece.extend(chunk);
+                expanded_piece.extend([0]);
+            });
+            let polynomial = kzg.poly(&expanded_piece)?;
+            kzg.commit(&polynomial).map_err(Into::into)
+        })
+        .collect::<Result<Vec<Commitment>, PlottingError>>()?;
 
     let sector_metadata = SectorMetadata {
         total_pieces: farmer_protocol_info.total_pieces,
         expires_at,
+        commitments,
     };
 
     sector_metadata_output.write_all(&sector_metadata.encode())?;

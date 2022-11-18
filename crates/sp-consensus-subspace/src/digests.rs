@@ -590,7 +590,7 @@ pub fn derive_next_global_randomness<Header: HeaderT>(
 
     derive_randomness(
         &PublicKey::from(&pre_digest.solution.public_key),
-        &pre_digest.solution.chunk,
+        &pre_digest.solution.chunk.to_bytes(),
         &pre_digest.solution.chunk_signature,
     )
     .map(Some)

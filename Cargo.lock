@@ -8144,8 +8144,9 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
- "bitvec",
+ "async-trait",
  "frame-support",
+ "futures 0.3.25",
  "parity-scale-codec",
  "rand 0.8.5",
  "scale-info",
@@ -8157,6 +8158,7 @@ dependencies = [
  "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-farmer-components",
  "subspace-solving",
  "subspace-verification",
 ]
@@ -8635,7 +8637,6 @@ dependencies = [
  "ark-bls12-381",
  "ark-ff",
  "ark-poly",
- "bitvec",
  "blake2-rfc",
  "criterion",
  "derive_more",
@@ -8663,7 +8664,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base58",
- "bitvec",
  "blake2-rfc",
  "bytesize",
  "clap 4.0.26",
@@ -8709,7 +8709,6 @@ name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bitvec",
  "blake2-rfc",
  "criterion",
  "fs2",
@@ -8983,7 +8982,7 @@ dependencies = [
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
- "bitvec",
+ "async-trait",
  "futures 0.3.25",
  "sc-chain-spec",
  "sc-client-api",
@@ -8997,6 +8996,7 @@ dependencies = [
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
+ "subspace-farmer-components",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-solving",

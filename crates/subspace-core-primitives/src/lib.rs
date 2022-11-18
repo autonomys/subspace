@@ -33,7 +33,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
 use ark_ff::{BigInteger, PrimeField};
-use bitvec::prelude::*;
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
@@ -475,57 +474,6 @@ impl AsMut<[u8]> for FlatPieces {
     }
 }
 
-/// Chunk within farmer's sector
-#[derive(
-    Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Chunk(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 8]);
-
-impl From<&BitSlice<u8, Lsb0>> for Chunk {
-    /// PANICS: Panics if bitslice provided is bigger than 64-bits long
-    fn from(bitslice: &BitSlice<u8, Lsb0>) -> Self {
-        if bitslice.len() as u64 > u64::from(u64::BITS) {
-            panic!("Can't create chunk from more than {} bits", u64::BITS);
-        }
-
-        let mut bytes = 0u64.to_le_bytes();
-
-        bytes
-            .view_bits_mut::<Lsb0>()
-            .iter_mut()
-            .zip(bitslice)
-            .for_each(|(mut expanded, source)| {
-                *expanded = *source;
-            });
-
-        Self(bytes)
-    }
-}
-
-impl AsRef<[u8]> for Chunk {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for Chunk {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-impl Chunk {
-    /// Expand chunk to be the same size as solution range for further comparison
-    pub fn expand(&self, local_challenge: SolutionRange) -> SolutionRange {
-        let hash = blake2b_256_hash_with_key(&local_challenge.to_le_bytes(), &self.0);
-
-        SolutionRange::from_le_bytes([
-            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
-        ])
-    }
-}
-
 /// Progress of an archived block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -711,8 +659,10 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub piece_record_hash: Blake2b256Hash,
     /// Witness for above piece commitment
     pub piece_witness: Witness,
-    /// Chunk (only `space_l` first bits should be used)
-    pub chunk: Chunk,
+    /// Chunk offset within a piece
+    pub chunk_offset: u32,
+    /// Chunk at above offset
+    pub chunk: Scalar,
     /// VRF signature of expanded version of the above chunk
     pub chunk_signature: ChunkSignature,
 }
@@ -735,6 +685,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             piece_offset,
             piece_record_hash: piece_commitment,
             piece_witness,
+            chunk_offset,
             chunk,
             chunk_signature,
         } = self;
@@ -746,6 +697,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             piece_offset,
             piece_record_hash: piece_commitment,
             piece_witness,
+            chunk_offset,
             chunk,
             chunk_signature,
         }
@@ -767,7 +719,8 @@ where
             piece_offset: 0,
             piece_record_hash: Blake2b256Hash::default(),
             piece_witness: Witness::default(),
-            chunk: Chunk::default(),
+            chunk_offset: 0,
+            chunk: Scalar::default(),
             chunk_signature: ChunkSignature {
                 output: [0; 32],
                 proof: [0; 64],

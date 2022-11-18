@@ -4,13 +4,14 @@ use memmap2::Mmap;
 use schnorrkel::Keypair;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
+use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use std::{env, fs, io};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
     Blake2b256Hash, Piece, PublicKey, SolutionRange, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE,
     RECORD_SIZE,
@@ -39,7 +40,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let sector_index = 0;
     let input = vec![1u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     let kzg = Kzg::new(kzg::test_public_parameters());
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver =
+        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
     let piece = Piece::try_from(
         archiver
             .add_block(input, Default::default())
@@ -59,7 +62,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
         total_pieces: NonZeroU64::new(1).unwrap(),
-        space_l: NonZeroU16::new(20).unwrap(),
         sector_expiration: 1,
     };
     let global_challenge = Blake2b256Hash::default();
@@ -76,6 +78,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &BenchPieceReceiver::new(piece),
             &cancelled,
             &farmer_protocol_info,
+            &kzg,
+            &sector_codec,
             plotted_sector.as_mut_slice(),
             sector_metadata.as_mut_slice(),
         ))
@@ -87,10 +91,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let eligible_sector = audit_sector(
         &public_key,
         sector_index,
-        &farmer_protocol_info,
         &global_challenge,
         solution_range,
-        io::Cursor::new(plotted_sector),
+        io::Cursor::new(plotted_sector.as_slice()),
     )
     .unwrap()
     .unwrap();
@@ -101,10 +104,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             eligible_sector
                 .clone()
-                .try_into_solution(
+                .try_into_solutions(
                     black_box(&keypair),
                     black_box(reward_address),
                     black_box(&farmer_protocol_info),
+                    black_box(&sector_codec),
+                    black_box(plotted_sector.as_slice()),
                     black_box(sector_metadata.as_slice()),
                 )
                 .unwrap();
@@ -146,10 +151,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 for metadata in sector_metadata_mmap.chunks_exact(SectorMetadata::encoded_size()) {
                     eligible_sector
                         .clone()
-                        .try_into_solution(
+                        .try_into_solutions(
                             black_box(&keypair),
                             black_box(reward_address),
                             black_box(&farmer_protocol_info),
+                            black_box(&sector_codec),
+                            black_box(plotted_sector.as_slice()),
                             black_box(metadata),
                         )
                         .unwrap();
