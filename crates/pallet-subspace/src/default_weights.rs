@@ -28,4 +28,9 @@ impl crate::WeightInfo for () {
         // TODO: Proper value
         Weight::from_ref_time(10_000 * (root_blocks_count as u64 + 1))
     }
+
+    fn vote() -> Weight {
+        // TODO: Proper value
+        Weight::from_ref_time(10_000)
+    }
 }

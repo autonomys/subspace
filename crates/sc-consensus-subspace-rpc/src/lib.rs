@@ -51,8 +51,9 @@ use subspace_core_primitives::{
     Piece, PieceIndex, RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE,
     RECORD_SIZE,
 };
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_rpc_primitives::{
-    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
 

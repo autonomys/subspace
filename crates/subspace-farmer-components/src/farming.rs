@@ -1,4 +1,4 @@
-use crate::SectorMetadata;
+use crate::{FarmerProtocolInfo, SectorMetadata};
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, IoReader};
 use schnorrkel::Keypair;
@@ -10,7 +10,6 @@ use subspace_core_primitives::{
     Blake2b256Hash, Chunk, Piece, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
     PIECE_SIZE,
 };
-use subspace_rpc_primitives::FarmerProtocolInfo;
 use subspace_solving::{create_chunk_signature, derive_chunk_otp};
 use subspace_verification::is_within_solution_range;
 use thiserror::Error;

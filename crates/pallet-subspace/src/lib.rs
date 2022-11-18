@@ -67,6 +67,7 @@ use subspace_verification::{
 pub trait WeightInfo {
     fn report_equivocation() -> Weight;
     fn store_root_blocks(root_blocks_count: usize) -> Weight;
+    fn vote() -> Weight;
 }
 
 /// Trigger global randomness every interval.
@@ -492,7 +493,7 @@ mod pallet {
 
         /// Farmer vote, currently only used for extra rewards to farmers.
         // TODO: Proper weight
-        #[pallet::weight((100_000, DispatchClass::Operational, Pays::No))]
+        #[pallet::weight((<T as Config>::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
         #[allow(clippy::boxed_local)]
