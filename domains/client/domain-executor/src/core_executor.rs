@@ -1,5 +1,6 @@
 use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
+use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::utils::BlockInfo;
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
@@ -153,17 +154,25 @@ where
             code_executor,
         );
 
+        let domain_block_processor = DomainBlockProcessor::new(
+            domain_id,
+            client.clone(),
+            primary_chain_client.clone(),
+            primary_network,
+            backend.clone(),
+            fraud_proof_generator.clone(),
+        );
+
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
             primary_chain_client.clone(),
-            primary_network,
             system_domain_client,
             client.clone(),
             backend.clone(),
             is_authority,
             keystore,
             spawner.clone(),
-            fraud_proof_generator.clone(),
+            domain_block_processor,
         );
 
         spawn_essential.spawn_essential_blocking(

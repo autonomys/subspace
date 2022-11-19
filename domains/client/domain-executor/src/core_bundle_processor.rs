@@ -1,11 +1,9 @@
 use crate::domain_block_processor::DomainBlockProcessor;
-use crate::fraud_proof::FraudProofGenerator;
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
-use sc_network::NetworkService;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
@@ -98,23 +96,14 @@ where
     pub(crate) fn new(
         domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
-        primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
         is_authority: bool,
         keystore: SyncCryptoStorePtr,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
-        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let domain_block_processor = DomainBlockProcessor::new(
-            domain_id,
-            client.clone(),
-            primary_chain_client.clone(),
-            primary_network,
-            backend.clone(),
-            fraud_proof_generator,
-        );
         Self {
             domain_id,
             primary_chain_client,
