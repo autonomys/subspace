@@ -1,6 +1,6 @@
-use crate::fraud_proof::find_trace_mismatch;
+use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::utils::shuffle_extrinsics;
-use crate::{ExecutionReceiptFor, LOG_TARGET};
+use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -11,9 +11,11 @@ use sc_consensus::{
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
+use sp_core::traits::CodeExecutor;
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
 use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -31,15 +33,16 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend> {
+pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E> {
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
     backend: Arc<Backend>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend> Clone
-    for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend>
+impl<Block, PBlock, Client, PClient, Backend, E> Clone
+    for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -49,13 +52,14 @@ where
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
             backend: self.backend.clone(),
+            fraud_proof_generator: self.fraud_proof_generator.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, Client, PClient, Backend>
-    DomainBlockProcessor<Block, PBlock, Client, PClient, Backend>
+impl<Block, PBlock, Client, PClient, Backend, E>
+    DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -75,16 +79,20 @@ where
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    E: CodeExecutor,
 {
     pub(crate) fn new(
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
         backend: Arc<Backend>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
             client,
             primary_chain_client,
             backend,
+            fraud_proof_generator,
             _phantom_data: PhantomData::default(),
         }
     }
@@ -441,5 +449,37 @@ where
         }
 
         Ok(())
+    }
+
+    pub(crate) fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
+        &self,
+    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
+        if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
+            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
+                &*self.client,
+            )?
+        {
+            let local_receipt =
+                crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?.ok_or_else(
+                    || {
+                        sp_blockchain::Error::Backend(format!(
+                            "Execution receipt not found for {block_hash:?}"
+                        ))
+                    },
+                )?;
+
+            let fraud_proof = self
+                .fraud_proof_generator
+                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to generate fraud proof: {err}"
+                    )))
+                })?;
+
+            return Ok(Some(fraud_proof));
+        }
+
+        Ok(None)
     }
 }

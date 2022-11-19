@@ -11,7 +11,6 @@ use sp_consensus::SyncOracle;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
-use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi, OpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
@@ -40,8 +39,7 @@ where
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
-    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
@@ -63,7 +61,6 @@ where
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
             spawner: self.spawner.clone(),
-            fraud_proof_generator: self.fraud_proof_generator.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -118,6 +115,7 @@ where
             client.clone(),
             primary_chain_client.clone(),
             backend.clone(),
+            fraud_proof_generator,
         );
         Self {
             domain_id,
@@ -129,7 +127,6 @@ where
             is_authority,
             keystore,
             spawner,
-            fraud_proof_generator,
             domain_block_processor,
             _phantom_data: PhantomData::default(),
         }
@@ -230,7 +227,10 @@ where
         // Submit fraud proof for the first unconfirmed incorrent ER.
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        if let Some(fraud_proof) = self.create_fraud_proof_for_first_unconfirmed_bad_receipt()? {
+        if let Some(fraud_proof) = self
+            .domain_block_processor
+            .create_fraud_proof_for_first_unconfirmed_bad_receipt()?
+        {
             // TODO: self.system_domain_client.runtime_api().submit_fraud_proof_unsigned()
             self.primary_chain_client
                 .runtime_api()
@@ -254,37 +254,5 @@ where
             .compile_own_domain_bundles(bundles);
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
-    }
-
-    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
-        &self,
-    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
-        if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
-            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
-                &*self.client,
-            )?
-        {
-            let local_receipt =
-                crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?.ok_or_else(
-                    || {
-                        sp_blockchain::Error::Backend(format!(
-                            "Execution receipt not found for {block_hash:?}"
-                        ))
-                    },
-                )?;
-
-            let fraud_proof = self
-                .fraud_proof_generator
-                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
-                .map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to generate fraud proof: {err}"
-                    )))
-                })?;
-
-            return Ok(Some(fraud_proof));
-        }
-
-        Ok(None)
     }
 }
