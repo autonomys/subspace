@@ -102,6 +102,7 @@ where
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         let domain_block_processor = DomainBlockProcessor::new(
+            DomainId::SYSTEM,
             client.clone(),
             primary_chain_client.clone(),
             primary_network,
@@ -184,7 +185,6 @@ where
             translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(oldest_receipt_number);
 
         if let Some(fraud_proof) = self.domain_block_processor.on_domain_block_processed(
-            DomainId::SYSTEM,
             primary_hash,
             domain_block_result,
             best_execution_chain_number,

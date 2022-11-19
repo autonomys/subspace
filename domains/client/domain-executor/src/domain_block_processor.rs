@@ -39,6 +39,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
 {
+    domain_id: DomainId,
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
@@ -55,6 +56,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
             primary_network: self.primary_network.clone(),
@@ -90,6 +92,7 @@ where
     E: CodeExecutor,
 {
     pub(crate) fn new(
+        domain_id: DomainId,
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
@@ -97,6 +100,7 @@ where
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
+            domain_id,
             client,
             primary_chain_client,
             primary_network,
@@ -337,7 +341,6 @@ where
 
     pub(crate) fn on_domain_block_processed(
         &self,
-        domain_id: DomainId,
         primary_hash: PBlock::Hash,
         domain_block_result: DomainBlockResult<Block, PBlock>,
         best_execution_chain_number: NumberFor<Block>,
@@ -358,7 +361,7 @@ where
 
         // TODO: The applied txs can be fully removed from the transaction pool
 
-        self.check_receipts_in_primary_block(primary_hash, domain_id)?;
+        self.check_receipts_in_primary_block(primary_hash)?;
 
         if self.primary_network.is_major_syncing() {
             tracing::debug!(
@@ -377,7 +380,6 @@ where
     fn check_receipts_in_primary_block(
         &self,
         primary_hash: PBlock::Hash,
-        domain_id: DomainId,
     ) -> Result<(), sp_blockchain::Error> {
         let extrinsics = self
             .primary_chain_client
@@ -393,7 +395,7 @@ where
         let receipts = self.primary_chain_client.runtime_api().extract_receipts(
             &BlockId::Hash(primary_hash),
             extrinsics.clone(),
-            domain_id,
+            self.domain_id,
         )?;
 
         let mut bad_receipts_to_write = vec![];
