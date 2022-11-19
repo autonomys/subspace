@@ -178,7 +178,11 @@ where
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
-            let bundle = self.propose_bundle_at(slot, primary_info).await?;
+            let receipt_interface = self.clone();
+
+            let bundle = self
+                .propose_bundle_at(slot, primary_info, receipt_interface)
+                .await?;
 
             let to_sign = bundle.hash();
 
@@ -220,11 +224,14 @@ where
         }
     }
 
-    async fn propose_bundle_at(
+    async fn propose_bundle_at<R>(
         &self,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        receipt_interface: R,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+    where
+        R: ReceiptInterface<PBlock::Hash>,
     {
         let parent_number = self.client.info().best_number;
 
@@ -274,7 +281,7 @@ where
         let receipts = if primary_number.is_zero() {
             Vec::new()
         } else {
-            self.collect_system_bundle_receipts(primary_hash, parent_number)?
+            self.collect_system_bundle_receipts(primary_hash, parent_number, receipt_interface)?
         };
 
         let bundle = Bundle {
@@ -291,28 +298,18 @@ where
     }
 
     /// Returns the receipts in the next system domain bundle.
-    fn collect_system_bundle_receipts(
+    fn collect_system_bundle_receipts<R>(
         &self,
         primary_hash: PBlock::Hash,
         header_number: NumberFor<Block>,
-    ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
-        let best_execution_chain_number = self
-            .primary_chain_client
-            .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
-
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let max_drift = self
-            .primary_chain_client
-            .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
-
-        let max_drift: BlockNumber = max_drift
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        receipt_interface: R,
+    ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
+    where
+        R: ReceiptInterface<PBlock::Hash>,
+    {
+        let best_execution_chain_number =
+            receipt_interface.best_execution_chain_number(primary_hash)?;
+        let max_drift = receipt_interface.maximum_receipt_drift(primary_hash)?;
 
         let load_receipt = |block_hash| {
             crate::aux_schema::load_execution_receipt::<
