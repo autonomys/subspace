@@ -12,6 +12,7 @@ use sp_consensus::SyncOracle;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
@@ -214,7 +215,14 @@ where
         // Submit fraud proof for the first unconfirmed incorrent ER.
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
+        if let Some(fraud_proof) = self.create_fraud_proof_for_first_unconfirmed_bad_receipt()? {
+            self.primary_chain_client
+                .runtime_api()
+                .submit_fraud_proof_unsigned(
+                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    fraud_proof,
+                )?;
+        }
 
         Ok(())
     }
@@ -253,9 +261,9 @@ where
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
     }
 
-    fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
+    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
-    ) -> Result<(), sp_blockchain::Error> {
+    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
         if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
                 &*self.client,
@@ -279,14 +287,9 @@ where
                     )))
                 })?;
 
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    fraud_proof,
-                )?;
+            return Ok(Some(fraud_proof));
         }
 
-        Ok(())
+        Ok(None)
     }
 }
