@@ -151,14 +151,18 @@ where
         }
     }
 
-    pub(super) async fn produce_bundle(
+    pub(super) async fn produce_bundle<R>(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
+        receipt_interface: R,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
-    > {
+    >
+    where
+        R: ReceiptInterface<PBlock::Hash>,
+    {
         let ExecutorSlotInfo {
             slot,
             global_challenge,
@@ -177,8 +181,6 @@ where
             )?
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
-
-            let receipt_interface = self.clone();
 
             let bundle = self
                 .propose_bundle_at(slot, primary_info, receipt_interface)
