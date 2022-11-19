@@ -1,25 +1,22 @@
-use crate::domain_block_processor::DomainBlockResult;
+use crate::domain_block_processor::{DomainBlockProcessor, DomainBlockResult};
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::utils::shuffle_extrinsics;
 use crate::TransactionFor;
 use codec::{Decode, Encode};
-use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_consensus::{
-    BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
-};
+use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sc_network::NetworkService;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockOrigin, SyncOracle};
+use sp_consensus::SyncOracle;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
-use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
+use sp_domains::{ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -42,6 +39,7 @@ where
     keystore: SyncCryptoStorePtr,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend>,
     _phantom_data: PhantomData<PBlock>,
 }
 
@@ -61,6 +59,7 @@ where
             keystore: self.keystore.clone(),
             spawner: self.spawner.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
+            domain_block_processor: self.domain_block_processor.clone(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -107,6 +106,11 @@ where
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
+        let domain_block_processor = DomainBlockProcessor::new(
+            client.clone(),
+            primary_chain_client.clone(),
+            backend.clone(),
+        );
         Self {
             primary_chain_client,
             primary_network,
@@ -116,6 +120,7 @@ where
             keystore,
             spawner,
             fraud_proof_generator,
+            domain_block_processor,
             _phantom_data: PhantomData::default(),
         }
     }
@@ -155,6 +160,7 @@ where
             header_number,
             execution_receipt,
         } = self
+            .domain_block_processor
             .execute_bundles(
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
@@ -210,160 +216,6 @@ where
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
 
         Ok(())
-    }
-
-    async fn execute_bundles(
-        &self,
-        (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
-        (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
-        extrinsics: Vec<Block::Extrinsic>,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
-        fork_choice: ForkChoiceStrategy,
-        digests: Digest,
-    ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
-        let primary_number: BlockNumber = primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        assert_eq!(
-            Into::<NumberFor<Block>>::into(primary_number),
-            parent_number + One::one(),
-            "New secondary best number must be equal to the primary number"
-        );
-
-        let (header_hash, header_number, state_root) = self
-            .build_and_import_block(
-                parent_hash,
-                parent_number,
-                extrinsics,
-                maybe_new_runtime,
-                fork_choice,
-                digests,
-            )
-            .await?;
-
-        let mut roots = self
-            .client
-            .runtime_api()
-            .intermediate_roots(&BlockId::Hash(header_hash))?;
-
-        let state_root = state_root
-            .encode()
-            .try_into()
-            .expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
-
-        roots.push(state_root);
-
-        let trace_root = crate::merkle_tree::construct_trace_merkle_tree(roots.clone())?.root();
-        let trace = roots
-            .into_iter()
-            .map(|r| {
-                Block::Hash::decode(&mut r.as_slice())
-                    .expect("Storage root uses the same Block hash type; qed")
-            })
-            .collect();
-
-        tracing::debug!(
-            target: LOG_TARGET,
-            ?trace,
-            ?trace_root,
-            "Trace root calculated for #{}",
-            header_hash
-        );
-
-        let execution_receipt = ExecutionReceipt {
-            primary_number: primary_number.into(),
-            primary_hash,
-            secondary_hash: header_hash,
-            trace,
-            trace_root,
-        };
-
-        Ok(DomainBlockResult {
-            header_hash,
-            header_number,
-            execution_receipt,
-        })
-    }
-
-    async fn build_and_import_block(
-        &self,
-        parent_hash: Block::Hash,
-        parent_number: NumberFor<Block>,
-        mut extrinsics: Vec<Block::Extrinsic>,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
-        fork_choice: ForkChoiceStrategy,
-        digests: Digest,
-    ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
-        if let Some(new_runtime) = maybe_new_runtime {
-            let encoded_set_code = self
-                .client
-                .runtime_api()
-                .construct_set_code_extrinsic(&BlockId::Hash(parent_hash), new_runtime.to_vec())?;
-            let set_code_extrinsic =
-                Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
-            extrinsics.push(set_code_extrinsic);
-        }
-
-        let block_builder = BlockBuilder::new(
-            &*self.client,
-            parent_hash,
-            parent_number,
-            RecordProof::No,
-            digests,
-            &*self.backend,
-            extrinsics,
-        )?;
-
-        let BuiltBlock {
-            block,
-            storage_changes,
-            proof: _,
-        } = block_builder.build()?;
-
-        let (header, body) = block.deconstruct();
-        let state_root = *header.state_root();
-        let header_hash = header.hash();
-        let header_number = *header.number();
-
-        let block_import_params = {
-            let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
-            import_block.body = Some(body);
-            import_block.state_action =
-                StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-            // Follow the primary block's fork choice.
-            import_block.fork_choice = Some(fork_choice);
-            import_block
-        };
-
-        let import_result = (&*self.client)
-            .import_block(block_import_params, Default::default())
-            .await?;
-
-        match import_result {
-            ImportResult::Imported(..) => {}
-            ImportResult::AlreadyInChain => {}
-            ImportResult::KnownBad => {
-                return Err(sp_consensus::Error::ClientImport(format!(
-                    "Bad block #{header_number}({header_hash:?})"
-                ))
-                .into());
-            }
-            ImportResult::UnknownParent => {
-                return Err(sp_consensus::Error::ClientImport(format!(
-                    "Block #{header_number}({header_hash:?}) has an unknown parent: {parent_hash:?}"
-                ))
-                .into());
-            }
-            ImportResult::MissingState => {
-                return Err(sp_consensus::Error::ClientImport(format!(
-                    "Parent state of block #{header_number}({header_hash:?}) is missing, parent: {parent_hash:?}"
-                ))
-                .into());
-            }
-        }
-
-        Ok((header_hash, header_number, state_root))
     }
 
     fn bundles_to_extrinsics(
