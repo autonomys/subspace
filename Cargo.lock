@@ -1272,7 +1272,6 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
- "sp-domain-tracker",
  "sp-domains",
  "sp-inherents",
  "sp-io",

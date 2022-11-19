@@ -10,9 +10,8 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
-use sp_domains::{
-    Bundle, BundleHeader, ExecutionPhase, ExecutorPair, FraudProof, ProofOfElection, SignedBundle,
-};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::{Bundle, BundleHeader, ExecutorPair, ProofOfElection, SignedBundle};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;

@@ -28,9 +28,9 @@ use sp_domain_tracker::CoreDomainTracker;
 use sp_domains::bundle_election::{
     verify_bundle_solution_threshold, ReadBundleElectionParamsError,
 };
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{
-    BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
-    InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle, StakeWeight,
+    DomainId, ExecutionReceipt, ExecutorPublicKey, ProofOfElection, SignedOpaqueBundle, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::{BlakeTwo256, Hash, One, Saturating, Zero};
@@ -60,9 +60,9 @@ mod pallet {
     use sp_core::H256;
     use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
+    use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::{
-        BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
-        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
+        DomainId, ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
     };
     use sp_executor_registry::ExecutorRegistry;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, One};
