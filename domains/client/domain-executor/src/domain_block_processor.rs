@@ -87,7 +87,7 @@ where
         }
     }
 
-    pub(crate) async fn execute_bundles(
+    pub(crate) async fn process_domain_block(
         &self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),

@@ -161,7 +161,7 @@ where
             execution_receipt,
         } = self
             .domain_block_processor
-            .execute_bundles(
+            .process_domain_block(
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
