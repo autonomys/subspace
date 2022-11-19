@@ -216,6 +216,8 @@ where
             "New secondary best number must be equal to the primary number"
         );
 
+        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+
         let digests = self
             .client
             .header(BlockId::Hash(parent_hash))?
@@ -233,8 +235,7 @@ where
             .build_and_import_block(
                 parent_hash,
                 parent_number,
-                bundles,
-                shuffling_seed,
+                extrinsics,
                 maybe_new_runtime,
                 fork_choice,
                 digests,
@@ -289,14 +290,11 @@ where
         &self,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        bundles: SystemAndCoreBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
+        mut extrinsics: Vec<Block::Extrinsic>,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
         fork_choice: ForkChoiceStrategy,
         digests: Digest,
     ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
-        let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
-
         if let Some(new_runtime) = maybe_new_runtime {
             let encoded_set_code = self
                 .client
