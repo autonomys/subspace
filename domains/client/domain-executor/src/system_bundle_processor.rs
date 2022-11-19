@@ -135,6 +135,21 @@ where
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
 
+        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+
+        let digests = self
+            .client
+            .header(BlockId::Hash(parent_hash))?
+            .map(|header| {
+                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                    number: parent_number,
+                    state_root: *header.state_root(),
+                });
+
+                Digest { logs: vec![item] }
+            })
+            .unwrap_or_default();
+
         let DomainBlockResult {
             header_hash,
             header_number,
@@ -143,10 +158,10 @@ where
             .execute_bundles(
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
-                bundles,
-                shuffling_seed,
+                extrinsics,
                 maybe_new_runtime,
                 fork_choice,
+                digests,
             )
             .await?;
 
@@ -201,10 +216,10 @@ where
         &self,
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
-        bundles: SystemAndCoreBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
+        extrinsics: Vec<Block::Extrinsic>,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
         fork_choice: ForkChoiceStrategy,
+        digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number: BlockNumber = primary_number
             .try_into()
@@ -215,21 +230,6 @@ where
             parent_number + One::one(),
             "New secondary best number must be equal to the primary number"
         );
-
-        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
-
-        let digests = self
-            .client
-            .header(BlockId::Hash(parent_hash))?
-            .map(|header| {
-                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
-                    number: parent_number,
-                    state_root: *header.state_root(),
-                });
-
-                Digest { logs: vec![item] }
-            })
-            .unwrap_or_default();
 
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(
