@@ -254,7 +254,8 @@ where
         let receipts = if primary_number.is_zero() {
             Vec::new()
         } else {
-            self.collect_core_bundle_receipts(parent_number)?
+            let best_system_hash = self.system_domain_client.info().best_hash;
+            self.collect_core_bundle_receipts(best_system_hash, parent_number)?
         };
 
         let bundle = Bundle {
@@ -273,14 +274,13 @@ where
     /// Returns the receipts in the next core domain bundle.
     fn collect_core_bundle_receipts(
         &self,
+        system_block_hash: SBlock::Hash,
         header_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
-        let best_system_hash = self.system_domain_client.info().best_hash;
-
         let best_execution_chain_number = self
             .system_domain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(best_system_hash), self.domain_id)?;
+            .best_execution_chain_number(&BlockId::Hash(system_block_hash), self.domain_id)?;
 
         let best_execution_chain_number: BlockNumber = best_execution_chain_number
             .try_into()
@@ -289,7 +289,7 @@ where
         let max_drift = self
             .system_domain_client
             .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(best_system_hash))?;
+            .maximum_receipt_drift(&BlockId::Hash(system_block_hash))?;
 
         let max_drift: BlockNumber = max_drift
             .try_into()
