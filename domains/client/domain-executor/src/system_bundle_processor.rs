@@ -1,6 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, DomainBlockResult};
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::utils::shuffle_extrinsics;
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -244,7 +243,7 @@ where
                 })
             });
 
-        let mut extrinsics = self
+        let extrinsics = self
             .client
             .runtime_api()
             .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
@@ -265,47 +264,8 @@ where
             .chain(origin_system_extrinsics)
             .collect::<Vec<_>>();
 
-        // TODO: or just Vec::new()?
-        // Ideally there should be only a few duplicated transactions.
-        let mut seen = Vec::with_capacity(extrinsics.len());
-        extrinsics.retain(|uxt| match seen.contains(uxt) {
-            true => {
-                tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
-                false
-            }
-            false => {
-                seen.push(uxt.clone());
-                true
-            }
-        });
-        drop(seen);
-
-        tracing::trace!(
-            target: LOG_TARGET,
-            ?extrinsics,
-            "Origin deduplicated extrinsics"
-        );
-
-        let extrinsics: Vec<_> = match self
-            .client
-            .runtime_api()
-            .extract_signer(&BlockId::Hash(parent_hash), extrinsics)
-        {
-            Ok(res) => res,
-            Err(e) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    "Error at calling runtime api: extract_signer"
-                );
-                return Err(e.into());
-            }
-        };
-
-        let extrinsics =
-            shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
-
-        Ok(extrinsics)
+        self.domain_block_processor
+            .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
     }
 
     fn check_receipts_in_primary_block(

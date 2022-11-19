@@ -1,3 +1,4 @@
+use crate::utils::shuffle_extrinsics;
 use crate::{ExecutionReceiptFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -16,7 +17,7 @@ use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
+use subspace_core_primitives::{BlockNumber, Randomness};
 
 pub(crate) struct DomainBlockResult<Block, PBlock>
 where
@@ -85,6 +86,55 @@ where
             backend,
             _phantom_data: PhantomData::default(),
         }
+    }
+
+    pub(crate) fn deduplicate_and_shuffle_extrinsics(
+        &self,
+        parent_hash: Block::Hash,
+        mut extrinsics: Vec<Block::Extrinsic>,
+        shuffling_seed: Randomness,
+    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+        // TODO: or just Vec::new()?
+        // Ideally there should be only a few duplicated transactions.
+        let mut seen = Vec::with_capacity(extrinsics.len());
+        extrinsics.retain(|uxt| match seen.contains(uxt) {
+            true => {
+                tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
+                false
+            }
+            false => {
+                seen.push(uxt.clone());
+                true
+            }
+        });
+        drop(seen);
+
+        tracing::trace!(
+            target: LOG_TARGET,
+            ?extrinsics,
+            "Origin deduplicated extrinsics"
+        );
+
+        let extrinsics: Vec<_> = match self
+            .client
+            .runtime_api()
+            .extract_signer(&BlockId::Hash(parent_hash), extrinsics)
+        {
+            Ok(res) => res,
+            Err(e) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    error = ?e,
+                    "Error at calling runtime api: extract_signer"
+                );
+                return Err(e.into());
+            }
+        };
+
+        let extrinsics =
+            shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+
+        Ok(extrinsics)
     }
 
     pub(crate) async fn process_domain_block(
