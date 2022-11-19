@@ -1,5 +1,6 @@
-use crate::domain_block_processor::{DomainBlockProcessor, DomainBlockResult};
+use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
+use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use codec::Decode;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -8,7 +9,6 @@ use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sc_network::NetworkService;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_consensus::SyncOracle;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
@@ -20,7 +20,7 @@ use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
 const LOG_TARGET: &str = "bundle-processor";
@@ -31,7 +31,6 @@ where
     PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
-    primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     is_authority: bool,
@@ -50,7 +49,6 @@ where
     fn clone(&self) -> Self {
         Self {
             primary_chain_client: self.primary_chain_client.clone(),
-            primary_network: self.primary_network.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
             is_authority: self.is_authority,
@@ -106,12 +104,12 @@ where
         let domain_block_processor = DomainBlockProcessor::new(
             client.clone(),
             primary_chain_client.clone(),
+            primary_network,
             backend.clone(),
             fraud_proof_generator,
         );
         Self {
             primary_chain_client,
-            primary_network,
             client,
             backend,
             is_authority,
@@ -152,11 +150,7 @@ where
             })
             .unwrap_or_default();
 
-        let DomainBlockResult {
-            header_hash,
-            header_number,
-            execution_receipt,
-        } = self
+        let domain_block_result = self
             .domain_block_processor
             .process_domain_block(
                 (primary_hash, primary_number),
@@ -172,15 +166,13 @@ where
             .primary_chain_client
             .runtime_api()
             .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
-
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let best_execution_chain_number = best_execution_chain_number.into();
+        let best_execution_chain_number = translate_number_type::<
+            NumberFor<PBlock>,
+            NumberFor<Block>,
+        >(best_execution_chain_number);
 
         assert!(
-            header_number > best_execution_chain_number,
+            domain_block_result.header_number > best_execution_chain_number,
             "Consensus chain number must larger than execution chain number by at least 1"
         );
 
@@ -188,34 +180,16 @@ where
             .primary_chain_client
             .runtime_api()
             .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+        let oldest_receipt_number =
+            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(oldest_receipt_number);
 
-        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
-            &*self.client,
-            (header_hash, header_number),
+        if let Some(fraud_proof) = self.domain_block_processor.on_domain_block_processed(
+            DomainId::SYSTEM,
+            primary_hash,
+            domain_block_result,
             best_execution_chain_number,
-            &execution_receipt,
-        )?;
-
-        // TODO: The applied txs can be fully removed from the transaction pool
-
-        self.domain_block_processor
-            .check_receipts_in_primary_block(primary_hash, DomainId::SYSTEM)?;
-
-        if self.primary_network.is_major_syncing() {
-            tracing::debug!(
-                target: LOG_TARGET,
-                "Skip checking the receipts as the primary node is still major syncing..."
-            );
-            return Ok(());
-        }
-
-        // Submit fraud proof for the first unconfirmed incorrent ER.
-        crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
-
-        if let Some(fraud_proof) = self
-            .domain_block_processor
-            .create_fraud_proof_for_first_unconfirmed_bad_receipt()?
-        {
+            oldest_receipt_number,
+        )? {
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(

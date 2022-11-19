@@ -8,9 +8,10 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
+use sc_network::NetworkService;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_consensus::BlockOrigin;
+use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
@@ -33,9 +34,14 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E> {
+pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+{
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
+    primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     _phantom_data: PhantomData<(Block, PBlock)>,
@@ -51,6 +57,7 @@ where
         Self {
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
+            primary_network: self.primary_network.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             _phantom_data: self._phantom_data,
@@ -85,12 +92,14 @@ where
     pub(crate) fn new(
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
+        primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         backend: Arc<Backend>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
             client,
             primary_chain_client,
+            primary_network,
             backend,
             fraud_proof_generator,
             _phantom_data: PhantomData::default(),
@@ -326,7 +335,46 @@ where
         Ok((header_hash, header_number, state_root))
     }
 
-    pub(crate) fn check_receipts_in_primary_block(
+    pub(crate) fn on_domain_block_processed(
+        &self,
+        domain_id: DomainId,
+        primary_hash: PBlock::Hash,
+        domain_block_result: DomainBlockResult<Block, PBlock>,
+        best_execution_chain_number: NumberFor<Block>,
+        oldest_receipt_number: NumberFor<Block>,
+    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
+        let DomainBlockResult {
+            header_hash,
+            header_number,
+            execution_receipt,
+        } = domain_block_result;
+
+        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+            &*self.client,
+            (header_hash, header_number),
+            best_execution_chain_number,
+            &execution_receipt,
+        )?;
+
+        // TODO: The applied txs can be fully removed from the transaction pool
+
+        self.check_receipts_in_primary_block(primary_hash, domain_id)?;
+
+        if self.primary_network.is_major_syncing() {
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Skip checking the receipts as the primary node is still major syncing..."
+            );
+            return Ok(None);
+        }
+
+        // Submit fraud proof for the first unconfirmed incorrent ER.
+        crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
+
+        self.create_fraud_proof_for_first_unconfirmed_bad_receipt()
+    }
+
+    fn check_receipts_in_primary_block(
         &self,
         primary_hash: PBlock::Hash,
         domain_id: DomainId,
@@ -451,7 +499,7 @@ where
         Ok(())
     }
 
-    pub(crate) fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
+    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
     ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
         if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
