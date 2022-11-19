@@ -1,5 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, DomainBlockResult};
-use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
+use crate::fraud_proof::FraudProofGenerator;
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
@@ -210,7 +210,8 @@ where
 
         // TODO: The applied txs can be fully removed from the transaction pool
 
-        self.check_receipts_in_primary_block(primary_hash)?;
+        self.domain_block_processor
+            .check_receipts_in_primary_block(primary_hash, self.domain_id)?;
 
         if self.primary_network.is_major_syncing() {
             tracing::debug!(
@@ -243,130 +244,6 @@ where
             .compile_own_domain_bundles(bundles);
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
-    }
-
-    fn check_receipts_in_primary_block(
-        &self,
-        primary_hash: PBlock::Hash,
-    ) -> Result<(), sp_blockchain::Error> {
-        let extrinsics = self
-            .primary_chain_client
-            .block_body(primary_hash)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Primary block body for {:?} not found",
-                    primary_hash
-                ))
-            })?;
-
-        // TODO: extract the receipts specific to this domain.
-        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
-            &BlockId::Hash(primary_hash),
-            extrinsics.clone(),
-            self.domain_id,
-        )?;
-
-        let mut bad_receipts_to_write = vec![];
-
-        for execution_receipt in receipts.iter() {
-            let secondary_hash = execution_receipt.secondary_hash;
-            match crate::aux_schema::load_execution_receipt::<
-                _,
-                Block::Hash,
-                NumberFor<PBlock>,
-                PBlock::Hash,
-            >(&*self.client, secondary_hash)?
-            {
-                Some(local_receipt) => {
-                    if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, execution_receipt)
-                    {
-                        bad_receipts_to_write.push((
-                            execution_receipt.primary_number,
-                            execution_receipt.hash(),
-                            (trace_mismatch_index, secondary_hash),
-                        ));
-                    }
-                }
-                None => {
-                    let block_number: BlockNumber = execution_receipt
-                        .primary_number
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-                    // TODO: Ensure the `block_hash` aligns with the one returned in
-                    // `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are
-                    // multiple forks at present, `block_hash` is on one of them, but another fork
-                    // becomes the canonical chain later.
-                    let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header hash not found for number {block_number}"
-                        ))
-                    })?;
-
-                    // The receipt of a prior block must exist, otherwise it means the receipt included
-                    // on the primary chain points to an invalid secondary block.
-                    bad_receipts_to_write.push((
-                        execution_receipt.primary_number,
-                        execution_receipt.hash(),
-                        (0u32, block_hash),
-                    ));
-                }
-            }
-        }
-
-        let fraud_proofs = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
-
-        let bad_receipts_to_delete = fraud_proofs
-            .into_iter()
-            .filter_map(|fraud_proof| {
-                let bad_receipt_number = fraud_proof.parent_number + 1;
-                let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
-
-                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                // in case the bad receipt and corresponding farud proof are included in the same block.
-                if let Some(index) = bad_receipts_to_write
-                    .iter()
-                    .map(|(_, hash, _)| hash)
-                    .position(|v| *v == bad_bundle_hash)
-                {
-                    bad_receipts_to_write.swap_remove(index);
-                    None
-                } else {
-                    Some((bad_receipt_number, bad_bundle_hash))
-                }
-            })
-            .collect::<Vec<_>>();
-
-        for (bad_receipt_number, bad_signed_bundle_hash, mismatch_info) in bad_receipts_to_write {
-            crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
-                &*self.client,
-                bad_receipt_number,
-                bad_signed_bundle_hash,
-                mismatch_info,
-            )?;
-        }
-
-        for (bad_receipt_number, bad_signed_bundle_hash) in bad_receipts_to_delete {
-            if let Err(e) = crate::aux_schema::delete_bad_receipt(
-                &*self.client,
-                bad_receipt_number,
-                bad_signed_bundle_hash,
-            ) {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    ?bad_receipt_number,
-                    ?bad_signed_bundle_hash,
-                    "Failed to delete bad receipt",
-                );
-            }
-        }
-
-        Ok(())
     }
 
     fn try_submit_fraud_proof_for_first_unconfirmed_bad_receipt(
