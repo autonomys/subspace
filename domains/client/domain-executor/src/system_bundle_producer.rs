@@ -1,4 +1,5 @@
 use crate::bundle_election_solver::BundleElectionSolver;
+use crate::domain_bundle_producer::ReceiptInterface;
 use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
@@ -60,6 +61,53 @@ where
             bundle_election_solver: self.bundle_election_solver.clone(),
             _phantom_data: self._phantom_data,
         }
+    }
+}
+
+impl<Block, PBlock, Client, PClient, TransactionPool> ReceiptInterface<PBlock::Hash>
+    for SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>,
+    Client::Api: DomainCoreApi<Block, AccountId>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + BlockBuilder<Block>,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+{
+    fn best_execution_chain_number(
+        &self,
+        at: PBlock::Hash,
+    ) -> Result<BlockNumber, sp_api::ApiError> {
+        let best_execution_chain_number = self
+            .primary_chain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(at))?;
+
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        Ok(best_execution_chain_number)
+    }
+
+    fn maximum_receipt_drift(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+        let max_drift = self
+            .primary_chain_client
+            .runtime_api()
+            .maximum_receipt_drift(&BlockId::Hash(at))?;
+
+        let max_drift: BlockNumber = max_drift
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        Ok(max_drift)
     }
 }
 

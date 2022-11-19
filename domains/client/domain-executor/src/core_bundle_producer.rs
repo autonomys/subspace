@@ -1,5 +1,6 @@
 #![allow(unused)]
 use crate::bundle_election_solver::BundleElectionSolver;
+use crate::domain_bundle_producer::ReceiptInterface;
 use crate::utils::ExecutorSlotInfo;
 use crate::{BundleSender, ExecutionReceiptFor};
 use codec::{Decode, Encode};
@@ -63,6 +64,50 @@ where
             bundle_election_solver: self.bundle_election_solver.clone(),
             _phantom_data: self._phantom_data,
         }
+    }
+}
+
+impl<Block, SBlock, PBlock, Client, SClient, TransactionPool> ReceiptInterface<SBlock::Hash>
+    for CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
+where
+    Block: BlockT,
+    SBlock: BlockT,
+    PBlock: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
+    Client::Api: BlockBuilder<Block>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+{
+    fn best_execution_chain_number(
+        &self,
+        at: SBlock::Hash,
+    ) -> Result<BlockNumber, sp_api::ApiError> {
+        let best_execution_chain_number = self
+            .system_domain_client
+            .runtime_api()
+            .best_execution_chain_number(&BlockId::Hash(at), self.domain_id)?;
+
+        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        Ok(best_execution_chain_number)
+    }
+
+    fn maximum_receipt_drift(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+        // Receipts for some previous blocks are missing.
+        let max_drift = self
+            .system_domain_client
+            .runtime_api()
+            .maximum_receipt_drift(&BlockId::Hash(at))?;
+
+        let max_drift: BlockNumber = max_drift
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        Ok(max_drift)
     }
 }
 
