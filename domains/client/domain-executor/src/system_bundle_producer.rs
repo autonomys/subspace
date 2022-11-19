@@ -257,6 +257,15 @@ where
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
+        let max_drift = self
+            .primary_chain_client
+            .runtime_api()
+            .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
+
+        let max_drift: BlockNumber = max_drift
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
         let load_receipt = |block_hash| {
             crate::aux_schema::load_execution_receipt::<
                 _,
@@ -285,15 +294,6 @@ where
             vec![load_receipt(block_hash)?]
         } else {
             // Receipts for some previous blocks are missing.
-            let max_drift = self
-                .primary_chain_client
-                .runtime_api()
-                .maximum_receipt_drift(&BlockId::Hash(primary_hash))?;
-
-            let max_drift: BlockNumber = max_drift
-                .try_into()
-                .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
             let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
 
             let mut to_send = best_execution_chain_number + 1;

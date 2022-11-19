@@ -276,12 +276,22 @@ where
         header_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>> {
         let best_system_hash = self.system_domain_client.info().best_hash;
+
         let best_execution_chain_number = self
             .system_domain_client
             .runtime_api()
             .best_execution_chain_number(&BlockId::Hash(best_system_hash), self.domain_id)?;
 
         let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .try_into()
+            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+
+        let max_drift = self
+            .system_domain_client
+            .runtime_api()
+            .maximum_receipt_drift(&BlockId::Hash(best_system_hash))?;
+
+        let max_drift: BlockNumber = max_drift
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
@@ -313,15 +323,6 @@ where
             vec![load_receipt(block_hash)?]
         } else {
             // Receipts for some previous blocks are missing.
-            let max_drift = self
-                .system_domain_client
-                .runtime_api()
-                .maximum_receipt_drift(&BlockId::Hash(best_system_hash))?;
-
-            let max_drift: BlockNumber = max_drift
-                .try_into()
-                .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
             let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
 
             let mut to_send = best_execution_chain_number + 1;
