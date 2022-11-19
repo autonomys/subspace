@@ -10,7 +10,7 @@ use sc_consensus::{
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
-use sp_domains::{ExecutionReceipt, ExecutorApi};
+use sp_domains::{ExecutionReceipt, ExecutorApi, OpaqueBundles};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One};
 use sp_runtime::Digest;
@@ -86,6 +86,32 @@ where
             backend,
             _phantom_data: PhantomData::default(),
         }
+    }
+
+    pub(crate) fn compile_own_domain_bundles(
+        &self,
+        bundles: OpaqueBundles<PBlock, Block::Hash>,
+    ) -> Vec<Block::Extrinsic> {
+        bundles
+            .into_iter()
+            .flat_map(|bundle| {
+                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+                    match <<Block as BlockT>::Extrinsic>::decode(
+                        &mut opaque_extrinsic.encode().as_slice(),
+                    ) {
+                        Ok(uxt) => Some(uxt),
+                        Err(e) => {
+                            tracing::error!(
+                                target: LOG_TARGET,
+                                error = ?e,
+                                "Failed to decode the opaque extrisic in bundle, this should not happen"
+                            );
+                            None
+                        },
+                    }
+                })
+            })
+            .collect::<Vec<_>>()
     }
 
     pub(crate) fn deduplicate_and_shuffle_extrinsics(

@@ -1,7 +1,6 @@
 use crate::domain_block_processor::{DomainBlockProcessor, DomainBlockResult};
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::TransactionFor;
-use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
@@ -239,27 +238,9 @@ where
         bundles: CoreBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let extrinsics = bundles
-            .into_iter()
-            .flat_map(|bundle| {
-                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-                    match <<Block as BlockT>::Extrinsic>::decode(
-                        &mut opaque_extrinsic.encode().as_slice(),
-                    ) {
-                        Ok(uxt) => Some(uxt),
-                        Err(e) => {
-                            tracing::error!(
-                                target: LOG_TARGET,
-                                error = ?e,
-                                "Failed to decode the opaque extrisic in bundle, this should not happen"
-                            );
-                            None
-                        },
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-
+        let extrinsics = self
+            .domain_block_processor
+            .compile_own_domain_bundles(bundles);
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
     }
