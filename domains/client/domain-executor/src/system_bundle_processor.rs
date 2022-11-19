@@ -216,6 +216,19 @@ where
             "New secondary best number must be equal to the primary number"
         );
 
+        let digests = self
+            .client
+            .header(BlockId::Hash(parent_hash))?
+            .map(|header| {
+                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                    number: parent_number,
+                    state_root: *header.state_root(),
+                });
+
+                Digest { logs: vec![item] }
+            })
+            .unwrap_or_default();
+
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(
                 parent_hash,
@@ -224,6 +237,7 @@ where
                 shuffling_seed,
                 maybe_new_runtime,
                 fork_choice,
+                digests,
             )
             .await?;
 
@@ -279,6 +293,7 @@ where
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
         fork_choice: ForkChoiceStrategy,
+        digests: Digest,
     ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
         let mut extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
@@ -291,19 +306,6 @@ where
                 Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
             extrinsics.push(set_code_extrinsic);
         }
-
-        let digests = self
-            .client
-            .header(BlockId::Hash(parent_hash))?
-            .map(|header| {
-                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
-                    number: parent_number,
-                    state_root: *header.state_root(),
-                });
-
-                Digest { logs: vec![item] }
-            })
-            .unwrap_or_default();
 
         let block_builder = BlockBuilder::new(
             &*self.client,
