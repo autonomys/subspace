@@ -201,6 +201,11 @@ where
             "Consensus chain number must larger than execution chain number by at least 1"
         );
 
+        let oldest_receipt_number = self
+            .system_domain_client
+            .runtime_api()
+            .oldest_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
+
         crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
             &*self.client,
             (header_hash, header_number),
@@ -222,10 +227,6 @@ where
         }
 
         // Submit fraud proof for the first unconfirmed incorrent ER.
-        let oldest_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
         self.try_submit_fraud_proof_for_first_unconfirmed_bad_receipt()?;
