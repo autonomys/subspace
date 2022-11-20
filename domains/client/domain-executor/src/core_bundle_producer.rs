@@ -183,15 +183,9 @@ where
         {
             tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
 
-            let best_system_hash = self.system_domain_client.info().best_hash;
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(
-                    slot,
-                    primary_info,
-                    receipt_interface,
-                    best_system_hash,
-                )
+                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, receipt_interface, best_hash)
                 .await?;
 
             let to_sign = bundle.hash();
