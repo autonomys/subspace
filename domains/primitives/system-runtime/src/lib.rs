@@ -39,7 +39,7 @@ sp_api::decl_runtime_apis! {
             executor_public_key: ExecutorPublicKey,
         ) -> Option<Vec<Vec<u8>>>;
 
-        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block>;
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
 
         fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
 

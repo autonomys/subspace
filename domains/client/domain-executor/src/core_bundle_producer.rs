@@ -72,20 +72,17 @@ where
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-    fn best_execution_chain_number(
-        &self,
-        at: SBlock::Hash,
-    ) -> Result<BlockNumber, sp_api::ApiError> {
-        let best_execution_chain_number = self
+    fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+        let head_receipt_number = self
             .system_domain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(at), self.domain_id)?;
+            .head_receipt_number(&BlockId::Hash(at), self.domain_id)?;
 
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+        let head_receipt_number: BlockNumber = head_receipt_number
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-        Ok(best_execution_chain_number)
+        Ok(head_receipt_number)
     }
 
     fn maximum_receipt_drift(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {

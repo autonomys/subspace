@@ -55,7 +55,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: BlockT>(
     backend: &Backend,
     (block_hash, block_number): (Block::Hash, NumberFor<Block>),
-    best_execution_chain_number: NumberFor<Block>,
+    head_receipt_number: NumberFor<Block>,
     execution_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 ) -> Result<(), sp_blockchain::Error> {
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
@@ -71,7 +71,7 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: 
 
     let mut keys_to_delete = vec![];
 
-    if let Some(delete_receipts_to) = best_execution_chain_number
+    if let Some(delete_receipts_to) = head_receipt_number
         .saturated_into::<BlockNumber>()
         .checked_sub(PRUNING_DEPTH)
     {
@@ -130,10 +130,10 @@ where
 }
 
 pub(super) fn target_receipt_is_pruned(
-    best_execution_chain_number: BlockNumber,
+    head_receipt_number: BlockNumber,
     target_block: BlockNumber,
 ) -> bool {
-    best_execution_chain_number.saturating_sub(target_block) >= PRUNING_DEPTH
+    head_receipt_number.saturating_sub(target_block) >= PRUNING_DEPTH
 }
 
 /// Writes a bad execution receipt to aux storage.
@@ -464,7 +464,7 @@ mod tests {
 
         assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
 
-        // Create PRUNING_DEPTH + 1 receipt, best_execution_chain_number is PRUNING_DEPTH.
+        // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is PRUNING_DEPTH.
         let block_hash = Hash::random();
         assert!(receipt_at(block_hash).is_none());
         write_receipt_at(
@@ -474,7 +474,7 @@ mod tests {
         );
         assert!(receipt_at(block_hash).is_some());
 
-        // Create PRUNING_DEPTH + 2 receipt, best_execution_chain_number is PRUNING_DEPTH + 1.
+        // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is PRUNING_DEPTH + 1.
         let block_hash = Hash::random();
         write_receipt_at(
             block_hash,
@@ -490,7 +490,7 @@ mod tests {
         assert!(target_receipt_is_pruned(PRUNING_DEPTH + 1, 1));
         assert_eq!(receipt_start(), Some(2));
 
-        // Create PRUNING_DEPTH + 3 receipt, best_execution_chain_number is PRUNING_DEPTH + 2.
+        // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is PRUNING_DEPTH + 2.
         let block_hash = Hash::random();
         write_receipt_at(
             block_hash,
@@ -519,7 +519,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_receipts_should_be_kept_against_best_execution_chain_number() {
+    fn execution_receipts_should_be_kept_against_head_receipt_number() {
         let client = substrate_test_runtime_client::new();
 
         let receipt_start = || {
@@ -538,12 +538,12 @@ mod tests {
         let receipt_at = |block_hash: Hash| load_execution_receipt(&client, block_hash).unwrap();
 
         let write_receipt_at = |(hash, number): (Hash, BlockNumber),
-                                best_execution_chain_number: BlockNumber,
+                                head_receipt_number: BlockNumber,
                                 receipt: &ExecutionReceipt| {
             write_execution_receipt::<_, Block, PBlock>(
                 &client,
                 (hash, number),
-                best_execution_chain_number,
+                head_receipt_number,
                 receipt,
             )
             .unwrap()
@@ -551,7 +551,7 @@ mod tests {
 
         assert_eq!(receipt_start(), None);
 
-        // Create PRUNING_DEPTH receipts, best_execution_chain_number is 0, i.e., no receipt
+        // Create PRUNING_DEPTH receipts, head_receipt_number is 0, i.e., no receipt
         // has ever been included on primary chain.
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
@@ -567,7 +567,7 @@ mod tests {
 
         assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
 
-        // Create PRUNING_DEPTH + 1 receipt, best_execution_chain_number is 0.
+        // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is 0.
         let block_hash = Hash::random();
         assert!(receipt_at(block_hash).is_none());
         write_receipt_at(
@@ -576,7 +576,7 @@ mod tests {
             &create_execution_receipt(PRUNING_DEPTH + 1),
         );
 
-        // Create PRUNING_DEPTH + 2 receipt, best_execution_chain_number is 0.
+        // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is 0.
         let block_hash = Hash::random();
         write_receipt_at(
             (block_hash, PRUNING_DEPTH + 2),
@@ -591,7 +591,7 @@ mod tests {
         assert!(!target_receipt_is_pruned(0, 1));
         assert_eq!(receipt_start(), Some(1));
 
-        // Create PRUNING_DEPTH + 3 receipt, best_execution_chain_number is 0.
+        // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is 0.
         let block_hash = Hash::random();
         write_receipt_at(
             (block_hash, PRUNING_DEPTH + 3),
@@ -599,7 +599,7 @@ mod tests {
             &create_execution_receipt(PRUNING_DEPTH + 3),
         );
 
-        // Create PRUNING_DEPTH + 4 receipt, best_execution_chain_number is PRUNING_DEPTH + 3.
+        // Create PRUNING_DEPTH + 4 receipt, head_receipt_number is PRUNING_DEPTH + 3.
         let block_hash = Hash::random();
         write_receipt_at(
             (block_hash, PRUNING_DEPTH + 4),

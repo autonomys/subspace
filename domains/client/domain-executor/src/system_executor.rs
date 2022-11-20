@@ -318,19 +318,16 @@ where
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-        let best_execution_chain_number = self
+        let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(
-                self.primary_chain_client.info().best_hash,
-            ))?;
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .head_receipt_number(&BlockId::Hash(self.primary_chain_client.info().best_hash))?;
+        let head_receipt_number: BlockNumber = head_receipt_number
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
         // Just ignore it if the receipt is too old and has been pruned.
-        if crate::aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number)
-        {
+        if crate::aux_schema::target_receipt_is_pruned(head_receipt_number, primary_number) {
             return Ok(());
         }
 

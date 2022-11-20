@@ -144,8 +144,8 @@ where
         R: ReceiptInterface<RHash>,
         RHash: Copy,
     {
-        let best_execution_chain_number =
-            receipt_interface.best_execution_chain_number(receipt_interface_block_hash)?;
+        let head_receipt_number =
+            receipt_interface.head_receipt_number(receipt_interface_block_hash)?;
         let max_drift = receipt_interface.maximum_receipt_drift(receipt_interface_block_hash)?;
 
         let load_receipt = |block_hash| {
@@ -166,7 +166,7 @@ where
 
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
-        let receipts = if header_number == best_execution_chain_number + 1 {
+        let receipts = if header_number == head_receipt_number + 1 {
             let block_hash = self.client.hash(header_number.into())?.ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
                     "Hash for Block {:?} not found",
@@ -176,9 +176,9 @@ where
             vec![load_receipt(block_hash)?]
         } else {
             // Receipts for some previous blocks are missing.
-            let max_allowed = (best_execution_chain_number + max_drift).min(header_number);
+            let max_allowed = (head_receipt_number + max_drift).min(header_number);
 
-            let mut to_send = best_execution_chain_number + 1;
+            let mut to_send = head_receipt_number + 1;
             let mut receipts = Vec::with_capacity((max_allowed - to_send + 1) as usize);
             while to_send <= max_allowed {
                 let block_hash = self.client.hash(to_send.into())?.ok_or_else(|| {

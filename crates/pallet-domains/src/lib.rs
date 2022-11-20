@@ -492,7 +492,7 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     /// Returns the block number of the latest receipt.
-    pub fn best_execution_chain_number() -> T::BlockNumber {
+    pub fn head_receipt_number() -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get();
         best_number
     }
