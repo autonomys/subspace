@@ -229,7 +229,6 @@ impl Scalar {
     }
 
     /// Converts scalar to bytes that will be written to `bytes`.
-    #[allow(clippy::result_unit_err)]
     pub fn write_to_bytes(&self, bytes: &mut [u8; Self::FULL_BYTES]) {
         self.0
             .into_repr()
