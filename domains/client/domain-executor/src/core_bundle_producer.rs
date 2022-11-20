@@ -1,29 +1,20 @@
-#![allow(unused)]
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::domain_bundle_producer::ReceiptInterface;
+use crate::domain_bundle_producer::{sign_new_bundle, ReceiptInterface};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::ExecutorSlotInfo;
-use crate::{BundleSender, ExecutionReceiptFor};
+use crate::BundleSender;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
-use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
-use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_consensus_slots::Slot;
-use sp_domains::{
-    Bundle, BundleHeader, DomainId, ExecutorPublicKey, ExecutorSignature, ProofOfElection,
-    SignedBundle, SignedOpaqueBundle,
-};
-use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
+use sp_domains::{DomainId, ProofOfElection, SignedOpaqueBundle};
+use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
-use sp_runtime::RuntimeAppPublic;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::time;
 use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -188,67 +179,39 @@ where
                 .propose_bundle_at::<PBlock, _, _>(slot, primary_info, receipt_interface, best_hash)
                 .await?;
 
-            let to_sign = bundle.hash();
+            let best_hash = self.client.info().best_hash;
 
-            match SyncCryptoStore::sign_with(
-                &*self.keystore,
-                ExecutorPublicKey::ID,
-                &proof_of_election.executor_public_key.clone().into(),
-                to_sign.as_ref(),
-            ) {
-                Ok(Some(signature)) => {
-                    let best_hash = self.client.info().best_hash;
+            let as_core_block_hash = |system_block_hash: SBlock::Hash| {
+                Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
+            };
 
-                    let as_core_block_hash = |system_block_hash: SBlock::Hash| {
-                        Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
-                    };
+            let proof_of_election = ProofOfElection {
+                domain_id: proof_of_election.domain_id,
+                vrf_output: proof_of_election.vrf_output,
+                vrf_proof: proof_of_election.vrf_proof,
+                executor_public_key: proof_of_election.executor_public_key,
+                global_challenge: proof_of_election.global_challenge,
+                state_root: as_core_block_hash(proof_of_election.state_root),
+                storage_proof: proof_of_election.storage_proof,
+                block_number: proof_of_election.block_number,
+                block_hash: as_core_block_hash(proof_of_election.block_hash),
+                // TODO: override the core block info, see if there is a nicer way
+                // later.
+                core_block_hash: Some(best_hash),
+                core_state_root: Some(
+                    *self
+                        .client
+                        .header(BlockId::Hash(best_hash))?
+                        .expect("Best block header must exist; qed")
+                        .state_root(),
+                ),
+            };
 
-                    let signed_bundle = SignedBundle {
-                        bundle,
-                        proof_of_election: ProofOfElection {
-                            domain_id: proof_of_election.domain_id,
-                            vrf_output: proof_of_election.vrf_output,
-                            vrf_proof: proof_of_election.vrf_proof,
-                            executor_public_key: proof_of_election.executor_public_key,
-                            global_challenge: proof_of_election.global_challenge,
-                            state_root: as_core_block_hash(proof_of_election.state_root),
-                            storage_proof: proof_of_election.storage_proof,
-                            block_number: proof_of_election.block_number,
-                            block_hash: as_core_block_hash(proof_of_election.block_hash),
-                            // TODO: override the core block info, see if there is a nicer way
-                            // later.
-                            core_block_hash: Some(best_hash),
-                            core_state_root: Some(
-                                *self
-                                    .client
-                                    .header(BlockId::Hash(best_hash))?
-                                    .expect("Best block header must exist; qed")
-                                    .state_root(),
-                            ),
-                        },
-                        signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(
-                            |err| {
-                                sp_blockchain::Error::Application(Box::from(format!(
-                                    "Failed to decode the signature of bundle: {err}"
-                                )))
-                            },
-                        )?,
-                    };
-
-                    // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
-                    // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-                    // tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
-                    // }
-
-                    Ok(Some(signed_bundle.into_signed_opaque_bundle()))
-                }
-                Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
-                    "This should not happen as the existence of key was just checked",
-                ))),
-                Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
-                    "Error occurred when signing the bundle: {error}"
-                )))),
-            }
+            Ok(Some(sign_new_bundle::<Block, PBlock>(
+                bundle,
+                self.keystore,
+                proof_of_election,
+            )?))
         } else {
             Ok(None)
         }
