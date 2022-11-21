@@ -15,7 +15,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-bitvec = "1.0.1"
+async-trait = "0.1.58"
 futures = "0.3.25"
 schnorrkel = "0.9.1"
 sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
@@ -30,6 +30,7 @@ sp-runtime = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639b
 subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
+subspace-farmer-components = { path = "../../crates/subspace-farmer-components" }
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-solving = { path = "../../crates/subspace-solving" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }

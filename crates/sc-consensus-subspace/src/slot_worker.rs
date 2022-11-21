@@ -45,8 +45,8 @@ use subspace_core_primitives::{
 };
 use subspace_solving::derive_global_challenge;
 use subspace_verification::{
-    check_reward_signature, is_within_solution_range, verify_solution, PieceCheckParams,
-    VerifySolutionParams,
+    check_reward_signature, derive_audit_chunk, is_within_solution_range, verify_solution,
+    PieceCheckParams, VerifySolutionParams,
 };
 
 #[derive(Clone)]
@@ -210,8 +210,6 @@ where
             let piece_index =
                 sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
             let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
-            let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
-                .expect("Position within segment always fits into u32; qed");
             let mut maybe_records_root = runtime_api
                 .records_root(&parent_block_id, segment_index)
                 .ok()?;
@@ -255,7 +253,6 @@ where
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
                         records_root: &records_root,
-                        position,
                         kzg: &self.subspace_link.kzg,
                         pieces_in_segment: PIECES_IN_SEGMENT,
                     }),
@@ -267,12 +264,14 @@ where
             } else {
                 let local_challenge = sector_id.derive_local_challenge(&global_challenge);
 
-                let expanded_chunk = solution.chunk.expand(local_challenge);
-
                 // If solution is of high enough quality and block pre-digest wasn't produced yet,
                 // block reward is claimed
                 if maybe_pre_digest.is_none()
-                    && is_within_solution_range(local_challenge, expanded_chunk, solution_range)
+                    && is_within_solution_range(
+                        local_challenge,
+                        derive_audit_chunk(&solution.chunk.to_bytes()),
+                        solution_range,
+                    )
                 {
                     info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 

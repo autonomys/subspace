@@ -27,6 +27,7 @@ fn test_is_equivocation_proof_valid() {
         piece_offset: 0,
         piece_record_hash: Default::default(),
         piece_witness: Default::default(),
+        chunk_offset: 0,
         chunk: Default::default(),
         chunk_signature: ChunkSignature {
             output: Default::default(),
