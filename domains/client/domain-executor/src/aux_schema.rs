@@ -391,7 +391,7 @@ mod tests {
         ExecutionReceipt {
             primary_number,
             primary_hash: H256::random(),
-            secondary_hash: H256::random(),
+            domain_hash: H256::random(),
             trace: Default::default(),
             trace_root: Default::default(),
         }

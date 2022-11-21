@@ -66,7 +66,7 @@ parameter_types! {
 
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
-    type SecondaryHash = H256;
+    type DomainHash = H256;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -87,7 +87,7 @@ fn create_dummy_receipt(
     ExecutionReceipt {
         primary_number,
         primary_hash,
-        secondary_hash: H256::random(),
+        domain_hash: H256::random(),
         trace: if primary_number == 0 {
             Vec::new()
         } else {

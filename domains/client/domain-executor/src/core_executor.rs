@@ -335,7 +335,7 @@ where
             return Ok(());
         }
 
-        let block_hash = execution_receipt.secondary_hash;
+        let block_hash = execution_receipt.domain_hash;
         let block_number = primary_number.into();
 
         // TODO: more efficient execution receipt checking strategy?

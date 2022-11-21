@@ -242,7 +242,7 @@ where
         let execution_receipt = ExecutionReceipt {
             primary_number: primary_number.into(),
             primary_hash,
-            secondary_hash: header_hash,
+            domain_hash: header_hash,
             trace,
             trace_root,
         };
@@ -502,13 +502,13 @@ where
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
-            let secondary_hash = execution_receipt.secondary_hash;
+            let block_hash = execution_receipt.domain_hash;
             match crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
                 NumberFor<PBlock>,
                 PBlock::Hash,
-            >(&*self.client, secondary_hash)?
+            >(&*self.client, block_hash)?
             {
                 Some(local_receipt) => {
                     if let Some(trace_mismatch_index) =
@@ -517,7 +517,7 @@ where
                         bad_receipts_to_write.push((
                             execution_receipt.primary_number,
                             execution_receipt.hash(),
-                            (trace_mismatch_index, secondary_hash),
+                            (trace_mismatch_index, block_hash),
                         ));
                     }
                 }

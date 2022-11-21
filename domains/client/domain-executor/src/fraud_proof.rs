@@ -90,7 +90,7 @@ where
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         bad_signed_bundle_hash: H256,
     ) -> Result<FraudProof, FraudProofError> {
-        let block_hash = local_receipt.secondary_hash;
+        let block_hash = local_receipt.domain_hash;
         let block_number: BlockNumber = local_receipt
             .primary_number
             .try_into()

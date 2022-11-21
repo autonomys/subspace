@@ -200,7 +200,7 @@ impl<Hash: Encode> BundleHeader<Hash> {
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection<SecondaryHash> {
+pub struct ProofOfElection<DomainHash> {
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
@@ -212,20 +212,20 @@ pub struct ProofOfElection<SecondaryHash> {
     /// Global challenge.
     pub global_challenge: Blake2b256Hash,
     /// State root corresponding to the storage proof above.
-    pub state_root: SecondaryHash,
+    pub state_root: DomainHash,
     /// Storage proof for the bundle election state.
     pub storage_proof: StorageProof,
     /// Number of the secondary block at which the proof of election was created.
     pub block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
-    pub block_hash: SecondaryHash,
+    pub block_hash: DomainHash,
     /// Block hash of the core domain block at which the proof of election was created.
-    pub core_block_hash: Option<SecondaryHash>,
+    pub core_block_hash: Option<DomainHash>,
     /// Core domain state root corresponding to the `core_block_hash` above.
-    pub core_state_root: Option<SecondaryHash>,
+    pub core_state_root: Option<DomainHash>,
 }
 
-impl<SecondaryHash: Default> ProofOfElection<SecondaryHash> {
+impl<DomainHash: Default> ProofOfElection<DomainHash> {
     #[cfg(feature = "std")]
     pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
         Self {
@@ -246,18 +246,16 @@ impl<SecondaryHash: Default> ProofOfElection<SecondaryHash> {
 
 /// Transaction bundle
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct Bundle<Extrinsic, Number, Hash, SecondaryHash> {
+pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
     pub header: BundleHeader<Hash>,
     /// Expected receipts by the primay chain when the bundle was created.
-    pub receipts: Vec<ExecutionReceipt<Number, Hash, SecondaryHash>>,
+    pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
 
-impl<Extrinsic, Number, Hash: Encode, SecondaryHash>
-    Bundle<Extrinsic, Number, Hash, SecondaryHash>
-{
+impl<Extrinsic, Number, Hash: Encode, DomainHash> Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
         self.header.hash()
@@ -265,14 +263,11 @@ impl<Extrinsic, Number, Hash: Encode, SecondaryHash>
 }
 
 /// Bundle with opaque extrinsics.
-pub type OpaqueBundle<Number, Hash, SecondaryHash> =
-    Bundle<OpaqueExtrinsic, Number, Hash, SecondaryHash>;
+pub type OpaqueBundle<Number, Hash, DomainHash> = Bundle<OpaqueExtrinsic, Number, Hash, DomainHash>;
 
-impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
-    Bundle<Extrinsic, Number, Hash, SecondaryHash>
-{
+impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
-    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, SecondaryHash> {
+    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHash> {
         let Bundle {
             header,
             receipts,
@@ -295,21 +290,21 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
 
 /// Signed version of [`Bundle`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SignedBundle<Extrinsic, Number, Hash, SecondaryHash> {
+pub struct SignedBundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
-    pub bundle: Bundle<Extrinsic, Number, Hash, SecondaryHash>,
+    pub bundle: Bundle<Extrinsic, Number, Hash, DomainHash>,
     /// Proof of bundle election.
-    pub proof_of_election: ProofOfElection<SecondaryHash>,
+    pub proof_of_election: ProofOfElection<DomainHash>,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
 }
 
 /// [`SignedBundle`] with opaque extrinsic.
-pub type SignedOpaqueBundle<Number, Hash, SecondaryHash> =
-    SignedBundle<OpaqueExtrinsic, Number, Hash, SecondaryHash>;
+pub type SignedOpaqueBundle<Number, Hash, DomainHash> =
+    SignedBundle<OpaqueExtrinsic, Number, Hash, DomainHash>;
 
-impl<Extrinsic: Encode, Number: Encode, Hash: Encode, SecondaryHash: Encode>
-    SignedBundle<Extrinsic, Number, Hash, SecondaryHash>
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
+    SignedBundle<Extrinsic, Number, Hash, DomainHash>
 {
     /// Returns the hash of signed bundle.
     pub fn hash(&self) -> H256 {
@@ -322,11 +317,11 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, SecondaryHash: Encode>
     }
 }
 
-impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
-    SignedBundle<Extrinsic, Number, Hash, SecondaryHash>
+impl<Extrinsic: Encode, Number, Hash, DomainHash>
+    SignedBundle<Extrinsic, Number, Hash, DomainHash>
 {
     /// Convert a signed bundle with generic extrinsic to a signed bundle with opaque extrinsic.
-    pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, SecondaryHash> {
+    pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, DomainHash> {
         SignedOpaqueBundle {
             bundle: self.bundle.into_opaque_bundle(),
             proof_of_election: self.proof_of_election,
@@ -335,25 +330,22 @@ impl<Extrinsic: Encode, Number, Hash, SecondaryHash>
     }
 }
 
-/// Receipt of state execution.
+/// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ExecutionReceipt<Number, Hash, SecondaryHash> {
+pub struct ExecutionReceipt<Number, Hash, DomainHash> {
     /// Primary block number.
     pub primary_number: Number,
-    /// Primary block hash.
+    /// Hash of the origin primary block this receipt corresponds to.
     pub primary_hash: Hash,
-    // TODO: rename to `domain_hash`.
-    /// Secondary block hash.
-    pub secondary_hash: SecondaryHash,
-    /// List of storage roots collected during the block execution.
-    pub trace: Vec<SecondaryHash>,
+    /// Hash of the domain block this receipt points to.
+    pub domain_hash: DomainHash,
+    /// List of storage roots collected during the domain block execution.
+    pub trace: Vec<DomainHash>,
     /// The merkle root of `trace`.
     pub trace_root: Blake2b256Hash,
 }
 
-impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
-    ExecutionReceipt<Number, Hash, SecondaryHash>
-{
+impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, Hash, DomainHash> {
     /// Returns the hash of this execution receipt.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -361,18 +353,18 @@ impl<Number: Encode, Hash: Encode, SecondaryHash: Encode>
 }
 
 /// List of [`OpaqueBundle`].
-pub type OpaqueBundles<Block, SecondaryHash> =
-    Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, SecondaryHash>>;
+pub type OpaqueBundles<Block, DomainHash> =
+    Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
 
 /// List of [`SignedOpaqueBundle`].
-pub type SignedOpaqueBundles<Block, SecondaryHash> =
-    Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, SecondaryHash>>;
+pub type SignedOpaqueBundles<Block, DomainHash> =
+    Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
-    pub trait ExecutorApi<SecondaryHash: Encode + Decode> {
+    pub trait ExecutorApi<DomainHash: Encode + Decode> {
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, Block::Hash, SecondaryHash>);
+        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof);
@@ -390,19 +382,19 @@ sp_api::decl_runtime_apis! {
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> (OpaqueBundles<Block, SecondaryHash>, SignedOpaqueBundles<Block, SecondaryHash>);
+        ) -> (OpaqueBundles<Block, DomainHash>, SignedOpaqueBundles<Block, DomainHash>);
 
         /// Extract the core bundles from the given extrinsics.
         fn extract_core_bundles(
             extrinsics: Vec<Block::Extrinsic>,
             domain_id: DomainId,
-        ) -> OpaqueBundles<Block, SecondaryHash>;
+        ) -> OpaqueBundles<Block, DomainHash>;
 
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(
             extrinsics: Vec<Block::Extrinsic>,
             domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, SecondaryHash>>;
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.
         fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
