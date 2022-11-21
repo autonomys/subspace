@@ -59,15 +59,15 @@ sp_api::decl_runtime_apis! {
         /// Storage key is used to generate the storage proof for the message.
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey;
 
-        /// Submits outbox message to the dst_domain as an unsigned extrinsic.
-        fn submit_outbox_message_unsigned(
+        /// Creates an unsigned extrinsic for outbox message to the dst_domain.
+        fn outbox_message_unsigned_extrinsic(
             msg: CrossDomainMessage<Block::Hash, BlockNumber>,
-        );
+        ) -> Option<Block::Extrinsic>;
 
-        /// Submits inbox response message to the dst_domain as an unsigned extrinsic.
-        fn submit_inbox_response_message_unsigned(
+        /// Creates an unsigned extrinsic for inbox response message to the dst_domain.
+        fn inbox_response_message_unsigned_extrinsic(
             msg: CrossDomainMessage<Block::Hash, BlockNumber>,
-        );
+        ) -> Option<Block::Extrinsic>;
 
         /// Returns true if the outbox message is ready to be relayed to dst_domain.
         fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool;

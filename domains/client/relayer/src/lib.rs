@@ -5,8 +5,9 @@ pub mod worker;
 use domain_runtime_primitives::RelayerId;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiRef, ProvideRuntimeApi};
 use sp_domain_tracker::DomainTrackerApi;
+use sp_domains::domain_txns::DomainExtrinsic;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
     CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
@@ -241,7 +242,7 @@ where
                     key,
                 )
             },
-            |msg| api.submit_outbox_message_unsigned(&best_block_id, msg),
+            |msg| Self::submit_domain_outbox_extrinsic(&api, &best_block_id, msg),
         )?;
 
         Self::construct_cross_domain_message_and_submit(
@@ -254,7 +255,7 @@ where
                     key,
                 )
             },
-            |msg| api.submit_inbox_response_message_unsigned(&best_block_id, msg),
+            |msg| Self::submit_domain_inbox_response_extrinsic(&api, &best_block_id, msg),
         )?;
 
         Ok(())
@@ -325,7 +326,7 @@ where
                     core_domain_state_root_proof.clone(),
                 )
             },
-            |msg| core_domain_api.submit_outbox_message_unsigned(&best_block_id, msg),
+            |msg| Self::submit_domain_outbox_extrinsic(&core_domain_api, &best_block_id, msg),
         )?;
 
         Self::construct_cross_domain_message_and_submit(
@@ -339,9 +340,41 @@ where
                     core_domain_state_root_proof.clone(),
                 )
             },
-            |msg| core_domain_api.submit_inbox_response_message_unsigned(&best_block_id, msg),
+            |msg| {
+                Self::submit_domain_inbox_response_extrinsic(&core_domain_api, &best_block_id, msg)
+            },
         )?;
 
+        Ok(())
+    }
+
+    fn submit_domain_outbox_extrinsic(
+        api: &ApiRef<'_, Client::Api>,
+        at: &BlockId<Block>,
+        msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
+    ) -> Result<(), sp_api::ApiError> {
+        let dst_domain_id = msg.dst_domain_id;
+        let domain_ext = api.outbox_message_unsigned_extrinsic(at, msg)?;
+        let _ext = DomainExtrinsic {
+            domain_id: dst_domain_id,
+            txn: domain_ext.encode(),
+        };
+        /// TODO(ved): submit encoded ext on primary chain
+        Ok(())
+    }
+
+    fn submit_domain_inbox_response_extrinsic(
+        api: &ApiRef<'_, Client::Api>,
+        at: &BlockId<Block>,
+        msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
+    ) -> Result<(), sp_api::ApiError> {
+        let dst_domain_id = msg.dst_domain_id;
+        let domain_ext = api.inbox_response_message_unsigned_extrinsic(at, msg)?;
+        let _ext = DomainExtrinsic {
+            domain_id: dst_domain_id,
+            txn: domain_ext.encode(),
+        };
+        /// TODO(ved): submit encoded ext on primary chain
         Ok(())
     }
 

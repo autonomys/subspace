@@ -31,13 +31,12 @@ mod verification;
 
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
-use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::DomainId;
 use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce};
-use sp_runtime::traits::Hash;
+use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
 /// State of a channel.
@@ -827,36 +826,18 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    pub fn submit_outbox_message_unsigned(msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>) {
+    pub fn outbox_message_unsigned_extrinsic(
+        msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+    ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::messenger", "Submitted outbox message");
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Error submitting outbox message",
-                );
-            }
-        }
+        T::Extrinsic::new(call.into(), None)
     }
 
-    pub fn submit_inbox_response_message_unsigned(
+    pub fn inbox_response_message_unsigned_extrinsic(
         msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
-    ) {
+    ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::messenger", "Submitted inbox response message");
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Error submitting inbox response message",
-                );
-            }
-        }
+        T::Extrinsic::new(call.into(), None)
     }
 
     /// Returns true if the outbox message has not received the response yet.
