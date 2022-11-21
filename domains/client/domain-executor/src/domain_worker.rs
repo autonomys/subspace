@@ -334,7 +334,10 @@ where
         .extrinsics_shuffling_seed(&block_id, header)?;
 
     let domain_bundles = if domain_id.is_system() {
-        todo!("Migrate system_domain_worker to be based on domain_worker")
+        let (system_bundles, core_bundles) = primary_chain_client
+            .runtime_api()
+            .extract_system_bundles(&block_id, extrinsics)?;
+        DomainBundles::System(system_bundles, core_bundles)
     } else if domain_id.is_core() {
         let core_bundles = primary_chain_client
             .runtime_api()
