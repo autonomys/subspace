@@ -87,16 +87,24 @@ pub use self::core_gossip_message_validator::CoreGossipMessageValidator;
 pub use self::system_executor::Executor as SystemExecutor;
 pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 use crate::utils::BlockInfo;
+use futures::channel::mpsc;
+use futures::Stream;
 use sc_consensus::ForkChoiceStrategy;
+use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
+use sp_consensus_slots::Slot;
+use sp_core::traits::SpawnNamed;
 use sp_domains::{ExecutionReceipt, SignedBundle};
+use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
+use std::sync::Arc;
+use subspace_core_primitives::Blake2b256Hash;
 
 /// The logging target.
 const LOG_TARGET: &str = "domain::executor";
@@ -117,6 +125,37 @@ type BundleSender<Block, PBlock> = TracingUnboundedSender<
         <Block as BlockT>::Hash,
     >,
 >;
+
+pub struct EssentialExecutorParams<
+    Block,
+    PBlock,
+    Client,
+    PClient,
+    TransactionPool,
+    Backend,
+    E,
+    IBNS,
+    NSNS,
+> where
+    Block: BlockT,
+    PBlock: BlockT,
+    IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+{
+    pub primary_chain_client: Arc<PClient>,
+    pub primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    pub client: Arc<Client>,
+    pub transaction_pool: Arc<TransactionPool>,
+    pub backend: Arc<Backend>,
+    pub code_executor: Arc<E>,
+    pub is_authority: bool,
+    pub keystore: SyncCryptoStorePtr,
+    pub spawner: Box<dyn SpawnNamed + Send + Sync>,
+    pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    pub block_import_throttling_buffer_size: u32,
+    pub imported_block_notification_stream: IBNS,
+    pub new_slot_notification_stream: NSNS,
+}
 
 /// Returns the active leaves the overseer should start with.
 ///

@@ -1,6 +1,8 @@
 use crate::Configuration;
 use domain_client_consensus_relay_chain::notification::SubspaceNotificationStream;
-use domain_client_executor::{SystemExecutor, SystemGossipMessageValidator};
+use domain_client_executor::{
+    EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
+};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
@@ -315,21 +317,23 @@ where
     let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
     let executor = SystemExecutor::new(
-        primary_chain_client.clone(),
-        primary_network,
         &spawn_essential,
         select_chain,
-        imported_block_notification_stream,
-        new_slot_notification_stream,
-        client.clone(),
-        Box::new(task_manager.spawn_handle()),
-        transaction_pool.clone(),
-        Arc::new(bundle_sender),
-        backend.clone(),
-        code_executor.clone(),
-        validator,
-        params.keystore_container.sync_keystore(),
-        block_import_throttling_buffer_size,
+        EssentialExecutorParams {
+            primary_chain_client: primary_chain_client.clone(),
+            primary_network,
+            client: client.clone(),
+            transaction_pool: transaction_pool.clone(),
+            backend: backend.clone(),
+            code_executor: code_executor.clone(),
+            is_authority: validator,
+            keystore: params.keystore_container.sync_keystore(),
+            spawner: Box::new(task_manager.spawn_handle()),
+            bundle_sender: Arc::new(bundle_sender),
+            block_import_throttling_buffer_size,
+            imported_block_notification_stream,
+            new_slot_notification_stream,
+        },
     )
     .await?;
 

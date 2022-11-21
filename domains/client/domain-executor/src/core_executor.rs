@@ -2,20 +2,18 @@ use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
-use crate::{active_leaves, BundleSender, TransactionFor};
+use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_consensus::ForkChoiceStrategy;
-use sc_network::NetworkService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_domains::{DomainId, ExecutorApi};
-use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -98,25 +96,22 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    #[allow(clippy::too_many_arguments)]
     pub async fn new<SE, SC, IBNS, NSNS>(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
-        primary_chain_client: Arc<PClient>,
-        primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         spawn_essential: &SE,
         select_chain: &SC,
-        imported_block_notification_stream: IBNS,
-        new_slot_notification_stream: NSNS,
-        client: Arc<Client>,
-        spawner: Box<dyn SpawnNamed + Send + Sync>,
-        transaction_pool: Arc<TransactionPool>,
-        bundle_sender: Arc<BundleSender<Block, PBlock>>,
-        backend: Arc<Backend>,
-        code_executor: Arc<E>,
-        is_authority: bool,
-        keystore: SyncCryptoStorePtr,
-        block_import_throttling_buffer_size: u32,
+        params: EssentialExecutorParams<
+            Block,
+            PBlock,
+            Client,
+            PClient,
+            TransactionPool,
+            Backend,
+            E,
+            IBNS,
+            NSNS,
+        >,
     ) -> Result<Self, sp_consensus::Error>
     where
         SE: SpawnEssentialNamed,
@@ -126,43 +121,44 @@ where
             + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     {
-        let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
+        let active_leaves =
+            active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
 
         let bundle_producer = CoreBundleProducer::new(
             domain_id,
             system_domain_client.clone(),
-            client.clone(),
-            transaction_pool.clone(),
-            bundle_sender,
-            is_authority,
-            keystore.clone(),
+            params.client.clone(),
+            params.transaction_pool.clone(),
+            params.bundle_sender,
+            params.is_authority,
+            params.keystore.clone(),
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(
-            client.clone(),
-            spawner.clone(),
-            backend.clone(),
-            code_executor,
+            params.client.clone(),
+            params.spawner.clone(),
+            params.backend.clone(),
+            params.code_executor,
         );
 
         let domain_block_processor = DomainBlockProcessor::new(
             domain_id,
-            client.clone(),
-            primary_chain_client.clone(),
-            primary_network,
-            backend.clone(),
+            params.client.clone(),
+            params.primary_chain_client.clone(),
+            params.primary_network,
+            params.backend.clone(),
             fraud_proof_generator.clone(),
         );
 
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
-            primary_chain_client.clone(),
+            params.primary_chain_client.clone(),
             system_domain_client,
-            client.clone(),
-            backend.clone(),
-            is_authority,
-            keystore,
-            spawner.clone(),
+            params.client.clone(),
+            params.backend.clone(),
+            params.is_authority,
+            params.keystore,
+            params.spawner.clone(),
             domain_block_processor,
         );
 
@@ -171,24 +167,24 @@ where
             None,
             crate::core_domain_worker::start_worker(
                 domain_id,
-                primary_chain_client.clone(),
-                client.clone(),
+                params.primary_chain_client.clone(),
+                params.client.clone(),
                 bundle_producer,
                 bundle_processor,
-                imported_block_notification_stream,
-                new_slot_notification_stream,
+                params.imported_block_notification_stream,
+                params.new_slot_notification_stream,
                 active_leaves,
-                block_import_throttling_buffer_size,
+                params.block_import_throttling_buffer_size,
             )
             .boxed(),
         );
 
         Ok(Self {
-            primary_chain_client,
-            client,
-            spawner,
-            transaction_pool,
-            backend,
+            primary_chain_client: params.primary_chain_client,
+            client: params.client,
+            spawner: params.spawner,
+            transaction_pool: params.transaction_pool,
+            backend: params.backend,
             fraud_proof_generator,
             _phantom_data: PhantomData::default(),
         })
