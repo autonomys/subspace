@@ -53,7 +53,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_rpc_primitives::{
-    RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
 
@@ -64,8 +64,8 @@ const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 #[rpc(client, server)]
 pub trait SubspaceRpcApi {
     /// Ger metadata necessary for farmer operation
-    #[method(name = "subspace_getFarmerProtocolInfo")]
-    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo>;
+    #[method(name = "subspace_getFarmerAppInfo")]
+    fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo>;
 
     #[method(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
@@ -178,7 +178,7 @@ where
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
     PC: PieceCache + Send + Sync + 'static,
 {
-    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo> {
+    fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
         let runtime_api = self.client.runtime_api();
 
@@ -193,9 +193,8 @@ where
                 JsonRpseeError::Custom("Internal error".to_string())
             })?;
 
-        let farmer_protocol_info: Result<FarmerProtocolInfo, ApiError> = try {
-            FarmerProtocolInfo {
-                genesis_hash,
+        let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
+            let protocol_info = FarmerProtocolInfo {
                 record_size: NonZeroU32::new(RECORD_SIZE).ok_or_else(|| {
                     error!("Incorrect record_size constant provided.");
                     ApiError::Application("Incorrect record_size set".to_string().into())
@@ -204,10 +203,15 @@ where
                 total_pieces: runtime_api.total_pieces(&best_block_id)?,
                 // TODO: Fetch this from the runtime
                 sector_expiration: 100,
+            };
+
+            FarmerAppInfo {
+                genesis_hash,
+                protocol_info,
             }
         };
 
-        farmer_protocol_info.map_err(|error| {
+        farmer_app_info.map_err(|error| {
             error!("Failed to get data from runtime API: {}", error);
             JsonRpseeError::Custom("Internal error".to_string())
         })

@@ -8718,7 +8718,6 @@ dependencies = [
  "criterion",
  "fs2",
  "futures 0.3.25",
- "hex",
  "libc",
  "memmap2",
  "parity-scale-codec",
@@ -8848,6 +8847,7 @@ dependencies = [
  "hex",
  "serde",
  "subspace-core-primitives",
+ "subspace-farmer-components",
 ]
 
 [[package]]

@@ -16,3 +16,4 @@ include = [
 hex = { version = "0.4.3", features = ["serde"] }
 serde = { version = "1.0.147", features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
