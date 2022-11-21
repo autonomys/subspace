@@ -13,7 +13,7 @@ pub use self::system_domain::{
     new_full, new_partial, NewFull, PartialComponents as SystemDomainPartialComponents,
     SystemDomainExecutorDispatch,
 };
-pub use crate::pool_wrapper::DomainTransactionPoolWrapper;
+pub use crate::pool_wrapper::DomainTransactionPoolRouter;
 use domain_runtime_primitives::RelayerId;
 use sc_service::Configuration as ServiceConfiguration;
 

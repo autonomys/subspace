@@ -215,6 +215,7 @@ where
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
+#[allow(clippy::too_many_arguments)]
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut secondary_chain_config: Configuration,
     partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,

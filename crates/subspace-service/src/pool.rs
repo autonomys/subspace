@@ -1,4 +1,4 @@
-use domain_service::DomainTransactionPoolWrapper;
+use domain_service::DomainTransactionPoolRouter;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt, Ready};
 use jsonrpsee::core::async_trait;
@@ -235,7 +235,7 @@ where
 {
     primary_tx_pool: BasicPool<PoolApi, Block>,
     primary_client: Arc<Client>,
-    pub domain_tx_pool_wrapper: DomainTransactionPoolWrapper<TxHash<Self>>,
+    pub domain_tx_pool_wrapper: DomainTransactionPoolRouter<TxHash<Self>>,
 }
 
 impl<Block, Client, PoolApi> BasicPoolWrapper<Block, Client, PoolApi>
@@ -251,7 +251,7 @@ where
         prometheus: Option<&PrometheusRegistry>,
         spawner: Spawn,
         client: Arc<Client>,
-        domain_tx_pool_wrapper: DomainTransactionPoolWrapper<TxHash<Self>>,
+        domain_tx_pool_wrapper: DomainTransactionPoolRouter<TxHash<Self>>,
     ) -> Self
     where
         Client: UsageProvider<Block>,
@@ -460,7 +460,7 @@ pub(super) fn new_full<Block, Client, Verifier>(
     task_manager: &TaskManager,
     client: Arc<Client>,
     verifier: Verifier,
-    domain_tx_pool_wrapper: DomainTransactionPoolWrapper<<Block as BlockT>::Hash>,
+    domain_tx_pool_wrapper: DomainTransactionPoolRouter<<Block as BlockT>::Hash>,
 ) -> Arc<FullPool<Block, Client, Verifier>>
 where
     Block: BlockT,

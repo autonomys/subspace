@@ -18,7 +18,7 @@
 
 use domain_service::{
     Configuration, CoreDomainPartialComponents, CorePaymentsDomainExecutorDispatch,
-    DomainTransactionPoolWrapper, SystemDomainExecutorDispatch, SystemDomainPartialComponents,
+    DomainTransactionPoolRouter, SystemDomainExecutorDispatch, SystemDomainPartialComponents,
 };
 use frame_benchmarking_cli::BenchmarkCmd;
 use frame_support::inherent::BlockT;
@@ -513,7 +513,7 @@ fn main() -> Result<(), Error> {
 }
 
 struct DomainComponents<Hash> {
-    transaction_pool_wrapper: DomainTransactionPoolWrapper<Hash>,
+    transaction_pool_wrapper: DomainTransactionPoolRouter<Hash>,
     maybe_system_domain_components: Option<(
         SecondaryChainCli,
         Configuration,
@@ -541,7 +541,7 @@ where
 {
     // create partial components for secondary and core payments domain
     let mut domain_components = DomainComponents {
-        transaction_pool_wrapper: DomainTransactionPoolWrapper::new(),
+        transaction_pool_wrapper: DomainTransactionPoolRouter::new(),
         maybe_system_domain_components: None,
         maybe_core_payments_domain_components: None,
     };
@@ -584,10 +584,10 @@ where
         let secondary_chain_config =
             Configuration::new(service_config, secondary_chain_cli.run.relayer_id.clone());
 
-        domain_components
-            .transaction_pool_wrapper
-            .system_domain_tx_pool =
-            Some(system_domain_partial_components.transaction_pool.clone());
+        domain_components.transaction_pool_wrapper.system_domain = Some((
+            system_domain_partial_components.client.clone(),
+            system_domain_partial_components.transaction_pool.clone(),
+        ));
         domain_components.maybe_system_domain_components = Some((
             secondary_chain_cli,
             secondary_chain_config,
@@ -622,8 +622,10 @@ where
 
             domain_components
                 .transaction_pool_wrapper
-                .core_payments_domain_tx_pool =
-                Some(core_domain_partial_components.transaction_pool.clone());
+                .core_payments_domain = Some((
+                core_domain_partial_components.client.clone(),
+                core_domain_partial_components.transaction_pool.clone(),
+            ));
             domain_components.maybe_core_payments_domain_components = Some((
                 core_domain_cli,
                 core_domain_config,

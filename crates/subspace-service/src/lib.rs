@@ -145,7 +145,7 @@ impl From<Configuration> for SubspaceConfiguration {
 #[allow(clippy::type_complexity)]
 pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
-    domain_transaction_pool_wrapper: DomainTransactionPoolWrapper<<Block as BlockT>::Hash>,
+    domain_transaction_pool_wrapper: DomainTransactionPoolRouter<<Block as BlockT>::Hash>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -384,7 +384,7 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
-    domain_transaction_pool_wrapper: DomainTransactionPoolWrapper<<Block as BlockT>::Hash>,
+    domain_transaction_pool_wrapper: DomainTransactionPoolRouter<<Block as BlockT>::Hash>,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>

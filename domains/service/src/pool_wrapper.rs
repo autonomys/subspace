@@ -5,6 +5,7 @@ use core_payments_domain_runtime::RuntimeApi as CorePaymentsRuntimeApi;
 use frame_benchmarking::frame_support::inherent::BlockT;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::{PoolFuture, TransactionPool};
+use sp_blockchain::HeaderBackend;
 use sp_domains::DomainId;
 use sp_runtime::generic::BlockId;
 use sp_runtime::transaction_validity::TransactionSource;
@@ -16,15 +17,27 @@ pub type SystemDomainTxPool = FullPool<FullClient<RuntimeApi, SystemDomainExecut
 pub type CorePaymentsDomainTxPool =
     FullPool<FullClient<CorePaymentsRuntimeApi, CorePaymentsDomainExecutorDispatch>>;
 
-pub struct DomainTransactionPoolWrapper<Hash> {
+type SystemDomainComponent = (
+    Arc<FullClient<RuntimeApi, SystemDomainExecutorDispatch>>,
+    Arc<SystemDomainTxPool>,
+);
+
+type CorePaymentsDomainComponent = (
+    Arc<FullClient<CorePaymentsRuntimeApi, CorePaymentsDomainExecutorDispatch>>,
+    Arc<CorePaymentsDomainTxPool>,
+);
+
+/// Routes the Extrinsics bound to specific domain_id.
+pub struct DomainTransactionPoolRouter<Hash> {
     _phantom_data: PhantomData<Hash>,
-    pub system_domain_tx_pool: Option<Arc<SystemDomainTxPool>>,
-    pub core_payments_domain_tx_pool: Option<Arc<CorePaymentsDomainTxPool>>,
+    pub system_domain: Option<SystemDomainComponent>,
+    pub core_payments_domain: Option<CorePaymentsDomainComponent>,
 }
 
+type DomainBlockOf<T> = <T as TransactionPool>::Block;
 type DomainExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;
 
-impl<Hash> Default for DomainTransactionPoolWrapper<Hash>
+impl<Hash> Default for DomainTransactionPoolRouter<Hash>
 where
     Hash: Default,
 {
@@ -33,15 +46,15 @@ where
     }
 }
 
-impl<Hash> DomainTransactionPoolWrapper<Hash>
+impl<Hash> DomainTransactionPoolRouter<Hash>
 where
     Hash: Default,
 {
     pub fn new() -> Self {
-        DomainTransactionPoolWrapper {
+        DomainTransactionPoolRouter {
             _phantom_data: Default::default(),
-            system_domain_tx_pool: None,
-            core_payments_domain_tx_pool: None,
+            system_domain: None,
+            core_payments_domain: None,
         }
     }
 
@@ -52,15 +65,11 @@ where
         ext_encoded: Vec<u8>,
     ) -> PoolFuture<Hash, TxPoolError> {
         if domain_id.is_system() {
-            return Self::submit_extrinsic_to_txpool(
-                &self.system_domain_tx_pool,
-                tx_source,
-                ext_encoded,
-            );
+            return Self::submit_extrinsic_to_txpool(&self.system_domain, tx_source, ext_encoded);
         }
         if domain_id == DomainId::CORE_PAYMENTS {
             return Self::submit_extrinsic_to_txpool(
-                &self.core_payments_domain_tx_pool,
+                &self.core_payments_domain,
                 tx_source,
                 ext_encoded,
             );
@@ -69,20 +78,23 @@ where
         }
     }
 
-    fn submit_extrinsic_to_txpool<TxPool: TransactionPool + 'static>(
-        maybe_pool: &Option<Arc<TxPool>>,
+    fn submit_extrinsic_to_txpool<Client, TxPool>(
+        maybe_client_and_pool: &Option<(Arc<Client>, Arc<TxPool>)>,
         tx_source: TransactionSource,
         ext_encoded: Vec<u8>,
-    ) -> PoolFuture<Hash, TxPoolError> {
-        if let Some(pool) = maybe_pool {
-            // TODO: get latest block id from the secondary client
+    ) -> PoolFuture<Hash, TxPoolError>
+    where
+        TxPool: TransactionPool + 'static,
+        Client: HeaderBackend<DomainBlockOf<TxPool>>,
+    {
+        if let Some((client, pool)) = maybe_client_and_pool {
             let pool = pool.clone();
-            let at = BlockId::Hash(Default::default());
             let ext = match DomainExtrinsicOf::<TxPool>::decode(&mut ext_encoded.as_ref()) {
                 Ok(ext) => ext,
                 Err(_) => return Box::pin(async move { Err(TxPoolError::ImmediatelyDropped) }),
             };
 
+            let at = BlockId::Hash(client.info().best_hash);
             Box::pin(async move {
                 let res = pool.submit_one(&at, tx_source, ext).await;
                 // TODO: dont know what to do with tx hash of the domain pool yet
