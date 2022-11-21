@@ -1,6 +1,6 @@
 use crate::Configuration;
 use domain_client_consensus_relay_chain::notification::SubspaceNotificationStream;
-use domain_client_executor::CoreExecutor;
+use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_runtime_primitives::{DomainCoreApi, RelayerId};
 use futures::channel::mpsc;
@@ -342,7 +342,7 @@ where
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
-        primary_chain_client,
+        primary_chain_client.clone(),
         primary_network,
         &spawn_essential,
         select_chain,
@@ -350,7 +350,7 @@ where
         new_slot_notification_stream,
         client.clone(),
         Box::new(task_manager.spawn_handle()),
-        transaction_pool,
+        transaction_pool.clone(),
         Arc::new(bundle_sender),
         backend.clone(),
         code_executor.clone(),
@@ -360,10 +360,20 @@ where
     )
     .await?;
 
+    let gossip_message_validator =
+        CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, PClient, _, _, _>::new(
+            primary_chain_client,
+            client.clone(),
+            Box::new(task_manager.spawn_handle()),
+            transaction_pool.clone(),
+            backend.clone(),
+            executor.fraud_proof_generator(),
+        );
+
     let executor_gossip =
         domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
             network: network.clone(),
-            executor: executor.clone(),
+            executor: gossip_message_validator,
             bundle_receiver,
         });
     spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));

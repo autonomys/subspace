@@ -81,7 +81,9 @@ mod system_gossip_message_validator;
 mod tests;
 mod utils;
 
-pub use self::core_executor::Executor as CoreExecutor;
+pub use self::core_executor::{
+    Executor as CoreExecutor, GossipMessageValidator as CoreGossipMessageValidator,
+};
 pub use self::system_executor::Executor as SystemExecutor;
 pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 use sc_utils::mpsc::TracingUnboundedSender;

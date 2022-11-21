@@ -203,6 +203,134 @@ where
         })
     }
 
+    pub fn fraud_proof_generator(&self) -> FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+        self.fraud_proof_generator.clone()
+    }
+}
+
+/// The implementation of the Domain `Executor`.
+pub struct GossipMessageValidator<
+    Block,
+    SBlock,
+    PBlock,
+    Client,
+    SClient,
+    PClient,
+    TransactionPool,
+    Backend,
+    E,
+> where
+    Block: BlockT,
+    SBlock: BlockT,
+    PBlock: BlockT,
+{
+    // TODO: no longer used in executor, revisit this with ParachainBlockImport together.
+    primary_chain_client: Arc<PClient>,
+    client: Arc<Client>,
+    spawner: Box<dyn SpawnNamed + Send + Sync>,
+    transaction_pool: Arc<TransactionPool>,
+    backend: Arc<Backend>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    _phantom_data: PhantomData<(SBlock, SClient)>,
+}
+
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> Clone
+    for GossipMessageValidator<
+        Block,
+        SBlock,
+        PBlock,
+        Client,
+        SClient,
+        PClient,
+        TransactionPool,
+        Backend,
+        E,
+    >
+where
+    Block: BlockT,
+    SBlock: BlockT,
+    PBlock: BlockT,
+{
+    fn clone(&self) -> Self {
+        Self {
+            primary_chain_client: self.primary_chain_client.clone(),
+            client: self.client.clone(),
+            spawner: self.spawner.clone(),
+            transaction_pool: self.transaction_pool.clone(),
+            backend: self.backend.clone(),
+            fraud_proof_generator: self.fraud_proof_generator.clone(),
+            _phantom_data: self._phantom_data,
+        }
+    }
+}
+
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+    GossipMessageValidator<
+        Block,
+        SBlock,
+        PBlock,
+        Client,
+        SClient,
+        PClient,
+        TransactionPool,
+        Backend,
+        E,
+    >
+where
+    Block: BlockT,
+    SBlock: BlockT,
+    PBlock: BlockT,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
+    Client::Api: DomainCoreApi<Block, AccountId>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<
+            Block,
+            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+        >,
+    for<'b> &'b Client: sc_consensus::BlockImport<
+        Block,
+        Transaction = sp_api::TransactionFor<Client, Block>,
+        Error = sp_consensus::Error,
+    >,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    E: CodeExecutor,
+{
+    pub fn new(
+        primary_chain_client: Arc<PClient>,
+        client: Arc<Client>,
+        spawner: Box<dyn SpawnNamed + Send + Sync>,
+        transaction_pool: Arc<TransactionPool>,
+        backend: Arc<Backend>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    ) -> Self {
+        Self {
+            primary_chain_client,
+            client,
+            spawner,
+            transaction_pool,
+            backend,
+            fraud_proof_generator,
+            _phantom_data: PhantomData::default(),
+        }
+    }
+
     /// The background is that a receipt received from the network points to a future block
     /// from the local view, so we need to wait for the receipt for the block at the same
     /// height to be produced locally in order to check the validity of the external receipt.
@@ -366,7 +494,17 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 
 impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
     GossipMessageHandler<PBlock, Block>
-    for Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+    for GossipMessageValidator<
+        Block,
+        SBlock,
+        PBlock,
+        Client,
+        SClient,
+        PClient,
+        TransactionPool,
+        Backend,
+        E,
+    >
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -437,6 +575,7 @@ where
 
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {
+            // TODO: report to the system domain instead of primary chain.
             self.primary_chain_client
                 .runtime_api()
                 .submit_bundle_equivocation_proof_unsigned(
