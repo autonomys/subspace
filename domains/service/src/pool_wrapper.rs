@@ -4,7 +4,7 @@ use codec::Decode;
 use core_payments_domain_runtime::RuntimeApi as CorePaymentsRuntimeApi;
 use frame_benchmarking::frame_support::inherent::BlockT;
 use sc_transaction_pool_api::error::Error as TxPoolError;
-use sc_transaction_pool_api::{PoolFuture, TransactionPool};
+use sc_transaction_pool_api::{PoolFuture, TransactionPool, TxHash};
 use sp_blockchain::HeaderBackend;
 use sp_domains::DomainId;
 use sp_runtime::generic::BlockId;
@@ -39,7 +39,7 @@ type DomainExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic
 
 impl<Hash> Default for DomainTransactionPoolRouter<Hash>
 where
-    Hash: Default,
+    Hash: Default + From<TxHash<SystemDomainTxPool>> + From<TxHash<CorePaymentsDomainTxPool>>,
 {
     fn default() -> Self {
         Self::new()
@@ -48,7 +48,7 @@ where
 
 impl<Hash> DomainTransactionPoolRouter<Hash>
 where
-    Hash: Default,
+    Hash: Default + From<TxHash<SystemDomainTxPool>> + From<TxHash<CorePaymentsDomainTxPool>>,
 {
     pub fn new() -> Self {
         DomainTransactionPoolRouter {
@@ -65,14 +65,9 @@ where
         ext_encoded: Vec<u8>,
     ) -> PoolFuture<Hash, TxPoolError> {
         if domain_id.is_system() {
-            return Self::submit_extrinsic_to_txpool(&self.system_domain, tx_source, ext_encoded);
-        }
-        if domain_id == DomainId::CORE_PAYMENTS {
-            return Self::submit_extrinsic_to_txpool(
-                &self.core_payments_domain,
-                tx_source,
-                ext_encoded,
-            );
+            Self::submit_extrinsic_to_txpool(&self.system_domain, tx_source, ext_encoded)
+        } else if domain_id == DomainId::CORE_PAYMENTS {
+            Self::submit_extrinsic_to_txpool(&self.core_payments_domain, tx_source, ext_encoded)
         } else {
             Box::pin(async move { Err(TxPoolError::ImmediatelyDropped) })
         }
@@ -86,6 +81,7 @@ where
     where
         TxPool: TransactionPool + 'static,
         Client: HeaderBackend<DomainBlockOf<TxPool>>,
+        Hash: From<TxHash<TxPool>>,
     {
         if let Some((client, pool)) = maybe_client_and_pool {
             let pool = pool.clone();
@@ -97,9 +93,8 @@ where
             let at = BlockId::Hash(client.info().best_hash);
             Box::pin(async move {
                 let res = pool.submit_one(&at, tx_source, ext).await;
-                // TODO: dont know what to do with tx hash of the domain pool yet
                 match res {
-                    Ok(_) => Ok(Default::default()),
+                    Ok(hash) => Ok(hash.into()),
                     Err(_err) => Err(TxPoolError::ImmediatelyDropped),
                 }
             })

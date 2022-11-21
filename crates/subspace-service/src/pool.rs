@@ -18,6 +18,7 @@ use sc_transaction_pool_api::{
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
+use sp_core::H256;
 use sp_domains::domain_txns::DomainExtrinsic;
 use sp_domains::ExecutorApi;
 use sp_runtime::generic::BlockId;
@@ -229,6 +230,7 @@ where
 pub struct BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     PoolApi: ChainApi<Block = Block> + 'static,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
     Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
@@ -241,6 +243,7 @@ where
 impl<Block, Client, PoolApi> BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     PoolApi: ChainApi<Block = Block> + 'static,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync,
     Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
@@ -299,6 +302,7 @@ impl<Block, Client, Verifier> sc_transaction_pool_api::LocalTransactionPool
     for BasicPoolWrapper<Block, Client, FullChainApiWrapper<Block, Client, Verifier>>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
@@ -351,6 +355,7 @@ where
 impl<Block, Client, PoolApi> TransactionPool for BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     PoolApi: ChainApi<Block = Block> + 'static,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
     Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
@@ -433,6 +438,7 @@ where
 impl<Block, Client, PoolApi> MaintainedTransactionPool for BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     PoolApi: ChainApi<Block = Block> + 'static,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
     Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
@@ -446,6 +452,7 @@ impl<Block, Client, PoolApi> parity_util_mem::MallocSizeOf
     for BasicPoolWrapper<Block, Client, PoolApi>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     PoolApi: ChainApi<Block = Block> + 'static,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync,
     Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
@@ -464,6 +471,7 @@ pub(super) fn new_full<Block, Client, Verifier>(
 ) -> Arc<FullPool<Block, Client, Verifier>>
 where
     Block: BlockT,
+    <Block as BlockT>::Hash: From<H256>,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>

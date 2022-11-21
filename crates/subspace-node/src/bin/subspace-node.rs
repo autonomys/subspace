@@ -29,6 +29,7 @@ use sc_consensus_slots::SlotProportion;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
+use sp_core::H256;
 use sp_domains::DomainId;
 use std::any::TypeId;
 use subspace_node::{Cli, CoreDomainCli, ExecutorDispatch, SecondaryChainCli, Subcommand};
@@ -537,7 +538,7 @@ fn create_domain_partial_components<Hash>(
     primary_chain_config: &sc_service::Configuration,
 ) -> Result<DomainComponents<Hash>, sc_cli::Error>
 where
-    Hash: Default,
+    Hash: Default + From<H256>,
 {
     // create partial components for secondary and core payments domain
     let mut domain_components = DomainComponents {
