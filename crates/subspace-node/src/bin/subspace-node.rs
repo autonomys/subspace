@@ -384,8 +384,8 @@ fn main() -> Result<(), Error> {
 
                         (!cli.dsn_listen_on.is_empty()).then_some(DsnConfig {
                             keypair: network_keypair,
-                            dsn_listen_on: cli.dsn_listen_on,
-                            dsn_bootstrap_node: cli.dsn_bootstrap_node,
+                            listen_on: cli.dsn_listen_on,
+                            bootstrap_nodes: cli.dsn_bootstrap_nodes,
                         })
                     };
 

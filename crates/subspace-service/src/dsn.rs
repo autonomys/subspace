@@ -20,11 +20,11 @@ pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
 pub struct DsnConfig {
-    /// DSN 'listen-on' multi-address
-    pub dsn_listen_on: Vec<Multiaddr>,
+    /// Where local DSN node will listen for incoming connections.
+    pub listen_on: Vec<Multiaddr>,
 
-    /// DSN 'bootstrap_node' multi-address
-    pub dsn_bootstrap_node: Vec<Multiaddr>,
+    /// Bootstrap nodes for DSN.
+    pub bootstrap_nodes: Vec<Multiaddr>,
 
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -55,10 +55,10 @@ where
         CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>,
     > {
         keypair: dsn_config.keypair,
-        listen_on: dsn_config.dsn_listen_on,
+        listen_on: dsn_config.listen_on,
         allow_non_globals_in_dht: true,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(
-            dsn_config.dsn_bootstrap_node,
+            dsn_config.bootstrap_nodes,
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
