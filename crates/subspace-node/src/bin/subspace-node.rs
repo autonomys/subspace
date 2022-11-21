@@ -382,10 +382,27 @@ fn main() -> Result<(), Error> {
                                 ))
                             })?;
 
+                        let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
+                            primary_chain_config
+                                .chain_spec
+                                .properties()
+                                .get("dsnBootstrapNodes")
+                                .map(|d| serde_json::from_value(d.clone()))
+                                .transpose()
+                                .map_err(|error| {
+                                    sc_service::Error::Other(format!(
+                                        "Failed to decode DSN bootsrap nodes: {error:?}"
+                                    ))
+                                })?
+                                .unwrap_or_default()
+                        } else {
+                            cli.dsn_bootstrap_nodes
+                        };
+
                         (!cli.dsn_listen_on.is_empty()).then_some(DsnConfig {
                             keypair: network_keypair,
                             listen_on: cli.dsn_listen_on,
-                            bootstrap_nodes: cli.dsn_bootstrap_nodes,
+                            bootstrap_nodes: dsn_bootstrap_nodes,
                         })
                     };
 
@@ -517,7 +534,10 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                        let core_domain_config = Configuration::new(core_domain_service_config, core_domain_cli.relayer_id);
+                        let core_domain_config = Configuration::new(
+                            core_domain_service_config,
+                            core_domain_cli.relayer_id,
+                        );
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
@@ -547,7 +567,8 @@ fn main() -> Result<(), Error> {
                             }
                             _ => {
                                 return Err(Error::Other(format!(
-                                    "Invalid domain id, currently only core-payments domain is supported, please rerun with `--domain-id={:?}`",
+                                    "Invalid domain id, currently only core-payments domain is \
+                                    supported, please rerun with `--domain-id={:?}`",
                                     u32::from(DomainId::CORE_PAYMENTS)
                                 )));
                             }
