@@ -333,13 +333,20 @@ where
         .runtime_api()
         .extrinsics_shuffling_seed(&block_id, header)?;
 
-    let core_bundles = primary_chain_client
-        .runtime_api()
-        .extract_core_bundles(&block_id, extrinsics, domain_id)?;
+    let domain_bundles = if domain_id.is_system() {
+        todo!("Migrate system_domain_worker to be based on domain_worker")
+    } else if domain_id.is_core() {
+        let core_bundles = primary_chain_client
+            .runtime_api()
+            .extract_core_bundles(&block_id, extrinsics, domain_id)?;
+        DomainBundles::Core(core_bundles)
+    } else {
+        unreachable!("Open domains are unsupported")
+    };
 
     processor(
         (block_hash, block_number, fork_choice),
-        DomainBundles::Core(core_bundles),
+        domain_bundles,
         shuffling_seed,
         maybe_new_runtime,
     )
