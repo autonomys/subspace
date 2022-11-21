@@ -18,8 +18,8 @@ pub type CorePaymentsDomainTxPool =
 
 pub struct DomainTransactionPoolWrapper<Hash> {
     _phantom_data: PhantomData<Hash>,
-    system_domain_tx_pool: Option<Arc<SystemDomainTxPool>>,
-    core_payments_domain_tx_pool: Option<Arc<CorePaymentsDomainTxPool>>,
+    pub system_domain_tx_pool: Option<Arc<SystemDomainTxPool>>,
+    pub core_payments_domain_tx_pool: Option<Arc<CorePaymentsDomainTxPool>>,
 }
 
 type DomainExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;

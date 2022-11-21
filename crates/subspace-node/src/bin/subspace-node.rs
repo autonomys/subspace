@@ -17,9 +17,11 @@
 //! Subspace node implementation.
 
 use domain_service::{
-    Configuration, CorePaymentsDomainExecutorDispatch, SystemDomainExecutorDispatch,
+    Configuration, CoreDomainPartialComponents, CorePaymentsDomainExecutorDispatch,
+    DomainTransactionPoolWrapper, SystemDomainExecutorDispatch, SystemDomainPartialComponents,
 };
 use frame_benchmarking_cli::BenchmarkCmd;
+use frame_support::inherent::BlockT;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
@@ -29,7 +31,7 @@ use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_domains::DomainId;
 use std::any::TypeId;
-use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
+use subspace_node::{Cli, CoreDomainCli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
@@ -98,7 +100,10 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                    &config,
+                    Default::default(),
+                )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -113,7 +118,10 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                    &config,
+                    Default::default(),
+                )?;
                 Ok((
                     cmd.run(client, config.database)
                         .map_err(Error::SubstrateCli),
@@ -129,7 +137,10 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                    &config,
+                    Default::default(),
+                )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
                         .map_err(Error::SubstrateCli),
@@ -146,7 +157,10 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                    &config,
+                    Default::default(),
+                )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -162,7 +176,10 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                    &config,
+                    Default::default(),
+                )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -227,7 +244,10 @@ fn main() -> Result<(), Error> {
                     backend,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                    &config,
+                    Default::default(),
+                )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
                     task_manager,
@@ -258,14 +278,20 @@ fn main() -> Result<(), Error> {
                     }
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } =
-                            subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                            subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                                &config,
+                                Default::default(),
+                            )?;
 
                         cmd.run(client)
                     }
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
-                        } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                        } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(
+                            &config,
+                            Default::default(),
+                        )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
@@ -316,14 +342,7 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|primary_chain_config| async move {
-                let tokio_handle = primary_chain_config.tokio_handle.clone();
-
-                let maybe_secondary_chain_spec = primary_chain_config
-                    .chain_spec
-                    .extensions()
-                    .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
-                    .downcast_ref()
-                    .cloned();
+                let domain_partial_components = create_domain_partial_components::<<Block as BlockT>::Hash>(&cli, &primary_chain_config)?;
 
                 // TODO: proper value
                 let block_import_throttling_buffer_size = 10;
@@ -365,6 +384,7 @@ fn main() -> Result<(), Error> {
                         primary_chain_config,
                         true,
                         SlotProportion::new(2f32 / 3f32),
+                        domain_partial_components.transaction_pool_wrapper
                     )
                     .await
                     .map_err(|error| {
@@ -375,41 +395,12 @@ fn main() -> Result<(), Error> {
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
-                if !cli.secondary_chain_args.is_empty() {
+                if let Some((_secondary_chain_cli,secondary_chain_config,secondary_chain_components)) = domain_partial_components.maybe_system_domain_components{
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "SecondaryChain"
                     );
                     let _enter = span.enter();
-
-                    let (mut secondary_chain_cli, maybe_core_domain_cli) = SecondaryChainCli::new(
-                        cli.run
-                            .base_path()?
-                            .map(|base_path| base_path.path().to_path_buf()),
-                        maybe_secondary_chain_spec.ok_or_else(|| {
-                            "Primary chain spec must contain secondary chain spec".to_string()
-                        })?,
-                        cli.secondary_chain_args.iter(),
-                    );
-
-                    // Increase default number of peers
-                    if secondary_chain_cli.run.run_system.network_params.out_peers == 25 {
-                        secondary_chain_cli.run.run_system.network_params.out_peers = 50;
-                    }
-
-                    let service_config = SubstrateCli::create_configuration(
-                        &secondary_chain_cli,
-                        &secondary_chain_cli,
-                        tokio_handle.clone(),
-                    )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to create secondary chain configuration: {error:?}"
-                        ))
-                    })?;
-
-                    let secondary_chain_config =
-                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id);
 
                     let imported_block_notification_stream = || {
                         primary_chain_node
@@ -446,6 +437,7 @@ fn main() -> Result<(), Error> {
                         SystemDomainExecutorDispatch,
                     >(
                         secondary_chain_config,
+                        secondary_chain_components,
                         primary_chain_node.client.clone(),
                         primary_chain_node.network.clone(),
                         &primary_chain_node.select_chain,
@@ -459,30 +451,12 @@ fn main() -> Result<(), Error> {
                         .task_manager
                         .add_child(secondary_chain_node.task_manager);
 
-                    if let Some(mut core_domain_cli) = maybe_core_domain_cli {
+                    if let Some((core_domain_cli,core_domain_config,core_domain_chain_components)) = domain_partial_components.maybe_core_payments_domain_components{
                         let span = sc_tracing::tracing::info_span!(
                             sc_tracing::logging::PREFIX_LOG_SPAN,
                             name = "CoreDomain"
                         );
                         let _enter = span.enter();
-
-                        // Increase default number of peers
-                        if core_domain_cli.run.network_params.out_peers == 25 {
-                            core_domain_cli.run.network_params.out_peers = 50;
-                        }
-
-                        let core_domain_service_config = SubstrateCli::create_configuration(
-                            &core_domain_cli,
-                            &core_domain_cli,
-                            tokio_handle,
-                        )
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to create core domain configuration: {error:?}"
-                            ))
-                        })?;
-
-                        let core_domain_config = Configuration::new(core_domain_service_config, core_domain_cli.relayer_id);
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
@@ -499,6 +473,7 @@ fn main() -> Result<(), Error> {
                                 >(
                                     core_domain_cli.domain_id,
                                     core_domain_config,
+                                    core_domain_chain_components,
                                     secondary_chain_node.client.clone(),
                                     secondary_chain_node.network.clone(),
                                     primary_chain_node.client.clone(),
@@ -535,6 +510,129 @@ fn main() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+struct DomainComponents<Hash> {
+    transaction_pool_wrapper: DomainTransactionPoolWrapper<Hash>,
+    maybe_system_domain_components: Option<(
+        SecondaryChainCli,
+        Configuration,
+        SystemDomainPartialComponents<
+            system_domain_runtime::RuntimeApi,
+            SystemDomainExecutorDispatch,
+        >,
+    )>,
+    maybe_core_payments_domain_components: Option<(
+        CoreDomainCli,
+        Configuration,
+        CoreDomainPartialComponents<
+            core_payments_domain_runtime::RuntimeApi,
+            CorePaymentsDomainExecutorDispatch,
+        >,
+    )>,
+}
+
+fn create_domain_partial_components<Hash>(
+    cli: &Cli,
+    primary_chain_config: &sc_service::Configuration,
+) -> Result<DomainComponents<Hash>, sc_cli::Error>
+where
+    Hash: Default,
+{
+    // create partial components for secondary and core payments domain
+    let mut domain_components = DomainComponents {
+        transaction_pool_wrapper: DomainTransactionPoolWrapper::new(),
+        maybe_system_domain_components: None,
+        maybe_core_payments_domain_components: None,
+    };
+    if !cli.secondary_chain_args.is_empty() {
+        let tokio_handle = primary_chain_config.tokio_handle.clone();
+        let maybe_secondary_chain_spec = primary_chain_config
+            .chain_spec
+            .extensions()
+            .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
+            .downcast_ref()
+            .cloned();
+
+        let (mut secondary_chain_cli, maybe_core_domain_cli) = SecondaryChainCli::new(
+            cli.run
+                .base_path()?
+                .map(|base_path| base_path.path().to_path_buf()),
+            maybe_secondary_chain_spec.ok_or_else(|| {
+                "Primary chain spec must contain secondary chain spec".to_string()
+            })?,
+            cli.secondary_chain_args.iter(),
+        );
+
+        // Increase default number of peers
+        if secondary_chain_cli.run.run_system.network_params.out_peers == 25 {
+            secondary_chain_cli.run.run_system.network_params.out_peers = 50;
+        }
+
+        let service_config = SubstrateCli::create_configuration(
+            &secondary_chain_cli,
+            &secondary_chain_cli,
+            tokio_handle.clone(),
+        )
+        .map_err(|error| {
+            sc_service::Error::Other(format!(
+                "Failed to create secondary chain configuration: {error:?}"
+            ))
+        })?;
+
+        let system_domain_partial_components = domain_service::new_partial(&service_config)?;
+        let secondary_chain_config =
+            Configuration::new(service_config, secondary_chain_cli.run.relayer_id.clone());
+
+        domain_components
+            .transaction_pool_wrapper
+            .system_domain_tx_pool =
+            Some(system_domain_partial_components.transaction_pool.clone());
+        domain_components.maybe_system_domain_components = Some((
+            secondary_chain_cli,
+            secondary_chain_config,
+            system_domain_partial_components,
+        ));
+
+        // create core domain partial components
+        if let Some(mut core_domain_cli) = maybe_core_domain_cli {
+            // Increase default number of peers
+            if core_domain_cli.run.network_params.out_peers == 25 {
+                core_domain_cli.run.network_params.out_peers = 50;
+            }
+
+            let core_domain_service_config = SubstrateCli::create_configuration(
+                &core_domain_cli,
+                &core_domain_cli,
+                tokio_handle,
+            )
+            .map_err(|error| {
+                sc_service::Error::Other(format!(
+                    "Failed to create core domain configuration: {error:?}"
+                ))
+            })?;
+
+            let core_domain_partial_components =
+                domain_service::new_partial_core(&core_domain_service_config)?;
+
+            let core_domain_config = Configuration::new(
+                core_domain_service_config,
+                core_domain_cli.relayer_id.clone(),
+            );
+
+            domain_components
+                .transaction_pool_wrapper
+                .core_payments_domain_tx_pool =
+                Some(core_domain_partial_components.transaction_pool.clone());
+            domain_components.maybe_core_payments_domain_components = Some((
+                core_domain_cli,
+                core_domain_config,
+                core_domain_partial_components,
+            ));
+        }
+    }
+
+    Ok(domain_components)
 }
 
 #[cfg(test)]

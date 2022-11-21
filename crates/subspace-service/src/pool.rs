@@ -251,6 +251,7 @@ where
         prometheus: Option<&PrometheusRegistry>,
         spawner: Spawn,
         client: Arc<Client>,
+        domain_tx_pool_wrapper: DomainTransactionPoolWrapper<TxHash<Self>>,
     ) -> Self
     where
         Client: UsageProvider<Block>,
@@ -271,7 +272,7 @@ where
         Self {
             primary_tx_pool: basic_pool,
             primary_client: client,
-            domain_tx_pool_wrapper: DomainTransactionPoolWrapper::<TxHash<Self>>::new(),
+            domain_tx_pool_wrapper,
         }
     }
 
@@ -459,6 +460,7 @@ pub(super) fn new_full<Block, Client, Verifier>(
     task_manager: &TaskManager,
     client: Arc<Client>,
     verifier: Verifier,
+    domain_tx_pool_wrapper: DomainTransactionPoolWrapper<<Block as BlockT>::Hash>,
 ) -> Arc<FullPool<Block, Client, Verifier>>
 where
     Block: BlockT,
@@ -489,6 +491,7 @@ where
         prometheus,
         task_manager.spawn_essential_handle(),
         client.clone(),
+        domain_tx_pool_wrapper,
     ));
 
     // make transaction pool available for off-chain runtime calls.

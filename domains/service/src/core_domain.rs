@@ -12,8 +12,9 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
-    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
-    SpawnTasksParams, TFullBackend, TFullClient, TaskManager,
+    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter,
+    PartialComponents as ServicePartialComponents, SpawnTasksParams, TFullBackend, TFullClient,
+    TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
@@ -45,6 +46,20 @@ pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullPool<Client> =
     sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>;
 
+pub type PartialComponents<RuntimeApi, Executor> = ServicePartialComponents<
+    FullClient<RuntimeApi, Executor>,
+    TFullBackend<Block>,
+    (),
+    sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
+    sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, Executor>>,
+    (
+        Option<Telemetry>,
+        Option<TelemetryWorkerHandle>,
+        NativeElseWasmExecutor<Executor>,
+        SubspaceNotificationStream<NumberFor<Block>>,
+    ),
+>;
+
 /// Core payments domain executor instance.
 pub struct CorePaymentsDomainExecutorDispatch;
 
@@ -68,24 +83,9 @@ impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
 /// Use this macro if you don't actually need the full service, but just the builder in order to
 /// be able to perform chain operations.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor>(
+pub fn new_partial<RuntimeApi, Executor>(
     config: &ServiceConfiguration,
-) -> Result<
-    PartialComponents<
-        FullClient<RuntimeApi, Executor>,
-        TFullBackend<Block>,
-        (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
-        sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, Executor>>,
-        (
-            Option<Telemetry>,
-            Option<TelemetryWorkerHandle>,
-            NativeElseWasmExecutor<Executor>,
-            SubspaceNotificationStream<NumberFor<Block>>,
-        ),
-    >,
-    sc_service::Error,
->
+) -> Result<PartialComponents<RuntimeApi, Executor>, sc_service::Error>
 where
     RuntimeApi:
         ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
@@ -234,6 +234,7 @@ pub async fn new_full<
 >(
     domain_id: DomainId,
     mut secondary_chain_config: Configuration,
+    partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,
     system_domain_client: Arc<SClient>,
     secondary_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
     primary_chain_client: Arc<PClient>,
@@ -296,24 +297,22 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial(&secondary_chain_config.service_config)?;
-
     let (mut telemetry, _telemetry_worker_handle, code_executor, import_block_notification_stream) =
-        params.other;
+        partial_components.other;
 
-    let client = params.client.clone();
-    let backend = params.backend.clone();
+    let client = partial_components.client.clone();
+    let backend = partial_components.backend.clone();
 
     let validator = secondary_chain_config.service_config.role.is_authority();
-    let transaction_pool = params.transaction_pool.clone();
-    let mut task_manager = params.task_manager;
+    let transaction_pool = partial_components.transaction_pool.clone();
+    let mut task_manager = partial_components.task_manager;
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(BuildNetworkParams {
             config: &secondary_chain_config.service_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
-            import_queue: params.import_queue,
+            import_queue: partial_components.import_queue,
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
             warp_sync: None,
@@ -345,7 +344,7 @@ where
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
         config: secondary_chain_config.service_config,
-        keystore: params.keystore_container.sync_keystore(),
+        keystore: partial_components.keystore_container.sync_keystore(),
         backend: backend.clone(),
         network: network.clone(),
         system_rpc_tx,
@@ -374,7 +373,7 @@ where
         backend.clone(),
         code_executor.clone(),
         validator,
-        params.keystore_container.sync_keystore(),
+        partial_components.keystore_container.sync_keystore(),
         block_import_throttling_buffer_size,
     )
     .await?;
@@ -417,7 +416,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
-        transaction_pool: params.transaction_pool,
+        transaction_pool: partial_components.transaction_pool,
     };
 
     Ok(new_full)

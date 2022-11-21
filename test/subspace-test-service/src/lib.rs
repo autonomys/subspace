@@ -195,6 +195,7 @@ pub async fn run_validator_node(
             primary_chain_config,
             false,
             SlotProportion::new(98f32 / 100f32),
+            Default::default(),
         )
         .await
         .expect("Failed to create Subspace primary node")

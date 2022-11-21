@@ -24,6 +24,7 @@ pub mod rpc;
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
+use domain_service::DomainTransactionPoolWrapper;
 use dsn::start_dsn_node;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -144,6 +145,7 @@ impl From<Configuration> for SubspaceConfiguration {
 #[allow(clippy::type_complexity)]
 pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
+    domain_transaction_pool_wrapper: DomainTransactionPoolWrapper<<Block as BlockT>::Hash>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -231,6 +233,7 @@ where
         &task_manager,
         client.clone(),
         proof_verifier.clone(),
+        domain_transaction_pool_wrapper,
     );
 
     let fraud_proof_block_import =
@@ -381,6 +384,7 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
+    domain_transaction_pool_wrapper: DomainTransactionPoolWrapper<<Block as BlockT>::Hash>,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
 where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
@@ -409,7 +413,7 @@ where
         select_chain,
         transaction_pool,
         other: (block_import, subspace_link, piece_cache, mut telemetry),
-    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config, domain_transaction_pool_wrapper)?;
 
     if let Some(dsn_config) = config.dsn_config.clone() {
         let piece_cache = piece_cache.clone();

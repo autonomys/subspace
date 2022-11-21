@@ -129,6 +129,7 @@ async fn run_executor(
             primary_chain_config,
             false,
             SlotProportion::new(98f32 / 100f32),
+            Default::default(),
         )
         .await
         .map_err(|e| {
@@ -136,6 +137,7 @@ async fn run_executor(
         })?
     };
 
+    let partial_components = domain_service::new_partial(&secondary_chain_config)?;
     let secondary_chain_config = Configuration::new(secondary_chain_config, None);
     let block_import_throttling_buffer_size = 10;
     let secondary_chain_node = domain_service::new_full::<
@@ -148,6 +150,7 @@ async fn run_executor(
         RuntimeExecutor,
     >(
         secondary_chain_config,
+        partial_components,
         primary_chain_full_node.client.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,

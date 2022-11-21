@@ -22,6 +22,7 @@ mod core_domain;
 mod import_blocks_from_dsn;
 mod secondary_chain;
 
+pub use crate::core_domain::cli::CoreDomainCli;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::secondary_chain::cli::SecondaryChainCli;
 use clap::Parser;

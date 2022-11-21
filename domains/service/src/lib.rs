@@ -6,9 +6,13 @@ mod rpc;
 mod system_domain;
 
 pub use self::core_domain::{
-    new_full as new_full_core, CorePaymentsDomainExecutorDispatch, NewFull as NewFullCore,
+    new_full as new_full_core, new_partial as new_partial_core, CorePaymentsDomainExecutorDispatch,
+    NewFull as NewFullCore, PartialComponents as CoreDomainPartialComponents,
 };
-pub use self::system_domain::{new_full, NewFull, SystemDomainExecutorDispatch};
+pub use self::system_domain::{
+    new_full, new_partial, NewFull, PartialComponents as SystemDomainPartialComponents,
+    SystemDomainExecutorDispatch,
+};
 pub use crate::pool_wrapper::DomainTransactionPoolWrapper;
 use domain_runtime_primitives::RelayerId;
 use sc_service::Configuration as ServiceConfiguration;
