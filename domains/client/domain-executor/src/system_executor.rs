@@ -14,7 +14,7 @@ use sc_consensus::ForkChoiceStrategy;
 use sc_network::NetworkService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockStatus, SelectChain};
+use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
@@ -191,69 +191,6 @@ where
             fraud_proof_generator,
             bundle_processor,
         })
-    }
-
-    /// Checks the status of the given block hash in the Parachain.
-    ///
-    /// Returns `true` if the block could be found and is good to be build on.
-    #[allow(unused)]
-    fn check_block_status(
-        &self,
-        hash: Block::Hash,
-        number: <Block::Header as HeaderT>::Number,
-    ) -> bool {
-        match self.client.block_status(&BlockId::Hash(hash)) {
-            Ok(BlockStatus::Queued) => {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    block_hash = ?hash,
-                    "Skipping candidate production, because block is still queued for import.",
-                );
-                false
-            }
-            Ok(BlockStatus::InChainWithState) => true,
-            Ok(BlockStatus::InChainPruned) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    "Skipping candidate production, because block `{:?}` is already pruned!",
-                    hash,
-                );
-                false
-            }
-            Ok(BlockStatus::KnownBad) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    block_hash = ?hash,
-                    "Block is tagged as known bad and is included in the relay chain! Skipping candidate production!",
-                );
-                false
-            }
-            Ok(BlockStatus::Unknown) => {
-                if number.is_zero() {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        block_hash = ?hash,
-                        "Could not find the header of the genesis block in the database!",
-                    );
-                } else {
-                    tracing::debug!(
-                        target: LOG_TARGET,
-                        block_hash = ?hash,
-                        "Skipping candidate production, because block is unknown.",
-                    );
-                }
-                false
-            }
-            Err(e) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    block_hash = ?hash,
-                    error = ?e,
-                    "Failed to get block status.",
-                );
-                false
-            }
-        }
     }
 
     /// The background is that a receipt received from the network points to a future block

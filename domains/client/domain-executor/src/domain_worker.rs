@@ -314,6 +314,7 @@ where
         Ok(Some(header)) => header,
     };
 
+    // TODO: handle the core domain runtime upgrade properly.
     let maybe_new_runtime = if header
         .digest()
         .logs
