@@ -126,18 +126,8 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
-    /// Subspace networking configuration (for DSN). Will not be started if set to `None`.
-    pub dsn_config: Option<DsnConfig>,
-}
-
-impl From<Configuration> for SubspaceConfiguration {
-    fn from(base: Configuration) -> Self {
-        Self {
-            base,
-            force_new_slot_notifications: false,
-            dsn_config: None,
-        }
-    }
+    /// Subspace networking configuration (for DSN).
+    pub dsn_config: DsnConfig,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -411,31 +401,32 @@ where
         other: (block_import, subspace_link, piece_cache, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    if let Some(dsn_config) = config.dsn_config.clone() {
-        let piece_cache = piece_cache.clone();
-        start_dsn_node(
-            &subspace_link,
-            dsn_config,
-            task_manager.spawn_essential_handle(),
-            piece_cache.clone(),
-            Arc::new(move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()),
-            Arc::new({
-                let client = client.clone();
+    start_dsn_node(
+        &subspace_link,
+        config.dsn_config.clone(),
+        task_manager.spawn_essential_handle(),
+        piece_cache.clone(),
+        Arc::new({
+            let piece_cache = piece_cache.clone();
 
-                move || {
-                    let best_block_id = BlockId::Hash(client.info().best_hash);
-                    let total_pieces = client
-                        .runtime_api()
-                        .total_pieces(&best_block_id)
-                        .expect("Can't receive total pieces number.");
+            move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()
+        }),
+        Arc::new({
+            let client = client.clone();
 
-                    // segment index with a zero-based index-shift
-                    (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
-                }
-            }),
-        )
-        .await?;
-    }
+            move || {
+                let best_block_id = BlockId::Hash(client.info().best_hash);
+                let total_pieces = client
+                    .runtime_api()
+                    .total_pieces(&best_block_id)
+                    .expect("Can't receive total pieces number.");
+
+                // segment index with a zero-based index-shift
+                (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
+            }
+        }),
+    )
+    .await?;
 
     sc_consensus_subspace::start_subspace_archiver(
         &subspace_link,

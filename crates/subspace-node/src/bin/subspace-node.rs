@@ -399,11 +399,11 @@ fn main() -> Result<(), Error> {
                             cli.dsn_bootstrap_nodes
                         };
 
-                        (!cli.dsn_listen_on.is_empty()).then_some(DsnConfig {
+                        DsnConfig {
                             keypair: network_keypair,
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
-                        })
+                        }
                     };
 
                     let primary_chain_config = SubspaceConfiguration {
