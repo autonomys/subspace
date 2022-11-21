@@ -87,7 +87,9 @@ use subspace_core_primitives::{
     PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
+use subspace_verification::{
+    derive_audit_chunk, Error as VerificationPrimitiveError, VerifySolutionParams,
+};
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -1081,13 +1083,13 @@ where
 
             let local_challenge = sector_id.derive_local_challenge(&global_challenge);
 
-            let expanded_chunk = pre_digest.solution.chunk.expand(local_challenge);
+            let audit_chunk = derive_audit_chunk(&pre_digest.solution.chunk.to_bytes());
 
             BlockWeight::from(
                 SolutionRange::MAX
                     - subspace_core_primitives::bidirectional_distance(
                         &local_challenge,
-                        &expanded_chunk,
+                        &audit_chunk,
                     ),
             )
         };

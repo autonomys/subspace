@@ -58,11 +58,7 @@ where
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
-    let genesis_hash = client
-        .block_hash(0)
-        .ok()
-        .flatten()
-        .expect("Genesis block exists; qed");
+    let genesis_hash = client.info().genesis_hash;
     let properties = chain_spec.properties();
     module.merge(ChainSpec::new(chain_name, genesis_hash, properties).into_rpc())?;
 

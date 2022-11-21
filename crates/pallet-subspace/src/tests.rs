@@ -22,7 +22,7 @@ use crate::mock::{
     RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
-    pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
+    pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, ChunkOffset, Config,
     CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, Error, ParentBlockAuthorInfo,
     ParentBlockVoters, RecordsRoot, SubspaceEquivocationOffence, WeightInfo,
 };
@@ -1164,6 +1164,7 @@ fn vote_equivocation_current_block_plus_vote() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             0,
+            ChunkOffset(0),
             slot,
             reward_address,
         ));
@@ -1215,6 +1216,7 @@ fn vote_equivocation_parent_block_plus_vote() {
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             sector_index,
+            ChunkOffset(0),
             slot,
         ));
 
@@ -1287,6 +1289,7 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    ChunkOffset(0),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1306,6 +1309,7 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    ChunkOffset(0),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1364,6 +1368,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    ChunkOffset(0),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1383,6 +1388,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    ChunkOffset(0),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1410,6 +1416,7 @@ fn enabling_block_rewards_works() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
             0,
+            ChunkOffset(0),
             Subspace::current_slot(),
             1,
         ));
@@ -1419,6 +1426,7 @@ fn enabling_block_rewards_works() {
                 (
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
                     0,
+                    ChunkOffset(0),
                     Subspace::current_slot(),
                 ),
                 (2, FarmerSignature::unchecked_from([0; 64])),

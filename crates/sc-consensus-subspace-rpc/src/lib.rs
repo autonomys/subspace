@@ -43,7 +43,7 @@ use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -203,8 +203,6 @@ where
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 total_pieces: runtime_api.total_pieces(&best_block_id)?,
                 // TODO: Fetch this from the runtime
-                space_l: NonZeroU16::new(20).expect("Not zero; qed"),
-                // TODO: Fetch this from the runtime
                 sector_expiration: 100,
             }
         };
@@ -279,6 +277,7 @@ where
                                     piece_offset: solution.piece_offset,
                                     piece_record_hash: solution.piece_record_hash,
                                     piece_witness: solution.piece_witness,
+                                    chunk_offset: solution.chunk_offset,
                                     chunk: solution.chunk,
                                     chunk_signature: solution.chunk_signature,
                                 };

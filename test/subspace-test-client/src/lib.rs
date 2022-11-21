@@ -20,28 +20,35 @@
 
 pub mod chain_spec;
 
-use bitvec::prelude::*;
+use async_trait::async_trait;
+use futures::executor::block_on;
 use futures::{SinkExt, StreamExt};
-use sc_client_api::BlockBackend;
+use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::{BlockId, ProvideRuntimeApi};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
-use sp_core::crypto::UncheckedFrom;
 use sp_core::{Decode, Encode};
-use std::num::{NonZeroU16, NonZeroU64};
+use std::error::Error;
+use std::io::Cursor;
+use std::num::{NonZeroU32, NonZeroU64};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
+use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Chunk, Piece, PieceIndex, PublicKey, SectorId, Solution, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, PublicKey, Solution, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
 };
+use subspace_farmer_components::farming::audit_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceReceiver};
+use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
-use subspace_solving::{create_chunk_signature, derive_chunk_otp, REWARD_SIGNING_CONTEXT};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 use zeroize::Zeroizing;
 
 /// Subspace native executor instance.
@@ -120,24 +127,33 @@ async fn start_farming<Client>(
     client: Arc<Client>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
 ) where
-    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + Send
+        + Sync
+        + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
-    let (archived_segment_sender, archived_segment_receiver) = futures::channel::oneshot::channel();
+    let (plotting_result_sender, plotting_result_receiver) = futures::channel::oneshot::channel();
+
+    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
 
     std::thread::spawn({
+        let keypair = keypair.clone();
+
         move || {
-            let archived_segment = get_archived_segment(client.as_ref());
-            archived_segment_sender.send(archived_segment).unwrap();
+            let (farmer_protocol_info, sector, sector_metadata) =
+                block_on(plot_one_segment(client.as_ref(), &keypair, &sector_codec));
+            plotting_result_sender
+                .send((farmer_protocol_info, sector, sector_metadata))
+                .unwrap();
         }
     });
 
-    // TODO: This constant should come from the chain itself
-    let space_l = NonZeroU16::new(20).unwrap();
-    let chunks_in_sector = u64::from(RECORD_SIZE) * u64::from(u8::BITS) / u64::from(space_l.get());
-    let archived_segment = archived_segment_receiver.await.unwrap();
-    let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as PieceIndex).unwrap();
+    let (farmer_protocol_info, sector, sector_metadata) = plotting_result_receiver.await.unwrap();
     let sector_index = 0;
+    let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
 
@@ -147,86 +163,64 @@ async fn start_farming<Client>(
     }) = new_slot_notification_stream.next().await
     {
         if u64::from(new_slot_info.slot) % 2 == 0 {
-            let sector_id =
-                SectorId::new(&PublicKey::from(keypair.public.to_bytes()), sector_index);
-            let local_challenge = sector_id.derive_local_challenge(&new_slot_info.global_challenge);
-            let audit_index: u64 = local_challenge % chunks_in_sector;
-            let audit_piece_offset = (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
-            // Offset of the piece in sector (in bytes)
-            let audit_piece_bytes_offset = audit_piece_offset * PIECE_SIZE as u64;
-            // Audit index (chunk) within corresponding piece
-            let audit_index_within_piece =
-                audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
-            let piece_index = sector_id.derive_piece_index(audit_piece_offset, total_pieces);
-            let mut piece = Piece::try_from(
-                archived_segment
-                    .pieces
-                    .as_pieces()
-                    .nth(piece_index as usize)
-                    .unwrap(),
+            let eligible_sector = audit_sector(
+                &public_key,
+                sector_index,
+                &new_slot_info.global_challenge,
+                new_slot_info.solution_range,
+                Cursor::new(&sector),
+            )
+            .unwrap()
+            .expect("With max solution range there must be a sector eligible; qed");
+            let solution = eligible_sector
+                .try_into_solutions(
+                    &keypair,
+                    public_key,
+                    &farmer_protocol_info,
+                    &sector_codec,
+                    sector.as_slice(),
+                    sector_metadata.as_slice(),
+                )
+                .unwrap()
+                .into_iter()
+                .next()
+                .expect("With max solution range there must be a solution; qed");
+            // Lazy conversion to a different type of public key and reward address
+            let solution = Solution::<FarmerPublicKey, FarmerPublicKey>::decode(
+                &mut solution.encode().as_slice(),
             )
             .unwrap();
-            // Encode piece
-            let (record, witness_bytes) = piece.split_at_mut(RECORD_SIZE as usize);
-            let piece_witness =
-                Witness::try_from_bytes((&*witness_bytes).try_into().unwrap()).unwrap();
-            let piece_record_hash = blake2b_256_254_hash(record);
-
-            // TODO: Extract encoding into separate function reusable in
-            //  farmer and otherwise
-            record
-                .view_bits_mut::<Lsb0>()
-                .chunks_mut(space_l.get() as usize)
-                .enumerate()
-                .for_each(|(chunk_index, bits)| {
-                    // Derive one-time pad
-                    let mut otp = derive_chunk_otp(&sector_id, witness_bytes, chunk_index as u32);
-                    // XOR chunk bit by bit with one-time pad
-                    bits.iter_mut()
-                        .zip(otp.view_bits_mut::<Lsb0>().iter())
-                        .for_each(|(mut a, b)| {
-                            *a ^= *b;
-                        });
-                });
-
-            // TODO: We are skipping witness part of the piece or else it is not
-            //  decodable
-            let maybe_chunk = piece[..RECORD_SIZE as usize]
-                .view_bits()
-                .chunks_exact(space_l.get() as usize)
-                .nth(audit_index_within_piece as usize);
-
-            let chunk = match maybe_chunk {
-                Some(chunk) => Chunk::from(chunk),
-                None => {
-                    // TODO: Record size is not multiple of `space_l`, last bits
-                    //  were not encoded and should not be used for solving
-                    continue;
-                }
-            };
-
-            let chunk_signature = create_chunk_signature(&keypair, &chunk);
-
-            let _ = solution_sender
-                .send(Solution {
-                    public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                    reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                    sector_index,
-                    total_pieces,
-                    piece_offset: audit_piece_offset,
-                    piece_record_hash,
-                    piece_witness,
-                    chunk,
-                    chunk_signature,
-                })
-                .await;
+            let _ = solution_sender.send(solution).await;
         }
     }
 }
 
-fn get_archived_segment<Client>(client: &Client) -> ArchivedSegment
+struct TestPieceReceiver {
+    archived_segment: ArchivedSegment,
+}
+
+#[async_trait]
+impl PieceReceiver for TestPieceReceiver {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        Ok(self
+            .archived_segment
+            .pieces
+            .as_pieces()
+            .nth(piece_index as usize)
+            .map(|piece_bytes| Piece::try_from(piece_bytes).unwrap()))
+    }
+}
+
+async fn plot_one_segment<Client>(
+    client: &Client,
+    keypair: &schnorrkel::Keypair,
+    sector_codec: &SectorCodec,
+) -> (FarmerProtocolInfo, Vec<u8>, Vec<u8>)
 where
-    Client: BlockBackend<Block>,
+    Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
     let genesis_block_id = BlockId::Number(sp_runtime::traits::Zero::zero());
 
@@ -234,14 +228,44 @@ where
     let mut archiver = subspace_archiving::archiver::Archiver::new(
         RECORD_SIZE,
         RECORDED_HISTORY_SEGMENT_SIZE,
-        kzg,
+        kzg.clone(),
     )
     .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
-    archiver
+    let archived_segment = archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default())
         .into_iter()
         .next()
-        .expect("First block is always producing one segment; qed")
+        .expect("First block is always producing one segment; qed");
+    let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();
+    let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+    let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
+    let sector_index = 0;
+    let piece_receiver = TestPieceReceiver { archived_segment };
+    let public_key = PublicKey::from(keypair.public.to_bytes());
+    let farmer_protocol_info = FarmerProtocolInfo {
+        genesis_hash: client.info().genesis_hash.to_fixed_bytes(),
+        record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
+        recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
+        total_pieces,
+        // TODO: This constant should come from the chain itself
+        sector_expiration: 100,
+    };
+
+    plot_sector(
+        &public_key,
+        sector_index,
+        &piece_receiver,
+        &AtomicBool::new(false),
+        &farmer_protocol_info,
+        &kzg,
+        sector_codec,
+        Cursor::new(sector.as_mut_slice()),
+        Cursor::new(sector_metadata.as_mut_slice()),
+    )
+    .await
+    .expect("Plotting one sector in memory must not fail");
+
+    (farmer_protocol_info, sector, sector_metadata)
 }

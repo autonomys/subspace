@@ -142,8 +142,8 @@ const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
-// We assume initial plot size starts with the a single sector, hence we have one attempt per time
-// slot.
+// We assume initial plot size starts with the a single sector, where we effectively audit each
+// chunk of every piece.
 const INITIAL_SOLUTION_RANGE: SolutionRange =
     SolutionRange::MAX / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0;
 
@@ -626,7 +626,7 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let seed: &[u8] = b"extrinsics-shuffling-seed";
         let randomness = derive_randomness(
             &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk,
+            &pre_digest.solution.chunk.to_bytes(),
             &pre_digest.solution.chunk_signature,
         )
         .expect("Tag signature is verified by the client and must always be valid; qed");
