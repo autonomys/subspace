@@ -40,8 +40,8 @@ use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, Chunk, LastArchivedBlock, Piece, Randomness,
-    RecordsRoot, RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
+    RootBlock, Scalar, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
     RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -139,7 +139,7 @@ parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
     // 1GB
-    pub const InitialSolutionRange: u64 = INITIAL_SOLUTION_RANGE;
+    pub const InitialSolutionRange: SolutionRange = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
@@ -197,8 +197,9 @@ pub fn go_to_block(
             piece_offset: 0,
             piece_record_hash: Default::default(),
             piece_witness: Default::default(),
+            chunk_offset: 0,
             chunk,
-            chunk_signature: create_chunk_signature(keypair, &chunk),
+            chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
         },
     );
 
@@ -253,12 +254,13 @@ pub fn generate_equivocation_proof(
     let current_block = System::block_number();
     let current_slot = CurrentSlot::<Test>::get();
 
-    let chunk: Chunk = {
-        let mut chunk = Chunk::default();
-        chunk.as_mut().iter_mut().for_each(|byte| {
+    let chunk = {
+        let mut chunk_bytes = [0; Scalar::SAFE_BYTES];
+        chunk_bytes.as_mut().iter_mut().for_each(|byte| {
             *byte = (current_block % 8) as u8;
         });
-        chunk
+
+        Scalar::from(&chunk_bytes)
     };
 
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
@@ -275,8 +277,9 @@ pub fn generate_equivocation_proof(
                 piece_offset,
                 piece_record_hash: Default::default(),
                 piece_witness: Default::default(),
+                chunk_offset: 0,
                 chunk,
-                chunk_signature: create_chunk_signature(keypair, &chunk),
+                chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
             },
         );
         System::reset_events();
@@ -377,8 +380,9 @@ pub fn create_signed_vote(
                 &piece[RECORD_SIZE as usize..].try_into().unwrap(),
             )
             .unwrap(),
+            chunk_offset: 0,
             chunk,
-            chunk_signature: create_chunk_signature(keypair, &chunk),
+            chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
         },
     };
 

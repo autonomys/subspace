@@ -9,8 +9,9 @@ pub mod plotting;
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
-use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
-use subspace_core_primitives::SegmentIndex;
+use std::num::{NonZeroU32, NonZeroU64};
+use subspace_core_primitives::crypto::kzg::Commitment;
+use subspace_core_primitives::{SegmentIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -29,20 +30,19 @@ pub struct FarmerProtocolInfo {
     pub recorded_history_segment_size: u32,
     /// Total number of pieces stored on the network
     pub total_pieces: NonZeroU64,
-    /// Space parameter for proof-of-replication in bits
-    pub space_l: NonZeroU16,
     /// Number of segments after which sector expires
     pub sector_expiration: SegmentIndex,
 }
 
 /// Metadata of the plotted sector
-#[doc(hidden)]
 #[derive(Debug, Encode, Decode, Clone)]
 pub struct SectorMetadata {
     /// Total number of pieces in archived history of the blockchain as of sector creation
     pub total_pieces: NonZeroU64,
     /// Sector expiration, defined as sector of the archived history of the blockchain
     pub expires_at: SegmentIndex,
+    /// Commitments to encoded pieces within sector
+    pub commitments: Vec<Commitment>,
 }
 
 impl SectorMetadata {
@@ -51,6 +51,7 @@ impl SectorMetadata {
         let default = SectorMetadata {
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             expires_at: 0,
+            commitments: vec![Commitment::default(); PLOT_SECTOR_SIZE as usize / PIECE_SIZE],
         };
 
         default.encoded_size()

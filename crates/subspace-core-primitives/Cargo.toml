@@ -19,7 +19,6 @@ bench = false
 ark-bls12-381 = "0.3.0"
 ark-ff = "0.3.0"
 ark-poly = "0.3.0"
-bitvec = { version = "1.0.1", default-features = false, features = ["alloc", "atomic"] }
 # Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
 blake2-rfc = { version = "0.2.18", default-features = false }
 derive_more = "0.99.17"
@@ -48,7 +47,6 @@ std = [
     "ark-bls12-381/std",
     "ark-ff/std",
     "ark-poly/std",
-    "bitvec/std",
     "blake2-rfc/std",
     "dusk-bls12_381/std",
     "dusk-plonk/std",

@@ -791,9 +791,9 @@ impl<T: Config> Pallet<T> {
                     .iter()
                     .find_map(|receipt| {
                         receipt.trace.last().and_then(|state_root| {
-                            if (receipt.primary_number, receipt.secondary_hash)
+                            if (receipt.primary_number, receipt.domain_hash)
                                 == (block_number, *block_hash)
-                                || (receipt.primary_number, receipt.secondary_hash)
+                                || (receipt.primary_number, receipt.domain_hash)
                                     == (block_number, core_block_hash)
                             {
                                 Some(*state_root)
@@ -1006,7 +1006,7 @@ impl<T: Config> Pallet<T> {
                 .expect("There are at least 2 elements in trace after the genesis block; qed");
 
             <StateRoots<T>>::insert(
-                (domain_id, primary_number, execution_receipt.secondary_hash),
+                (domain_id, primary_number, execution_receipt.domain_hash),
                 state_root,
             );
 
@@ -1052,7 +1052,7 @@ impl<T: Config> Pallet<T> {
                     .expect("There are at least 2 elements in trace after the genesis block; qed");
 
                 <StateRoots<T>>::insert(
-                    (domain_id, primary_number, execution_receipt.secondary_hash),
+                    (domain_id, primary_number, execution_receipt.domain_hash),
                     state_root,
                 );
             }

@@ -24,10 +24,11 @@ use schnorrkel::vrf::VRFOutput;
 use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
+use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, Chunk, ChunkSignature, PublicKey, Randomness, RecordsRoot, RewardSignature,
-    SectorId, SlotNumber, Solution, SolutionRange, RANDOMNESS_CONTEXT,
+    BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RecordsRoot, RewardSignature,
+    Scalar, SectorId, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
@@ -89,13 +90,21 @@ where
     Ok(())
 }
 
+/// Derive audit chunk from scalar bytes contained within plotted piece
+pub fn derive_audit_chunk(chunk_bytes: &[u8; Scalar::FULL_BYTES]) -> SolutionRange {
+    let hash = blake2b_256_hash(chunk_bytes);
+    SolutionRange::from_le_bytes([
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+    ])
+}
+
 /// Returns true if `solution.tag` is within the solution range.
 pub fn is_within_solution_range(
     local_challenge: SolutionRange,
-    expanded_chunk: SolutionRange,
+    audit_chunk: SolutionRange,
     solution_range: SolutionRange,
 ) -> bool {
-    subspace_core_primitives::bidirectional_distance(&local_challenge, &expanded_chunk)
+    subspace_core_primitives::bidirectional_distance(&local_challenge, &audit_chunk)
         <= solution_range / 2
 }
 
@@ -104,8 +113,6 @@ pub fn is_within_solution_range(
 pub struct PieceCheckParams<'a> {
     /// Records root of segment to which piece belongs
     pub records_root: &'a RecordsRoot,
-    /// Position of the piece in the segment
-    pub position: u32,
     /// KZG instance
     pub kzg: &'a Kzg,
     /// Number of pieces in a segment
@@ -147,14 +154,18 @@ where
     let local_challenge =
         sector_id.derive_local_challenge(&derive_global_challenge(global_randomness, slot));
 
-    let expanded_chunk = solution.chunk.expand(local_challenge);
+    let chunk_bytes = solution.chunk.to_bytes();
 
-    if !is_within_solution_range(local_challenge, expanded_chunk, solution_range) {
+    if !is_within_solution_range(
+        local_challenge,
+        derive_audit_chunk(&chunk_bytes),
+        solution_range,
+    ) {
         return Err(Error::OutsideSolutionRange);
     }
 
     if let Err(error) = verify_chunk_signature(
-        &solution.chunk,
+        &chunk_bytes,
         &solution.chunk_signature,
         &schnorrkel::PublicKey::from_bytes(public_key.as_ref())
             .expect("Always correct length; qed"),
@@ -166,22 +177,16 @@ where
 
     if let Some(PieceCheckParams {
         records_root,
-        position,
         kzg,
         pieces_in_segment,
     }) = piece_check_params
     {
-        // TODO: Derive `position` in the future and delete `piece_offset` from solution, example
-        //  code below
-        // let chunks_in_sector = u64::from(record_size) * u64::from(u8::BITS) / u64::from(space_l.get());
-        // let audit_index: u64 = local_challenge % chunks_in_sector;
-        // let audit_piece_offset = (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
-        // let piece_index = sector_id
-        //     .derive_piece_index(audit_piece_offset, solution.total_pieces)
-        //     .map_err(|()| CheckVoteError::TotalNumberOfPiecesCantBeZero)?;
-        // let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
-        //     .expect("Position within segment always fits into u32; qed");
-        // TODO: Check that chunk belongs to a piece
+        let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
+        let piece_index = sector_id.derive_piece_index(audit_piece_offset, solution.total_pieces);
+        let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
+            .expect("Position within segment always fits into u32; qed");
+
+        // TODO: Check that chunk belongs to the encoded piece
 
         check_piece(kzg, pieces_in_segment, records_root, position, solution)?;
     }
@@ -195,12 +200,12 @@ where
 /// function.
 pub fn derive_randomness(
     public_key: &PublicKey,
-    chunk: &Chunk,
+    chunk_bytes: &[u8; Scalar::FULL_BYTES],
     chunk_signature: &ChunkSignature,
 ) -> SignatureResult<Randomness> {
     let in_out = VRFOutput(chunk_signature.output).attach_input_hash(
         &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
-        create_chunk_signature_transcript(chunk),
+        create_chunk_signature_transcript(chunk_bytes),
     )?;
 
     Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))

@@ -5,7 +5,7 @@ use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::ops::Deref;
 use std::path::Path;
-use subspace_core_primitives::{Chunk, ChunkSignature};
+use subspace_core_primitives::{ChunkSignature, Scalar};
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_bip39::mini_secret_from_entropy;
 use tracing::debug;
@@ -130,8 +130,8 @@ impl Identity {
         &self.entropy
     }
 
-    pub fn create_chunk_signature(&self, chunk: &Chunk) -> ChunkSignature {
-        create_chunk_signature(&self.keypair, chunk)
+    pub fn create_chunk_signature(&self, chunk_bytes: &[u8; Scalar::FULL_BYTES]) -> ChunkSignature {
+        create_chunk_signature(&self.keypair, chunk_bytes)
     }
 
     /// Sign reward hash.

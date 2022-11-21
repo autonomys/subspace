@@ -202,14 +202,16 @@ pub(crate) async fn farm_multi_disk(
         }).fuse() => {},
 
         // Plotting future
-        _ = Box::pin(async move {
+        result = Box::pin(async move {
             while let Some(result) = single_disk_plots_stream.next().await {
                 result?;
 
                 info!("Farm exited successfully");
             }
             anyhow::Ok(())
-        }).fuse() => {},
+        }).fuse() => {
+            result?;
+        },
 
         // Node runner future
         _ = Box::pin(async move {
