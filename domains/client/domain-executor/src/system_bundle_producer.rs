@@ -61,17 +61,8 @@ impl<Block, PBlock, Client, PClient, TransactionPool> ReceiptInterface<PBlock::H
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block>
-        + BlockBackend<Block>
-        + AuxStore
-        + ProvideRuntimeApi<Block>
-        + ProofProvider<Block>,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
-        + BlockBuilder<Block>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+    PClient: ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
         let head_receipt_number = self

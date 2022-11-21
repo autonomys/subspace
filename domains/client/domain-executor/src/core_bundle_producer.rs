@@ -65,12 +65,8 @@ where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block>,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
+    SClient: ProvideRuntimeApi<SBlock>,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
         let head_receipt_number = self
