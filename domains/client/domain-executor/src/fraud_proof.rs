@@ -31,7 +31,7 @@ pub enum FraudProofError {
     RuntimeApi(#[from] sp_api::ApiError),
 }
 
-pub(crate) struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+pub struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     backend: Arc<Backend>,
@@ -69,7 +69,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
-    pub(crate) fn new(
+    pub fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         backend: Arc<Backend>,

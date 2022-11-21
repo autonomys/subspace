@@ -193,6 +193,157 @@ where
         })
     }
 
+    pub fn fraud_proof_generator(&self) -> FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+        self.fraud_proof_generator.clone()
+    }
+
+    /// Processes the bundles extracted from the primary block.
+    // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
+    // `set_new_code_should_work` test to do an actual runtime upgrade
+    #[doc(hidden)]
+    pub async fn process_bundles(
+        self,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        shuffling_seed: Randomness,
+        maybe_new_runtime: Option<Cow<'static, [u8]>>,
+    ) {
+        if let Err(err) = self
+            .bundle_processor
+            .process_bundles(
+                primary_info,
+                DomainBundles::System(bundles, Vec::new()), // TODO: No core domain bundles in tests.
+                shuffling_seed,
+                maybe_new_runtime,
+            )
+            .await
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                ?primary_info,
+                error = ?err,
+                "Error at processing bundles.",
+            );
+        }
+    }
+}
+
+/// Error type for domain gossip handling.
+#[derive(Debug, thiserror::Error)]
+pub enum GossipMessageError {
+    #[error("Bundle equivocation error")]
+    BundleEquivocation,
+    #[error(transparent)]
+    FraudProof(#[from] FraudProofError),
+    #[error(transparent)]
+    Client(Box<sp_blockchain::Error>),
+    #[error(transparent)]
+    RuntimeApi(#[from] sp_api::ApiError),
+    #[error(transparent)]
+    RecvError(#[from] crossbeam::channel::RecvError),
+    #[error("Failed to send local receipt result because the channel is disconnected")]
+    SendError,
+    #[error("The signature of bundle is invalid")]
+    BadBundleSignature,
+    #[error("Invalid bundle author, got: {got}, expected: {expected}")]
+    InvalidBundleAuthor {
+        got: ExecutorPublicKey,
+        expected: ExecutorPublicKey,
+    },
+}
+
+impl From<sp_blockchain::Error> for GossipMessageError {
+    fn from(error: sp_blockchain::Error) -> Self {
+        Self::Client(Box::new(error))
+    }
+}
+
+/// The implementation of the Domain `Executor`.
+pub struct GossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+{
+    // TODO: no longer used in executor, revisit this with ParachainBlockImport together.
+    primary_chain_client: Arc<PClient>,
+    client: Arc<Client>,
+    spawner: Box<dyn SpawnNamed + Send + Sync>,
+    transaction_pool: Arc<TransactionPool>,
+    backend: Arc<Backend>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+}
+
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
+    for GossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+{
+    fn clone(&self) -> Self {
+        Self {
+            primary_chain_client: self.primary_chain_client.clone(),
+            client: self.client.clone(),
+            spawner: self.spawner.clone(),
+            transaction_pool: self.transaction_pool.clone(),
+            backend: self.backend.clone(),
+            fraud_proof_generator: self.fraud_proof_generator.clone(),
+        }
+    }
+}
+
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+    GossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
+    Client::Api: DomainCoreApi<Block, AccountId>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<
+            Block,
+            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
+        >,
+    for<'b> &'b Client: sc_consensus::BlockImport<
+        Block,
+        Transaction = sp_api::TransactionFor<Client, Block>,
+        Error = sp_consensus::Error,
+    >,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    E: CodeExecutor,
+{
+    pub fn new(
+        primary_chain_client: Arc<PClient>,
+        client: Arc<Client>,
+        spawner: Box<dyn SpawnNamed + Send + Sync>,
+        transaction_pool: Arc<TransactionPool>,
+        backend: Arc<Backend>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    ) -> Self {
+        Self {
+            primary_chain_client,
+            client,
+            spawner,
+            transaction_pool,
+            backend,
+            fraud_proof_generator,
+        }
+    }
+
     /// The background is that a receipt received from the network points to a future block
     /// from the local view, so we need to wait for the receipt for the block at the same
     /// height to be produced locally in order to check the validity of the external receipt.
@@ -322,71 +473,11 @@ where
 
         Ok(())
     }
-
-    /// Processes the bundles extracted from the primary block.
-    // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
-    // `set_new_code_should_work` test to do an actual runtime upgrade
-    #[doc(hidden)]
-    pub async fn process_bundles(
-        self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-        shuffling_seed: Randomness,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
-    ) {
-        if let Err(err) = self
-            .bundle_processor
-            .process_bundles(
-                primary_info,
-                DomainBundles::System(bundles, Vec::new()), // TODO: No core domain bundles in tests.
-                shuffling_seed,
-                maybe_new_runtime,
-            )
-            .await
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?primary_info,
-                error = ?err,
-                "Error at processing bundles.",
-            );
-        }
-    }
-}
-
-/// Error type for domain gossip handling.
-#[derive(Debug, thiserror::Error)]
-pub enum GossipMessageError {
-    #[error("Bundle equivocation error")]
-    BundleEquivocation,
-    #[error(transparent)]
-    FraudProof(#[from] FraudProofError),
-    #[error(transparent)]
-    Client(Box<sp_blockchain::Error>),
-    #[error(transparent)]
-    RuntimeApi(#[from] sp_api::ApiError),
-    #[error(transparent)]
-    RecvError(#[from] crossbeam::channel::RecvError),
-    #[error("Failed to send local receipt result because the channel is disconnected")]
-    SendError,
-    #[error("The signature of bundle is invalid")]
-    BadBundleSignature,
-    #[error("Invalid bundle author, got: {got}, expected: {expected}")]
-    InvalidBundleAuthor {
-        got: ExecutorPublicKey,
-        expected: ExecutorPublicKey,
-    },
-}
-
-impl From<sp_blockchain::Error> for GossipMessageError {
-    fn from(error: sp_blockchain::Error) -> Self {
-        Self::Client(Box::new(error))
-    }
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
     GossipMessageHandler<PBlock, Block>
-    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+    for GossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
