@@ -76,14 +76,14 @@ mod system_bundle_processor;
 mod system_bundle_producer;
 mod system_domain_worker;
 mod system_executor;
+mod system_gossip_message_validator;
 #[cfg(test)]
 mod tests;
 mod utils;
 
 pub use self::core_executor::Executor as CoreExecutor;
-pub use self::system_executor::{
-    Executor as SystemExecutor, GossipMessageValidator as SystemGossipMessageValidator,
-};
+pub use self::system_executor::Executor as SystemExecutor;
+pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_domains::{ExecutionReceipt, SignedBundle};
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
