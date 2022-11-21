@@ -334,7 +334,7 @@ where
     let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
 
     let executor = SystemExecutor::new(
-        primary_chain_client,
+        primary_chain_client.clone(),
         primary_network,
         &spawn_essential,
         select_chain,
@@ -370,6 +370,7 @@ where
             client.clone(),
             import_block_notification_stream.subscribe(),
             network.clone(),
+            primary_chain_client,
         );
 
         spawn_essential.spawn_essential_blocking(

@@ -360,7 +360,7 @@ where
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
-        primary_chain_client,
+        primary_chain_client.clone(),
         primary_network,
         &spawn_essential,
         select_chain,
@@ -398,6 +398,7 @@ where
             import_block_notification_stream.subscribe(),
             secondary_network,
             network.clone(),
+            primary_chain_client,
         );
 
         spawn_essential.spawn_essential_blocking(

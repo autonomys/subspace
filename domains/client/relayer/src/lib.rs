@@ -8,7 +8,7 @@ use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sp_api::{ApiRef, ProvideRuntimeApi};
 use sp_domain_tracker::DomainTrackerApi;
 use sp_domains::domain_txns::DomainExtrinsic;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::messages::{
     CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
@@ -213,11 +213,17 @@ where
         Ok(msgs)
     }
 
-    pub(crate) fn submit_messages_from_system_domain(
+    pub(crate) fn submit_messages_from_system_domain<PClient, PBlock>(
+        primary_client: &Arc<PClient>,
         relayer_id: RelayerId,
         system_domain_client: &Arc<Client>,
         confirmed_block_hash: Block::Hash,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        PBlock: BlockT,
+        PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+        PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    {
         let api = system_domain_client.runtime_api();
         let confirmed_block_id = BlockId::Hash(confirmed_block_hash);
         let assigned_messages: RelayerMessagesWithStorageKey = api
@@ -242,7 +248,7 @@ where
                     key,
                 )
             },
-            |msg| Self::submit_domain_outbox_extrinsic(&api, &best_block_id, msg),
+            |msg| Self::submit_domain_outbox_extrinsic(primary_client, &api, &best_block_id, msg),
         )?;
 
         Self::construct_cross_domain_message_and_submit(
@@ -255,13 +261,21 @@ where
                     key,
                 )
             },
-            |msg| Self::submit_domain_inbox_response_extrinsic(&api, &best_block_id, msg),
+            |msg| {
+                Self::submit_domain_inbox_response_extrinsic(
+                    primary_client,
+                    &api,
+                    &best_block_id,
+                    msg,
+                )
+            },
         )?;
 
         Ok(())
     }
 
-    pub(crate) fn submit_messages_from_core_domain<SDC, SBlock>(
+    pub(crate) fn submit_messages_from_core_domain<SDC, SBlock, PClient, PBlock, SHash>(
+        primary_client: &Arc<PClient>,
         relayer_id: RelayerId,
         core_domain_client: &Arc<Client>,
         system_domain_client: &Arc<SDC>,
@@ -272,6 +286,10 @@ where
         NumberFor<SBlock>: From<NumberFor<Block>>,
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
         SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+        PBlock: BlockT,
+        SHash: Encode + Decode,
+        PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+        PClient::Api: ExecutorApi<PBlock, SHash>,
     {
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
@@ -326,7 +344,14 @@ where
                     core_domain_state_root_proof.clone(),
                 )
             },
-            |msg| Self::submit_domain_outbox_extrinsic(&core_domain_api, &best_block_id, msg),
+            |msg| {
+                Self::submit_domain_outbox_extrinsic(
+                    primary_client,
+                    &core_domain_api,
+                    &best_block_id,
+                    msg,
+                )
+            },
         )?;
 
         Self::construct_cross_domain_message_and_submit(
@@ -341,41 +366,75 @@ where
                 )
             },
             |msg| {
-                Self::submit_domain_inbox_response_extrinsic(&core_domain_api, &best_block_id, msg)
+                Self::submit_domain_inbox_response_extrinsic(
+                    primary_client,
+                    &core_domain_api,
+                    &best_block_id,
+                    msg,
+                )
             },
         )?;
 
         Ok(())
     }
 
-    fn submit_domain_outbox_extrinsic(
-        api: &ApiRef<'_, Client::Api>,
+    fn submit_domain_outbox_extrinsic<PClient, PBlock, SHash>(
+        primary_client: &Arc<PClient>,
+        domain_api: &ApiRef<'_, Client::Api>,
         at: &BlockId<Block>,
         msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
-    ) -> Result<(), sp_api::ApiError> {
+    ) -> Result<(), sp_api::ApiError>
+    where
+        PBlock: BlockT,
+        SHash: Encode + Decode,
+        PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+        PClient::Api: ExecutorApi<PBlock, SHash>,
+    {
         let dst_domain_id = msg.dst_domain_id;
-        let domain_ext = api.outbox_message_unsigned_extrinsic(at, msg)?;
-        let _ext = DomainExtrinsic {
+        let domain_ext = domain_api.outbox_message_unsigned_extrinsic(at, msg)?;
+        let ext = DomainExtrinsic {
             domain_id: dst_domain_id,
             txn: domain_ext.encode(),
         };
-        /// TODO(ved): submit encoded ext on primary chain
-        Ok(())
+
+        Self::submit_cross_domain_message(primary_client, ext)
     }
 
-    fn submit_domain_inbox_response_extrinsic(
-        api: &ApiRef<'_, Client::Api>,
+    fn submit_domain_inbox_response_extrinsic<PClient, PBlock, SHash>(
+        primary_client: &Arc<PClient>,
+        domain_api: &ApiRef<'_, Client::Api>,
         at: &BlockId<Block>,
         msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
-    ) -> Result<(), sp_api::ApiError> {
+    ) -> Result<(), sp_api::ApiError>
+    where
+        PBlock: BlockT,
+        SHash: Encode + Decode,
+        PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+        PClient::Api: ExecutorApi<PBlock, SHash>,
+    {
         let dst_domain_id = msg.dst_domain_id;
-        let domain_ext = api.inbox_response_message_unsigned_extrinsic(at, msg)?;
-        let _ext = DomainExtrinsic {
+        let domain_ext = domain_api.inbox_response_message_unsigned_extrinsic(at, msg)?;
+        let ext = DomainExtrinsic {
             domain_id: dst_domain_id,
             txn: domain_ext.encode(),
         };
-        /// TODO(ved): submit encoded ext on primary chain
-        Ok(())
+
+        Self::submit_cross_domain_message(primary_client, ext)
+    }
+
+    fn submit_cross_domain_message<PClient, PBlock, SHash>(
+        primary_client: &Arc<PClient>,
+        domain_ext: DomainExtrinsic,
+    ) -> Result<(), sp_api::ApiError>
+    where
+        PBlock: BlockT,
+        SHash: Encode + Decode,
+        PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+        PClient::Api: ExecutorApi<PBlock, SHash>,
+    {
+        let api = primary_client.runtime_api();
+        let at = BlockId::Hash(primary_client.info().best_hash);
+        api.submit_domain_extrinsic_unsigned(&at, domain_ext)
     }
 
     fn last_relayed_block_key(domain_id: DomainId) -> Vec<u8> {

@@ -24,7 +24,7 @@ pub mod rpc;
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
-use domain_service::DomainTransactionPoolWrapper;
+use domain_service::DomainTransactionPoolRouter;
 use dsn::start_dsn_node;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
