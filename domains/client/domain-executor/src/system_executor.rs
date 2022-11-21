@@ -2,8 +2,8 @@ use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::utils::{BlockInfo, DomainBundles};
-use crate::{BundleSender, TransactionFor, LOG_TARGET};
+use crate::utils::DomainBundles;
+use crate::{active_leaves, BundleSender, TransactionFor, LOG_TARGET};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -17,10 +17,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_domains::{DomainId, ExecutorApi, OpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{
-    Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
-};
+use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, Randomness};
@@ -221,65 +218,4 @@ where
             );
         }
     }
-}
-
-/// Returns the active leaves the overseer should start with.
-///
-/// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
-/// is only available in the imported primary block notifications.
-async fn active_leaves<PBlock, PClient, SC>(
-    client: &PClient,
-    select_chain: &SC,
-) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
-where
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    SC: SelectChain<PBlock>,
-{
-    let best_block = select_chain.best_chain().await?;
-
-    // No leaves if starting from the genesis.
-    if best_block.number().is_zero() {
-        return Ok(Vec::new());
-    }
-
-    let mut leaves = select_chain
-        .leaves()
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|hash| {
-            let number = client.number(hash).ok()??;
-
-            // Only consider leaves that are in maximum an uncle of the best block.
-            if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
-            {
-                return None;
-            };
-
-            let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
-
-            Some(BlockInfo {
-                hash,
-                parent_hash,
-                number,
-                fork_choice: ForkChoiceStrategy::LongestChain,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    // Sort by block number and get the maximum number of leaves
-    leaves.sort_by_key(|b| b.number);
-
-    leaves.push(BlockInfo {
-        hash: best_block.hash(),
-        parent_hash: *best_block.parent_hash(),
-        number: *best_block.number(),
-        fork_choice: ForkChoiceStrategy::LongestChain,
-    });
-
-    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
-    const MAX_ACTIVE_LEAVES: usize = 4;
-
-    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
 }
