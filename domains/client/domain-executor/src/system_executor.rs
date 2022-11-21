@@ -2,7 +2,7 @@ use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::utils::BlockInfo;
+use crate::utils::{BlockInfo, DomainBundles};
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
@@ -401,7 +401,7 @@ where
             .bundle_processor
             .process_bundles(
                 primary_info,
-                (bundles, Vec::new()), // TODO: No core domain bundles in tests.
+                DomainBundles::System(bundles, Vec::new()), // TODO: No core domain bundles in tests.
                 shuffling_seed,
                 maybe_new_runtime,
             )

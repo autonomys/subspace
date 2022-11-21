@@ -1,5 +1,5 @@
 use crate::domain_block_processor::DomainBlockProcessor;
-use crate::utils::translate_number_type;
+use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
@@ -9,7 +9,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
-use sp_domains::{DomainId, ExecutorApi, OpaqueBundle};
+use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
@@ -60,9 +60,6 @@ where
         }
     }
 }
-
-type CoreBundles<Block, PBlock> =
-    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>;
 
 impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
     CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
@@ -126,7 +123,7 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: CoreBundles<Block, PBlock>,
+        bundles: DomainBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -205,9 +202,17 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        bundles: CoreBundles<Block, PBlock>,
+        bundles: DomainBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+        let bundles = match bundles {
+            DomainBundles::System(..) => {
+                return Err(sp_blockchain::Error::Application(Box::from(
+                    "Core bundle processor can not process system bundles.",
+                )))
+            }
+            DomainBundles::Core(bundles) => bundles,
+        };
         let extrinsics = self
             .domain_block_processor
             .compile_own_domain_bundles(bundles);

@@ -16,7 +16,7 @@
 
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::utils::{BlockInfo, ExecutorSlotInfo};
+use crate::utils::{BlockInfo, DomainBundles, ExecutorSlotInfo};
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -29,7 +29,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_core::traits::CodeExecutor;
-use sp_domains::{ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
+use sp_domains::{ExecutorApi, SignedOpaqueBundle};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{HashFor, Header as HeaderT, NumberFor, One, Saturating};
 use std::borrow::Cow;
@@ -211,10 +211,7 @@ async fn handle_block_import_notifications<Block, PBlock, PClient, ProcessorFn, 
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            (
-                Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-                Vec<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-            ),
+            DomainBundles<Block, PBlock>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -362,10 +359,7 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            (
-                Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-                Vec<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-            ),
+            DomainBundles<Block, PBlock>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -410,10 +404,7 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            (
-                Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-                Vec<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-            ),
+            DomainBundles<Block, PBlock>,
             Randomness,
             Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -478,7 +469,7 @@ where
 
     processor(
         (block_hash, block_number, fork_choice),
-        (system_bundles, core_bundles),
+        DomainBundles::System(system_bundles, core_bundles),
         shuffling_seed,
         maybe_new_runtime,
     )
