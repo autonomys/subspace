@@ -411,6 +411,7 @@ fn main() -> Result<(), Error> {
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
                         dsn_config,
+                        piece_cache_size: cli.piece_cache_size,
                     };
 
                     subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(

@@ -6956,10 +6956,12 @@ dependencies = [
 name = "sc-piece-cache"
 version = "0.1.0"
 dependencies = [
+ "bytesize",
  "parity-scale-codec",
  "sc-client-api",
  "subspace-core-primitives",
  "subspace-networking",
+ "tracing",
 ]
 
 [[package]]
@@ -8800,6 +8802,7 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
+ "bytesize",
  "clap 4.0.26",
  "core-payments-domain-runtime",
  "dirs",
@@ -8920,6 +8923,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "bytesize",
  "derive_more",
  "domain-runtime-primitives",
  "frame-support",

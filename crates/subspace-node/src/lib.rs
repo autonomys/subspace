@@ -24,6 +24,7 @@ mod secondary_chain;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::secondary_chain::cli::SecondaryChainCli;
+use bytesize::ByteSize;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -185,6 +186,10 @@ pub struct Cli {
     /// Bootstrap nodes for DSN.
     #[arg(long)]
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+
+    /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+    #[arg(long)]
+    pub piece_cache_size: Option<ByteSize>,
 
     /// Secondary chain arguments
     ///

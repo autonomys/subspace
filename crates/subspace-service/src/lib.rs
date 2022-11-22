@@ -22,6 +22,7 @@ mod pool;
 pub mod rpc;
 
 pub use crate::pool::FullPool;
+use bytesize::ByteSize;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_node;
@@ -134,6 +135,8 @@ pub struct SubspaceConfiguration {
     pub force_new_slot_notifications: bool,
     /// Subspace networking configuration (for DSN).
     pub dsn_config: DsnConfig,
+    /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+    pub piece_cache_size: Option<ByteSize>,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -158,7 +161,6 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
                 Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
             >,
             SubspaceLink<Block>,
-            AuxPieceCache<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
         ),
     >,
@@ -265,39 +267,6 @@ where
         },
     )?;
 
-    let piece_cache = AuxPieceCache::new(client.clone());
-
-    // Start before archiver below, so we don't have potential race condition and miss pieces
-    task_manager
-        .spawn_handle()
-        .spawn_blocking("subspace-piece-cache", None, {
-            let piece_cache = piece_cache.clone();
-            let mut archived_segment_notification_stream = subspace_link
-                .archived_segment_notification_stream()
-                .subscribe();
-
-            async move {
-                while let Some(archived_segment_notification) =
-                    archived_segment_notification_stream.next().await
-                {
-                    let segment_index = archived_segment_notification
-                        .archived_segment
-                        .root_block
-                        .segment_index();
-                    if let Err(error) = piece_cache.add_pieces(
-                        segment_index * u64::from(PIECES_IN_SEGMENT),
-                        &archived_segment_notification.archived_segment.pieces,
-                    ) {
-                        error!(
-                            %segment_index,
-                            %error,
-                            "Failed to store pieces for segment in cache"
-                        );
-                    }
-                }
-            }
-        });
-
     let slot_duration = subspace_link.slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         block_import.clone(),
@@ -323,7 +292,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, piece_cache, telemetry),
+        other: (block_import, subspace_link, telemetry),
     })
 }
 
@@ -404,8 +373,41 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, piece_cache, mut telemetry),
+        other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+
+    let piece_cache = AuxPieceCache::new(client.clone(), config.piece_cache_size);
+
+    // Start before archiver below, so we don't have potential race condition and miss pieces
+    task_manager
+        .spawn_handle()
+        .spawn_blocking("subspace-piece-cache", None, {
+            let piece_cache = piece_cache.clone();
+            let mut archived_segment_notification_stream = subspace_link
+                .archived_segment_notification_stream()
+                .subscribe();
+
+            async move {
+                while let Some(archived_segment_notification) =
+                    archived_segment_notification_stream.next().await
+                {
+                    let segment_index = archived_segment_notification
+                        .archived_segment
+                        .root_block
+                        .segment_index();
+                    if let Err(error) = piece_cache.add_pieces(
+                        segment_index * u64::from(PIECES_IN_SEGMENT),
+                        &archived_segment_notification.archived_segment.pieces,
+                    ) {
+                        error!(
+                            %segment_index,
+                            %error,
+                            "Failed to store pieces for segment in cache"
+                        );
+                    }
+                }
+            }
+        });
 
     let dsn_bootstrap_nodes = {
         let node = start_dsn_node(
