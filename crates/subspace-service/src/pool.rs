@@ -384,7 +384,7 @@ where
             let res = self.domain_tx_pool_wrapper.submit_domain_extrinsic(
                 domain_extrinsic.domain_id,
                 source,
-                domain_extrinsic.txn,
+                domain_extrinsic.tx,
             );
             return Box::pin(async move { res.await.map_err(Into::into) });
         }

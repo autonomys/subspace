@@ -394,7 +394,7 @@ where
         let domain_ext = domain_api.outbox_message_unsigned_extrinsic(at, msg)?;
         let ext = DomainExtrinsic {
             domain_id: dst_domain_id,
-            txn: domain_ext.encode(),
+            tx: domain_ext.encode(),
         };
 
         Self::submit_cross_domain_message(primary_client, ext)
@@ -416,7 +416,7 @@ where
         let domain_ext = domain_api.inbox_response_message_unsigned_extrinsic(at, msg)?;
         let ext = DomainExtrinsic {
             domain_id: dst_domain_id,
-            txn: domain_ext.encode(),
+            tx: domain_ext.encode(),
         };
 
         Self::submit_cross_domain_message(primary_client, ext)

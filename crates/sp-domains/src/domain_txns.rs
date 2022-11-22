@@ -9,5 +9,5 @@ pub struct DomainExtrinsic {
     /// Domain Id this transaction is destined to.
     pub domain_id: DomainId,
     /// Encoded transaction.
-    pub txn: Vec<u8>,
+    pub tx: Vec<u8>,
 }
