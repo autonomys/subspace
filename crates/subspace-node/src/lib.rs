@@ -188,7 +188,7 @@ pub struct Cli {
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    #[arg(long, default_value = "1Gib")]
+    #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,
 
     /// Secondary chain arguments
