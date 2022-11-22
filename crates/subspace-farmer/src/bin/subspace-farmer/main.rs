@@ -66,7 +66,7 @@ struct DsnArgs {
     bootstrap_nodes: Vec<Multiaddr>,
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
-    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
+    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
     /// Record cache size in items.
     #[arg(long, default_value_t = 32768)]
