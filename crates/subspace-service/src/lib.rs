@@ -22,7 +22,6 @@ mod pool;
 pub mod rpc;
 
 pub use crate::pool::FullPool;
-use bytesize::ByteSize;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_node;
@@ -135,8 +134,8 @@ pub struct SubspaceConfiguration {
     pub force_new_slot_notifications: bool,
     /// Subspace networking configuration (for DSN).
     pub dsn_config: DsnConfig,
-    /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    pub piece_cache_size: Option<ByteSize>,
+    /// Piece cache size in bytes.
+    pub piece_cache_size: u64,
 }
 
 /// Creates `PartialComponents` for Subspace client.

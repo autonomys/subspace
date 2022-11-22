@@ -16,7 +16,6 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-bytesize = "1.1.0"
 derive_more = "0.99.17"
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }

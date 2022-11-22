@@ -6956,7 +6956,6 @@ dependencies = [
 name = "sc-piece-cache"
 version = "0.1.0"
 dependencies = [
- "bytesize",
  "parity-scale-codec",
  "sc-client-api",
  "subspace-core-primitives",
@@ -8923,7 +8922,6 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
- "bytesize",
  "derive_more",
  "domain-runtime-primitives",
  "frame-support",

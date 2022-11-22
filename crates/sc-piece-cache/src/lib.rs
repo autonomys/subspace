@@ -6,7 +6,6 @@
 #[cfg(test)]
 mod tests;
 
-use bytesize::ByteSize;
 use parity_scale_codec::Encode;
 use sc_client_api::backend::AuxStore;
 use std::error::Error;
@@ -16,7 +15,7 @@ use subspace_core_primitives::{
     FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE,
 };
 use subspace_networking::ToMultihash;
-use tracing::info;
+use tracing::debug;
 
 // Defines a minimum piece cache size.
 pub(crate) const ONE_GB: u64 = 1024 * 1024 * 1024;
@@ -46,7 +45,7 @@ pub trait PieceCache: Clone {
 #[derive(Debug)]
 pub struct AuxPieceCache<AS> {
     aux_store: Arc<AS>,
-    max_segments_number_in_cache: Option<u64>,
+    max_segments_number_in_cache: u64,
 }
 
 impl<AS> Clone for AuxPieceCache<AS> {
@@ -64,27 +63,26 @@ where
 {
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
-    /// Create a new instance. Optional cache_size parameter could redefine the default cache size.
-    pub fn new(aux_store: Arc<AS>, cache_size: Option<ByteSize>) -> Self {
-        let max_segments_number_in_cache = cache_size.map(|size| {
-            let segment_number = Self::segments_number_in_cache(size.as_u64());
-            let min_segment_number = Self::min_segments_number_in_cache();
+    /// Create a new instance. cache_size parameter could be redefined by the minimum cache size.
+    pub fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
+        let segment_number = Self::segments_number_in_cache(cache_size);
+        let min_segment_number = Self::min_segments_number_in_cache();
 
-            if segment_number >= min_segment_number {
-                segment_number
-            } else {
-                min_segment_number
-            }
-        });
+        let max_segments_number_in_cache = if segment_number >= min_segment_number {
+            segment_number
+        } else {
+            min_segment_number
+        };
 
         let cache = Self {
             aux_store,
             max_segments_number_in_cache,
         };
 
-        info!(
-            cache_size = cache_size.map(|s| s.as_u64()).unwrap_or(ONE_GB),
+        debug!(
+            ?cache_size,
             segment_number = cache.max_segments_number_in_cache(),
+            minimum_size_set = segment_number < min_segment_number,
             "Piece cache initialized."
         );
 
@@ -118,7 +116,6 @@ where
     /// Returns configured maximum configured segments number in the cache.
     pub fn max_segments_number_in_cache(&self) -> u64 {
         self.max_segments_number_in_cache
-            .unwrap_or_else(Self::min_segments_number_in_cache)
     }
 }
 
