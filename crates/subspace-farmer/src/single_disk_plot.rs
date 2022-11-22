@@ -329,16 +329,13 @@ pub enum SingleDiskPlotError {
     /// Node RPC error
     #[error("Node RPC error: {0}")]
     NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
-    /// Insufficient allocated space
+    /// Allocated space is not enough for one sector
     #[error(
-        "Insufficient allocated space for opening a new `SingleDiskPlot`. \
+        "Allocated space is not enough for one sector. \
         The lowest acceptable value for allocated space is: {min_size}, \
-        you provided: {allocated_size}."
+        you provided: {allocated_space}."
     )]
-    InsufficientAllocatedSpace {
-        min_size: String,
-        allocated_size: String,
-    },
+    InsufficientAllocatedSpace { min_size: u64, allocated_space: u64 },
 }
 
 /// Errors that happen during plotting
@@ -466,11 +463,9 @@ impl SingleDiskPlot {
         // TODO: Account for plot overhead
         let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
         if target_sector_count == 0 {
-            let min_size = ByteSize::b(PLOT_SECTOR_SIZE).to_string();
-            let allocated_size = ByteSize::b(allocated_space).to_string();
             return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
-                min_size,
-                allocated_size,
+                min_size: PLOT_SECTOR_SIZE,
+                allocated_space,
             });
         }
 
