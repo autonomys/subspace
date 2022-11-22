@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -50,6 +50,4 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<RecordsRoot>>, Error>;
-
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error>;
 }

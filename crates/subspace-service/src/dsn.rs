@@ -47,6 +47,7 @@ where
     let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
 
+    // TODO: Combine `AuxPieceCache` with `AuxRecordStorage` and remove `PieceCache` abstraction
     let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
 
     trace!("Subspace networking starting.");

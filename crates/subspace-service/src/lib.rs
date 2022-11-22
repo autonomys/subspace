@@ -604,7 +604,6 @@ where
                     reward_signing_notification_stream: reward_signing_notification_stream.clone(),
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
-                    piece_cache: piece_cache.clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                 };
 

@@ -32,7 +32,6 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
-use sc_piece_cache::PieceCache;
 use sc_rpc::SubscriptionTaskExecutor;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -48,8 +47,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
+    RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -103,9 +101,6 @@ pub trait SubspaceRpcApi {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<RecordsRoot>>>;
-
-    #[method(name = "subspace_getPiece", blocking)]
-    fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>>;
 }
 
 #[derive(Default)]
@@ -121,7 +116,7 @@ struct BlockSignatureSenders {
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block, Client, PC> {
+pub struct SubspaceRpc<Block, Client> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -129,7 +124,6 @@ pub struct SubspaceRpc<Block, Client, PC> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
-    piece_cache: PC,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     _phantom: PhantomData<Block>,
 }
@@ -141,7 +135,7 @@ pub struct SubspaceRpc<Block, Client, PC> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
+impl<Block, Client> SubspaceRpc<Block, Client> {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
         client: Arc<Client>,
@@ -151,7 +145,6 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
         archived_segment_notification_stream: SubspaceNotificationStream<
             ArchivedSegmentNotification,
         >,
-        piece_cache: PC,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
     ) -> Self {
         Self {
@@ -162,7 +155,6 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
             archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
-            piece_cache,
             dsn_bootstrap_nodes,
             _phantom: PhantomData::default(),
         }
@@ -170,7 +162,7 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
 }
 
 #[async_trait]
-impl<Block, Client, PC> SubspaceRpcApiServer for SubspaceRpc<Block, Client, PC>
+impl<Block, Client> SubspaceRpcApiServer for SubspaceRpc<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -180,7 +172,6 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-    PC: PieceCache + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
@@ -486,13 +477,5 @@ where
         }
 
         records_root_result
-    }
-
-    fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>> {
-        self.piece_cache.get_piece(piece_index).map_err(|error| {
-            error!("Failed to get piece with index {piece_index} from cache: {error}");
-
-            JsonRpseeError::Custom("Internal error during `get_piece` call".to_string())
-        })
     }
 }

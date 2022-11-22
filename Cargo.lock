@@ -6575,7 +6575,6 @@ dependencies = [
  "parking_lot 0.12.1",
  "sc-client-api",
  "sc-consensus-subspace",
- "sc-piece-cache",
  "sc-rpc",
  "sc-utils",
  "sp-api",

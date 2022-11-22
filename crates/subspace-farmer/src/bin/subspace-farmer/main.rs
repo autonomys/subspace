@@ -58,9 +58,6 @@ struct FarmingArgs {
 /// Arguments for DSN
 #[derive(Debug, Parser)]
 struct DsnArgs {
-    /// Enable DSN and use DSN piece provider for plotting
-    #[arg(long)]
-    enable_dsn: bool,
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
     #[arg(long)]
     bootstrap_nodes: Vec<Multiaddr>,

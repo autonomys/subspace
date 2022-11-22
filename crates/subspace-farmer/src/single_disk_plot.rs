@@ -270,7 +270,7 @@ pub struct SingleDiskPlotOptions<RC> {
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
     /// Optional DSN Node.
-    pub dsn_node: Option<Node>,
+    pub dsn_node: Node,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -622,9 +622,8 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher = dsn_node.as_ref().map(|dsn_node| {
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone())
-                });
+                let piece_publisher =
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -670,11 +669,8 @@ impl SingleDiskPlot {
                                 .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
 
                             // TODO: Remove RPC version and keep DSN version only.
-                            let piece_receiver = MultiChannelPieceReceiver::new(
-                                rpc_client.clone(),
-                                dsn_node.clone(),
-                                &shutting_down,
-                            );
+                            let piece_receiver =
+                                MultiChannelPieceReceiver::new(dsn_node.clone(), &shutting_down);
 
                             let plotted_sector = match handle.block_on(plot_sector(
                                 &public_key,
@@ -703,15 +699,13 @@ impl SingleDiskPlot {
 
                             // TODO: Migrate this over to using `on_sector_plotted` instead
                             // Publish pieces-by-sector if we use DSN
-                            if let Some(ref piece_publisher) = piece_publisher {
-                                let publishing_result = handle.block_on(
-                                    piece_publisher.publish_pieces(plotted_sector.piece_indexes),
-                                );
+                            let publishing_result = handle.block_on(
+                                piece_publisher.publish_pieces(plotted_sector.piece_indexes),
+                            );
 
-                                // cancelled
-                                if publishing_result.is_err() {
-                                    return;
-                                }
+                            // cancelled
+                            if publishing_result.is_err() {
+                                return;
                             }
                         }
                     };
