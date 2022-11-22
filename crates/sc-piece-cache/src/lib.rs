@@ -15,7 +15,7 @@ use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PI
 use subspace_networking::ToMultihash;
 
 /// Defines maximum segments number stored in the cache (as pieces).
-pub const MAX_SEGMENTS_NUMBER_IN_CACHE: u64 = 10;
+pub const MAX_SEGMENTS_NUMBER_IN_CACHE: u64 = 32; // ~ 1 GB
 
 // Defines how often we clear pieces from cache.
 pub(crate) const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
