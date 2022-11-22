@@ -43,7 +43,9 @@ use sp_runtime::codec::Encode;
 use sp_runtime::{generic, OpaqueExtrinsic};
 use std::future::Future;
 use std::sync::Arc;
+use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block as PBlock;
+use subspace_service::DsnConfig;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
@@ -119,7 +121,13 @@ async fn run_executor(
             base: primary_chain_config,
             // Always enable the slot notification.
             force_new_slot_notifications: true,
-            dsn_config: None,
+            dsn_config: DsnConfig {
+                listen_on: vec!["/ip4/127.0.0.1/tcp/0"
+                    .parse()
+                    .expect("Correct multiaddr; qed")],
+                bootstrap_nodes: vec![],
+                keypair: identity::Keypair::generate_ed25519(),
+            },
         };
 
         subspace_service::new_full::<

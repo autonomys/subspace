@@ -343,7 +343,9 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|primary_chain_config| async move {
-                let domain_partial_components = create_domain_partial_components::<<Block as BlockT>::Hash>(&cli, &primary_chain_config)?;
+                let domain_partial_components = create_domain_partial_components::<
+                    <Block as BlockT>::Hash,
+                >(&cli, &primary_chain_config)?;
 
                 // TODO: proper value
                 let block_import_throttling_buffer_size = 10;
@@ -367,11 +369,28 @@ fn main() -> Result<(), Error> {
                                 ))
                             })?;
 
-                        (!cli.dsn_listen_on.is_empty()).then_some(DsnConfig {
+                        let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
+                            primary_chain_config
+                                .chain_spec
+                                .properties()
+                                .get("dsnBootstrapNodes")
+                                .map(|d| serde_json::from_value(d.clone()))
+                                .transpose()
+                                .map_err(|error| {
+                                    sc_service::Error::Other(format!(
+                                        "Failed to decode DSN bootsrap nodes: {error:?}"
+                                    ))
+                                })?
+                                .unwrap_or_default()
+                        } else {
+                            cli.dsn_bootstrap_nodes
+                        };
+
+                        DsnConfig {
                             keypair: network_keypair,
-                            dsn_listen_on: cli.dsn_listen_on,
-                            dsn_bootstrap_node: cli.dsn_bootstrap_node,
-                        })
+                            listen_on: cli.dsn_listen_on,
+                            bootstrap_nodes: dsn_bootstrap_nodes,
+                        }
                     };
 
                     let primary_chain_config = SubspaceConfiguration {
@@ -385,7 +404,7 @@ fn main() -> Result<(), Error> {
                         primary_chain_config,
                         true,
                         SlotProportion::new(2f32 / 3f32),
-                        domain_partial_components.transaction_pool_wrapper
+                        domain_partial_components.transaction_pool_wrapper,
                     )
                     .await
                     .map_err(|error| {
@@ -396,7 +415,12 @@ fn main() -> Result<(), Error> {
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
-                if let Some((_secondary_chain_cli,secondary_chain_config,secondary_chain_components)) = domain_partial_components.maybe_system_domain_components{
+                if let Some((
+                    _secondary_chain_cli,
+                    secondary_chain_config,
+                    secondary_chain_components,
+                )) = domain_partial_components.maybe_system_domain_components
+                {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "SecondaryChain"
@@ -452,7 +476,12 @@ fn main() -> Result<(), Error> {
                         .task_manager
                         .add_child(secondary_chain_node.task_manager);
 
-                    if let Some((core_domain_cli,core_domain_config,core_domain_chain_components)) = domain_partial_components.maybe_core_payments_domain_components{
+                    if let Some((
+                        core_domain_cli,
+                        core_domain_config,
+                        core_domain_chain_components,
+                    )) = domain_partial_components.maybe_core_payments_domain_components
+                    {
                         let span = sc_tracing::tracing::info_span!(
                             sc_tracing::logging::PREFIX_LOG_SPAN,
                             name = "CoreDomain"
@@ -488,7 +517,8 @@ fn main() -> Result<(), Error> {
                             }
                             _ => {
                                 return Err(Error::Other(format!(
-                                    "Invalid domain id, currently only core-payments domain is supported, please rerun with `--domain-id={:?}`",
+                                    "Invalid domain id, currently only core-payments domain is \
+                                    supported, please rerun with `--domain-id={:?}`",
                                     u32::from(DomainId::CORE_PAYMENTS)
                                 )));
                             }

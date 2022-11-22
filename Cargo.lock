@@ -2132,6 +2132,7 @@ dependencies = [
  "sp-keyring",
  "sp-runtime",
  "sp-timestamp",
+ "subspace-networking",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
@@ -6576,7 +6577,6 @@ dependencies = [
  "parking_lot 0.12.1",
  "sc-client-api",
  "sc-consensus-subspace",
- "sc-piece-cache",
  "sc-rpc",
  "sc-utils",
  "sp-api",
@@ -6588,6 +6588,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-farmer-components",
+ "subspace-networking",
  "subspace-rpc-primitives",
 ]
 
@@ -8719,7 +8720,6 @@ dependencies = [
  "criterion",
  "fs2",
  "futures 0.3.25",
- "hex",
  "libc",
  "memmap2",
  "parity-scale-codec",
@@ -8849,6 +8849,8 @@ dependencies = [
  "hex",
  "serde",
  "subspace-core-primitives",
+ "subspace-farmer-components",
+ "subspace-networking",
 ]
 
 [[package]]
@@ -9081,6 +9083,7 @@ dependencies = [
  "sp-blockchain",
  "sp-keyring",
  "sp-runtime",
+ "subspace-networking",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
