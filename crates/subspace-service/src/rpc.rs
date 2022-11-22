@@ -39,6 +39,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_consensus_subspace::FarmerPublicKey;
 use std::sync::Arc;
+use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
@@ -66,6 +67,8 @@ pub struct FullDeps<C, P, PC> {
     /// Caching layer for pieces produced during archiving to make them available for some time
     /// after they were produced.
     pub piece_cache: PC,
+    /// Bootstrap nodes for DSN.
+    pub dsn_bootstrap_nodes: Vec<Multiaddr>,
 }
 
 /// Instantiate all full RPC extensions.
@@ -98,6 +101,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_stream,
         piece_cache,
+        dsn_bootstrap_nodes,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -116,6 +120,7 @@ where
             reward_signing_notification_stream,
             archived_segment_notification_stream,
             piece_cache,
+            dsn_bootstrap_nodes,
         )
         .into_rpc(),
     )?;

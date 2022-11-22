@@ -11,7 +11,7 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGM
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    Node, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
 
@@ -39,7 +39,7 @@ pub async fn start_dsn_node<Block, Spawner, AS: sc_client_api::AuxStore + Sync +
     piece_cache: AuxPieceCache<AS>,
     piece_getter: PieceGetter,
     segment_index_getter: SegmentIndexGetter,
-) -> Result<(), CreationError>
+) -> Result<Node, CreationError>
 where
     Block: BlockT,
     Spawner: SpawnEssentialNamed,
@@ -98,7 +98,9 @@ where
     spawner.spawn_essential(
         "archiver",
         Some("subspace-networking"),
-        Box::pin(
+        Box::pin({
+            let node = node.clone();
+
             async move {
                 trace!("Subspace DSN archiver started.");
 
@@ -143,9 +145,9 @@ where
                     info!(%segment_index, "Segment processed.");
                 }
             }
-            .in_current_span(),
-        ),
+            .in_current_span()
+        }),
     );
 
-    Ok(())
+    Ok(node)
 }

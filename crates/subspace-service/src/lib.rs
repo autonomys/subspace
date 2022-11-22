@@ -27,6 +27,7 @@ use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_node;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
+use futures::channel::oneshot;
 use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
@@ -60,9 +61,10 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use tracing::error;
@@ -97,6 +99,10 @@ pub enum Error {
     /// Subspace networking (DSN) error.
     #[error(transparent)]
     SubspaceDsn(#[from] subspace_networking::CreationError),
+
+    /// Other.
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Subspace-like full client.
@@ -401,32 +407,77 @@ where
         other: (block_import, subspace_link, piece_cache, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    start_dsn_node(
-        &subspace_link,
-        config.dsn_config.clone(),
-        task_manager.spawn_essential_handle(),
-        piece_cache.clone(),
-        Arc::new({
-            let piece_cache = piece_cache.clone();
+    let dsn_bootstrap_nodes = {
+        let node = start_dsn_node(
+            &subspace_link,
+            config.dsn_config.clone(),
+            task_manager.spawn_essential_handle(),
+            piece_cache.clone(),
+            Arc::new({
+                let piece_cache = piece_cache.clone();
 
-            move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()
-        }),
-        Arc::new({
-            let client = client.clone();
+                move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()
+            }),
+            Arc::new({
+                let client = client.clone();
 
-            move || {
-                let best_block_id = BlockId::Hash(client.info().best_hash);
-                let total_pieces = client
-                    .runtime_api()
-                    .total_pieces(&best_block_id)
-                    .expect("Can't receive total pieces number.");
+                move || {
+                    let best_block_id = BlockId::Hash(client.info().best_hash);
+                    let total_pieces = client
+                        .runtime_api()
+                        .total_pieces(&best_block_id)
+                        .expect("Can't receive total pieces number.");
 
-                // segment index with a zero-based index-shift
-                (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
+                    // segment index with a zero-based index-shift
+                    (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
+                }
+            }),
+        )
+        .await?;
+
+        // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
+        // connect to
+        if config.dsn_config.bootstrap_nodes.is_empty() {
+            let (node_address_sender, node_address_receiver) = oneshot::channel();
+            let _handler = node.on_new_listener(Arc::new({
+                let node_address_sender = Mutex::new(Some(node_address_sender));
+
+                move |address| {
+                    if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                        if let Some(node_address_sender) = node_address_sender
+                            .lock()
+                            .expect("Must not be poisoned here")
+                            .take()
+                        {
+                            node_address_sender.send(address.clone()).unwrap();
+                        }
+                    }
+                }
+            }));
+
+            let mut node_listeners = node.listeners();
+
+            if node_listeners.is_empty() {
+                let Ok(listener) = node_address_receiver.await else {
+                    return Err(Error::Other(
+                        "Oneshot receiver dropped before DSN node listener was ready"
+                            .to_string()
+                            .into(),
+                    ));
+                };
+
+                node_listeners = vec![listener];
             }
-        }),
-    )
-    .await?;
+
+            node_listeners.iter_mut().for_each(|multiaddr| {
+                multiaddr.push(Protocol::P2p(node.id().into()));
+            });
+
+            node_listeners
+        } else {
+            config.dsn_config.bootstrap_nodes.clone()
+        }
+    };
 
     sc_consensus_subspace::start_subspace_archiver(
         &subspace_link,
@@ -554,6 +605,7 @@ where
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
                     piece_cache: piece_cache.clone(),
+                    dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

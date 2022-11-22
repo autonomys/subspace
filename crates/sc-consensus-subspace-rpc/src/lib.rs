@@ -52,6 +52,7 @@ use subspace_core_primitives::{
     RECORD_SIZE,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_INDEXES_PER_REQUEST,
@@ -129,6 +130,7 @@ pub struct SubspaceRpc<Block, Client, PC> {
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     piece_cache: PC,
+    dsn_bootstrap_nodes: Vec<Multiaddr>,
     _phantom: PhantomData<Block>,
 }
 
@@ -150,6 +152,7 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
             ArchivedSegmentNotification,
         >,
         piece_cache: PC,
+        dsn_bootstrap_nodes: Vec<Multiaddr>,
     ) -> Self {
         Self {
             client,
@@ -160,6 +163,7 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
             piece_cache,
+            dsn_bootstrap_nodes,
             _phantom: PhantomData::default(),
         }
     }
@@ -207,6 +211,7 @@ where
 
             FarmerAppInfo {
                 genesis_hash,
+                dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
                 protocol_info,
             }
         };

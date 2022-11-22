@@ -6587,6 +6587,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-farmer-components",
+ "subspace-networking",
  "subspace-rpc-primitives",
 ]
 
@@ -8848,6 +8849,7 @@ dependencies = [
  "serde",
  "subspace-core-primitives",
  "subspace-farmer-components",
+ "subspace-networking",
 ]
 
 [[package]]
