@@ -177,14 +177,14 @@ pub struct Cli {
     #[clap(flatten)]
     pub run: RunCmd,
 
-    /// DSN configuration arguments: DSN 'listen-on' multi-address
+    /// Where local DSN node will listen for incoming connections.
     // TODO: Add more DSN-related parameters
-    #[arg(long)]
+    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30433")]
     pub dsn_listen_on: Vec<Multiaddr>,
 
-    /// DSN configuration arguments: DSN 'bootstrap-node' multi-address
+    /// Bootstrap nodes for DSN.
     #[arg(long)]
-    pub dsn_bootstrap_node: Vec<Multiaddr>,
+    pub dsn_bootstrap_nodes: Vec<Multiaddr>,
 
     /// Secondary chain arguments
     ///

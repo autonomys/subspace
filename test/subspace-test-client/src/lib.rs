@@ -245,7 +245,6 @@ where
     let piece_receiver = TestPieceReceiver { archived_segment };
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
-        genesis_hash: client.info().genesis_hash.to_fixed_bytes(),
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
         total_pieces,

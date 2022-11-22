@@ -56,7 +56,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
-        genesis_hash: Default::default(),
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
         total_pieces: NonZeroU64::new(1).unwrap(),
