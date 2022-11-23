@@ -30,7 +30,6 @@ use subspace_runtime::{
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
-const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 // TODO: replace raw-gemini-2a with raw-gemini-3a
 // const GEMINI_2A_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-2a.json");
@@ -148,11 +147,8 @@ pub fn gemini_3a_compiled(
         vec![],
         // Telemetry
         Some(
-            TelemetryEndpoints::new(vec![
-                (POLKADOT_TELEMETRY_URL.into(), 1),
-                (SUBSPACE_TELEMETRY_URL.into(), 1),
-            ])
-            .map_err(|error| error.to_string())?,
+            TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
+                .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
         Some("subspace-gemini-3a"),
@@ -238,11 +234,8 @@ pub fn x_net_2_config_compiled(
         vec![],
         // Telemetry
         Some(
-            TelemetryEndpoints::new(vec![
-                (POLKADOT_TELEMETRY_URL.into(), 1),
-                (SUBSPACE_TELEMETRY_URL.into(), 1),
-            ])
-            .map_err(|error| error.to_string())?,
+            TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
+                .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
         Some("subspace-x-net-2a"),
