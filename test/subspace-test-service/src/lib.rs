@@ -196,6 +196,7 @@ pub async fn run_validator_node(
                 bootstrap_nodes: vec![],
                 keypair: identity::Keypair::generate_ed25519(),
             },
+            piece_cache_size: 1024 * 1024 * 1024,
         };
 
         subspace_service::new_full::<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>(

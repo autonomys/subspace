@@ -6960,6 +6960,7 @@ dependencies = [
  "sc-client-api",
  "subspace-core-primitives",
  "subspace-networking",
+ "tracing",
 ]
 
 [[package]]
@@ -8800,6 +8801,7 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
+ "bytesize",
  "clap 4.0.26",
  "core-payments-domain-runtime",
  "dirs",
