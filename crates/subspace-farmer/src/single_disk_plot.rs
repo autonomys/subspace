@@ -329,6 +329,13 @@ pub enum SingleDiskPlotError {
     /// Node RPC error
     #[error("Node RPC error: {0}")]
     NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    /// Allocated space is not enough for one sector
+    #[error(
+        "Allocated space is not enough for one sector. \
+        The lowest acceptable value for allocated space is: {min_size}, \
+        you provided: {allocated_space}."
+    )]
+    InsufficientAllocatedSpace { min_size: u64, allocated_space: u64 },
 }
 
 /// Errors that happen during plotting
@@ -453,6 +460,15 @@ impl SingleDiskPlot {
             dsn_node,
         } = options;
 
+        // TODO: Account for plot overhead
+        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
+        if target_sector_count == 0 {
+            return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                min_size: PLOT_SECTOR_SIZE,
+                allocated_space,
+            });
+        }
+
         fs::create_dir_all(&directory)?;
 
         // TODO: Parametrize concurrency, much higher default due to SSD focus
@@ -523,9 +539,6 @@ impl SingleDiskPlot {
 
         let single_disk_plot_id = *single_disk_plot_info.id();
         let first_sector_index = single_disk_plot_info.first_sector_index();
-
-        // TODO: Account for plot overhead
-        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
 
         // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
