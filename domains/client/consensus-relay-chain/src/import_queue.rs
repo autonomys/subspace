@@ -14,11 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use sc_consensus::import_queue::{BasicQueue, Verifier as VerifierT};
 use sc_consensus::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus_subspace::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use sp_blockchain::Result as ClientResult;
 use sp_consensus::error::Error as ConsensusError;
 use sp_consensus::{BlockOrigin, CacheKeyId};
@@ -142,9 +142,7 @@ where
     I::Transaction: Send,
 {
     let (imported_block_notification_sender, imported_block_notification_receiver) =
-        sc_consensus_subspace::notification::channel(
-            "system_domain_imported_block_notification_stream",
-        );
+        crate::notification::channel("system_domain_imported_block_notification_stream");
     Ok((
         BasicQueue::new(
             Verifier::default(),
