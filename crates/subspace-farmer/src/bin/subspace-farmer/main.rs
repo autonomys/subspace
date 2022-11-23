@@ -66,7 +66,7 @@ struct DsnArgs {
     #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
     /// Record cache size in items.
-    #[arg(long, default_value_t = 32768)]
+    #[arg(long, default_value_t = 65536)]
     record_cache_size: usize,
 }
 
