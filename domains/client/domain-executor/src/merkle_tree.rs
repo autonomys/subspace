@@ -78,3 +78,21 @@ pub(super) fn construct_trace_merkle_tree(
         sp_blockchain::Error::Application(e.into())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::construct_trace_merkle_tree;
+
+    #[test]
+    fn construct_trace_merkle_tree_should_work() {
+        let root1 = [1u8; 32];
+        let root2 = [2u8; 32];
+        let root3 = [3u8; 32];
+
+        let roots = vec![root1, root2];
+        construct_trace_merkle_tree(roots).unwrap();
+
+        let roots = vec![root1, root2, root3];
+        construct_trace_merkle_tree(roots).unwrap();
+    }
+}

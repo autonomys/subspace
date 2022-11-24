@@ -1,3 +1,4 @@
+use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
@@ -146,15 +147,23 @@ where
             code_executor,
         );
 
-        let bundle_processor = SystemBundleProcessor::new(
+        let domain_block_processor = DomainBlockProcessor::new(
+            DomainId::SYSTEM,
+            client.clone(),
             primary_chain_client.clone(),
             primary_network,
+            backend.clone(),
+            fraud_proof_generator.clone(),
+        );
+
+        let bundle_processor = SystemBundleProcessor::new(
+            primary_chain_client.clone(),
             client.clone(),
             backend.clone(),
             is_authority,
             keystore,
             spawner.clone(),
-            fraud_proof_generator.clone(),
+            domain_block_processor,
         );
 
         spawn_essential.spawn_essential_blocking(
