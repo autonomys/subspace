@@ -139,6 +139,65 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
+pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
+    ExecutionChainSpec::from_genesis(
+        // Name
+        "Subspace Gemini 3a System Domain",
+        // ID
+        "subspace_gemini_3a_system_domain",
+        ChainType::Local,
+        move || {
+            testnet_genesis(
+                vec![
+                    // Genesis executor
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                ],
+                vec![(
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                    1_000 * SSC,
+                    AccountId::from_ss58check("5FsxcczkSUnpqhcSgugPZsSghxrcKx5UEsRKL5WyPTL6SAxB")
+                        .expect("Wrong executor reward address"),
+                    ExecutorPublicKey::from_ss58check(
+                        "5FuuXk1TL8DKQMvg7mcqmP8t9FhxUdzTcYC9aFmebiTLmASx",
+                    )
+                    .expect("Wrong executor public key"),
+                )],
+                vec![(
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                    1_000 * SSC,
+                    DomainConfig {
+                        wasm_runtime_hash: blake2b_256_hash(
+                            system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                        )
+                        .into(),
+                        max_bundle_size: 4 * 1024 * 1024,
+                        bundle_slot_probability: (1, 1),
+                        max_bundle_weight: Weight::MAX,
+                        min_operator_stake: 100 * SSC,
+                    },
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                    Percent::one(),
+                )],
+            )
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        None,
+        // Protocol ID
+        Some("subspace-gemini-3a-system-domain"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        None,
+    )
+}
+
 pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
-use subspace_farmer::NodeRpcClient;
+use subspace_farmer::{NodeRpcClient, RpcClient};
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
     LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
@@ -62,12 +62,26 @@ pub(crate) async fn farm_multi_disk(
         plot_size: _,
         disk_concurrency,
         disable_farming,
-        dsn,
+        mut dsn,
     } = farming_args;
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
-    let (node, node_runner) = configure_dsn(base_path, dsn, &readers_and_pieces).await?;
+    let (node, mut node_runner) = {
+        if dsn.bootstrap_nodes.is_empty() {
+            dsn.bootstrap_nodes = {
+                info!("Connecting to node RPC at {}", node_rpc_url);
+                let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
+
+                rpc_client
+                    .farmer_app_info()
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error))?
+                    .dsn_bootstrap_nodes
+            };
+        }
+        configure_dsn(base_path, dsn, &readers_and_pieces).await?
+    };
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -83,7 +97,7 @@ pub(crate) async fn farm_multi_disk(
             ));
         }
 
-        info!("Connecting to node at {}", node_rpc_url);
+        info!("Connecting to node RPC at {}", node_rpc_url);
         let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
 
         let single_disk_plot = SingleDiskPlot::new(SingleDiskPlotOptions {
@@ -215,13 +229,9 @@ pub(crate) async fn farm_multi_disk(
 
         // Node runner future
         _ = Box::pin(async move {
-            if let Some(mut node_runner) = node_runner{
-                node_runner.run().await;
+            node_runner.run().await;
 
-                info!("Node runner exited.")
-            } else {
-                futures::future::pending().await
-            }
+            info!("Node runner exited.")
         }).fuse() => {},
     );
 
@@ -231,18 +241,12 @@ pub(crate) async fn farm_multi_disk(
 async fn configure_dsn(
     base_path: PathBuf,
     DsnArgs {
-        enable_dsn,
         listen_on,
         bootstrap_nodes,
         record_cache_size,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
-) -> Result<(Option<Node>, Option<NodeRunner<ConfiguredRecordStore>>), anyhow::Error> {
-    if !enable_dsn {
-        info!("No DSN configured.");
-        return Ok((None, None));
-    }
-
+) -> Result<(Node, NodeRunner<ConfiguredRecordStore>), anyhow::Error> {
     let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
         NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
             .expect("We don't expect an error on manually set value."),
@@ -333,6 +337,5 @@ async fn configure_dsn(
 
     create::<ConfiguredRecordStore>(config)
         .await
-        .map(|(node, node_runner)| (Some(node), Some(node_runner)))
         .map_err(Into::into)
 }

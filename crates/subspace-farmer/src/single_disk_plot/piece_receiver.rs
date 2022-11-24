@@ -1,4 +1,3 @@
-use crate::RpcClient;
 use async_trait::async_trait;
 use parity_scale_codec::Decode;
 use std::collections::BTreeSet;
@@ -17,16 +16,14 @@ use tracing::{debug, error, info, trace, warn};
 const GET_PIECE_WAITING_DURATION_IN_SECS: u64 = 1;
 
 // Temporary struct serving pieces from different providers using configuration arguments.
-pub(crate) struct MultiChannelPieceReceiver<'a, RC: RpcClient> {
-    rpc_client: RC,
-    dsn_node: Option<Node>,
+pub(crate) struct MultiChannelPieceReceiver<'a> {
+    dsn_node: Node,
     cancelled: &'a AtomicBool,
 }
 
-impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
-    pub(crate) fn new(rpc_client: RC, dsn_node: Option<Node>, cancelled: &'a AtomicBool) -> Self {
+impl<'a> MultiChannelPieceReceiver<'a> {
+    pub(crate) fn new(dsn_node: Node, cancelled: &'a AtomicBool) -> Self {
         Self {
-            rpc_client,
             dsn_node,
             cancelled,
         }
@@ -76,30 +73,28 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
 
     // Get from piece cache (L2)
     async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
-        if let Some(ref dsn_node) = self.dsn_node {
-            let key = PieceIndexHash::from_index(piece_index).to_multihash();
+        let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
-            let piece_result = dsn_node.get_value(key).await;
+        let piece_result = self.dsn_node.get_value(key).await;
 
-            match piece_result {
-                Ok(Some(piece)) => {
-                    trace!(%piece_index, ?key, "get_value returned a piece");
+        match piece_result {
+            Ok(Some(piece)) => {
+                trace!(%piece_index, ?key, "get_value returned a piece");
 
-                    match piece.try_into() {
-                        Ok(piece) => {
-                            return Some(piece);
-                        }
-                        Err(error) => {
-                            error!(%piece_index, ?key, ?error, "Error on piece construction");
-                        }
+                match piece.try_into() {
+                    Ok(piece) => {
+                        return Some(piece);
+                    }
+                    Err(error) => {
+                        error!(%piece_index, ?key, ?error, "Error on piece construction");
                     }
                 }
-                Ok(None) => {
-                    debug!(%piece_index,?key, "get_value returned no piece");
-                }
-                Err(err) => {
-                    error!(%piece_index,?key, ?err, "get_value returned an error");
-                }
+            }
+            Ok(None) => {
+                debug!(%piece_index,?key, "get_value returned no piece");
+            }
+            Err(err) => {
+                error!(%piece_index,?key, ?err, "get_value returned an error");
             }
         }
 
@@ -108,24 +103,22 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
 
     // Get piece from archival storage (L1) from sectors. Log errors.
     async fn get_piece_from_archival_storage(&self, piece_index: PieceIndex) -> Option<Piece> {
-        if let Some(ref dsn_node) = self.dsn_node {
-            let key =
-                PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
+        let key =
+            PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
 
-            let piece_result = dsn_node.get_value(key).await;
+        let piece_result = self.dsn_node.get_value(key).await;
 
-            match piece_result {
-                Ok(Some(encoded_gset)) => {
-                    trace!(
-                        %piece_index,
-                        ?key,
-                        "get_value returned a piece-by-sector providers"
-                    );
+        match piece_result {
+            Ok(Some(encoded_gset)) => {
+                trace!(
+                    %piece_index,
+                    ?key,
+                    "get_value returned a piece-by-sector providers"
+                );
 
-                    // Workaround for archival sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-                    let peer_set = if let Ok(set) =
-                        BTreeSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice())
-                    {
+                // Workaround for archival sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
+                let peer_set =
+                    if let Ok(set) = BTreeSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice()) {
                         set
                     } else {
                         warn!(
@@ -136,45 +129,43 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
                         return None;
                     };
 
-                    for peer_id in peer_set.into_iter() {
-                        if let Ok(piece_provider_id) = PeerId::from_bytes(&peer_id) {
-                            let request_result = dsn_node
-                                .send_generic_request(
-                                    piece_provider_id,
-                                    PieceByHashRequest {
-                                        key: PieceKey::Sector(PieceIndexHash::from_index(
-                                            piece_index,
-                                        )),
-                                    },
-                                )
-                                .await;
+                for peer_id in peer_set.into_iter() {
+                    if let Ok(piece_provider_id) = PeerId::from_bytes(&peer_id) {
+                        let request_result = self
+                            .dsn_node
+                            .send_generic_request(
+                                piece_provider_id,
+                                PieceByHashRequest {
+                                    key: PieceKey::Sector(PieceIndexHash::from_index(piece_index)),
+                                },
+                            )
+                            .await;
 
-                            match request_result {
-                                Ok(request) => {
-                                    if let Some(piece) = request.piece {
-                                        return Some(piece);
-                                    }
-                                }
-                                Err(error) => {
-                                    error!(%piece_index,?peer_id, ?key, ?error, "Error on piece-by-hash request.");
+                        match request_result {
+                            Ok(request) => {
+                                if let Some(piece) = request.piece {
+                                    return Some(piece);
                                 }
                             }
-                        } else {
-                            error!(
-                                %piece_index,
-                                ?peer_id,
-                                ?key,
-                                "Cannot convert piece-by-sector provider PeerId from received bytes"
-                            );
+                            Err(error) => {
+                                error!(%piece_index,?peer_id, ?key, ?error, "Error on piece-by-hash request.");
+                            }
                         }
+                    } else {
+                        error!(
+                            %piece_index,
+                            ?peer_id,
+                            ?key,
+                            "Cannot convert piece-by-sector provider PeerId from received bytes"
+                        );
                     }
                 }
-                Ok(None) => {
-                    info!(%piece_index,?key, "get_value returned no piece-by-sector provider");
-                }
-                Err(err) => {
-                    error!(%piece_index,?key, ?err, "get_value returned an error (piece-by-sector)");
-                }
+            }
+            Ok(None) => {
+                info!(%piece_index,?key, "get_value returned no piece-by-sector provider");
+            }
+            Err(err) => {
+                error!(%piece_index,?key, ?err, "get_value returned an error (piece-by-sector)");
             }
         }
 
@@ -183,35 +174,28 @@ impl<'a, RC: RpcClient> MultiChannelPieceReceiver<'a, RC> {
 }
 
 #[async_trait]
-impl<'a, RC: RpcClient> PieceReceiver for MultiChannelPieceReceiver<'a, RC> {
+impl<'a> PieceReceiver for MultiChannelPieceReceiver<'a> {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>
-    where
-        RC: RpcClient,
-    {
-        trace!(%piece_index, "Piece request. DSN={:?}", self.dsn_node.is_some());
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        trace!(%piece_index, "Piece request.");
 
-        if self.dsn_node.is_some() {
-            // until we get a valid piece
-            loop {
-                self.check_cancellation()?;
+        // until we get a valid piece
+        loop {
+            self.check_cancellation()?;
 
-                if let Some(piece) = self.get_piece_from_cache(piece_index).await {
-                    return Ok(Some(piece));
-                }
-
-                if let Some(piece) = self.get_piece_from_archival_storage(piece_index).await {
-                    return Ok(Some(piece));
-                }
-
-                warn!(%piece_index, "Couldn't get a piece from DSN. Starting a new attempt...");
-
-                sleep(Duration::from_secs(GET_PIECE_WAITING_DURATION_IN_SECS)).await;
+            if let Some(piece) = self.get_piece_from_cache(piece_index).await {
+                return Ok(Some(piece));
             }
-        } else {
-            self.rpc_client.get_piece(piece_index).await
+
+            if let Some(piece) = self.get_piece_from_archival_storage(piece_index).await {
+                return Ok(Some(piece));
+            }
+
+            warn!(%piece_index, "Couldn't get a piece from DSN. Starting a new attempt...");
+
+            sleep(Duration::from_secs(GET_PIECE_WAITING_DURATION_IN_SECS)).await;
         }
     }
 }

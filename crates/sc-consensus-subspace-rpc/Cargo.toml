@@ -22,7 +22,6 @@ parity-scale-codec = "3.2.1"
 parking_lot = "0.12.1"
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
-sc-piece-cache = { version = "0.1.0", path = "../sc-piece-cache" }
 sc-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
@@ -34,4 +33,5 @@ sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate",
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
+subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }

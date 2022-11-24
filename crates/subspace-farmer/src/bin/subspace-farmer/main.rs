@@ -58,18 +58,15 @@ struct FarmingArgs {
 /// Arguments for DSN
 #[derive(Debug, Parser)]
 struct DsnArgs {
-    /// Enable DSN and use DSN piece provider for plotting
-    #[arg(long)]
-    enable_dsn: bool,
     /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
     #[arg(long)]
     bootstrap_nodes: Vec<Multiaddr>,
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
-    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/40333")]
+    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
     /// Record cache size in items.
-    #[arg(long, default_value_t = 32768)]
+    #[arg(long, default_value_t = 65536)]
     record_cache_size: usize,
 }
 
@@ -93,28 +90,6 @@ enum Subcommand {
     Farm(FarmingArgs),
     /// Print information about farm and its content
     Info,
-    // TODO: Update or remove
-    // /// Benchmark disk in order to see a throughput of the disk for plotting
-    // Bench {
-    //     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    //     #[arg(long)]
-    //     plot_size: ByteSize,
-    //     /// Number of major concurrent operations to allow for disk
-    //     #[arg(long, default_value = "2")]
-    //     disk_concurrency: NonZeroU16,
-    //     /// How much things to write on disk (the more we write during benchmark, the more accurate
-    //     /// it is)
-    //     #[clap(arg_enum, long, default_value_t)]
-    //     write_to_disk: WriteToDisk,
-    //     /// Amount of data to plot for benchmarking.
-    //     ///
-    //     /// Only `G` and `T` endings are supported.
-    //     #[arg(long)]
-    //     write_pieces_size: ByteSize,
-    //     /// Skip recommitment benchmark
-    //     #[arg(long)]
-    //     no_recommitments: bool,
-    // },
 }
 
 #[derive(Debug, Clone)]
@@ -316,63 +291,7 @@ async fn main() -> Result<()> {
             };
 
             commands::info(disk_farms);
-        } // TODO: Update or remove
-          // Subcommand::Bench {
-          //     plot_size,
-          //     disk_concurrency,
-          //     write_to_disk,
-          //     write_pieces_size,
-          //     no_recommitments,
-          // } => {
-          //     let disk_farms = if command.farm.is_empty() {
-          //         if !base_path.exists() {
-          //             fs::create_dir_all(&base_path).unwrap_or_else(|error| {
-          //                 panic!(
-          //                     "Failed to create data directory {:?}: {:?}",
-          //                     base_path, error
-          //                 )
-          //             });
-          //         }
-          //
-          //         let plot_size = plot_size.as_u64();
-          //
-          //         if plot_size < 1024 * 1024 {
-          //             return Err(anyhow::anyhow!(
-          //                 "Plot size is too low ({0} bytes). Did you mean {0}G or {0}T?",
-          //                 plot_size
-          //             ));
-          //         }
-          //
-          //         vec![DiskFarm {
-          //             directory: base_path.clone(),
-          //             metadata_directory: base_path,
-          //             allocated_plotting_space: get_usable_plot_space(plot_size),
-          //         }]
-          //     } else {
-          //         for farm in &command.farm {
-          //             if !farm.directory.exists() {
-          //                 panic!("Plot directory {} doesn't exist", farm.directory.display());
-          //             }
-          //             if !farm.metadata_directory.exists() {
-          //                 panic!(
-          //                     "Metadata directory {} doesn't exist",
-          //                     farm.metadata_directory.display()
-          //                 );
-          //             }
-          //         }
-          //
-          //         command.farm
-          //     };
-          //
-          //     commands::bench(
-          //         disk_farms,
-          //         disk_concurrency,
-          //         write_to_disk,
-          //         write_pieces_size.as_u64(),
-          //         !no_recommitments,
-          //     )
-          //     .await?
-          // }
+        }
     }
     Ok(())
 }
