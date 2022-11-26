@@ -1,4 +1,5 @@
-use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
+use crate::gossip_message_validator::GossipMessageError;
 use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
@@ -10,7 +11,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
-use sp_domains::{Bundle, ExecutorApi, ExecutorPublicKey, SignedBundle};
+use sp_domains::{Bundle, ExecutorApi, SignedBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_runtime::RuntimeAppPublic;
@@ -270,36 +271,6 @@ where
         }
 
         Ok(())
-    }
-}
-
-/// Error type for domain gossip handling.
-#[derive(Debug, thiserror::Error)]
-pub enum GossipMessageError {
-    #[error("Bundle equivocation error")]
-    BundleEquivocation,
-    #[error(transparent)]
-    FraudProof(#[from] FraudProofError),
-    #[error(transparent)]
-    Client(Box<sp_blockchain::Error>),
-    #[error(transparent)]
-    RuntimeApi(#[from] sp_api::ApiError),
-    #[error(transparent)]
-    RecvError(#[from] crossbeam::channel::RecvError),
-    #[error("Failed to send local receipt result because the channel is disconnected")]
-    SendError,
-    #[error("The signature of bundle is invalid")]
-    BadBundleSignature,
-    #[error("Invalid bundle author, got: {got}, expected: {expected}")]
-    InvalidBundleAuthor {
-        got: ExecutorPublicKey,
-        expected: ExecutorPublicKey,
-    },
-}
-
-impl From<sp_blockchain::Error> for GossipMessageError {
-    fn from(error: sp_blockchain::Error) -> Self {
-        Self::Client(Box::new(error))
     }
 }
 

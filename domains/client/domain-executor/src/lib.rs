@@ -72,6 +72,7 @@ mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
 mod fraud_proof;
+mod gossip_message_validator;
 mod merkle_tree;
 mod system_bundle_processor;
 mod system_bundle_producer;
