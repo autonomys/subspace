@@ -103,14 +103,11 @@ where
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-        if let Some(fraud_proof) = self
-            .gossip_message_validator
-            .validate_gossiped_execution_receipt(
-                signed_bundle_hash,
-                execution_receipt,
-                head_receipt_number,
-            )?
-        {
+        if let Some(fraud_proof) = self.gossip_message_validator.validate_execution_receipt(
+            signed_bundle_hash,
+            execution_receipt,
+            head_receipt_number,
+        )? {
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(

@@ -159,7 +159,7 @@ where
         }
     }
 
-    pub(crate) fn validate_gossiped_execution_receipt(
+    pub(crate) fn validate_execution_receipt(
         &self,
         signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
