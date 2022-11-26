@@ -13,7 +13,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
-//! Utility module for handling Subspace client notifications.
+//! Utility module for handling Domain client notifications.
 
 use parking_lot::Mutex;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
@@ -29,7 +29,7 @@ type SharedNotificationSenders<T> = Arc<Mutex<Vec<TracingUnboundedSender<T>>>>;
 
 /// The sending half of the Subspace notification channel(s).
 #[derive(Clone)]
-pub(crate) struct SubspaceNotificationSender<T: Clone + Send + Sync + fmt::Debug + 'static> {
+pub struct SubspaceNotificationSender<T: Clone + Send + Sync + fmt::Debug + 'static> {
     subscribers: SharedNotificationSenders<T>,
 }
 
@@ -40,7 +40,7 @@ impl<T: Clone + Send + Sync + fmt::Debug + 'static> SubspaceNotificationSender<T
     }
 
     /// Send out a notification to all subscribers.
-    pub(crate) fn notify<F>(&self, get_value: F)
+    pub fn notify<F>(&self, get_value: F)
     where
         F: FnOnce() -> T,
     {
@@ -83,7 +83,7 @@ impl<T: Clone + Send + Sync + fmt::Debug + 'static> SubspaceNotificationStream<T
 }
 
 /// Creates a new pair of receiver and sender of notifications.
-pub(crate) fn channel<T>(
+pub fn channel<T>(
     stream_name: &'static str,
 ) -> (SubspaceNotificationSender<T>, SubspaceNotificationStream<T>)
 where

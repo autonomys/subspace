@@ -771,16 +771,16 @@ impl<T: Config> Pallet<T> {
             state_root,
             executor_public_key,
             global_challenge,
-            block_number,
-            block_hash,
+            core_block_number,
             core_block_hash,
             core_state_root,
             ..
         } = &signed_opaque_bundle.proof_of_election;
 
-        if !block_number.is_zero() {
-            let block_number = T::BlockNumber::from(*block_number);
+        let core_block_number =
+            T::BlockNumber::from(core_block_number.ok_or(Error::<T>::CoreBlockInfoNotFound)?);
 
+        if !core_block_number.is_zero() {
             let core_block_hash = core_block_hash.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
             let core_state_root = core_state_root.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
 
@@ -792,9 +792,7 @@ impl<T: Config> Pallet<T> {
                     .find_map(|receipt| {
                         receipt.trace.last().and_then(|state_root| {
                             if (receipt.primary_number, receipt.domain_hash)
-                                == (block_number, *block_hash)
-                                || (receipt.primary_number, receipt.domain_hash)
-                                    == (block_number, core_block_hash)
+                                == (core_block_number, core_block_hash)
                             {
                                 Some(*state_root)
                             } else {
@@ -805,7 +803,7 @@ impl<T: Config> Pallet<T> {
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
-                None => StateRoots::<T>::get((domain_id, block_number, core_block_hash))
+                None => StateRoots::<T>::get((domain_id, core_block_number, core_block_hash))
                     .ok_or(Error::<T>::StateRootUnverifiable)?,
             };
 

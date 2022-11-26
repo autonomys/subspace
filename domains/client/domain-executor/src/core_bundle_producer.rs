@@ -172,7 +172,13 @@ where
                 .propose_bundle_at::<PBlock, _, _>(slot, primary_info, receipt_interface, best_hash)
                 .await?;
 
-            let best_hash = self.client.info().best_hash;
+            let core_block_number: BlockNumber = self
+                .client
+                .info()
+                .best_number
+                .try_into()
+                .unwrap_or_else(|_| panic!("Domain block number must fit into u32; qed"));
+            let core_block_hash = self.client.info().best_hash;
 
             let as_core_block_hash = |system_block_hash: SBlock::Hash| {
                 Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
@@ -190,11 +196,12 @@ where
                 block_hash: as_core_block_hash(proof_of_election.block_hash),
                 // TODO: override the core block info, see if there is a nicer way
                 // later.
-                core_block_hash: Some(best_hash),
+                core_block_number: Some(core_block_number),
+                core_block_hash: Some(core_block_hash),
                 core_state_root: Some(
                     *self
                         .client
-                        .header(BlockId::Hash(best_hash))?
+                        .header(BlockId::Hash(core_block_hash))?
                         .expect("Best block header must exist; qed")
                         .state_root(),
                 ),

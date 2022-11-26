@@ -32,7 +32,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Development",
         // ID
-        "execution_dev",
+        "core_payments_domain_dev",
         ChainType::Development,
         move || {
             testnet_genesis(vec![
@@ -56,7 +56,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Local Testnet",
         // ID
-        "execution_local_testnet",
+        "core_payments_domain_local_testnet",
         ChainType::Local,
         move || {
             testnet_genesis(vec![
@@ -88,12 +88,12 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace X-Net 2 Execution",
+        "Subspace Gemini 3a Core Payments Domain",
         // ID
-        "subspace_x_net_2a_execution",
+        "subspace_gemini_3a_core_payments_domain",
         ChainType::Local,
         move || {
             testnet_genesis(vec![
@@ -107,7 +107,7 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-x-net-2a-execution"),
+        Some("subspace-gemini-3a-core-payments-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),

@@ -1,4 +1,5 @@
 use crate::Configuration;
+use domain_client_consensus_relay_chain::notification::SubspaceNotificationStream;
 use domain_client_executor::CoreExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_runtime_primitives::{DomainCoreApi, RelayerId};
@@ -8,7 +9,6 @@ use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, ProofProvider, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
-use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{

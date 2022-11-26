@@ -382,11 +382,28 @@ fn main() -> Result<(), Error> {
                                 ))
                             })?;
 
-                        (!cli.dsn_listen_on.is_empty()).then_some(DsnConfig {
+                        let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
+                            primary_chain_config
+                                .chain_spec
+                                .properties()
+                                .get("dsnBootstrapNodes")
+                                .map(|d| serde_json::from_value(d.clone()))
+                                .transpose()
+                                .map_err(|error| {
+                                    sc_service::Error::Other(format!(
+                                        "Failed to decode DSN bootsrap nodes: {error:?}"
+                                    ))
+                                })?
+                                .unwrap_or_default()
+                        } else {
+                            cli.dsn_bootstrap_nodes
+                        };
+
+                        DsnConfig {
                             keypair: network_keypair,
-                            dsn_listen_on: cli.dsn_listen_on,
-                            dsn_bootstrap_node: cli.dsn_bootstrap_node,
-                        })
+                            listen_on: cli.dsn_listen_on,
+                            bootstrap_nodes: dsn_bootstrap_nodes,
+                        }
                     };
 
                     let primary_chain_config = SubspaceConfiguration {
@@ -394,6 +411,7 @@ fn main() -> Result<(), Error> {
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
                         dsn_config,
+                        piece_cache_size: cli.piece_cache_size.as_u64(),
                     };
 
                     subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
@@ -517,7 +535,10 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                        let core_domain_config = Configuration::new(core_domain_service_config, core_domain_cli.relayer_id);
+                        let core_domain_config = Configuration::new(
+                            core_domain_service_config,
+                            core_domain_cli.relayer_id,
+                        );
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
@@ -547,7 +568,8 @@ fn main() -> Result<(), Error> {
                             }
                             _ => {
                                 return Err(Error::Other(format!(
-                                    "Invalid domain id, currently only core-payments domain is supported, please rerun with `--domain-id={:?}`",
+                                    "Invalid domain id, currently only core-payments domain is \
+                                    supported, please rerun with `--domain-id={:?}`",
                                     u32::from(DomainId::CORE_PAYMENTS)
                                 )));
                             }

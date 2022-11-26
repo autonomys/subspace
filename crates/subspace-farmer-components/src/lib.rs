@@ -21,9 +21,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FarmerProtocolInfo {
-    /// Genesis hash of the chain
-    #[serde(with = "hex::serde")]
-    pub genesis_hash: [u8; 32],
     /// The size of data in one piece (in bytes).
     pub record_size: NonZeroU32,
     /// Recorded history is encoded and plotted in segments of this size (in bytes).

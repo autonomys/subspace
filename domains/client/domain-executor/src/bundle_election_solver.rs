@@ -154,6 +154,7 @@ where
                         storage_proof,
                         block_number: best_number,
                         block_hash: best_hash,
+                        core_block_number: None,
                         core_block_hash: None,
                         core_state_root: None,
                     };

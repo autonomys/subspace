@@ -24,6 +24,7 @@ mod secondary_chain;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::secondary_chain::cli::SecondaryChainCli;
+use bytesize::ByteSize;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -177,14 +178,18 @@ pub struct Cli {
     #[clap(flatten)]
     pub run: RunCmd,
 
-    /// DSN configuration arguments: DSN 'listen-on' multi-address
+    /// Where local DSN node will listen for incoming connections.
     // TODO: Add more DSN-related parameters
-    #[arg(long)]
+    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30433")]
     pub dsn_listen_on: Vec<Multiaddr>,
 
-    /// DSN configuration arguments: DSN 'bootstrap-node' multi-address
+    /// Bootstrap nodes for DSN.
     #[arg(long)]
-    pub dsn_bootstrap_node: Vec<Multiaddr>,
+    pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+
+    /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+    #[arg(long, default_value = "1GiB")]
+    pub piece_cache_size: ByteSize,
 
     /// Secondary chain arguments
     ///
@@ -232,8 +237,8 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
-            "gemini-2a" => chain_spec::gemini_2a()?,
-            "gemini-2a-compiled" => chain_spec::gemini_2a_compiled()?,
+            "gemini-3a" => chain_spec::gemini_3a()?,
+            "gemini-3a-compiled" => chain_spec::gemini_3a_compiled()?,
             "x-net-2" => chain_spec::x_net_2_config()?,
             "x-net-2-compiled" => chain_spec::x_net_2_config_compiled()?,
             "dev" => chain_spec::dev_config()?,

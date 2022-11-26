@@ -219,7 +219,9 @@ pub struct ProofOfElection<DomainHash> {
     pub block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
     pub block_hash: DomainHash,
-    /// Block hash of the core domain block at which the proof of election was created.
+    /// Number of the core domain block at which the proof of election was created.
+    pub core_block_number: Option<BlockNumber>,
+    /// Block hash corresponding to the `core_block_number` above.
     pub core_block_hash: Option<DomainHash>,
     /// Core domain state root corresponding to the `core_block_hash` above.
     pub core_state_root: Option<DomainHash>,
@@ -238,6 +240,7 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             storage_proof: StorageProof::empty(),
             block_number: Default::default(),
             block_hash: Default::default(),
+            core_block_number: None,
             core_block_hash: None,
             core_state_root: None,
         }

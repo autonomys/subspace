@@ -19,9 +19,24 @@ use serde::{Deserialize, Serialize};
 use subspace_core_primitives::{
     Blake2b256Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
 };
+use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_networking::libp2p::Multiaddr;
 
 /// Defines a limit for segment indexes array. It affects storage access on the runtime side.
 pub const MAX_SEGMENT_INDEXES_PER_REQUEST: usize = 300;
+
+/// Information necessary for farmer application
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FarmerAppInfo {
+    /// Genesis hash of the chain
+    #[serde(with = "hex::serde")]
+    pub genesis_hash: [u8; 32],
+    /// Bootstrap nodes for DSN.
+    pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// Protocol info for farmer
+    pub protocol_info: FarmerProtocolInfo,
+}
 
 /// Information about new slot that just arrived
 #[derive(Clone, Debug, Serialize, Deserialize)]

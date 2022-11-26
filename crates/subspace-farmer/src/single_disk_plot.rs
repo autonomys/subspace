@@ -270,7 +270,7 @@ pub struct SingleDiskPlotOptions<RC> {
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
     /// Optional DSN Node.
-    pub dsn_node: Option<Node>,
+    pub dsn_node: Node,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -329,14 +329,21 @@ pub enum SingleDiskPlotError {
     /// Node RPC error
     #[error("Node RPC error: {0}")]
     NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    /// Allocated space is not enough for one sector
+    #[error(
+        "Allocated space is not enough for one sector. \
+        The lowest acceptable value for allocated space is: {min_size}, \
+        you provided: {allocated_space}."
+    )]
+    InsufficientAllocatedSpace { min_size: u64, allocated_space: u64 },
 }
 
 /// Errors that happen during plotting
 #[derive(Debug, Error)]
 pub enum PlottingError {
     /// Failed to retriever farmer protocol info
-    #[error("Failed to retriever farmer protocol info: {error}")]
-    FailedToGetFarmerProtocolInfo {
+    #[error("Failed to retriever farmer info: {error}")]
+    FailedToGetFarmerInfo {
         /// Lower-level error
         error: rpc_client::Error,
     },
@@ -349,8 +356,8 @@ pub enum PlottingError {
 #[derive(Debug, Error)]
 pub enum FarmingError {
     /// Failed to retriever farmer protocol info
-    #[error("Failed to retriever farmer protocol info: {error}")]
-    FailedToGetFarmerProtocolInfo {
+    #[error("Failed to retriever farmer info: {error}")]
+    FailedToGetFarmerInfo {
         /// Lower-level error
         error: rpc_client::Error,
     },
@@ -453,6 +460,15 @@ impl SingleDiskPlot {
             dsn_node,
         } = options;
 
+        // TODO: Account for plot overhead
+        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
+        if target_sector_count == 0 {
+            return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                min_size: PLOT_SECTOR_SIZE,
+                allocated_space,
+            });
+        }
+
         fs::create_dir_all(&directory)?;
 
         // TODO: Parametrize concurrency, much higher default due to SSD focus
@@ -464,9 +480,9 @@ impl SingleDiskPlot {
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
 
-        let farmer_protocol_info = tokio::task::block_in_place(|| {
+        let farmer_app_info = tokio::task::block_in_place(|| {
             Handle::current()
-                .block_on(rpc_client.farmer_protocol_info())
+                .block_on(rpc_client.farmer_app_info())
                 .map_err(SingleDiskPlotError::NodeRpcError)
         })?;
 
@@ -480,11 +496,11 @@ impl SingleDiskPlot {
                     });
                 }
 
-                if &farmer_protocol_info.genesis_hash != single_disk_plot_info.genesis_hash() {
+                if &farmer_app_info.genesis_hash != single_disk_plot_info.genesis_hash() {
                     return Err(SingleDiskPlotError::WrongChain {
                         id: *single_disk_plot_info.id(),
                         correct_chain: hex::encode(single_disk_plot_info.genesis_hash()),
-                        wrong_chain: hex::encode(farmer_protocol_info.genesis_hash),
+                        wrong_chain: hex::encode(farmer_app_info.genesis_hash),
                     });
                 }
 
@@ -509,7 +525,7 @@ impl SingleDiskPlot {
 
                 let single_disk_plot_info = SingleDiskPlotInfo::new(
                     SingleDiskPlotId::new(),
-                    farmer_protocol_info.genesis_hash,
+                    farmer_app_info.genesis_hash,
                     public_key,
                     first_sector_index,
                     allocated_space,
@@ -523,9 +539,6 @@ impl SingleDiskPlot {
 
         let single_disk_plot_id = *single_disk_plot_info.id();
         let first_sector_index = single_disk_plot_info.first_sector_index();
-
-        // TODO: Account for plot overhead
-        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
 
         // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
@@ -622,9 +635,8 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher = dsn_node.as_ref().map(|dsn_node| {
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone())
-                });
+                let piece_publisher =
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -665,24 +677,20 @@ impl SingleDiskPlot {
                                 return;
                             }
 
-                            let farmer_protocol_info =
-                                handle.block_on(rpc_client.farmer_protocol_info()).map_err(
-                                    |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
-                                )?;
+                            let farmer_app_info = handle
+                                .block_on(rpc_client.farmer_app_info())
+                                .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
 
                             // TODO: Remove RPC version and keep DSN version only.
-                            let piece_receiver = MultiChannelPieceReceiver::new(
-                                rpc_client.clone(),
-                                dsn_node.clone(),
-                                &shutting_down,
-                            );
+                            let piece_receiver =
+                                MultiChannelPieceReceiver::new(dsn_node.clone(), &shutting_down);
 
                             let plotted_sector = match handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
                                 &piece_receiver,
                                 &shutting_down,
-                                &farmer_protocol_info,
+                                &farmer_app_info.protocol_info,
                                 &kzg,
                                 &sector_codec,
                                 sector,
@@ -704,15 +712,13 @@ impl SingleDiskPlot {
 
                             // TODO: Migrate this over to using `on_sector_plotted` instead
                             // Publish pieces-by-sector if we use DSN
-                            if let Some(ref piece_publisher) = piece_publisher {
-                                let publishing_result = handle.block_on(
-                                    piece_publisher.publish_pieces(plotted_sector.piece_indexes),
-                                );
+                            let publishing_result = handle.block_on(
+                                piece_publisher.publish_pieces(plotted_sector.piece_indexes),
+                            );
 
-                                // cancelled
-                                if publishing_result.is_err() {
-                                    return;
-                                }
+                            // cancelled
+                            if publishing_result.is_err() {
+                                return;
                             }
                         }
                     };
@@ -768,9 +774,7 @@ impl SingleDiskPlot {
                         info!("Subscribing to slot info notifications");
                         let mut slot_info_notifications = handle
                             .block_on(rpc_client.subscribe_slot_info())
-                            .map_err(|error| FarmingError::FailedToGetFarmerProtocolInfo {
-                                error,
-                            })?;
+                            .map_err(|error| FarmingError::FailedToGetFarmerInfo { error })?;
 
                         while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
                         {
@@ -844,7 +848,7 @@ impl SingleDiskPlot {
                                     .try_into_solutions(
                                         &identity,
                                         reward_address,
-                                        &farmer_protocol_info,
+                                        &farmer_app_info.protocol_info,
                                         &sector_codec,
                                         sector,
                                         sector_metadata,

@@ -1,4 +1,4 @@
-use crate::rpc_client::{Error as RpcError, RpcClient};
+use crate::rpc_client::{Error as RpcError, Error, RpcClient};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
@@ -8,10 +8,9 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_core_primitives::{RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
-    RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 // Defines max_concurrent_requests constant in the node rpc client.
@@ -40,10 +39,10 @@ impl NodeRpcClient {
 
 #[async_trait]
 impl RpcClient for NodeRpcClient {
-    async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, RpcError> {
+    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
         Ok(self
             .client
-            .request("subspace_getFarmerProtocolInfo", rpc_params![])
+            .request("subspace_getFarmerAppInfo", rpc_params![])
             .await?)
     }
 
@@ -132,13 +131,6 @@ impl RpcClient for NodeRpcClient {
         Ok(self
             .client
             .request("subspace_recordsRoots", rpc_params![&segment_indexes])
-            .await?)
-    }
-
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
-        Ok(self
-            .client
-            .request("subspace_getPiece", rpc_params![&piece_index])
             .await?)
     }
 }

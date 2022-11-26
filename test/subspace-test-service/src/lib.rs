@@ -38,9 +38,10 @@ use sp_runtime::codec::Encode;
 use sp_runtime::traits::IdentifyAccount;
 use sp_runtime::{generic, MultiSigner};
 use std::sync::Arc;
+use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
-use subspace_service::{FullPool, NewFull, SubspaceConfiguration};
+use subspace_service::{DsnConfig, FullPool, NewFull, SubspaceConfiguration};
 use subspace_test_client::{
     chain_spec, start_farmer, Backend, Client, FraudProofVerifier, TestExecutorDispatch,
 };
@@ -188,7 +189,14 @@ pub async fn run_validator_node(
         let primary_chain_config = SubspaceConfiguration {
             base: primary_chain_config,
             force_new_slot_notifications: true,
-            dsn_config: None,
+            dsn_config: DsnConfig {
+                listen_on: vec!["/ip4/127.0.0.1/tcp/0"
+                    .parse()
+                    .expect("Correct multiaddr; qed")],
+                bootstrap_nodes: vec![],
+                keypair: identity::Keypair::generate_ed25519(),
+            },
+            piece_cache_size: 1024 * 1024 * 1024,
         };
 
         subspace_service::new_full::<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>(
