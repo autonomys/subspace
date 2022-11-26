@@ -1,7 +1,6 @@
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -59,8 +58,7 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + sp_block_builder::BlockBuilder<Block>
+    Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
             StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,

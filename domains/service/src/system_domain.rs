@@ -342,7 +342,6 @@ where
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         transaction_pool,
-        backend.clone(),
         executor.fraud_proof_generator(),
     );
     let executor_gossip =

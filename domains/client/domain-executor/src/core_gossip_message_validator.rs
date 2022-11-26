@@ -1,10 +1,7 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::gossip_message_validator::GossipMessageError;
 use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
-use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
-use futures::FutureExt;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -41,9 +38,8 @@ pub struct CoreGossipMessageValidator<
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     transaction_pool: Arc<TransactionPool>,
-    backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    _phantom_data: PhantomData<(SBlock, SClient)>,
+    _phantom_data: PhantomData<(SBlock, SClient, Backend)>,
 }
 
 impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> Clone
@@ -69,7 +65,6 @@ where
             client: self.client.clone(),
             spawner: self.spawner.clone(),
             transaction_pool: self.transaction_pool.clone(),
-            backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -98,28 +93,16 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + sp_block_builder::BlockBuilder<Block>
+    Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
             StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
         >,
-    for<'b> &'b Client: sc_consensus::BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + Send
-        + Sync
-        + 'static,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
@@ -129,7 +112,6 @@ where
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         transaction_pool: Arc<TransactionPool>,
-        backend: Arc<Backend>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
@@ -137,7 +119,6 @@ where
             client,
             spawner,
             transaction_pool,
-            backend,
             fraud_proof_generator,
             _phantom_data: PhantomData::default(),
         }
@@ -296,31 +277,17 @@ where
         + ProvideRuntimeApi<Block>
         + AuxStore
         + ProofProvider<Block>
-        + Send
-        + Sync
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + sp_block_builder::BlockBuilder<Block>
+    Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
             StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
         >,
-    for<'b> &'b Client: sc_consensus::BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + Send
-        + Sync
-        + 'static,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
@@ -372,10 +339,6 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            let _primary_hash =
-                PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
-                    .expect("Hash type must be correct");
-
             let executor_public_key = &proof_of_election.executor_public_key;
 
             if !executor_public_key.verify(&bundle.hash(), signature) {

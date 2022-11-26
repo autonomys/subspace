@@ -368,7 +368,6 @@ where
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             transaction_pool.clone(),
-            backend.clone(),
             executor.fraud_proof_generator(),
         );
 
