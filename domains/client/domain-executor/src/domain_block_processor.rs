@@ -343,7 +343,7 @@ where
         &self,
         primary_hash: PBlock::Hash,
         domain_block_result: DomainBlockResult<Block, PBlock>,
-        best_execution_chain_number: NumberFor<Block>,
+        head_receipt_number: NumberFor<Block>,
         oldest_receipt_number: NumberFor<Block>,
     ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
         let DomainBlockResult {
@@ -355,7 +355,7 @@ where
         crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
             &*self.client,
             (header_hash, header_number),
-            best_execution_chain_number,
+            head_receipt_number,
             &execution_receipt,
         )?;
 

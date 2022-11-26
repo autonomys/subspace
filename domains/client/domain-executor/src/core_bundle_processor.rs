@@ -165,17 +165,15 @@ where
         // TODO: just make it compile for now, likely wrong, rethink about it.
         let system_domain_hash = self.system_domain_client.info().best_hash;
 
-        let best_execution_chain_number = self
+        let head_receipt_number = self
             .system_domain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
-        let best_execution_chain_number = translate_number_type::<
-            NumberFor<SBlock>,
-            NumberFor<Block>,
-        >(best_execution_chain_number);
+            .head_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
+        let head_receipt_number =
+            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(head_receipt_number);
 
         assert!(
-            domain_block_result.header_number > best_execution_chain_number,
+            domain_block_result.header_number > head_receipt_number,
             "Consensus chain number must larger than execution chain number by at least 1"
         );
 
@@ -189,7 +187,7 @@ where
         if let Some(fraud_proof) = self.domain_block_processor.on_domain_block_processed(
             primary_hash,
             domain_block_result,
-            best_execution_chain_number,
+            head_receipt_number,
             oldest_receipt_number,
         )? {
             // TODO: self.system_domain_client.runtime_api().submit_fraud_proof_unsigned()

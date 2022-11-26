@@ -531,8 +531,8 @@ impl_runtime_apis! {
             Some(storage_keys)
         }
 
-        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::best_execution_chain_number(domain_id)
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::head_receipt_number(domain_id)
         }
 
         fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {

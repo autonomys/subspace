@@ -1140,8 +1140,8 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn best_execution_chain_number() -> NumberFor<Block> {
-            Domains::best_execution_chain_number()
+        fn head_receipt_number() -> NumberFor<Block> {
+            Domains::head_receipt_number()
         }
 
         fn oldest_receipt_number() -> NumberFor<Block> {

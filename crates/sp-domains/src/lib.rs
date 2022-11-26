@@ -409,7 +409,7 @@ sp_api::decl_runtime_apis! {
         fn execution_wasm_bundle() -> Cow<'static, [u8]>;
 
         /// Returns the best execution chain number.
-        fn best_execution_chain_number() -> NumberFor<Block>;
+        fn head_receipt_number() -> NumberFor<Block>;
 
         /// Returns the block number of oldest execution receipt.
         fn oldest_receipt_number() -> NumberFor<Block>;

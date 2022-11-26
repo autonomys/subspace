@@ -715,7 +715,7 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
 }
 
 impl<T: Config> Pallet<T> {
-    pub fn best_execution_chain_number(domain_id: DomainId) -> T::BlockNumber {
+    pub fn head_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
         best_number
     }

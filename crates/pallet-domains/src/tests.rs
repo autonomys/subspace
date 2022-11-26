@@ -328,7 +328,7 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle1));
-        assert_eq!(Domains::best_execution_chain_number(), 255);
+        assert_eq!(Domains::head_receipt_number(), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(BlockHash::<Test>::contains_key(0));
@@ -346,7 +346,7 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert!(!BlockHash::<Test>::contains_key(2));
         assert_eq!(OldestReceiptNumber::<Test>::get(), 3);
         assert_eq!(Domains::finalized_receipt_number(), 2);
-        assert_eq!(Domains::best_execution_chain_number(), 258);
+        assert_eq!(Domains::head_receipt_number(), 258);
     });
 }
 
@@ -390,7 +390,7 @@ fn submit_fraud_proof_should_work() {
             RuntimeOrigin::none(),
             dummy_proof
         ));
-        assert_eq!(Domains::best_execution_chain_number(), 99);
+        assert_eq!(Domains::head_receipt_number(), 99);
         let receipt_hash = dummy_bundles[98].clone().bundle.receipts[0].hash();
         assert!(Receipts::<Test>::get(receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.

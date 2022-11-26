@@ -152,17 +152,15 @@ where
             )
             .await?;
 
-        let best_execution_chain_number = self
+        let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(primary_hash))?;
-        let best_execution_chain_number = translate_number_type::<
-            NumberFor<PBlock>,
-            NumberFor<Block>,
-        >(best_execution_chain_number);
+            .head_receipt_number(&BlockId::Hash(primary_hash))?;
+        let head_receipt_number =
+            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(head_receipt_number);
 
         assert!(
-            domain_block_result.header_number > best_execution_chain_number,
+            domain_block_result.header_number > head_receipt_number,
             "Consensus chain number must larger than execution chain number by at least 1"
         );
 
@@ -176,7 +174,7 @@ where
         if let Some(fraud_proof) = self.domain_block_processor.on_domain_block_processed(
             primary_hash,
             domain_block_result,
-            best_execution_chain_number,
+            head_receipt_number,
             oldest_receipt_number,
         )? {
             self.primary_chain_client
