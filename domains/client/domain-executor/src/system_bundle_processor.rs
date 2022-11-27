@@ -1,5 +1,5 @@
 use crate::domain_block_processor::DomainBlockProcessor;
-use crate::utils::translate_number_type;
+use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use codec::Decode;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -10,7 +10,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
-use sp_domains::{ExecutorApi, OpaqueBundle, SignedOpaqueBundle};
+use sp_domains::ExecutorApi;
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
@@ -57,11 +57,6 @@ where
         }
     }
 }
-
-type SystemAndCoreBundles<Block, PBlock> = (
-    Vec<OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
-    Vec<SignedOpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>>,
-);
 
 impl<Block, PBlock, Client, PClient, Backend, E>
     SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
@@ -118,7 +113,7 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: SystemAndCoreBundles<Block, PBlock>,
+        bundles: DomainBundles<Block, PBlock>,
         shuffling_seed: Randomness,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -191,9 +186,18 @@ where
     fn bundles_to_extrinsics(
         &self,
         parent_hash: Block::Hash,
-        (system_bundles, core_bundles): SystemAndCoreBundles<Block, PBlock>,
+        bundles: DomainBundles<Block, PBlock>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+        let (system_bundles, core_bundles) = match bundles {
+            DomainBundles::System(system_bundles, core_bundles) => (system_bundles, core_bundles),
+            DomainBundles::Core(_) => {
+                return Err(sp_blockchain::Error::Application(Box::from(
+                    "System bundle processor can not process core bundles.",
+                )))
+            }
+        };
+
         let origin_system_extrinsics = self
             .domain_block_processor
             .compile_own_domain_bundles(system_bundles);
