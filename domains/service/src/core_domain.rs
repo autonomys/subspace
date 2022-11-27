@@ -2,7 +2,8 @@ use crate::Configuration;
 use domain_client_consensus_relay_chain::notification::SubspaceNotificationStream;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
-use domain_runtime_primitives::{DomainCoreApi, RelayerId};
+use domain_runtime_primitives::opaque::Block;
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
 use futures::Stream;
 use jsonrpsee::tracing;
@@ -32,8 +33,6 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
-use system_domain_runtime::opaque::Block;
-use system_domain_runtime::{AccountId, Balance, Hash};
 use system_runtime_primitives::SystemDomainApi;
 
 /// Domain full client.

@@ -4,6 +4,7 @@ use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
+use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
 use futures::Stream;
@@ -34,7 +35,6 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
-use system_domain_runtime::opaque::Block;
 use system_runtime_primitives::SystemDomainApi;
 
 /// Domain full client.
