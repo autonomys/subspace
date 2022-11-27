@@ -2,7 +2,7 @@ use crate::utils::to_number_primitive;
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
@@ -59,10 +59,7 @@ where
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,

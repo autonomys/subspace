@@ -200,7 +200,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
+    let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream");
 
     let executor = SystemExecutor::new(
         &spawn_essential,
@@ -236,7 +236,11 @@ where
             executor: gossip_message_validator,
             bundle_receiver,
         });
-    spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
+    spawn_essential.spawn_essential_blocking(
+        "system-domain-gossip",
+        None,
+        Box::pin(executor_gossip),
+    );
 
     if let Some(relayer_id) = secondary_chain_config.maybe_relayer_id {
         tracing::info!(

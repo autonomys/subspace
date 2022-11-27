@@ -4,7 +4,7 @@ use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
@@ -76,10 +76,7 @@ where
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
@@ -228,8 +225,7 @@ where
         tracing::debug!(
             ?trace,
             ?trace_root,
-            "Trace root calculated for #{}",
-            header_hash
+            "Trace root calculated for #{header_hash}"
         );
 
         let execution_receipt = ExecutionReceipt {

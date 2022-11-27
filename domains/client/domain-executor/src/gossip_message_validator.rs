@@ -2,7 +2,7 @@ use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerat
 use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
 use futures::FutureExt;
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
@@ -84,10 +84,7 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,

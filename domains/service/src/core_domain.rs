@@ -30,7 +30,7 @@ use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
-type SystemDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
+type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
     CoreExecutor<
         Block,
         SBlock,
@@ -80,7 +80,7 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor:
-        SystemDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+        CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -222,7 +222,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream");
+    let (bundle_sender, bundle_receiver) = tracing_unbounded("core_domain_bundle_stream");
 
     let executor = CoreExecutor::new(
         domain_id,
@@ -262,7 +262,7 @@ where
             executor: gossip_message_validator,
             bundle_receiver,
         });
-    spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
+    spawn_essential.spawn_essential_blocking("core-domain-gossip", None, Box::pin(executor_gossip));
 
     if let Some(relayer_id) = secondary_chain_config.maybe_relayer_id {
         tracing::info!(
