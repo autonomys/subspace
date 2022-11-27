@@ -244,6 +244,7 @@ async fn configure_dsn(
         listen_on,
         bootstrap_nodes,
         record_cache_size,
+        disable_non_global_addresses_in_dht,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
 ) -> Result<(Node, NodeRunner<ConfiguredRecordStore>), anyhow::Error> {
@@ -266,7 +267,7 @@ async fn configure_dsn(
 
     let config = Config::<ConfiguredRecordStore> {
         listen_on,
-        allow_non_globals_in_dht: true,
+        allow_non_global_addresses_in_dht: !disable_non_global_addresses_in_dht,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {

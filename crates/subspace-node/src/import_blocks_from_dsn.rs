@@ -138,7 +138,7 @@ where
     let (node, mut node_runner) = subspace_networking::create(Config {
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
-        allow_non_globals_in_dht: true,
+        allow_non_global_addresses_in_dht: true,
         ..Config::with_generated_keypair()
     })
     .await

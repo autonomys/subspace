@@ -28,7 +28,7 @@ async fn main() {
             )
             .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-            allow_non_globals_in_dht: true,
+            allow_non_global_addresses_in_dht: true,
             ..Config::with_keypair(keypair.clone())
         };
 
@@ -81,7 +81,7 @@ async fn main() {
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-        allow_non_globals_in_dht: true,
+        allow_non_global_addresses_in_dht: true,
         networking_parameters_registry: NetworkingParametersManager::new(
             db_path.as_ref(),
             bootstrap_nodes,

@@ -403,6 +403,8 @@ fn main() -> Result<(), Error> {
                             keypair: network_keypair,
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
+                            allow_non_global_addresses_in_dht: !cli
+                                .dsn_disable_non_global_addresses_in_dht,
                         }
                     };
 

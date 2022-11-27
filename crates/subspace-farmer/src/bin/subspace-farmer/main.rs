@@ -68,6 +68,9 @@ struct DsnArgs {
     /// Record cache size in items.
     #[arg(long, default_value_t = 65536)]
     record_cache_size: usize,
+    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
+    #[arg(long, default_value_t = false)]
+    disable_non_global_addresses_in_dht: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
