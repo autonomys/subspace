@@ -1,6 +1,6 @@
 use crate::domain_bundle_producer::ReceiptInterface;
 use crate::utils::to_number_primitive;
-use crate::{ExecutionReceiptFor, LOG_TARGET};
+use crate::ExecutionReceiptFor;
 use codec::Encode;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
@@ -74,7 +74,6 @@ where
             res = t1 => res,
             _ = t2 => {
                 tracing::warn!(
-                    target: LOG_TARGET,
                     "Timeout fired waiting for transaction pool at #{}, proceeding with production.",
                     parent_number,
                 );

@@ -1,6 +1,6 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::utils::to_number_primitive;
-use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
+use crate::{ExecutionReceiptFor, TransactionFor};
 use futures::FutureExt;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
@@ -195,11 +195,7 @@ where
                         .wait_for_local_future_receipt(block_hash, block_number, tx)
                         .await
                     {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Error occurred while waiting for the local receipt"
-                        );
+                        tracing::error!(?err, "Error occurred while waiting for the local receipt");
                     }
                 }
                 .boxed(),

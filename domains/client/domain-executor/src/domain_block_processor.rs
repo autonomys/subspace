@@ -1,6 +1,6 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::utils::{shuffle_extrinsics, to_number_primitive};
-use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
+use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -124,7 +124,6 @@ where
                         Ok(uxt) => Some(uxt),
                         Err(e) => {
                             tracing::error!(
-                                target: LOG_TARGET,
                                 error = ?e,
                                 "Failed to decode the opaque extrisic in bundle, this should not happen"
                             );
@@ -147,7 +146,7 @@ where
         let mut seen = Vec::with_capacity(extrinsics.len());
         extrinsics.retain(|uxt| match seen.contains(uxt) {
             true => {
-                tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
+                tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
                 false
             }
             false => {
@@ -157,11 +156,7 @@ where
         });
         drop(seen);
 
-        tracing::trace!(
-            target: LOG_TARGET,
-            ?extrinsics,
-            "Origin deduplicated extrinsics"
-        );
+        tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
 
         let extrinsics: Vec<_> = match self
             .client
@@ -170,11 +165,7 @@ where
         {
             Ok(res) => res,
             Err(e) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    "Error at calling runtime api: extract_signer"
-                );
+                tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
                 return Err(e.into());
             }
         };
@@ -235,7 +226,6 @@ where
             .collect();
 
         tracing::debug!(
-            target: LOG_TARGET,
             ?trace,
             ?trace_root,
             "Trace root calculated for #{}",
@@ -363,7 +353,6 @@ where
 
         if self.primary_network.is_major_syncing() {
             tracing::debug!(
-                target: LOG_TARGET,
                 "Skip checking the receipts as the primary node is still major syncing..."
             );
             return Ok(None);
@@ -484,11 +473,10 @@ where
                 bad_signed_bundle_hash,
             ) {
                 tracing::error!(
-                    target: LOG_TARGET,
                     error = ?e,
                     ?bad_receipt_number,
                     ?bad_signed_bundle_hash,
-                    "Failed to delete bad receipt",
+                    "Failed to delete bad receipt"
                 );
             }
         }

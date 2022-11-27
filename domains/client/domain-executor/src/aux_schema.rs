@@ -281,7 +281,6 @@ where
     if !expired_receipt_numbers.is_empty() {
         // The bad receipt had been pruned on primary chain, i.e., _finalized_.
         tracing::error!(
-            target: crate::LOG_TARGET,
             ?oldest_receipt_number,
             ?expired_receipt_numbers,
             "Bad receipt(s) had been pruned on primary chain"
@@ -289,7 +288,7 @@ where
 
         for expired_receipt_number in expired_receipt_numbers {
             if let Err(e) = delete_expired_bad_receipt_info_at(backend, expired_receipt_number) {
-                tracing::error!(target: crate::LOG_TARGET, error = ?e, "Failed to remove the expired bad receipt");
+                tracing::error!(error = ?e, "Failed to remove the expired bad receipt");
             }
         }
 
@@ -344,7 +343,6 @@ where
                 if !fork_receipt_hashes.is_empty() {
                     // TODO: Handle the receipts on the fork properly once the executor is primary-chain-fork-aware.
                     tracing::debug!(
-                        target: crate::LOG_TARGET,
                         ?bad_receipt_number,
                         ?fork_receipt_hashes,
                         "Bad receipts are not on the canonical chain"
@@ -362,7 +360,6 @@ where
 
         // TODO: Handle the receipts on the fork properly once the executor is primary-chain-fork-aware.
         tracing::debug!(
-            target: crate::LOG_TARGET,
             ?bad_receipt_number,
             ?fork_receipt_hashes,
             "Bad receipts are not on the canonical chain"

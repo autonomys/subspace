@@ -3,7 +3,7 @@ use crate::fraud_proof::FraudProofGenerator;
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
 use crate::utils::DomainBundles;
-use crate::{active_leaves, EssentialExecutorParams, TransactionFor, LOG_TARGET};
+use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -206,12 +206,7 @@ where
             )
             .await
         {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?primary_info,
-                error = ?err,
-                "Error at processing bundles.",
-            );
+            tracing::error!(?primary_info, ?err, "Error at processing bundles.");
         }
     }
 }

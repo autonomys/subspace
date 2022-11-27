@@ -70,11 +70,7 @@ pub(super) fn construct_trace_merkle_tree(
     }
 
     MerkleTree::new(roots).map_err(|e| {
-        tracing::error!(
-            target: crate::LOG_TARGET,
-            error = ?e,
-            "Failed to construct a trace Merkle tree",
-        );
+        tracing::error!(error = ?e, "Failed to construct a trace Merkle tree");
         sp_blockchain::Error::Application(e.into())
     })
 }

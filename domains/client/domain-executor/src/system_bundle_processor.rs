@@ -21,8 +21,6 @@ use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
-const LOG_TARGET: &str = "bundle-processor";
-
 pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
@@ -211,7 +209,6 @@ where
                     Ok(uxt) => Some(uxt),
                     Err(e) => {
                         tracing::error!(
-                            target: LOG_TARGET,
                             error = ?e,
                             "Failed to decode the opaque extrisic in bundle, this should not happen"
                         );

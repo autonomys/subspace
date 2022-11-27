@@ -1,4 +1,3 @@
-use crate::LOG_TARGET;
 use domain_runtime_primitives::AccountId;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -115,11 +114,7 @@ pub(crate) fn shuffle_extrinsics<Extrinsic: Debug>(
         })
         .collect::<Vec<_>>();
 
-    tracing::trace!(
-        target: LOG_TARGET,
-        ?shuffled_extrinsics,
-        "Shuffled extrinsics"
-    );
+    tracing::trace!(?shuffled_extrinsics, "Shuffled extrinsics");
 
     shuffled_extrinsics
 }

@@ -17,8 +17,6 @@ use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
-const LOG_TARGET: &str = "bundle-producer";
-
 pub(super) struct SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
@@ -151,7 +149,7 @@ where
                 global_challenge,
             )?
         {
-            tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
+            tracing::info!("📦 Claimed bundle at slot {slot}");
 
             let bundle = self
                 .domain_bundle_proposer

@@ -107,9 +107,6 @@ use sp_runtime::traits::{
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
-/// The logging target.
-const LOG_TARGET: &str = "domain::executor";
-
 type ExecutionReceiptFor<PBlock, Hash> =
     ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
 
