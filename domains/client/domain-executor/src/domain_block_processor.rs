@@ -1,5 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::utils::shuffle_extrinsics;
+use crate::utils::{shuffle_extrinsics, to_number_primitive};
 use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -21,7 +21,7 @@ use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 
 pub(crate) struct DomainBlockResult<Block, PBlock>
 where
@@ -194,9 +194,7 @@ where
         fork_choice: ForkChoiceStrategy,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
-        let primary_number: BlockNumber = primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let primary_number = to_number_primitive(primary_number);
 
         assert_eq!(
             Into::<NumberFor<Block>>::into(primary_number),
@@ -421,10 +419,7 @@ where
                     }
                 }
                 None => {
-                    let block_number: BlockNumber = execution_receipt
-                        .primary_number
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+                    let block_number = to_number_primitive(execution_receipt.primary_number);
 
                     // TODO: Ensure the `block_hash` aligns with the one returned in
                     // `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are

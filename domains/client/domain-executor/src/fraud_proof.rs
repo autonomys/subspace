@@ -1,3 +1,4 @@
+use crate::utils::to_number_primitive;
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
@@ -13,7 +14,6 @@ use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor}
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
@@ -89,10 +89,7 @@ where
         bad_signed_bundle_hash: H256,
     ) -> Result<FraudProof, FraudProofError> {
         let block_hash = local_receipt.domain_hash;
-        let block_number: BlockNumber = local_receipt
-            .primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let block_number = to_number_primitive(local_receipt.primary_number);
 
         let header = self.header(block_hash)?;
         let parent_header = self.header(*header.parent_hash())?;
@@ -109,8 +106,7 @@ where
             self.spawner.clone() as Box<dyn SpawnNamed>,
         );
 
-        let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
-            .unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
+        let parent_number = to_number_primitive(*parent_header.number());
 
         let local_root = local_receipt.trace.get(local_trace_index as usize).ok_or(
             FraudProofError::InvalidTraceIndex {

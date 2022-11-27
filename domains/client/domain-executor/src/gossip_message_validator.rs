@@ -1,4 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use futures::FutureExt;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -165,10 +166,7 @@ where
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
     ) -> Result<Option<FraudProof>, GossipMessageError> {
-        let primary_number: BlockNumber = execution_receipt
-            .primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let primary_number = to_number_primitive(execution_receipt.primary_number);
 
         // Just ignore it if the receipt is too old and has been pruned.
         if crate::aux_schema::target_receipt_is_pruned(head_receipt_number, primary_number) {

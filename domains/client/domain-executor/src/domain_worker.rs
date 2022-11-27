@@ -1,4 +1,4 @@
-use crate::utils::{BlockInfo, DomainBundles, ExecutorSlotInfo};
+use crate::utils::{to_number_primitive, BlockInfo, DomainBundles, ExecutorSlotInfo};
 use crate::LOG_TARGET;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
@@ -15,7 +15,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 
 pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
@@ -86,9 +86,7 @@ pub(crate) async fn handle_block_import_notifications<
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
-    let best_secondary_number: BlockNumber = best_secondary_number
-        .try_into()
-        .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
+    let best_secondary_number = to_number_primitive(best_secondary_number);
 
     // Notify about active leaves on startup before starting the loop
     for (hash, number, fork_choice) in std::mem::take(&mut leaves) {

@@ -1,5 +1,6 @@
 use crate::fraud_proof::FraudProofGenerator;
 use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator};
+use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -14,7 +15,6 @@ use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
 /// The implementation of the Domain `Executor`.
@@ -136,9 +136,7 @@ where
             .primary_chain_client
             .runtime_api()
             .head_receipt_number(&BlockId::Hash(self.primary_chain_client.info().best_hash))?;
-        let head_receipt_number: BlockNumber = head_receipt_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let head_receipt_number = to_number_primitive(head_receipt_number);
 
         if let Some(fraud_proof) = self.gossip_message_validator.validate_execution_receipt(
             signed_bundle_hash,

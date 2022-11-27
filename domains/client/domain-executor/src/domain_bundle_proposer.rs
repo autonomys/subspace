@@ -1,4 +1,5 @@
 use crate::domain_bundle_producer::ReceiptInterface;
+use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, LOG_TARGET};
 use codec::Encode;
 use futures::{select, FutureExt};
@@ -13,7 +14,6 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::BlockNumber;
 
 pub(super) struct DomainBundleProposer<Block, Client, TransactionPool>
 where
@@ -160,18 +160,15 @@ where
             })
         };
 
-        let header_number: BlockNumber = header_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
+        let header_number = to_number_primitive(header_number);
 
         // Ideally, the receipt of current block will be included in the next block, i.e., no
         // missing receipts.
         let receipts = if header_number == head_receipt_number + 1 {
             let block_hash = self.client.hash(header_number.into())?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Hash for Block {:?} not found",
-                    header_number
-                ))
+                sp_blockchain::Error::Backend(
+                    format!("Hash for Block {header_number:?} not found",),
+                )
             })?;
             vec![load_receipt(block_hash)?]
         } else {
@@ -182,7 +179,7 @@ where
             let mut receipts = Vec::with_capacity((max_allowed - to_send + 1) as usize);
             while to_send <= max_allowed {
                 let block_hash = self.client.hash(to_send.into())?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!("Hash for Block {:?} not found", to_send))
+                    sp_blockchain::Error::Backend(format!("Hash for Block {to_send:?} not found"))
                 })?;
                 receipts.push(load_receipt(block_hash)?);
                 to_send += 1;

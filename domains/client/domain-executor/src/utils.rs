@@ -60,11 +60,17 @@ where
     N1: TryInto<BlockNumber>,
     N2: From<BlockNumber>,
 {
-    let concrete_block_number: BlockNumber = block_number
-        .try_into()
-        .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"));
+    N2::from(to_number_primitive(block_number))
+}
 
-    N2::from(concrete_block_number)
+/// Converts a generic block number to a concrete primitive block number.
+pub(crate) fn to_number_primitive<N>(block_number: N) -> BlockNumber
+where
+    N: TryInto<BlockNumber>,
+{
+    block_number
+        .try_into()
+        .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"))
 }
 
 /// Shuffles the extrinsics in a deterministic way.
