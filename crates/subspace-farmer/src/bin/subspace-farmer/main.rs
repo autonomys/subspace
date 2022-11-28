@@ -70,7 +70,7 @@ struct DsnArgs {
     record_cache_size: usize,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
-    disable_non_global_addresses_in_dht: bool,
+    disable_private_ip: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
