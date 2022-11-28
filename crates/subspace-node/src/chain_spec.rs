@@ -84,7 +84,7 @@ pub fn gemini_3a_compiled(
         ChainType::Custom("Subspace Gemini 3a".to_string()),
         || {
             let sudo_account =
-                AccountId::from_ss58check("5GshyNJ9Lki9pqySdzn6DAbXxQdTyX3JDF1rKsFjZcQzKp1Q")
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
                     .expect("Wrong root account address");
 
             let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
