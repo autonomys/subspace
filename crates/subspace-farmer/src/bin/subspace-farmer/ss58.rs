@@ -18,9 +18,11 @@
 //! `sp-core` into farmer application
 
 use base58::FromBase58;
+use blake2::digest::typenum::U64;
+use blake2::digest::FixedOutput;
+use blake2::{Blake2b, Digest};
 use ss58_registry::Ss58AddressFormat;
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
-use subspace_core_primitives::{Blake2b256Hash, PublicKey, PUBLIC_KEY_LENGTH};
+use subspace_core_primitives::{PublicKey, PUBLIC_KEY_LENGTH};
 use thiserror::Error;
 
 const PREFIX: &[u8] = b"SS58PRE";
@@ -90,6 +92,20 @@ pub(crate) fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58Parsin
     Ok(PublicKey::from(bytes))
 }
 
-fn ss58hash(data: &[u8]) -> Blake2b256Hash {
-    blake2b_256_hash_list(&[PREFIX, data])
+fn ss58hash(data: &[u8]) -> [u8; 64] {
+    let mut state = Blake2b::<U64>::new();
+    state.update(PREFIX);
+    state.update(data);
+    state.finalize_fixed().into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_ss58_reward_address;
+
+    #[test]
+    fn basic() {
+        // Alice
+        parse_ss58_reward_address("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY").unwrap();
+    }
 }

@@ -8644,6 +8644,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base58",
+ "blake2",
  "bytesize",
  "clap 4.0.26",
  "derive_more",
