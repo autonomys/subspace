@@ -5,8 +5,7 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-# Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
-blake2-rfc = "0.2.18"
+blake2 = "0.10.5"
 codec = { package = "parity-scale-codec", version = "3.2.1", features = [ "derive" ] }
 crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }

@@ -445,15 +445,6 @@ checksum = "a4c527152e37cf757a3f78aae5a06fbeefdb07ccc535c980a3208ee3060dd544"
 
 [[package]]
 name = "arrayvec"
-version = "0.4.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
-dependencies = [
- "nodrop",
-]
-
-[[package]]
-name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
@@ -743,21 +734,11 @@ dependencies = [
 
 [[package]]
 name = "blake2"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9cf849ee05b2ee5fba5e36f97ff8ec2533916700fc0758d40d92136a42f3388"
+checksum = "b12e5fd123190ce1c2e559308a94c9bacad77907d4c6005d9e58fe1a0689e55e"
 dependencies = [
  "digest 0.10.3",
-]
-
-[[package]]
-name = "blake2-rfc"
-version = "0.2.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d6d530bdd2d52966a6d03b7a964add7ae1a288d25214066fd4b600f0f796400"
-dependencies = [
- "arrayvec 0.4.12",
- "constant_time_eq",
 ]
 
 [[package]]
@@ -1877,7 +1858,7 @@ dependencies = [
 name = "domain-client-executor"
 version = "0.1.0"
 dependencies = [
- "blake2-rfc",
+ "blake2",
  "crossbeam",
  "domain-block-builder",
  "domain-client-executor-gossip",
@@ -4736,12 +4717,6 @@ dependencies = [
  "cfg-if",
  "libc",
 ]
-
-[[package]]
-name = "nodrop"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 
 [[package]]
 name = "nohash-hasher"
@@ -8625,7 +8600,6 @@ dependencies = [
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
- "blake2-rfc",
  "criterion",
  "merkle_light",
  "parity-scale-codec",
@@ -8643,7 +8617,7 @@ dependencies = [
  "ark-bls12-381",
  "ark-ff",
  "ark-poly",
- "blake2-rfc",
+ "blake2",
  "criterion",
  "derive_more",
  "dusk-bls12_381",
@@ -8670,7 +8644,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base58",
- "blake2-rfc",
  "bytesize",
  "clap 4.0.26",
  "derive_more",
@@ -8715,7 +8688,6 @@ name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "blake2-rfc",
  "criterion",
  "fs2",
  "futures 0.3.25",
