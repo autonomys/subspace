@@ -35,7 +35,7 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
@@ -106,7 +106,7 @@ pub struct Config<RecordStore = CustomRecordStore> {
     /// Mplex multiplexing configuration.
     pub mplex_config: MplexConfig,
     /// Should non-global addresses be added to the DHT?
-    pub allow_non_globals_in_dht: bool,
+    pub allow_non_global_addresses_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
     /// A reference to the `NetworkingParametersRegistry` implementation.
@@ -187,7 +187,7 @@ impl Config {
             kademlia,
             gossipsub,
             record_store: CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::default()),
-            allow_non_globals_in_dht: false,
+            allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
@@ -242,7 +242,7 @@ where
         record_store,
         yamux_config,
         mplex_config,
-        allow_non_globals_in_dht,
+        allow_non_global_addresses_in_dht,
         initial_random_query_interval,
         networking_parameters_registry,
         request_response_protocols,
@@ -300,7 +300,7 @@ where
 
         let node = Node::new(shared);
         let node_runner = NodeRunner::<RecordStore>::new(NodeRunnerConfig::<RecordStore> {
-            allow_non_globals_in_dht,
+            allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
             shared_weak,
@@ -314,6 +314,8 @@ where
 
         Ok((node, node_runner))
     });
+
+    trace!(%allow_non_global_addresses_in_dht, "DSN configured.");
 
     create_swarm_fut.await.expect(
         "Blocking tasks never panics, if it does it is an implementation bug and everything \

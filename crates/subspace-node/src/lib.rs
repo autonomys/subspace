@@ -187,6 +187,11 @@ pub struct Cli {
     #[arg(long)]
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
 
+    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
+    /// in Kademlia DHT for the DSN.
+    #[arg(long, default_value_t = false)]
+    pub dsn_disable_private_ips: bool,
+
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,

@@ -55,7 +55,7 @@ where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
 {
     /// Should non-global addresses be added to the DHT?
-    allow_non_globals_in_dht: bool,
+    allow_non_global_addresses_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
     swarm: Swarm<Behavior<RecordStore>>,
     shared_weak: Weak<Shared>,
@@ -88,7 +88,7 @@ pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
 {
-    pub allow_non_globals_in_dht: bool,
+    pub allow_non_global_addresses_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
     pub swarm: Swarm<Behavior<RecordStore>>,
     pub shared_weak: Weak<Shared>,
@@ -106,7 +106,7 @@ where
 {
     pub(crate) fn new(
         NodeRunnerConfig::<RecordStore> {
-            allow_non_globals_in_dht,
+            allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
             shared_weak,
@@ -119,7 +119,7 @@ where
         }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         Self {
-            allow_non_globals_in_dht,
+            allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
             shared_weak,
@@ -392,7 +392,8 @@ where
 
             if kademlia_enabled {
                 for address in info.listen_addrs {
-                    if !self.allow_non_globals_in_dht && !utils::is_global_address_or_dns(&address)
+                    if !self.allow_non_global_addresses_in_dht
+                        && !utils::is_global_address_or_dns(&address)
                     {
                         trace!(
                             %local_peer_id,

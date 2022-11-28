@@ -28,6 +28,9 @@ pub struct DsnConfig {
 
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
+
+    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
+    pub allow_non_global_addresses_in_dht: bool,
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
@@ -57,7 +60,7 @@ where
     > {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.listen_on,
-        allow_non_globals_in_dht: true,
+        allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(
             dsn_config.bootstrap_nodes,
         )
