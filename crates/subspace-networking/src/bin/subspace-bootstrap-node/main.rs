@@ -37,7 +37,7 @@ enum Command {
         out_peers: Option<u32>,
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
-        disable_private_ip: bool,
+        disable_private_ips: bool,
     },
     /// Generate a new keypair
     GenerateKeypair,
@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
             reserved_peers,
             in_peers,
             out_peers,
-            disable_private_ip,
+            disable_private_ips,
         } => {
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .boxed(),
                 listen_on,
-                allow_non_global_addresses_in_dht: !disable_private_ip,
+                allow_non_global_addresses_in_dht: !disable_private_ips,
                 reserved_peers,
                 max_established_incoming_connections: in_peers
                     .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),

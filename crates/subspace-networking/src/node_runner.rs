@@ -106,7 +106,7 @@ where
 {
     pub(crate) fn new(
         NodeRunnerConfig::<RecordStore> {
-            allow_non_global_addresses_in_dht: allow_non_globals_in_dht,
+            allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
             shared_weak,
@@ -119,7 +119,7 @@ where
         }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         Self {
-            allow_non_global_addresses_in_dht: allow_non_globals_in_dht,
+            allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
             shared_weak,
