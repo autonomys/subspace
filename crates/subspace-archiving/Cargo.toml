@@ -17,8 +17,6 @@ include = [
 bench = false
 
 [dependencies]
-# Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
-blake2-rfc = { version = "0.2.18", default-features = false }
 merkle_light = { version = "0.4.0", default-features = false }
 parity-scale-codec = { version = "3.2.1", default-features = false, features = ["derive"] }
 reed-solomon-erasure = { version = "6.0.0", default-features = false }
@@ -33,7 +31,6 @@ rand = { version = "0.8.5", features = ["min_const_gen"] }
 [features]
 default = ["std"]
 std = [
-    "blake2-rfc/std",
     "merkle_light/std",
     "parity-scale-codec/std",
     "reed-solomon-erasure/simd-accel",

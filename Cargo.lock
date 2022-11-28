@@ -8625,7 +8625,6 @@ dependencies = [
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
- "blake2-rfc",
  "criterion",
  "merkle_light",
  "parity-scale-codec",
@@ -8715,7 +8714,6 @@ name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "blake2-rfc",
  "criterion",
  "fs2",
  "futures 0.3.25",
