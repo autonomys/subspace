@@ -34,8 +34,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
@@ -53,6 +55,12 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
+
+/// Self-imposed limit for number of solutions that farmer will not go over per challenge.
+///
+/// Only useful for initial network bootstrapping where due to initial plot size there might be too
+/// many solutions.
+const SOLUTIONS_LIMIT: usize = 10;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -262,7 +270,7 @@ pub struct SingleDiskPlotOptions<RC> {
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
     /// Optional DSN Node.
-    pub dsn_node: Option<Node>,
+    pub dsn_node: Node,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -321,14 +329,21 @@ pub enum SingleDiskPlotError {
     /// Node RPC error
     #[error("Node RPC error: {0}")]
     NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
+    /// Allocated space is not enough for one sector
+    #[error(
+        "Allocated space is not enough for one sector. \
+        The lowest acceptable value for allocated space is: {min_size}, \
+        you provided: {allocated_space}."
+    )]
+    InsufficientAllocatedSpace { min_size: u64, allocated_space: u64 },
 }
 
 /// Errors that happen during plotting
 #[derive(Debug, Error)]
 pub enum PlottingError {
     /// Failed to retriever farmer protocol info
-    #[error("Failed to retriever farmer protocol info: {error}")]
-    FailedToGetFarmerProtocolInfo {
+    #[error("Failed to retriever farmer info: {error}")]
+    FailedToGetFarmerInfo {
         /// Lower-level error
         error: rpc_client::Error,
     },
@@ -341,8 +356,8 @@ pub enum PlottingError {
 #[derive(Debug, Error)]
 pub enum FarmingError {
     /// Failed to retriever farmer protocol info
-    #[error("Failed to retriever farmer protocol info: {error}")]
-    FailedToGetFarmerProtocolInfo {
+    #[error("Failed to retriever farmer info: {error}")]
+    FailedToGetFarmerInfo {
         /// Lower-level error
         error: rpc_client::Error,
     },
@@ -445,6 +460,15 @@ impl SingleDiskPlot {
             dsn_node,
         } = options;
 
+        // TODO: Account for plot overhead
+        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
+        if target_sector_count == 0 {
+            return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                min_size: PLOT_SECTOR_SIZE,
+                allocated_space,
+            });
+        }
+
         fs::create_dir_all(&directory)?;
 
         // TODO: Parametrize concurrency, much higher default due to SSD focus
@@ -456,14 +480,11 @@ impl SingleDiskPlot {
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
 
-        let farmer_protocol_info = tokio::task::block_in_place(|| {
+        let farmer_app_info = tokio::task::block_in_place(|| {
             Handle::current()
-                .block_on(rpc_client.farmer_protocol_info())
+                .block_on(rpc_client.farmer_app_info())
                 .map_err(SingleDiskPlotError::NodeRpcError)
         })?;
-        let record_size = farmer_protocol_info.record_size;
-        // TODO: In case `space_l` changes on the fly, code below will break horribly
-        let space_l = farmer_protocol_info.space_l;
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
             Some(single_disk_plot_info) => {
@@ -475,11 +496,11 @@ impl SingleDiskPlot {
                     });
                 }
 
-                if &farmer_protocol_info.genesis_hash != single_disk_plot_info.genesis_hash() {
+                if &farmer_app_info.genesis_hash != single_disk_plot_info.genesis_hash() {
                     return Err(SingleDiskPlotError::WrongChain {
                         id: *single_disk_plot_info.id(),
                         correct_chain: hex::encode(single_disk_plot_info.genesis_hash()),
-                        wrong_chain: hex::encode(farmer_protocol_info.genesis_hash),
+                        wrong_chain: hex::encode(farmer_app_info.genesis_hash),
                     });
                 }
 
@@ -504,7 +525,7 @@ impl SingleDiskPlot {
 
                 let single_disk_plot_info = SingleDiskPlotInfo::new(
                     SingleDiskPlotId::new(),
-                    farmer_protocol_info.genesis_hash,
+                    farmer_app_info.genesis_hash,
                     public_key,
                     first_sector_index,
                     allocated_space,
@@ -518,9 +539,6 @@ impl SingleDiskPlot {
 
         let single_disk_plot_id = *single_disk_plot_info.id();
         let first_sector_index = single_disk_plot_info.first_sector_index();
-
-        // TODO: Account for plot overhead
-        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
 
         // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
@@ -602,8 +620,11 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
-        let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let shutting_down = Arc::new(AtomicBool::new(false));
+        let kzg = Kzg::new(test_public_parameters());
+        let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize)
+            .expect("Protocol constant must be correct; qed");
+        let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
 
         let plotting_join_handle = thread::Builder::new()
             .name(format!("p-{single_disk_plot_id}"))
@@ -614,9 +635,8 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher = dsn_node.as_ref().map(|dsn_node| {
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone())
-                });
+                let piece_publisher =
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -657,26 +677,24 @@ impl SingleDiskPlot {
                                 return;
                             }
 
-                            let farmer_protocol_info =
-                                handle.block_on(rpc_client.farmer_protocol_info()).map_err(
-                                    |error| PlottingError::FailedToGetFarmerProtocolInfo { error },
-                                )?;
+                            let farmer_app_info = handle
+                                .block_on(rpc_client.farmer_app_info())
+                                .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
 
                             // TODO: Remove RPC version and keep DSN version only.
-                            let piece_receiver = MultiChannelPieceReceiver::new(
-                                rpc_client.clone(),
-                                dsn_node.clone(),
-                                &shutting_down,
-                            );
+                            let piece_receiver =
+                                MultiChannelPieceReceiver::new(dsn_node.clone(), &shutting_down);
 
                             let plotted_sector = match handle.block_on(plot_sector(
                                 &public_key,
                                 sector_index,
                                 &piece_receiver,
                                 &shutting_down,
-                                &farmer_protocol_info,
-                                io::Cursor::new(sector),
-                                io::Cursor::new(sector_metadata),
+                                &farmer_app_info.protocol_info,
+                                &kzg,
+                                &sector_codec,
+                                sector,
+                                sector_metadata,
                             )) {
                                 Ok(plotted_sector) => plotted_sector,
                                 Err(plotting::PlottingError::Cancelled) => {
@@ -694,15 +712,13 @@ impl SingleDiskPlot {
 
                             // TODO: Migrate this over to using `on_sector_plotted` instead
                             // Publish pieces-by-sector if we use DSN
-                            if let Some(ref piece_publisher) = piece_publisher {
-                                let publishing_result = handle.block_on(
-                                    piece_publisher.publish_pieces(plotted_sector.piece_indexes),
-                                );
+                            let publishing_result = handle.block_on(
+                                piece_publisher.publish_pieces(plotted_sector.piece_indexes),
+                            );
 
-                                // cancelled
-                                if publishing_result.is_err() {
-                                    return;
-                                }
+                            // cancelled
+                            if publishing_result.is_err() {
+                                return;
                             }
                         }
                     };
@@ -758,9 +774,7 @@ impl SingleDiskPlot {
                         info!("Subscribing to slot info notifications");
                         let mut slot_info_notifications = handle
                             .block_on(rpc_client.subscribe_slot_info())
-                            .map_err(|error| FarmingError::FailedToGetFarmerProtocolInfo {
-                                error,
-                            })?;
+                            .map_err(|error| FarmingError::FailedToGetFarmerInfo { error })?;
 
                         while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
                         {
@@ -772,6 +786,7 @@ impl SingleDiskPlot {
                             debug!(?slot_info, "New slot");
 
                             let sector_count = metadata_header.lock().sector_count;
+
                             let plot_mmap = unsafe {
                                 MmapOptions::new()
                                     .len((PLOT_SECTOR_SIZE * sector_count) as usize)
@@ -820,7 +835,6 @@ impl SingleDiskPlot {
                                 let maybe_eligible_sector = audit_sector(
                                     &public_key,
                                     sector_index,
-                                    &farmer_protocol_info,
                                     &slot_info.global_challenge,
                                     slot_info.voting_solution_range,
                                     io::Cursor::new(sector),
@@ -830,22 +844,30 @@ impl SingleDiskPlot {
                                     continue;
                                 };
 
-                                let maybe_solution = eligible_sector
-                                    .try_into_solution(
+                                for solution in eligible_sector
+                                    .try_into_solutions(
                                         &identity,
                                         reward_address,
-                                        &farmer_protocol_info,
+                                        &farmer_app_info.protocol_info,
+                                        &sector_codec,
+                                        sector,
                                         sector_metadata,
                                     )
-                                    .map_err(FarmingError::LowLevel)?;
-                                let Some(solution) = maybe_solution else {
-                                    continue;
-                                };
+                                    .map_err(FarmingError::LowLevel)?
+                                {
+                                    debug!("Solution found");
+                                    trace!(?solution, "Solution found");
 
-                                debug!("Solution found");
-                                trace!(?solution, "Solution found");
+                                    solutions.push(solution);
 
-                                solutions.push(solution);
+                                    if solutions.len() >= SOLUTIONS_LIMIT {
+                                        break;
+                                    }
+                                }
+
+                                if solutions.len() >= SOLUTIONS_LIMIT {
+                                    break;
+                                }
                             }
 
                             let response = SolutionResponse {
@@ -909,10 +931,8 @@ impl SingleDiskPlot {
                             sector_index,
                             piece_offset,
                             metadata_header.lock().sector_count,
-                            &public_key,
                             first_sector_index,
-                            record_size,
-                            space_l,
+                            &sector_codec,
                             &global_plot_mmap,
                         );
 
@@ -982,7 +1002,6 @@ impl SingleDiskPlot {
         let public_key = self.single_disk_plot_info.public_key();
         let first_sector_index = self.single_disk_plot_info.first_sector_index();
         let sector_count = self.metadata_header.lock().sector_count;
-        let pieces_in_sector = PLOT_SECTOR_SIZE as usize / PIECE_SIZE;
 
         (first_sector_index..)
             .into_iter()
@@ -996,7 +1015,7 @@ impl SingleDiskPlot {
                 let sector_id = SectorId::new(public_key, sector_index);
 
                 let piece_indexes = (0u64..)
-                    .take(pieces_in_sector)
+                    .take(PIECES_IN_SECTOR as usize)
                     .map(|piece_offset| {
                         sector_id.derive_piece_index(
                             piece_offset as PieceIndex,
@@ -1037,6 +1056,10 @@ impl SingleDiskPlot {
         }
 
         while let Some(result) = self.tasks.next().instrument(self.span.clone()).await {
+            if result.is_err() {
+                // Nothing left to do after error
+                self.shutting_down.store(true, Ordering::SeqCst);
+            }
             result?;
         }
 

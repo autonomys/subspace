@@ -1,4 +1,5 @@
 pub mod multihash;
+pub(crate) mod prometheus;
 #[cfg(test)]
 mod tests;
 

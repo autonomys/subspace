@@ -13,48 +13,44 @@ links = "domain-test-runtime"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [build-dependencies]
-subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../../crates/subspace-wasm-tools" }
-substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
+substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", optional = true }
 
 [dependencies]
+codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"]}
+domain-pallet-executive = { version = "0.1.0", path = "../../pallets/executive", default-features = false }
+domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 hex-literal = { version = '0.3.1', optional = true }
-codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"]}
 log = { version = "0.4.17", default-features = false }
-scale-info = { version = "2.1.2", default-features = false, features = ["derive"] }
-
-# Substrate Dependencies
-## Substrate Primitive Dependencies
-sp-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-block-builder = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-core = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-inherents = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-io = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-offchain = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-runtime = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-session = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-std = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-transaction-pool = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-version = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-
-## Substrate FRAME Dependencies
-frame-benchmarking = { default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-frame-support = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-frame-system = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-frame-system-benchmarking = { default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-frame-system-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-
-## Substrate Pallet Dependencies
-pallet-balances = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-pallet-transaction-payment = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-
-domain-pallet-executive = { path = "../../pallets/executive", default-features = false }
-domain-runtime-primitives = { path = "../../primitives/runtime", default-features = false }
-pallet-domain-registry = { path = "../../pallets/domain-registry", default-features = false }
-pallet-executor-registry = { path = "../../pallets/executor-registry", default-features = false }
-sp-domains = { path = "../../../crates/sp-domains", default-features = false }
-subspace-runtime-primitives = { path = "../../../crates/subspace-runtime-primitives", default-features = false }
-system-runtime-primitives = { path = "../../primitives/system-runtime", default-features = false }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-registry", default-features = false }
+pallet-domain-tracker = { version = "0.1.0", path = "../../pallets/domain-tracker", default-features = false }
+pallet-executor-registry = { version = "0.1.0", path = "../../pallets/executor-registry", default-features = false }
+pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger", default-features = false }
+pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+scale-info = { version = "2.3.0", default-features = false, features = ["derive"] }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
+sp-domain-tracker = { version = "0.1.0", path = "../../primitives/domain-tracker", default-features = false }
+sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-messenger = { version = "0.1.0", path = "../../primitives/messenger", default-features = false }
+sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime", default-features = false }
+subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
 
 [features]
 default = [
@@ -62,32 +58,37 @@ default = [
 ]
 std = [
 	"codec/std",
-	"scale-info/std",
+	"domain-pallet-executive/std",
+	"domain-runtime-primitives/std",
+	"frame-support/std",
+	"frame-system/std",
+	"frame-system-rpc-runtime-api/std",
 	"log/std",
+	"pallet-balances/std",
+	"pallet-transaction-payment-rpc-runtime-api/std",
+	"pallet-transaction-payment/std",
+	"pallet-domain-registry/std",
+	"pallet-domain-tracker/std",
+	"pallet-messenger/std",
+	"pallet-executor-registry/std",
+	"scale-info/std",
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-core/std",
+	"sp-domains/std",
+	"sp-domain-tracker/std",
 	"sp-inherents/std",
 	"sp-io/std",
+	"sp-messenger/std",
 	"sp-offchain/std",
 	"sp-runtime/std",
 	"sp-session/std",
 	"sp-std/std",
 	"sp-transaction-pool/std",
 	"sp-version/std",
-	"frame-support/std",
-	"frame-system/std",
-	"frame-system-rpc-runtime-api/std",
-	"pallet-balances/std",
-	"pallet-transaction-payment-rpc-runtime-api/std",
-	"pallet-transaction-payment/std",
-	"domain-pallet-executive/std",
-	"domain-runtime-primitives/std",
-	"pallet-domain-registry/std",
-	"pallet-executor-registry/std",
-	"sp-domains/std",
-	"subspace-runtime-primitives/std",
 	"system-runtime-primitives/std",
+	"subspace-runtime-primitives/std",
+	"substrate-wasm-builder",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []

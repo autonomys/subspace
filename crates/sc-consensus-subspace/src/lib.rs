@@ -75,6 +75,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
@@ -86,7 +87,9 @@ use subspace_core_primitives::{
     PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{Error as VerificationPrimitiveError, VerifySolutionParams};
+use subspace_verification::{
+    derive_audit_chunk, Error as VerificationPrimitiveError, VerifySolutionParams,
+};
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -205,7 +208,10 @@ pub enum Error<Header: HeaderT> {
     #[error("Stored root block extrinsic was not found: {0:?}")]
     RootBlocksExtrinsicNotFound(Vec<RootBlock>),
     /// Duplicated records root
-    #[error("Different records root for segment index {0} was found in storage, likely fork below archiving point")]
+    #[error(
+        "Different records root for segment index {0} was found in storage, likely fork below \
+        archiving point"
+    )]
     DifferentRecordsRoot(u64),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
@@ -1077,13 +1083,13 @@ where
 
             let local_challenge = sector_id.derive_local_challenge(&global_challenge);
 
-            let expanded_chunk = pre_digest.solution.chunk.expand(local_challenge);
+            let audit_chunk = derive_audit_chunk(&pre_digest.solution.chunk.to_bytes());
 
             BlockWeight::from(
                 SolutionRange::MAX
                     - subspace_core_primitives::bidirectional_distance(
                         &local_challenge,
-                        &expanded_chunk,
+                        &audit_chunk,
                     ),
             )
         };
@@ -1258,7 +1264,11 @@ where
         archived_segment_notification_sender,
         archived_segment_notification_stream,
         imported_block_notification_stream,
-        root_blocks: Arc::new(Mutex::new(LruCache::new(confirmation_depth_k as usize))),
+        // TODO: Consider making `confirmation_depth_k` non-zero
+        root_blocks: Arc::new(Mutex::new(LruCache::new(
+            NonZeroUsize::new(confirmation_depth_k as usize)
+                .expect("Confirmation depth of zero is not supported"),
+        ))),
         kzg,
     };
 

@@ -30,9 +30,9 @@ use subspace_runtime::{
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
-const POLKADOT_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-const GEMINI_2A_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-2a.json");
+// TODO: replace raw-gemini-2a with raw-gemini-3a
+// const GEMINI_2A_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-2a.json");
 const X_NET_2_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-2.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
@@ -70,18 +70,18 @@ struct GenesisParams {
     enable_executor: bool,
 }
 
-pub fn gemini_2a() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_2A_CHAIN_SPEC)
+pub fn gemini_3a() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+    unimplemented!("gemini_3a raw chain spec")
 }
 
-pub fn gemini_2a_compiled(
+pub fn gemini_3a_compiled(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 2a",
+        "Subspace Gemini 3a",
         // ID
-        "subspace_gemini_2a",
-        ChainType::Custom("Subspace Gemini 2a".to_string()),
+        "subspace_gemini_3a",
+        ChainType::Custom("Subspace Gemini 3a".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
@@ -139,7 +139,7 @@ pub fn gemini_2a_compiled(
                             0x32, 0x6c, 0x3f, 0x7b, 0x4e, 0xd9, 0x41, 0x17,
                         ]),
                     ),
-                    enable_executor: false,
+                    enable_executor: true,
                 },
             )
         },
@@ -147,20 +147,17 @@ pub fn gemini_2a_compiled(
         vec![],
         // Telemetry
         Some(
-            TelemetryEndpoints::new(vec![
-                (POLKADOT_TELEMETRY_URL.into(), 1),
-                (SUBSPACE_TELEMETRY_URL.into(), 1),
-            ])
-            .map_err(|error| error.to_string())?,
+            TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
+                .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-2a"),
+        Some("subspace-gemini-3a"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: secondary_chain::chain_spec::development_config(),
+            execution_chain_spec: secondary_chain::chain_spec::gemini_3a_config(),
         },
     ))
 }
@@ -237,11 +234,8 @@ pub fn x_net_2_config_compiled(
         vec![],
         // Telemetry
         Some(
-            TelemetryEndpoints::new(vec![
-                (POLKADOT_TELEMETRY_URL.into(), 1),
-                (SUBSPACE_TELEMETRY_URL.into(), 1),
-            ])
-            .map_err(|error| error.to_string())?,
+            TelemetryEndpoints::new(vec![(SUBSPACE_TELEMETRY_URL.into(), 1)])
+                .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
         Some("subspace-x-net-2a"),

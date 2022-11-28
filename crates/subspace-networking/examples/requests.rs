@@ -1,12 +1,16 @@
 use futures::channel::oneshot;
+use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler,
+    start_prometheus_metrics_server, BootstrappedNetworkingParameters, Config, GenericRequest,
+    GenericRequestHandler,
 };
+use tracing::error;
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;
@@ -24,6 +28,9 @@ struct ExampleResponse;
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let mut metric_registry = Registry::default();
+    let metrics = Metrics::new(&mut metric_registry);
+
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_globals_in_dht: true,
@@ -31,9 +38,25 @@ async fn main() {
             println!("Request handler for request");
             Some(ExampleResponse)
         })],
+        metrics: Some(metrics),
         ..Config::with_generated_keypair()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+
+    // Init prometheus
+    let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
+    tokio::task::spawn(async move {
+        if let Err(err) =
+            start_prometheus_metrics_server(prometheus_metrics_server_address, metric_registry)
+                .await
+        {
+            error!(
+                ?prometheus_metrics_server_address,
+                ?err,
+                "Prometheus metrics server failed to start."
+            )
+        }
+    });
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -88,5 +111,5 @@ async fn main() {
         println!("Response: {:?}", resp);
     });
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(50)).await;
 }

@@ -3,8 +3,10 @@ use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
     NumberOf, Storage, StorageBound,
 };
-use bitvec::prelude::*;
+use async_trait::async_trait;
+use codec::{Decode, Encode};
 use frame_support::{assert_err, assert_ok};
+use futures::executor::block_on;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use schnorrkel::Keypair;
@@ -19,18 +21,23 @@ use sp_runtime::app_crypto::UncheckedFrom;
 use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
-use std::num::{NonZeroU16, NonZeroU64};
+use std::error::Error;
+use std::io::Cursor;
+use std::num::{NonZeroU32, NonZeroU64};
+use std::sync::atomic::AtomicBool;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
+use subspace_core_primitives::crypto::kzg;
+use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Chunk, Piece, PublicKey, Randomness, RecordsRoot, SectorId, SegmentIndex, Solution,
-    SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, PublicKey, Randomness, RecordsRoot, RootBlock, SectorId, SegmentIndex,
+    Solution, SolutionRange, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_solving::{
-    create_chunk_signature, derive_chunk_otp, derive_global_challenge, REWARD_SIGNING_CONTEXT,
-};
-use subspace_verification::derive_randomness;
+use subspace_farmer_components::farming::audit_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceReceiver};
+use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
+use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
+use subspace_verification::{derive_audit_chunk, derive_randomness};
 
 fn default_randomness() -> Randomness {
     [1u8; 32]
@@ -49,15 +56,14 @@ fn default_test_constants() -> ChainConstants<Header> {
         era_duration: 20,
         slot_probability: (1, 6),
         storage_bound: Default::default(),
-        space_l: NonZeroU16::new(20).unwrap(),
     }
 }
 
 fn derive_solution_range(
     local_challenge: &SolutionRange,
-    expanded_chunk: &SolutionRange,
+    audit_chunk: &SolutionRange,
 ) -> SolutionRange {
-    subspace_core_primitives::bidirectional_distance(local_challenge, expanded_chunk) * 2
+    subspace_core_primitives::bidirectional_distance(local_challenge, audit_chunk) * 2
 }
 
 fn archived_segment(kzg: Kzg) -> ArchivedSegment {
@@ -75,14 +81,79 @@ fn archived_segment(kzg: Kzg) -> ArchivedSegment {
         .unwrap()
 }
 
+struct Farmer {
+    root_block: RootBlock,
+    farmer_protocol_info: FarmerProtocolInfo,
+    sector: Vec<u8>,
+    sector_metadata: Vec<u8>,
+}
+
+impl Farmer {
+    fn new(keypair: &Keypair) -> Self {
+        let kzg = Kzg::new(kzg::test_public_parameters());
+        let archived_segment = archived_segment(kzg.clone());
+        let root_block = archived_segment.root_block;
+        let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();
+        let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+        let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
+        let sector_index = 0;
+        let piece_receiver = TestPieceReceiver { archived_segment };
+        let public_key = PublicKey::from(keypair.public.to_bytes());
+        let farmer_protocol_info = FarmerProtocolInfo {
+            record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
+            recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
+            total_pieces,
+            sector_expiration: 100,
+        };
+        let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+        block_on(plot_sector(
+            &public_key,
+            sector_index,
+            &piece_receiver,
+            &AtomicBool::new(false),
+            &farmer_protocol_info,
+            &kzg,
+            &sector_codec,
+            Cursor::new(sector.as_mut_slice()),
+            Cursor::new(sector_metadata.as_mut_slice()),
+        ))
+        .unwrap();
+
+        Self {
+            root_block,
+            farmer_protocol_info,
+            sector,
+            sector_metadata,
+        }
+    }
+}
+
 struct ValidHeaderParams<'a> {
     parent_hash: HashOf<Header>,
     number: NumberOf<Header>,
     slot: u64,
     keypair: &'a Keypair,
     randomness: Randomness,
-    kzg: &'a Kzg,
-    space_l: NonZeroU16,
+    farmer: &'a Farmer,
+}
+
+struct TestPieceReceiver {
+    archived_segment: ArchivedSegment,
+}
+
+#[async_trait]
+impl PieceReceiver for TestPieceReceiver {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        Ok(self
+            .archived_segment
+            .pieces
+            .as_pieces()
+            .nth(piece_index as usize)
+            .map(|piece_bytes| Piece::try_from(piece_bytes).unwrap()))
+    }
 }
 
 fn valid_header(
@@ -94,111 +165,65 @@ fn valid_header(
         slot,
         keypair,
         randomness,
-        kzg,
-        space_l,
+        farmer,
     } = params;
-    let chunks_in_sector = u64::from(RECORD_SIZE) * u64::from(u8::BITS) / u64::from(space_l.get());
+
+    let segment_index = farmer.root_block.segment_index();
+    let records_root = farmer.root_block.records_root();
+    let sector_index = 0;
+    let public_key = PublicKey::from(keypair.public.to_bytes());
+    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+
     let global_challenge = derive_global_challenge(&randomness, slot);
-    let archived_segment = archived_segment(kzg.clone());
-    let segment_index = archived_segment.root_block.segment_index();
-    let records_root = archived_segment.root_block.records_root();
-    let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();
-
-    // There may be no solution in the first sector, iterate until we get a solution
-    for sector_index in 0.. {
-        let sector_id = SectorId::new(&PublicKey::from(keypair.public.to_bytes()), sector_index);
-        let local_challenge = sector_id.derive_local_challenge(&global_challenge);
-        let audit_index: u64 = local_challenge % chunks_in_sector;
-        let audit_piece_offset = (audit_index / u64::from(u8::BITS)) / PIECE_SIZE as u64;
-        // Offset of the piece in sector (in bytes)
-        let audit_piece_bytes_offset = audit_piece_offset * PIECE_SIZE as u64;
-        // Audit index (chunk) within corresponding piece
-        let audit_index_within_piece = audit_index - audit_piece_bytes_offset * u64::from(u8::BITS);
-        let piece_index = sector_id.derive_piece_index(audit_piece_offset, total_pieces);
-        let mut piece = Piece::try_from(
-            archived_segment
-                .pieces
-                .as_pieces()
-                .nth(piece_index as usize)
-                .unwrap(),
+    let eligible_sector = audit_sector(
+        &public_key,
+        sector_index,
+        &global_challenge,
+        SolutionRange::MAX,
+        Cursor::new(&farmer.sector),
+    )
+    .unwrap()
+    .expect("With max solution range there must be a sector eligible; qed");
+    let local_challenge = eligible_sector.local_challenge;
+    let solution = eligible_sector
+        .try_into_solutions(
+            keypair,
+            public_key,
+            &farmer.farmer_protocol_info,
+            &sector_codec,
+            farmer.sector.as_slice(),
+            farmer.sector_metadata.as_slice(),
         )
-        .unwrap();
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("With max solution range there must be a solution; qed");
+    // Lazy conversion to a different type of public key and reward address
+    let solution =
+        Solution::<FarmerPublicKey, FarmerPublicKey>::decode(&mut solution.encode().as_slice())
+            .unwrap();
+    let audit_chunk = derive_audit_chunk(&solution.chunk.to_bytes());
+    let solution_range = derive_solution_range(&local_challenge, &audit_chunk);
 
-        // Encode piece
-        let (record, witness_bytes) = piece.split_at_mut(RECORD_SIZE as usize);
-        let piece_witness = Witness::try_from_bytes((&*witness_bytes).try_into().unwrap()).unwrap();
-        let piece_record_hash = blake2b_256_254_hash(record);
-        // TODO: Extract encoding into separate function reusable in
-        //  farmer and otherwise
-        record
-            .view_bits_mut::<Lsb0>()
-            .chunks_mut(space_l.get() as usize)
-            .enumerate()
-            .for_each(|(chunk_index, bits)| {
-                // Derive one-time pad
-                let mut otp = derive_chunk_otp(&sector_id, witness_bytes, chunk_index as u32);
-                // XOR chunk bit by bit with one-time pad
-                bits.iter_mut()
-                    .zip(otp.view_bits_mut::<Lsb0>().iter())
-                    .for_each(|(mut a, b)| {
-                        *a ^= *b;
-                    });
-            });
+    let pre_digest = PreDigest {
+        slot: slot.into(),
+        solution,
+    };
+    let digests = vec![
+        DigestItem::global_randomness(randomness),
+        DigestItem::solution_range(solution_range),
+        DigestItem::subspace_pre_digest(&pre_digest),
+    ];
 
-        // TODO: We are skipping witness part of the piece or else it is not
-        //  decodable
-        let maybe_chunk = piece[..RECORD_SIZE as usize]
-            .view_bits()
-            .chunks_exact(space_l.get() as usize)
-            .nth(audit_index_within_piece as usize);
+    let header = Header {
+        parent_hash,
+        number,
+        state_root: Default::default(),
+        extrinsics_root: Default::default(),
+        digest: Digest { logs: digests },
+    };
 
-        let chunk = match maybe_chunk {
-            Some(chunk) => Chunk::from(chunk),
-            None => {
-                // TODO: Record size is not multiple of `space_l`, last bits
-                //  were not encoded and should not be used for solving
-                continue;
-            }
-        };
-
-        // TODO: This just have 20 bits of entropy as input, should we add
-        //  something else?
-        let expanded_chunk = chunk.expand(local_challenge);
-
-        let solution_range = derive_solution_range(&local_challenge, &expanded_chunk);
-        let chunk_signature = create_chunk_signature(keypair, &chunk);
-        let pre_digest = PreDigest {
-            slot: slot.into(),
-            solution: Solution {
-                public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                reward_address: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-                sector_index,
-                total_pieces,
-                piece_offset: audit_piece_offset,
-                piece_record_hash,
-                piece_witness,
-                chunk,
-                chunk_signature,
-            },
-        };
-        let digests = vec![
-            DigestItem::global_randomness(randomness),
-            DigestItem::solution_range(solution_range),
-            DigestItem::subspace_pre_digest(&pre_digest),
-        ];
-
-        let header = Header {
-            parent_hash,
-            number,
-            state_root: Default::default(),
-            extrinsics_root: Default::default(),
-            digest: Digest { logs: digests },
-        };
-
-        return (header, solution_range, segment_index, records_root);
-    }
-
-    unreachable!()
+    (header, solution_range, segment_index, records_root)
 }
 
 fn seal_header(keypair: &Keypair, header: &mut Header) {
@@ -303,7 +328,7 @@ fn add_headers_to_chain(
     keypair: &Keypair,
     headers_to_add: NumberOf<Header>,
     maybe_fork_chain: Option<ForkAt>,
-    kzg: &Kzg,
+    farmer: &Farmer,
 ) -> HashOf<Header> {
     let best_header_ext = importer.store.best_header();
     let constants = importer.store.chain_constants();
@@ -353,8 +378,7 @@ fn add_headers_to_chain(
                 slot: slot.into(),
                 keypair,
                 randomness,
-                kzg,
-                space_l: constants.space_l,
+                farmer,
             });
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
@@ -457,21 +481,19 @@ fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: N
 
 #[test]
 fn test_header_import_missing_parent() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let constants = default_test_constants();
-    let space_l = constants.space_l;
     let (mut store, _genesis_hash) = initialize_store(constants, true, None);
     let randomness = default_randomness();
-    let keypair = Keypair::generate();
     let (header, _, segment_index, records_root) = valid_header(ValidHeaderParams {
         parent_hash: Default::default(),
         number: 1,
         slot: 1,
         keypair: &keypair,
         randomness,
-        kzg: &kzg,
-        space_l,
+        farmer: &farmer,
     });
     store.store_records_root(segment_index, records_root);
     let mut importer = HeaderImporter::new(store);
@@ -483,18 +505,18 @@ fn test_header_import_missing_parent() {
 
 #[test]
 fn test_header_import_non_canonical() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let constants = default_test_constants();
     let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
-    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &kzg);
+    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_2);
 
     // import canonical block 3
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &kzg);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_3);
     let best_header = importer.store.header(hash_of_3).unwrap();
@@ -509,7 +531,7 @@ fn test_header_import_non_canonical() {
             parent_hash: hash_of_2,
             is_best: Some(false),
         }),
-        &kzg,
+        &farmer,
     );
 
     let best_header_ext = importer.store.best_header();
@@ -520,18 +542,18 @@ fn test_header_import_non_canonical() {
 
 #[test]
 fn test_header_import_canonical() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let constants = default_test_constants();
     let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &kzg);
+    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_5);
 
     // import some more canonical blocks
-    let hash_of_25 = add_headers_to_chain(&mut importer, &keypair, 20, None, &kzg);
+    let hash_of_25 = add_headers_to_chain(&mut importer, &keypair, 20, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_25);
     assert_eq!(importer.store.headers_at_number(25).len(), 1);
@@ -539,18 +561,18 @@ fn test_header_import_canonical() {
 
 #[test]
 fn test_header_import_non_canonical_with_equal_block_weight() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let constants = default_test_constants();
     let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
-    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &kzg);
+    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_2);
 
     // import canonical block 3
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &kzg);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_3);
     let best_header = importer.store.header(hash_of_3).unwrap();
@@ -565,7 +587,7 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
             parent_hash: hash_of_2,
             is_best: None,
         }),
-        &kzg,
+        &farmer,
     );
 
     let best_header_ext = importer.store.best_header();
@@ -576,19 +598,19 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
 
 #[test]
 fn test_chain_reorg_to_longer_chain() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.k_depth = 4;
     let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_4);
     assert_eq!(
@@ -605,7 +627,7 @@ fn test_chain_reorg_to_longer_chain() {
             parent_hash: genesis_hash,
             is_best: Some(false),
         }),
-        &kzg,
+        &farmer,
     );
     assert_eq!(best_header.header.hash(), hash_of_4);
     // block 0 is still finalized
@@ -616,7 +638,7 @@ fn test_chain_reorg_to_longer_chain() {
     ensure_finalized_heads_have_no_forks(&importer.store, 0);
 
     // add new best header at 5
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 1, None, &kzg);
+    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_5);
 
@@ -633,7 +655,7 @@ fn test_chain_reorg_to_longer_chain() {
             parent_hash: hash_of_4,
             is_best: Some(false),
         }),
-        &kzg,
+        &farmer,
     );
 
     // best header should still be the same
@@ -655,7 +677,7 @@ fn test_chain_reorg_to_longer_chain() {
             parent_hash: fork_hash_of_8,
             is_best: Some(true),
         }),
-        &kzg,
+        &farmer,
     );
     assert_eq!(importer.store.best_header().header.hash(), hash_of_9);
 
@@ -665,19 +687,19 @@ fn test_chain_reorg_to_longer_chain() {
 
 #[test]
 fn test_reorg_to_heavier_smaller_chain() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.k_depth = 4;
     let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &kzg);
+    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_5);
     assert_eq!(importer.store.finalized_header().header.number, 1);
@@ -705,8 +727,7 @@ fn test_reorg_to_heavier_smaller_chain() {
             slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_2.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     seal_header(&keypair, &mut header);
     let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
@@ -736,19 +757,19 @@ fn test_reorg_to_heavier_smaller_chain() {
 
 #[test]
 fn test_next_global_randomness_digest() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.global_randomness_interval = 5;
     let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with out next global randomness
@@ -766,8 +787,7 @@ fn test_next_global_randomness_digest() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -793,7 +813,7 @@ fn test_next_global_randomness_digest() {
     let pre_digest = extract_pre_digest(&header).unwrap();
     let randomness = derive_randomness(
         &PublicKey::from(&pre_digest.solution.public_key),
-        &pre_digest.solution.chunk,
+        &pre_digest.solution.chunk.to_bytes(),
         &pre_digest.solution.chunk_signature,
     )
     .unwrap();
@@ -807,19 +827,19 @@ fn test_next_global_randomness_digest() {
 
 #[test]
 fn test_next_solution_range_digest_with_adjustment_enabled() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with out next global randomness
@@ -837,8 +857,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     seal_header(&keypair, &mut header);
     importer
@@ -879,19 +898,19 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
 
 #[test]
 fn test_next_solution_range_digest_with_adjustment_disabled() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with out next global randomness
@@ -909,8 +928,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     importer
         .store
@@ -936,19 +954,19 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
 
 #[test]
 fn test_enable_solution_range_adjustment_without_override() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
     // solution range adjustment is disabled
     assert!(!importer.store.best_header().should_adjust_solution_range);
@@ -968,8 +986,7 @@ fn test_enable_solution_range_adjustment_without_override() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     importer
         .store
@@ -1004,19 +1021,19 @@ fn test_enable_solution_range_adjustment_without_override() {
 
 #[test]
 fn test_enable_solution_range_adjustment_with_override_between_update_intervals() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &kzg);
+    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_3);
     // solution range adjustment is disabled
     assert!(!importer.store.best_header().should_adjust_solution_range);
@@ -1036,8 +1053,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
             slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_3.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     importer
         .store
@@ -1072,19 +1088,19 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
 
 #[test]
 fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, false, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
     // solution range adjustment is disabled
     assert!(!importer.store.best_header().should_adjust_solution_range);
@@ -1104,8 +1120,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     importer
         .store
@@ -1134,19 +1149,19 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
 
 #[test]
 fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_already_enabled() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     constants.era_duration = 5;
     let (store, genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     assert_eq!(
         importer.store.finalized_header().header.hash(),
         genesis_hash
     );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &kzg);
+    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
     assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
     // try to import header with enable solution range adjustment digest
@@ -1164,8 +1179,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
             slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
             keypair: &keypair,
             randomness: digests_at_4.global_randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     importer
         .store
@@ -1190,16 +1204,18 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
     );
 }
 
-fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>, kzg: &Kzg) {
+fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>) {
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
+
     let mut constants = default_test_constants();
     constants.k_depth = 7;
     constants.storage_bound =
         StorageBound::NumberOfHeaderToKeepBeyondKDepth(headers_to_keep_beyond_k_depth);
     let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let keypair = Keypair::generate();
     let mut importer = HeaderImporter::new(store);
     // import some more canonical blocks
-    let hash_of_50 = add_headers_to_chain(&mut importer, &keypair, 50, None, kzg);
+    let hash_of_50 = add_headers_to_chain(&mut importer, &keypair, 50, None, &farmer);
     let best_header = importer.store.best_header();
     assert_eq!(best_header.header.hash(), hash_of_50);
 
@@ -1218,28 +1234,23 @@ fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Head
 
 #[test]
 fn test_storage_bound_with_headers_beyond_k_depth_is_zero() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    ensure_store_is_storage_bounded(0, &kzg)
+    ensure_store_is_storage_bounded(0)
 }
 
 #[test]
 fn test_storage_bound_with_headers_beyond_k_depth_is_one() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    ensure_store_is_storage_bounded(1, &kzg)
+    ensure_store_is_storage_bounded(1)
 }
 
 #[test]
 fn test_storage_bound_with_headers_beyond_k_depth_is_more_than_one() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    ensure_store_is_storage_bounded(5, &kzg)
+    ensure_store_is_storage_bounded(5)
 }
 
 #[test]
 fn test_block_author_different_farmer() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     let keypair_allowed = Keypair::generate();
@@ -1257,8 +1268,7 @@ fn test_block_author_different_farmer() {
             slot: 1,
             keypair: &keypair_disallowed,
             randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     seal_header(&keypair_disallowed, &mut header);
     constants.genesis_digest_items.next_solution_range = solution_range;
@@ -1278,10 +1288,10 @@ fn test_block_author_different_farmer() {
 
 #[test]
 fn test_block_author_first_farmer() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
-    let keypair = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let (store, genesis_hash) = initialize_store(constants.clone(), true, None);
     let mut importer = HeaderImporter::new(store);
@@ -1295,8 +1305,7 @@ fn test_block_author_first_farmer() {
             slot: 1,
             keypair: &keypair,
             randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     header
         .digest
@@ -1320,10 +1329,10 @@ fn test_block_author_first_farmer() {
 
 #[test]
 fn test_block_author_allow_any_farmer() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
-    let keypair = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
     let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
     let mut importer = HeaderImporter::new(store);
@@ -1337,8 +1346,7 @@ fn test_block_author_allow_any_farmer() {
             slot: 1,
             keypair: &keypair,
             randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     header
         .digest
@@ -1360,7 +1368,8 @@ fn test_block_author_allow_any_farmer() {
 
 #[test]
 fn test_disallow_root_plot_public_key_override() {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let keypair = Keypair::generate();
+    let farmer = Farmer::new(&keypair);
 
     let mut constants = default_test_constants();
     let keypair_allowed = Keypair::generate();
@@ -1377,8 +1386,7 @@ fn test_disallow_root_plot_public_key_override() {
             slot: 1,
             keypair: &keypair_allowed,
             randomness,
-            kzg: &kzg,
-            space_l: constants.space_l,
+            farmer: &farmer,
         });
     let keypair_disallowed = Keypair::generate();
     let pub_key = FarmerPublicKey::unchecked_from(keypair_disallowed.public.to_bytes());

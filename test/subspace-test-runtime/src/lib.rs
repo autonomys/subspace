@@ -50,10 +50,8 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
-use sp_domains::{
-    BundleEquivocationProof, DomainId, ExecutionReceipt, FraudProof, InvalidTransactionProof,
-    SignedOpaqueBundle,
-};
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
 };
@@ -474,7 +472,7 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SecondaryHash = domain_runtime_primitives::Hash;
+    type DomainHash = domain_runtime_primitives::Hash;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -915,7 +913,7 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let seed: &[u8] = b"extrinsics-shuffling-seed";
         let randomness = derive_randomness(
             &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk,
+            &pre_digest.solution.chunk.to_bytes(),
             &pre_digest.solution.chunk_signature,
         )
         .expect("Tag signature is verified by the client and must always be valid; qed");
@@ -1142,8 +1140,8 @@ impl_runtime_apis! {
             EXECUTION_WASM_BUNDLE.into()
         }
 
-        fn best_execution_chain_number() -> NumberFor<Block> {
-            Domains::best_execution_chain_number()
+        fn head_receipt_number() -> NumberFor<Block> {
+            Domains::head_receipt_number()
         }
 
         fn oldest_receipt_number() -> NumberFor<Block> {

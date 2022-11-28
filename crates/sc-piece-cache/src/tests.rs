@@ -1,4 +1,4 @@
-use crate::{AuxPieceCache, PieceCache, MAX_SEGMENTS_NUMBER_IN_CACHE, TOLERANCE_SEGMENTS_NUMBER};
+use crate::{AuxPieceCache, PieceCache, ONE_GB, TOLERANCE_SEGMENTS_NUMBER};
 use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ impl AuxStore for TestAuxStore {
 
 #[test]
 fn adding_retrieval_operations_work() {
-    let store = AuxPieceCache::new(Arc::new(TestAuxStore::default()));
+    let store = AuxPieceCache::new(Arc::new(TestAuxStore::default()), ONE_GB);
 
     store
         .add_pieces(0, &FlatPieces::new(PIECES_IN_SEGMENT as usize))
@@ -68,9 +68,9 @@ fn adding_retrieval_operations_work() {
 
 #[test]
 fn test_segment_deletion() {
-    let store = AuxPieceCache::new(Arc::new(TestAuxStore::default()));
+    let store = AuxPieceCache::new(Arc::new(TestAuxStore::default()), ONE_GB);
 
-    for i in 0..MAX_SEGMENTS_NUMBER_IN_CACHE {
+    for i in 0..store.max_segments_number_in_cache() {
         store
             .add_pieces(
                 i * PIECES_IN_SEGMENT as u64,
@@ -95,7 +95,7 @@ fn test_segment_deletion() {
     // Tolerance works
     store
         .add_pieces(
-            MAX_SEGMENTS_NUMBER_IN_CACHE * PIECES_IN_SEGMENT as u64,
+            store.max_segments_number_in_cache() * PIECES_IN_SEGMENT as u64,
             &FlatPieces::new(PIECES_IN_SEGMENT as usize),
         )
         .unwrap();
@@ -108,7 +108,7 @@ fn test_segment_deletion() {
     // Deletion
     store
         .add_pieces(
-            (1 + MAX_SEGMENTS_NUMBER_IN_CACHE) * PIECES_IN_SEGMENT as u64,
+            (1 + store.max_segments_number_in_cache()) * PIECES_IN_SEGMENT as u64,
             &FlatPieces::new(PIECES_IN_SEGMENT as usize),
         )
         .unwrap();
@@ -130,14 +130,16 @@ fn test_segment_deletion() {
         .is_some());
     assert!(store
         .get_piece(
-            (TOLERANCE_SEGMENTS_NUMBER + MAX_SEGMENTS_NUMBER_IN_CACHE) * PIECES_IN_SEGMENT as u64
+            (TOLERANCE_SEGMENTS_NUMBER + store.max_segments_number_in_cache())
+                * PIECES_IN_SEGMENT as u64
                 - 1
         )
         .unwrap()
         .is_some());
     assert!(store
         .get_piece(
-            (TOLERANCE_SEGMENTS_NUMBER + MAX_SEGMENTS_NUMBER_IN_CACHE) * PIECES_IN_SEGMENT as u64
+            (TOLERANCE_SEGMENTS_NUMBER + store.max_segments_number_in_cache())
+                * PIECES_IN_SEGMENT as u64
         )
         .unwrap()
         .is_none());

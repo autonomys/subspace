@@ -34,4 +34,6 @@
 //! 5. After the parachain candidate got backed and included, all collators start at 1.
 
 mod import_queue;
+pub mod notification;
+
 pub use import_queue::{import_queue, Verifier};

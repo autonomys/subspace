@@ -1,4 +1,4 @@
-use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, StateBackend, LOG_TARGET};
+use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use domain_runtime_primitives::RelayerId;
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
@@ -18,56 +18,57 @@ pub async fn relay_system_domain_messages<Client, Block, DBI, SO>(
     system_domain_client: Arc<Client>,
     system_domain_block_import: DBI,
     system_domain_sync_oracle: SO,
-) -> Result<(), Error>
-where
+) where
     Block: BlockT,
-    Client: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
     SO: SyncOracle,
 {
-    relay_domain_messages(
+    let result = relay_domain_messages(
         relayer_id,
         system_domain_client,
         system_domain_block_import,
         Relayer::submit_messages_from_system_domain,
         system_domain_sync_oracle,
     )
-    .await
+    .await;
+
+    if let Err(err) = result {
+        tracing::error!(
+            target: LOG_TARGET,
+            ?err,
+            "Failed to start relayer for system domain"
+        )
+    }
 }
 
 /// Starts relaying core domain messages to other domains.
 /// If the either system domain or core domain node is in major sync,
 /// worker waits waits until the sync is finished.
-pub async fn relay_core_domain_messages<CDC, SDC, Block, DBI, SO>(
+pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, DBI, SDSO, CDSO>(
     relayer_id: RelayerId,
     core_domain_client: Arc<CDC>,
     system_domain_client: Arc<SDC>,
     core_domain_block_import: DBI,
-    system_domain_sync_oracle: SO,
-    core_domain_sync_oracle: SO,
-) -> Result<(), Error>
-where
+    system_domain_sync_oracle: SDSO,
+    core_domain_sync_oracle: CDSO,
+) where
     Block: BlockT,
-    CDC: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    CDC: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
-    SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
-    SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
-    SO: SyncOracle,
+    SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+    SDSO: SyncOracle + Send,
+    CDSO: SyncOracle + Send,
 {
     let combined_sync_oracle =
-        CombinedSyncOracle::new(&system_domain_sync_oracle, &core_domain_sync_oracle);
+        CombinedSyncOracle::new(system_domain_sync_oracle, core_domain_sync_oracle);
 
-    relay_domain_messages(
+    let result = relay_domain_messages(
         relayer_id,
         core_domain_client,
         core_domain_block_import,
@@ -81,7 +82,14 @@ where
         },
         combined_sync_oracle,
     )
-    .await
+    .await;
+    if let Err(err) = result {
+        tracing::error!(
+            target: LOG_TARGET,
+            ?err,
+            "Failed to start relayer for core domain"
+        )
+    }
 }
 
 async fn relay_domain_messages<Client, Block, SDBI, MP, SO>(
@@ -93,11 +101,7 @@ async fn relay_domain_messages<Client, Block, SDBI, MP, SO>(
 ) -> Result<(), Error>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDBI: Stream<Item = NumberFor<Block>> + Unpin,
     MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
@@ -158,12 +162,16 @@ where
 }
 
 /// Combines both system and core domain sync oracles into one.
-struct CombinedSyncOracle<'a> {
-    system_domain_sync_oracle: &'a dyn SyncOracle,
-    core_domain_sync_oracle: &'a dyn SyncOracle,
+struct CombinedSyncOracle<SDSO, CDSO> {
+    system_domain_sync_oracle: SDSO,
+    core_domain_sync_oracle: CDSO,
 }
 
-impl<'a> SyncOracle for CombinedSyncOracle<'a> {
+impl<SDSO, CDSO> SyncOracle for CombinedSyncOracle<SDSO, CDSO>
+where
+    SDSO: SyncOracle,
+    CDSO: SyncOracle,
+{
     /// Returns true if either of the domains are in major sync.
     fn is_major_syncing(&self) -> bool {
         self.system_domain_sync_oracle.is_major_syncing()
@@ -176,12 +184,9 @@ impl<'a> SyncOracle for CombinedSyncOracle<'a> {
     }
 }
 
-impl<'a> CombinedSyncOracle<'a> {
+impl<SDSO, CDSO> CombinedSyncOracle<SDSO, CDSO> {
     /// Returns a new sync oracle that wraps system domain and core domain sync oracle.
-    fn new(
-        system_domain_sync_oracle: &'a dyn SyncOracle,
-        core_domain_sync_oracle: &'a dyn SyncOracle,
-    ) -> Self {
+    fn new(system_domain_sync_oracle: SDSO, core_domain_sync_oracle: CDSO) -> Self {
         CombinedSyncOracle {
             system_domain_sync_oracle,
             core_domain_sync_oracle,

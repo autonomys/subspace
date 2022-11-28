@@ -24,15 +24,16 @@ use codec::{Decode, Encode};
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
 pub use pallet::*;
+use sp_domain_tracker::CoreDomainTracker;
 use sp_domains::bundle_election::{
     verify_bundle_solution_threshold, ReadBundleElectionParamsError,
 };
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{
-    BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
-    InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle, StakeWeight,
+    DomainId, ExecutionReceipt, ExecutorPublicKey, ProofOfElection, SignedOpaqueBundle, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::{BlakeTwo256, One, Saturating, Zero};
+use sp_runtime::traits::{BlakeTwo256, Hash, One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec;
@@ -44,20 +45,24 @@ type BalanceOf<T> =
 type DomainConfig<T> =
     sp_domains::DomainConfig<<T as frame_system::Config>::Hash, BalanceOf<T>, Weight>;
 
+type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
+
 const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 
 #[frame_support::pallet]
 mod pallet {
     use super::{BalanceOf, DomainConfig};
+    use crate::StateRootOf;
     use codec::Codec;
     use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
     use frame_support::traits::LockableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
+    use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::{
-        BundleEquivocationProof, DomainId, ExecutionReceipt, ExecutorPublicKey, FraudProof,
-        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
+        DomainId, ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
     };
     use sp_executor_registry::ExecutorRegistry;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, One};
@@ -115,6 +120,9 @@ mod pallet {
         /// Number of execution receipts kept in the state.
         #[pallet::constant]
         type ReceiptsPruningDepth: Get<Self::BlockNumber>;
+
+        /// Core domain tracker that tracks the state roots of the core domains.
+        type CoreDomainTracker: CoreDomainTracker<Self::BlockNumber, StateRootOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -707,7 +715,7 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
 }
 
 impl<T: Config> Pallet<T> {
-    pub fn best_execution_chain_number(domain_id: DomainId) -> T::BlockNumber {
+    pub fn head_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
         best_number
     }
@@ -763,16 +771,16 @@ impl<T: Config> Pallet<T> {
             state_root,
             executor_public_key,
             global_challenge,
-            block_number,
-            block_hash,
+            core_block_number,
             core_block_hash,
             core_state_root,
             ..
         } = &signed_opaque_bundle.proof_of_election;
 
-        if !block_number.is_zero() {
-            let block_number = T::BlockNumber::from(*block_number);
+        let core_block_number =
+            T::BlockNumber::from(core_block_number.ok_or(Error::<T>::CoreBlockInfoNotFound)?);
 
+        if !core_block_number.is_zero() {
             let core_block_hash = core_block_hash.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
             let core_state_root = core_state_root.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
 
@@ -783,10 +791,8 @@ impl<T: Config> Pallet<T> {
                     .iter()
                     .find_map(|receipt| {
                         receipt.trace.last().and_then(|state_root| {
-                            if (receipt.primary_number, receipt.secondary_hash)
-                                == (block_number, *block_hash)
-                                || (receipt.primary_number, receipt.secondary_hash)
-                                    == (block_number, core_block_hash)
+                            if (receipt.primary_number, receipt.domain_hash)
+                                == (core_block_number, core_block_hash)
                             {
                                 Some(*state_root)
                             } else {
@@ -797,7 +803,7 @@ impl<T: Config> Pallet<T> {
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
-                None => StateRoots::<T>::get((domain_id, block_number, core_block_hash))
+                None => StateRoots::<T>::get((domain_id, core_block_number, core_block_hash))
                     .ok_or(Error::<T>::StateRootUnverifiable)?,
             };
 
@@ -998,9 +1004,11 @@ impl<T: Config> Pallet<T> {
                 .expect("There are at least 2 elements in trace after the genesis block; qed");
 
             <StateRoots<T>>::insert(
-                (domain_id, primary_number, execution_receipt.secondary_hash),
+                (domain_id, primary_number, execution_receipt.domain_hash),
                 state_root,
             );
+
+            T::CoreDomainTracker::add_core_domain_state_root(domain_id, primary_number, *state_root)
         }
 
         /* TODO:
@@ -1042,7 +1050,7 @@ impl<T: Config> Pallet<T> {
                     .expect("There are at least 2 elements in trace after the genesis block; qed");
 
                 <StateRoots<T>>::insert(
-                    (domain_id, primary_number, execution_receipt.secondary_hash),
+                    (domain_id, primary_number, execution_receipt.domain_hash),
                     state_root,
                 );
             }

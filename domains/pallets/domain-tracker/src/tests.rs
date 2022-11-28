@@ -1,82 +1,98 @@
-use crate::mock::{new_test_ext, DomainTracker, MockRuntime, RuntimeOrigin, StateRootsBound};
-use crate::pallet::{CoreDomainsStateRoot, SystemDomainStateRoots};
-use crate::Error;
-use frame_support::{assert_err, assert_ok};
-use sp_domain_tracker::InherentType;
+use crate::mock::{new_test_ext, DomainTracker};
 use sp_domains::DomainId;
 use sp_runtime::traits::{BlakeTwo256, Hash};
 
 #[test]
 fn test_update_state_root() {
     new_test_ext().execute_with(|| {
-        let data = InherentType {
-            system_domain_state_root: BlakeTwo256::hash_of(&1),
-        };
+        let state_root = BlakeTwo256::hash_of(&1);
+        assert!(DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, 1).is_none());
+        assert!(DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, 1).is_none());
 
-        assert!(DomainTracker::system_domain_state_roots().is_empty());
-        assert!(!DomainTracker::state_roots_updated());
-
-        let res = DomainTracker::update_system_domain_state_root(
-            RuntimeOrigin::none(),
-            data.system_domain_state_root,
+        DomainTracker::add_system_domain_state_root(1, state_root);
+        assert!(DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, 1).is_none());
+        assert!(
+            DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, 1)
+                == Some(BlakeTwo256::hash_of(&1))
         );
-        assert_ok!(res);
-        assert_eq!(
-            DomainTracker::system_domain_state_roots(),
-            vec![BlakeTwo256::hash_of(&1)]
-        );
-        assert!(DomainTracker::state_roots_updated());
-
-        // cannot update twice in same block
-        let res = DomainTracker::update_system_domain_state_root(
-            RuntimeOrigin::none(),
-            data.system_domain_state_root,
-        );
-        assert_err!(res, Error::<MockRuntime>::StateRootsAlreadyUpdated)
     })
 }
 
 #[test]
 fn test_state_roots_bounded() {
     new_test_ext().execute_with(|| {
-        SystemDomainStateRoots::<MockRuntime>::set(vec![
-            BlakeTwo256::hash_of(&1),
-            BlakeTwo256::hash_of(&2),
-        ]);
+        for number in 0..=5u64 {
+            DomainTracker::add_system_domain_state_root(number, BlakeTwo256::hash_of(&number));
+        }
 
-        let data = InherentType {
-            system_domain_state_root: BlakeTwo256::hash_of(&3),
-        };
+        // 0, 1 should be pruned
+        for number in 0..=1 {
+            assert!(
+                DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+            assert!(
+                DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+        }
 
-        assert!(
-            DomainTracker::system_domain_state_roots().len() == StateRootsBound::get() as usize
-        );
-        assert!(!DomainTracker::state_roots_updated());
+        // 2, 3 should confirmed and not in unconfirmed
+        for number in 2..=3 {
+            assert!(
+                DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, number).is_some()
+            );
+            assert!(
+                DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+        }
 
-        let res = DomainTracker::update_system_domain_state_root(
-            RuntimeOrigin::none(),
-            data.system_domain_state_root,
-        );
-        assert_ok!(res);
-        assert_eq!(
-            DomainTracker::system_domain_state_roots(),
-            vec![BlakeTwo256::hash_of(&2), BlakeTwo256::hash_of(&3)]
-        );
-        assert!(DomainTracker::state_roots_updated());
+        // 4, 5 should unconfirmed and not in confirmed
+        for number in 4..=5 {
+            assert!(
+                DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+            assert!(
+                DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, number).is_some()
+            );
+        }
     })
 }
 
 #[test]
-fn test_core_domain_state_roots_bounded() {
+fn test_state_roots_re_org() {
     new_test_ext().execute_with(|| {
-        let domain_id = DomainId::new(11);
-        CoreDomainsStateRoot::<MockRuntime>::insert(domain_id, 1, BlakeTwo256::hash_of(&1));
-        CoreDomainsStateRoot::<MockRuntime>::insert(domain_id, 2, BlakeTwo256::hash_of(&2));
+        for number in 0..=5u64 {
+            DomainTracker::add_system_domain_state_root(number, BlakeTwo256::hash_of(&number));
+        }
 
-        assert!(DomainTracker::core_domains_state_root(domain_id, 1).is_some());
-        DomainTracker::add_confirmed_core_domain_state_root(domain_id, 3, BlakeTwo256::hash_of(&3));
-        assert!(DomainTracker::core_domains_state_root(domain_id, 1).is_none());
-        assert!(DomainTracker::storage_key_for_core_domain_state_root(domain_id, 3).is_some());
-        assert!(DomainTracker::storage_key_for_core_domain_state_root(domain_id, 1).is_none());
+        // let new latest be 4
+        DomainTracker::add_system_domain_state_root(4, BlakeTwo256::hash_of(&4));
+
+        // 0, 1 should be pruned
+        for number in 0..=1 {
+            assert!(
+                DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+            assert!(
+                DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+        }
+
+        // 2, 3 should confirmed and not in unconfirmed
+        for number in 2..=3 {
+            assert!(
+                DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, number).is_some()
+            );
+            assert!(
+                DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, number).is_none()
+            );
+        }
+
+        // 4 should unconfirmed and not in confirmed
+        assert!(DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, 4).is_none());
+        assert!(DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, 4).is_some());
+
+        // 5 should be pruned as well
+        assert!(DomainTracker::confirmed_domain_state_roots(DomainId::SYSTEM, 5).is_none());
+        assert!(DomainTracker::unconfirmed_domain_state_roots(DomainId::SYSTEM, 5).is_none());
     })
 }

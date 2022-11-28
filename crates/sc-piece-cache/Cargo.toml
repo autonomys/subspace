@@ -12,7 +12,8 @@ include = [
 ]
 
 [dependencies]
-parity-scale-codec = { version = "3.1.5" }
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+parity-scale-codec = { version = "3.2.1" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
+tracing = "0.1.37"

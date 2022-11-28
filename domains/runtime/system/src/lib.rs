@@ -12,6 +12,10 @@ mod runtime;
 #[cfg(any(feature = "wasm-builder", feature = "std"))]
 pub use runtime::*;
 
-// Make the WASM binary available, except in wasm builder environment.
-#[cfg(not(feature = "wasm-builder"))]
+// Make the WASM binary available.
+#[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
+
+#[cfg(feature = "runtime-benchmarks")]
+#[macro_use]
+extern crate frame_benchmarking;

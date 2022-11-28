@@ -2,10 +2,10 @@ use crate::endpoint::{EndpointRequest, EndpointResponse};
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_domains::DomainId;
-use sp_runtime::app_crypto::sp_core::storage::StorageKey;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::traits::CheckedAdd;
-use sp_runtime::DispatchError;
+use sp_runtime::{sp_std, DispatchError};
+use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 
 /// Channel identity.
@@ -153,7 +153,7 @@ pub struct RelayerMessageWithStorageKey {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Storage key to generate proof for using proof backend.
-    pub storage_key: StorageKey,
+    pub storage_key: Vec<u8>,
 }
 
 /// Set of messages with storage keys to be relayed by a given relayer.

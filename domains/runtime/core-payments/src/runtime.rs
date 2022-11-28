@@ -1,5 +1,5 @@
 pub use domain_runtime_primitives::{
-    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
+    AccountId, Address, Balance, BlockNumber, Hash, Index, RelayerId, Signature,
 };
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
@@ -9,18 +9,23 @@ use frame_support::weights::constants::{
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
+use sp_domains::DomainId;
+use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
+use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::SHANNON;
+use subspace_runtime_primitives::{SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -247,6 +252,63 @@ impl domain_pallet_executive::Config for Runtime {
     type RuntimeCall = RuntimeCall;
 }
 
+parameter_types! {
+    pub const StateRootsBound: u32 = 50;
+    pub const RelayConfirmationDepth: BlockNumber = 7;
+}
+
+impl pallet_domain_tracker::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type ConfirmedStateRootsBound = StateRootsBound;
+    type RelayerConfirmationDepth = RelayConfirmationDepth;
+}
+
+parameter_types! {
+    pub const MaximumRelayers: u32 = 100;
+    pub const RelayerDeposit: Balance = 100 * SSC;
+    pub const CorePaymentsDomainId: DomainId = DomainId::CORE_PAYMENTS;
+}
+
+impl pallet_messenger::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = CorePaymentsDomainId;
+    type DomainTracker = DomainTracker;
+
+    fn get_endpoint_response_handler(
+        endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>::default())))
+        } else {
+            None
+        }
+    }
+
+    type Currency = Balances;
+    type MaximumRelayers = MaximumRelayers;
+    type RelayerDeposit = RelayerDeposit;
+}
+
+impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    type Extrinsic = UncheckedExtrinsic;
+    type OverarchingCall = RuntimeCall;
+}
+
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = CorePaymentsDomainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -263,6 +325,11 @@ construct_runtime!(
         // Monetary stuff.
         Balances: pallet_balances = 2,
         TransactionPayment: pallet_transaction_payment = 3,
+
+        // messenger stuff
+        DomainTracker: pallet_domain_tracker = 6,
+        Messenger: pallet_messenger = 7,
+        Transporter: pallet_transporter = 8,
     }
 );
 
@@ -389,6 +456,36 @@ impl_runtime_apis! {
                     weight: Weight::from_ref_time(0),
                 }.into()
             ).encode()
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
+        fn domain_id() -> DomainId {
+            CorePaymentsDomainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
+            Messenger::relayer_assigned_messages(relayer_id)
+        }
+
+        fn submit_outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) {
+            Messenger::submit_outbox_message_unsigned(msg)
+        }
+
+        fn submit_inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) {
+            Messenger::submit_inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_domain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
         }
     }
 

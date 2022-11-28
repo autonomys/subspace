@@ -1,13 +1,11 @@
-// TODO(ved): remove once the code is connected.
-#![allow(dead_code)]
 #![warn(rust_2018_idioms)]
 
-mod worker;
+pub mod worker;
 
 use domain_runtime_primitives::RelayerId;
 use parity_scale_codec::{Decode, Encode};
-use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageKey, StorageProof};
-use sp_api::{ProvideRuntimeApi, StateBackend};
+use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
+use sp_api::ProvideRuntimeApi;
 use sp_domain_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
@@ -72,11 +70,7 @@ impl From<sp_api::ApiError> for Error {
 impl<Client, Block> Relayer<Client, Block>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block>
-        + AuxStore
-        + StateBackend<<Block::Header as HeaderT>::Hashing>
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
+    Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
 {
     pub(crate) fn domain_id(client: &Arc<Client>) -> Result<DomainId, Error> {
@@ -99,14 +93,14 @@ where
     fn construct_system_domain_storage_proof_for_key_at(
         system_domain_client: &Arc<Client>,
         block_hash: Block::Hash,
-        key: &StorageKey,
+        key: &[u8],
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
         system_domain_client
             .header(BlockId::Hash(block_hash))?
             .map(|header| *header.state_root())
             .and_then(|state_root| {
                 let proof = system_domain_client
-                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -121,7 +115,7 @@ where
     fn construct_core_domain_storage_proof_for_key_at(
         core_domain_client: &Arc<Client>,
         block_hash: Block::Hash,
-        key: &StorageKey,
+        key: &[u8],
         core_domain_proof: StorageProof,
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
         core_domain_client
@@ -129,7 +123,7 @@ where
             .map(|header| (*header.number(), *header.state_root()))
             .and_then(|(number, state_root)| {
                 let proof = core_domain_client
-                    .read_proof(block_hash, &mut [key.as_ref()].into_iter())
+                    .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
                     state_root,
@@ -142,7 +136,7 @@ where
 
     fn construct_cross_domain_message_and_submit<
         Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), sp_api::ApiError>,
-        ProofConstructor: Fn(Block::Hash, &StorageKey) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
+        ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
         msgs: Vec<RelayerMessageWithStorageKey>,
@@ -266,15 +260,17 @@ where
         Ok(())
     }
 
-    pub(crate) fn submit_messages_from_core_domain<SDC>(
+    pub(crate) fn submit_messages_from_core_domain<SDC, SBlock>(
         relayer_id: RelayerId,
         core_domain_client: &Arc<Client>,
         system_domain_client: &Arc<SDC>,
         confirmed_block_hash: Block::Hash,
     ) -> Result<(), Error>
     where
-        SDC: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
-        SDC::Api: DomainTrackerApi<Block, NumberFor<Block>>,
+        SBlock: BlockT,
+        NumberFor<SBlock>: From<NumberFor<Block>>,
+        SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+        SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
     {
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
@@ -304,7 +300,7 @@ where
             match system_domain_api.storage_key_for_core_domain_state_root(
                 &latest_system_domain_block_id,
                 core_domain_id,
-                confirmed_block_number,
+                confirmed_block_number.into(),
             )? {
                 Some(storage_key) => {
                     // construct storage proof for the core domain state root using system domain backend.

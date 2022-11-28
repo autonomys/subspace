@@ -16,36 +16,36 @@ use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 use system_runtime_primitives::SystemDomainApi;
 
-pub(super) struct BundleElectionSolver<Block, PBlock, Client> {
-    client: Arc<Client>,
+pub(super) struct BundleElectionSolver<SBlock, PBlock, SClient> {
+    system_domain_client: Arc<SClient>,
     keystore: SyncCryptoStorePtr,
-    _phantom_data: PhantomData<(Block, PBlock)>,
+    _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
-impl<Block, PBlock, Client> Clone for BundleElectionSolver<Block, PBlock, Client>
+impl<SBlock, PBlock, SClient> Clone for BundleElectionSolver<SBlock, PBlock, SClient>
 where
-    Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
+            system_domain_client: self.system_domain_client.clone(),
             keystore: self.keystore.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, Client> BundleElectionSolver<Block, PBlock, Client>
+impl<SBlock, PBlock, SClient> BundleElectionSolver<SBlock, PBlock, SClient>
 where
-    Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + ProofProvider<Block>,
-    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
-    pub(super) fn new(client: Arc<Client>, keystore: SyncCryptoStorePtr) -> Self {
+    pub(super) fn new(system_domain_client: Arc<SClient>, keystore: SyncCryptoStorePtr) -> Self {
         Self {
-            client,
+            system_domain_client,
             keystore,
             _phantom_data: PhantomData::default(),
         }
@@ -53,11 +53,11 @@ where
 
     pub(super) fn solve_bundle_election_challenge(
         &self,
-        best_hash: Block::Hash,
-        best_number: NumberFor<Block>,
+        best_hash: SBlock::Hash,
+        best_number: NumberFor<SBlock>,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
+    ) -> sp_blockchain::Result<Option<ProofOfElection<SBlock::Hash>>> {
         let best_block_id = BlockId::Hash(best_hash);
 
         let BundleElectionParams {
@@ -65,7 +65,7 @@ where
             total_stake_weight,
             slot_probability,
         } = self
-            .client
+            .system_domain_client
             .runtime_api()
             .bundle_elections_params(&best_block_id, domain_id)?;
 
@@ -110,11 +110,11 @@ where
                     // electioned executor storage instead of the whole authority set.
                     let storage_proof = if domain_id.is_system() {
                         let storage_keys = well_known_keys::bundle_election_storage_keys(domain_id);
-                        self.client
+                        self.system_domain_client
                             .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else if domain_id.is_core() {
                         let storage_keys = self
-                            .client
+                            .system_domain_client
                             .runtime_api()
                             .core_bundle_election_storage_keys(
                                 &best_block_id,
@@ -126,7 +126,7 @@ where
                                     "Empty core bundle election storage keys".to_string(),
                                 )
                             })?;
-                        self.client
+                        self.system_domain_client
                             .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else {
                         return Err(sp_blockchain::Error::Application(Box::from(
@@ -135,7 +135,7 @@ where
                     };
 
                     let state_root = *self
-                        .client
+                        .system_domain_client
                         .header(best_block_id)?
                         .expect("Best block header must exist; qed")
                         .state_root();
@@ -154,6 +154,7 @@ where
                         storage_proof,
                         block_number: best_number,
                         block_hash: best_hash,
+                        core_block_number: None,
                         core_block_hash: None,
                         core_state_root: None,
                     };

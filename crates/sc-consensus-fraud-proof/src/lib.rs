@@ -35,15 +35,15 @@ use subspace_fraud_proof::VerifyFraudProof;
 ///
 /// This block import object should be used with the subspace consensus block import together until
 /// the fraud proof verification can be done in the runtime properly.
-pub struct FraudProofBlockImport<Block, Client, I, Verifier, SecondaryHash> {
+pub struct FraudProofBlockImport<Block, Client, I, Verifier, DomainHash> {
     inner: I,
     client: Arc<Client>,
     fraud_proof_verifier: Verifier,
-    _phantom: PhantomData<(Block, SecondaryHash)>,
+    _phantom: PhantomData<(Block, DomainHash)>,
 }
 
-impl<Block, Client, I, Verifier, SecondaryHash> Clone
-    for FraudProofBlockImport<Block, Client, I, Verifier, SecondaryHash>
+impl<Block, Client, I, Verifier, DomainHash> Clone
+    for FraudProofBlockImport<Block, Client, I, Verifier, DomainHash>
 where
     I: Clone,
     Verifier: Clone,
@@ -59,16 +59,16 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner, Verifier, SecondaryHash> BlockImport<Block>
-    for FraudProofBlockImport<Block, Client, Inner, Verifier, SecondaryHash>
+impl<Block, Client, Inner, Verifier, DomainHash> BlockImport<Block>
+    for FraudProofBlockImport<Block, Client, Inner, Verifier, DomainHash>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: ExecutorApi<Block, SecondaryHash>,
+    Client::Api: ExecutorApi<Block, DomainHash>,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
         + Send,
     Verifier: VerifyFraudProof + Send,
-    SecondaryHash: Encode + Decode + Send,
+    DomainHash: Encode + Decode + Send,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -108,15 +108,15 @@ where
     }
 }
 
-pub fn block_import<Block, Client, I, Verifier, SecondaryHash>(
+pub fn block_import<Block, Client, I, Verifier, DomainHash>(
     client: Arc<Client>,
     wrapped_block_import: I,
     fraud_proof_verifier: Verifier,
-) -> FraudProofBlockImport<Block, Client, I, Verifier, SecondaryHash> {
+) -> FraudProofBlockImport<Block, Client, I, Verifier, DomainHash> {
     FraudProofBlockImport {
         inner: wrapped_block_import,
         client,
         fraud_proof_verifier,
-        _phantom: PhantomData::<(Block, SecondaryHash)>,
+        _phantom: PhantomData::<(Block, DomainHash)>,
     }
 }

@@ -4,17 +4,18 @@ use rand::{thread_rng, Rng};
 use rayon::current_num_threads;
 use rayon::prelude::*;
 use std::io;
-use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
+use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
     Piece, PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE,
 };
 use subspace_farmer_components::plotting::plot_sector;
-use subspace_rpc_primitives::FarmerProtocolInfo;
+use subspace_farmer_components::FarmerProtocolInfo;
 use utils::BenchPieceReceiver;
 
 mod utils;
@@ -28,7 +29,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     thread_rng().fill(input.as_mut_slice());
     let kzg = Kzg::new(kzg::test_public_parameters());
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver =
+        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
     let piece = Piece::try_from(
         archiver
             .add_block(input, Default::default())
@@ -44,11 +47,9 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
-        genesis_hash: Default::default(),
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
         total_pieces: NonZeroU64::new(1).unwrap(),
-        space_l: NonZeroU16::new(20).unwrap(),
         sector_expiration: 1,
     };
     let piece_receiver = BenchPieceReceiver::new(piece);
@@ -63,6 +64,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&piece_receiver),
                 black_box(&cancelled),
                 black_box(&farmer_protocol_info),
+                black_box(&kzg),
+                black_box(&sector_codec),
                 black_box(io::sink()),
                 black_box(io::sink()),
             ))
@@ -84,6 +87,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                         black_box(&piece_receiver),
                         black_box(&cancelled),
                         black_box(&farmer_protocol_info),
+                        black_box(&kzg),
+                        black_box(&sector_codec),
                         black_box(io::sink()),
                         black_box(io::sink()),
                     ))

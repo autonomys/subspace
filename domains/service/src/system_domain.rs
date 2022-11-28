@@ -1,16 +1,19 @@
+use crate::Configuration;
+use domain_client_consensus_relay_chain::notification::SubspaceNotificationStream;
 use domain_client_executor::SystemExecutor;
 use domain_client_executor_gossip::ExecutorGossipParams;
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
 use futures::Stream;
+use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
-    BuildNetworkParams, Configuration, NetworkStarter, PartialComponents, SpawnTasksParams,
-    TFullBackend, TFullClient, TaskManager,
+    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
+    SpawnTasksParams, TFullBackend, TFullClient, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
@@ -21,6 +24,7 @@ use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
+use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -29,7 +33,6 @@ use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_domain_runtime::opaque::Block;
-use system_domain_runtime::{AccountId, Balance, Hash};
 use system_runtime_primitives::SystemDomainApi;
 
 /// Domain full client.
@@ -49,7 +52,7 @@ pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool
 /// be able to perform chain operations.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, Executor>(
-    config: &Configuration,
+    config: &ServiceConfiguration,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, Executor>,
@@ -61,6 +64,7 @@ fn new_partial<RuntimeApi, Executor>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<Executor>,
+            SubspaceNotificationStream<NumberFor<Block>>,
         ),
     >,
     sc_service::Error,
@@ -114,11 +118,12 @@ where
         client.clone(),
     );
 
-    let import_queue = domain_client_consensus_relay_chain::import_queue(
-        client.clone(),
-        &task_manager.spawn_essential_handle(),
-        config.prometheus_registry(),
-    )?;
+    let (import_queue, import_block_notification_stream) =
+        domain_client_consensus_relay_chain::import_queue(
+            client.clone(),
+            &task_manager.spawn_essential_handle(),
+            config.prometheus_registry(),
+        )?;
 
     let params = PartialComponents {
         backend,
@@ -128,7 +133,12 @@ where
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (telemetry, telemetry_worker_handle, executor),
+        other: (
+            telemetry,
+            telemetry_worker_handle,
+            executor,
+            import_block_notification_stream,
+        ),
     };
 
     Ok(params)
@@ -162,7 +172,8 @@ where
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
-        + TransactionPaymentRuntimeApi<Block, Balance>,
+        + TransactionPaymentRuntimeApi<Block, Balance>
+        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -228,30 +239,33 @@ where
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
-        + TransactionPaymentRuntimeApi<Block, Balance>,
+        + TransactionPaymentRuntimeApi<Block, Balance>
+        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     // TODO: Do we even need block announcement on secondary node?
     // secondary_chain_config.announce_block = false;
 
     secondary_chain_config
+        .service_config
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial(&secondary_chain_config)?;
+    let params = new_partial(&secondary_chain_config.service_config)?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor, import_block_notification_stream) =
+        params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
 
-    let validator = secondary_chain_config.role.is_authority();
+    let validator = secondary_chain_config.service_config.role.is_authority();
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(BuildNetworkParams {
-            config: &secondary_chain_config,
+            config: &secondary_chain_config.service_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
@@ -264,7 +278,10 @@ where
     let rpc_builder = {
         let client = client.clone();
         let transaction_pool = transaction_pool.clone();
-        let chain_spec = secondary_chain_config.chain_spec.cloned_box();
+        let chain_spec = secondary_chain_config
+            .service_config
+            .chain_spec
+            .cloned_box();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
@@ -283,7 +300,7 @@ where
         client: client.clone(),
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
-        config: secondary_chain_config,
+        config: secondary_chain_config.service_config,
         keystore: params.keystore_container.sync_keystore(),
         backend: backend.clone(),
         network: network.clone(),
@@ -323,6 +340,25 @@ where
             bundle_receiver,
         });
     spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
+
+    if let Some(relayer_id) = secondary_chain_config.maybe_relayer_id {
+        tracing::info!(
+            "Starting system domain relayer with relayer_id[{:?}]",
+            relayer_id
+        );
+        let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
+            relayer_id,
+            client.clone(),
+            import_block_notification_stream.subscribe(),
+            network.clone(),
+        );
+
+        spawn_essential.spawn_essential_blocking(
+            "system-domain-relayer",
+            None,
+            Box::pin(relayer_worker),
+        );
+    }
 
     let new_full = NewFull {
         task_manager,

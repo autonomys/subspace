@@ -46,11 +46,11 @@ pub struct SectorCodec {
 impl SectorCodec {
     /// Create new instance for sector size (in bytes)
     pub fn new(sector_size: usize) -> Result<Self, SectorCodecError> {
-        if sector_size % Scalar::SAFE_BYTES != 0 {
+        if sector_size % Scalar::FULL_BYTES != 0 {
             return Err(SectorCodecError::WrongSectorSize);
         }
 
-        let sector_size_in_scalars = sector_size / Scalar::SAFE_BYTES;
+        let sector_size_in_scalars = sector_size / Scalar::FULL_BYTES;
 
         if sector_size_in_scalars == 0 || !sector_size_in_scalars.is_power_of_two() {
             return Err(SectorCodecError::WrongSectorSize);
@@ -75,8 +75,8 @@ impl SectorCodec {
     pub fn encode(&self, sector: &mut [Scalar]) -> Result<(), SectorCodecError> {
         if sector.len() != self.sector_size_in_scalars {
             return Err(SectorCodecError::WrongInputSectorSize {
-                expected: self.sector_size_in_scalars * Scalar::SAFE_BYTES,
-                actual: sector.len() * Scalar::SAFE_BYTES,
+                expected: self.sector_size_in_scalars * Scalar::FULL_BYTES,
+                actual: sector.len() * Scalar::FULL_BYTES,
             });
         }
 
@@ -118,8 +118,8 @@ impl SectorCodec {
     pub fn decode(&self, sector: &mut [Scalar]) -> Result<(), SectorCodecError> {
         if sector.len() != self.sector_size_in_scalars {
             return Err(SectorCodecError::WrongInputSectorSize {
-                expected: self.sector_size_in_scalars * Scalar::SAFE_BYTES,
-                actual: sector.len() * Scalar::SAFE_BYTES,
+                expected: self.sector_size_in_scalars * Scalar::FULL_BYTES,
+                actual: sector.len() * Scalar::FULL_BYTES,
             });
         }
 

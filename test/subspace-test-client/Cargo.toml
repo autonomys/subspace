@@ -15,21 +15,22 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-bitvec = "1.0.1"
-futures = "0.3.21"
+async-trait = "0.1.58"
+futures = "0.3.25"
 schnorrkel = "0.9.1"
-sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sc-client-api = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-client-api = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
-sc-executor = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", features = ["wasmtime"] }
-sc-service = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false, features = ["wasmtime"] }
-sp-api = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sc-executor = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", features = ["wasmtime"] }
+sc-service = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false, features = ["wasmtime"] }
+sp-api = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
-sp-core = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
+subspace-farmer-components = { path = "../../crates/subspace-farmer-components" }
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-solving = { path = "../../crates/subspace-solving" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }

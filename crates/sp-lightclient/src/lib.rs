@@ -34,7 +34,6 @@ use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
-use sp_std::num::NonZeroU16;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
@@ -43,7 +42,8 @@ use subspace_core_primitives::{
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
-    check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
+    check_reward_signature, derive_audit_chunk, verify_solution, PieceCheckParams,
+    VerifySolutionParams,
 };
 
 #[cfg(test)]
@@ -77,9 +77,6 @@ pub struct ChainConstants<Header: HeaderT> {
 
     /// Storage bound for the light client store.
     pub storage_bound: StorageBound<NumberOf<Header>>,
-
-    /// Space parameter for proof-of-replication in bits.
-    pub space_l: NonZeroU16,
 }
 
 /// Defines the storage bound for the light client store.
@@ -347,8 +344,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             header_digests.pre_digest.solution.piece_offset,
             header_digests.pre_digest.solution.total_pieces,
         );
-        let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
-            .expect("Position within segment always fits into u32; qed");
         let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
 
         let records_root =
@@ -365,7 +360,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     records_root: &records_root,
-                    position,
                     kzg: &kzg,
                     pieces_in_segment: PIECES_IN_SEGMENT,
                 }),
@@ -546,18 +540,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         let local_challenge = sector_id.derive_local_challenge(&global_challenge);
 
-        let expanded_chunk = header_digests
-            .pre_digest
-            .solution
-            .chunk
-            .expand(local_challenge);
+        let audit_chunk = derive_audit_chunk(&header_digests.pre_digest.solution.chunk.to_bytes());
 
         BlockWeight::from(
             SolutionRange::MAX
-                - subspace_core_primitives::bidirectional_distance(
-                    &local_challenge,
-                    &expanded_chunk,
-                ),
+                - subspace_core_primitives::bidirectional_distance(&local_challenge, &audit_chunk),
         )
     }
 

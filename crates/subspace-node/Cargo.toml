@@ -20,32 +20,35 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-clap = { version = "4.0.22", features = ["derive"] }
+bytesize = "1.1.0"
+clap = { version = "4.0.26", features = ["derive"] }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "4.0.0"
 domain-service = { version = "0.1.0", path = "../../domains/service" }
-frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false, features = ["runtime-benchmarks"] }
-frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-futures = "0.3.21"
+domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
+frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
+frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
+frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+futures = "0.3.25"
 log = "0.4.17"
-once_cell = "1.13.0"
-parity-scale-codec = "3.1.5"
-sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false, features = ["wasmtime"] }
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+once_cell = "1.16.0"
+parity-scale-codec = "3.2.1"
+sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false, features = ["wasmtime"] }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
-sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", features = ["wasmtime"] }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f", default-features = false, features = ["wasmtime"] }
-sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-serde = "1.0.143"
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", features = ["wasmtime"] }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false, features = ["wasmtime"] }
+sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+serde = "1.0.147"
 serde_json = "1.0.83"
-sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
-sp-core = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
-sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
@@ -54,10 +57,10 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 system-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/system" }
 thiserror = "1.0.32"
-tokio = { version = "1.20.1" }
+tokio = "1.21.2"
 
 [build-dependencies]
-substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
+substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 
 [features]
 default = ["do-not-enforce-cost-of-storage"]
@@ -65,6 +68,8 @@ do-not-enforce-cost-of-storage = [
 	"subspace-runtime/do-not-enforce-cost-of-storage"
 ]
 runtime-benchmarks = [
+	"frame-benchmarking/runtime-benchmarks",
+	"frame-benchmarking-cli/runtime-benchmarks",
 	"domain-service/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 	"system-domain-runtime/runtime-benchmarks",

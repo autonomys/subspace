@@ -3,7 +3,8 @@ use frame_support::Parameter;
 use scale_info::TypeInfo;
 use sp_domains::DomainId;
 use sp_runtime::traits::Member;
-use sp_runtime::{DispatchError, DispatchResult};
+use sp_runtime::{sp_std, DispatchError, DispatchResult};
+use sp_std::vec::Vec;
 
 /// Represents a particular endpoint in a given Execution environment.
 pub type EndpointId = u64;

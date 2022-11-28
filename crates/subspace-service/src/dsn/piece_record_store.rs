@@ -1,5 +1,5 @@
 use sc_client_api::AuxStore;
-use sc_piece_cache::{AuxPieceCache, PieceCache, MAX_SEGMENTS_NUMBER_IN_CACHE};
+use sc_piece_cache::{AuxPieceCache, PieceCache};
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -13,6 +13,7 @@ pub type SegmentIndexGetter = Arc<dyn Fn() -> u64 + Send + Sync + 'static>;
 
 pub struct AuxRecordStorage<AS> {
     piece_cache: AuxPieceCache<AS>,
+    // TODO: Remove it when we delete RPC-endpoint for farmers.
     last_segment_index_getter: SegmentIndexGetter,
 }
 
@@ -71,8 +72,9 @@ impl<'a, AS: AuxStore> RecordStorage<'a> for AuxRecordStorage<AS> {
     fn records(&'a self) -> Self::RecordsIter {
         let segment_index = (self.last_segment_index_getter)();
 
-        let starting_piece_index: PieceIndex =
-            segment_index.saturating_sub(MAX_SEGMENTS_NUMBER_IN_CACHE) * PIECES_IN_SEGMENT as u64;
+        let starting_piece_index: PieceIndex = segment_index
+            .saturating_sub(self.piece_cache.max_segments_number_in_cache())
+            * PIECES_IN_SEGMENT as u64;
 
         AuxStoreRecordIterator::new(starting_piece_index, self.piece_cache.clone())
     }

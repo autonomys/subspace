@@ -7,7 +7,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
-use sp_domains::{ExecutionPhase, ExecutionReceipt, FraudProof};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::ExecutionReceipt;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_trie::StorageProof;
@@ -89,7 +90,7 @@ where
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         bad_signed_bundle_hash: H256,
     ) -> Result<FraudProof, FraudProofError> {
-        let block_hash = local_receipt.secondary_hash;
+        let block_hash = local_receipt.domain_hash;
         let block_number: BlockNumber = local_receipt
             .primary_number
             .try_into()

@@ -32,7 +32,6 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
-use sc_piece_cache::PieceCache;
 use sc_rpc::SubscriptionTaskExecutor;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -43,16 +42,17 @@ use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
+    RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
+use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
-    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
 
@@ -63,8 +63,8 @@ const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 #[rpc(client, server)]
 pub trait SubspaceRpcApi {
     /// Ger metadata necessary for farmer operation
-    #[method(name = "subspace_getFarmerProtocolInfo")]
-    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo>;
+    #[method(name = "subspace_getFarmerAppInfo")]
+    fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo>;
 
     #[method(name = "subspace_submitSolutionResponse")]
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()>;
@@ -101,9 +101,6 @@ pub trait SubspaceRpcApi {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<RecordsRoot>>>;
-
-    #[method(name = "subspace_getPiece", blocking)]
-    fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>>;
 }
 
 #[derive(Default)]
@@ -119,7 +116,7 @@ struct BlockSignatureSenders {
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block, Client, PC> {
+pub struct SubspaceRpc<Block, Client> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -127,7 +124,7 @@ pub struct SubspaceRpc<Block, Client, PC> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
-    piece_cache: PC,
+    dsn_bootstrap_nodes: Vec<Multiaddr>,
     _phantom: PhantomData<Block>,
 }
 
@@ -138,7 +135,7 @@ pub struct SubspaceRpc<Block, Client, PC> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
+impl<Block, Client> SubspaceRpc<Block, Client> {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
         client: Arc<Client>,
@@ -148,7 +145,7 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
         archived_segment_notification_stream: SubspaceNotificationStream<
             ArchivedSegmentNotification,
         >,
-        piece_cache: PC,
+        dsn_bootstrap_nodes: Vec<Multiaddr>,
     ) -> Self {
         Self {
             client,
@@ -158,14 +155,14 @@ impl<Block, Client, PC> SubspaceRpc<Block, Client, PC> {
             archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
-            piece_cache,
+            dsn_bootstrap_nodes,
             _phantom: PhantomData::default(),
         }
     }
 }
 
 #[async_trait]
-impl<Block, Client, PC> SubspaceRpcApiServer for SubspaceRpc<Block, Client, PC>
+impl<Block, Client> SubspaceRpcApiServer for SubspaceRpc<Block, Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -175,9 +172,8 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-    PC: PieceCache + Send + Sync + 'static,
 {
-    fn get_farmer_protocol_info(&self) -> RpcResult<FarmerProtocolInfo> {
+    fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
         let runtime_api = self.client.runtime_api();
 
@@ -192,9 +188,8 @@ where
                 JsonRpseeError::Custom("Internal error".to_string())
             })?;
 
-        let farmer_protocol_info: Result<FarmerProtocolInfo, ApiError> = try {
-            FarmerProtocolInfo {
-                genesis_hash,
+        let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
+            let protocol_info = FarmerProtocolInfo {
                 record_size: NonZeroU32::new(RECORD_SIZE).ok_or_else(|| {
                     error!("Incorrect record_size constant provided.");
                     ApiError::Application("Incorrect record_size set".to_string().into())
@@ -202,13 +197,17 @@ where
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 total_pieces: runtime_api.total_pieces(&best_block_id)?,
                 // TODO: Fetch this from the runtime
-                space_l: NonZeroU16::new(20).expect("Not zero; qed"),
-                // TODO: Fetch this from the runtime
                 sector_expiration: 100,
+            };
+
+            FarmerAppInfo {
+                genesis_hash,
+                dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
+                protocol_info,
             }
         };
 
-        farmer_protocol_info.map_err(|error| {
+        farmer_app_info.map_err(|error| {
             error!("Failed to get data from runtime API: {}", error);
             JsonRpseeError::Custom("Internal error".to_string())
         })
@@ -278,6 +277,7 @@ where
                                     piece_offset: solution.piece_offset,
                                     piece_record_hash: solution.piece_record_hash,
                                     piece_witness: solution.piece_witness,
+                                    chunk_offset: solution.chunk_offset,
                                     chunk: solution.chunk,
                                     chunk_signature: solution.chunk_signature,
                                 };
@@ -477,13 +477,5 @@ where
         }
 
         records_root_result
-    }
-
-    fn get_piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Piece>> {
-        self.piece_cache.get_piece(piece_index).map_err(|error| {
-            error!("Failed to get piece with index {piece_index} from cache: {error}");
-
-            JsonRpseeError::Custom("Internal error during `get_piece` call".to_string())
-        })
     }
 }

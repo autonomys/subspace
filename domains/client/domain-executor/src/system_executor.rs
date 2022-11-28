@@ -1,7 +1,8 @@
+use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::utils::BlockInfo;
+use crate::utils::{BlockInfo, DomainBundles};
 use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
 use codec::{Decode, Encode};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
@@ -13,14 +14,12 @@ use sc_consensus::ForkChoiceStrategy;
 use sc_network::NetworkService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockStatus, SelectChain};
+use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_core::H256;
-use sp_domains::{
-    Bundle, BundleEquivocationProof, DomainId, ExecutorApi, ExecutorPublicKey,
-    InvalidTransactionProof, OpaqueBundle, SignedBundle,
-};
+use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
+use sp_domains::{Bundle, DomainId, ExecutorApi, ExecutorPublicKey, OpaqueBundle, SignedBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{
@@ -148,15 +147,23 @@ where
             code_executor,
         );
 
-        let bundle_processor = SystemBundleProcessor::new(
+        let domain_block_processor = DomainBlockProcessor::new(
+            DomainId::SYSTEM,
+            client.clone(),
             primary_chain_client.clone(),
             primary_network,
+            backend.clone(),
+            fraud_proof_generator.clone(),
+        );
+
+        let bundle_processor = SystemBundleProcessor::new(
+            primary_chain_client.clone(),
             client.clone(),
             backend.clone(),
             is_authority,
             keystore,
             spawner.clone(),
-            fraud_proof_generator.clone(),
+            domain_block_processor,
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -184,69 +191,6 @@ where
             fraud_proof_generator,
             bundle_processor,
         })
-    }
-
-    /// Checks the status of the given block hash in the Parachain.
-    ///
-    /// Returns `true` if the block could be found and is good to be build on.
-    #[allow(unused)]
-    fn check_block_status(
-        &self,
-        hash: Block::Hash,
-        number: <Block::Header as HeaderT>::Number,
-    ) -> bool {
-        match self.client.block_status(&BlockId::Hash(hash)) {
-            Ok(BlockStatus::Queued) => {
-                tracing::debug!(
-                    target: LOG_TARGET,
-                    block_hash = ?hash,
-                    "Skipping candidate production, because block is still queued for import.",
-                );
-                false
-            }
-            Ok(BlockStatus::InChainWithState) => true,
-            Ok(BlockStatus::InChainPruned) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    "Skipping candidate production, because block `{:?}` is already pruned!",
-                    hash,
-                );
-                false
-            }
-            Ok(BlockStatus::KnownBad) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    block_hash = ?hash,
-                    "Block is tagged as known bad and is included in the relay chain! Skipping candidate production!",
-                );
-                false
-            }
-            Ok(BlockStatus::Unknown) => {
-                if number.is_zero() {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        block_hash = ?hash,
-                        "Could not find the header of the genesis block in the database!",
-                    );
-                } else {
-                    tracing::debug!(
-                        target: LOG_TARGET,
-                        block_hash = ?hash,
-                        "Skipping candidate production, because block is unknown.",
-                    );
-                }
-                false
-            }
-            Err(e) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    block_hash = ?hash,
-                    error = ?e,
-                    "Failed to get block status.",
-                );
-                false
-            }
-        }
     }
 
     /// The background is that a receipt received from the network points to a future block
@@ -311,23 +255,20 @@ where
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
-        let best_execution_chain_number = self
+        let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .best_execution_chain_number(&BlockId::Hash(
-                self.primary_chain_client.info().best_hash,
-            ))?;
-        let best_execution_chain_number: BlockNumber = best_execution_chain_number
+            .head_receipt_number(&BlockId::Hash(self.primary_chain_client.info().best_hash))?;
+        let head_receipt_number: BlockNumber = head_receipt_number
             .try_into()
             .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
 
         // Just ignore it if the receipt is too old and has been pruned.
-        if crate::aux_schema::target_receipt_is_pruned(best_execution_chain_number, primary_number)
-        {
+        if crate::aux_schema::target_receipt_is_pruned(head_receipt_number, primary_number) {
             return Ok(());
         }
 
-        let block_hash = execution_receipt.secondary_hash;
+        let block_hash = execution_receipt.domain_hash;
         let block_number = primary_number.into();
 
         // TODO: more efficient execution receipt checking strategy?
@@ -397,7 +338,7 @@ where
             .bundle_processor
             .process_bundles(
                 primary_info,
-                (bundles, Vec::new()), // TODO: No core domain bundles in tests.
+                DomainBundles::System(bundles, Vec::new()), // TODO: No core domain bundles in tests.
                 shuffling_seed,
                 maybe_new_runtime,
             )

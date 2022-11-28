@@ -23,10 +23,11 @@ pub mod rpc;
 
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
-use domain_runtime_primitives::Hash as SecondaryHash;
+use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_node;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
+use futures::channel::oneshot;
 use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
@@ -60,9 +61,10 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use tracing::error;
@@ -97,6 +99,10 @@ pub enum Error {
     /// Subspace networking (DSN) error.
     #[error(transparent)]
     SubspaceDsn(#[from] subspace_networking::CreationError),
+
+    /// Other.
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Subspace-like full client.
@@ -126,18 +132,10 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
-    /// Subspace networking configuration (for DSN). Will not be started if set to `None`.
-    pub dsn_config: Option<DsnConfig>,
-}
-
-impl From<Configuration> for SubspaceConfiguration {
-    fn from(base: Configuration) -> Self {
-        Self {
-            base,
-            force_new_slot_notifications: false,
-            dsn_config: None,
-        }
-    }
+    /// Subspace networking configuration (for DSN).
+    pub dsn_config: DsnConfig,
+    /// Piece cache size in bytes.
+    pub piece_cache_size: u64,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -162,7 +160,6 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
                 Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
             >,
             SubspaceLink<Block>,
-            AuxPieceCache<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
         ),
     >,
@@ -176,7 +173,7 @@ where
     RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
         + Metadata<Block>
         + BlockBuilder<Block>
-        + ExecutorApi<Block, SecondaryHash>
+        + ExecutorApi<Block, DomainHash>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + SubspaceApi<Block, FarmerPublicKey>
@@ -269,39 +266,6 @@ where
         },
     )?;
 
-    let piece_cache = AuxPieceCache::new(client.clone());
-
-    // Start before archiver below, so we don't have potential race condition and miss pieces
-    task_manager
-        .spawn_handle()
-        .spawn_blocking("subspace-piece-cache", None, {
-            let piece_cache = piece_cache.clone();
-            let mut archived_segment_notification_stream = subspace_link
-                .archived_segment_notification_stream()
-                .subscribe();
-
-            async move {
-                while let Some(archived_segment_notification) =
-                    archived_segment_notification_stream.next().await
-                {
-                    let segment_index = archived_segment_notification
-                        .archived_segment
-                        .root_block
-                        .segment_index();
-                    if let Err(error) = piece_cache.add_pieces(
-                        segment_index * u64::from(PIECES_IN_SEGMENT),
-                        &archived_segment_notification.archived_segment.pieces,
-                    ) {
-                        error!(
-                            %segment_index,
-                            %error,
-                            "Failed to store pieces for segment in cache"
-                        );
-                    }
-                }
-            }
-        });
-
     let slot_duration = subspace_link.slot_duration();
     let import_queue = sc_consensus_subspace::import_queue(
         block_import.clone(),
@@ -327,7 +291,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, piece_cache, telemetry),
+        other: (block_import, subspace_link, telemetry),
     })
 }
 
@@ -340,7 +304,7 @@ where
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, SecondaryHash>,
+    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, DomainHash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -390,7 +354,7 @@ where
     RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
         + Metadata<Block>
         + BlockBuilder<Block>
-        + ExecutorApi<Block, SecondaryHash>
+        + ExecutorApi<Block, DomainHash>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + SubspaceApi<Block, FarmerPublicKey>
@@ -408,17 +372,53 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, piece_cache, mut telemetry),
+        other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    if let Some(dsn_config) = config.dsn_config.clone() {
-        let piece_cache = piece_cache.clone();
-        start_dsn_node(
+    let piece_cache = AuxPieceCache::new(client.clone(), config.piece_cache_size);
+
+    // Start before archiver below, so we don't have potential race condition and miss pieces
+    task_manager
+        .spawn_handle()
+        .spawn_blocking("subspace-piece-cache", None, {
+            let piece_cache = piece_cache.clone();
+            let mut archived_segment_notification_stream = subspace_link
+                .archived_segment_notification_stream()
+                .subscribe();
+
+            async move {
+                while let Some(archived_segment_notification) =
+                    archived_segment_notification_stream.next().await
+                {
+                    let segment_index = archived_segment_notification
+                        .archived_segment
+                        .root_block
+                        .segment_index();
+                    if let Err(error) = piece_cache.add_pieces(
+                        segment_index * u64::from(PIECES_IN_SEGMENT),
+                        &archived_segment_notification.archived_segment.pieces,
+                    ) {
+                        error!(
+                            %segment_index,
+                            %error,
+                            "Failed to store pieces for segment in cache"
+                        );
+                    }
+                }
+            }
+        });
+
+    let dsn_bootstrap_nodes = {
+        let node = start_dsn_node(
             &subspace_link,
-            dsn_config,
+            config.dsn_config.clone(),
             task_manager.spawn_essential_handle(),
             piece_cache.clone(),
-            Arc::new(move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()),
+            Arc::new({
+                let piece_cache = piece_cache.clone();
+
+                move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()
+            }),
             Arc::new({
                 let client = client.clone();
 
@@ -435,7 +435,50 @@ where
             }),
         )
         .await?;
-    }
+
+        // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
+        // connect to
+        if config.dsn_config.bootstrap_nodes.is_empty() {
+            let (node_address_sender, node_address_receiver) = oneshot::channel();
+            let _handler = node.on_new_listener(Arc::new({
+                let node_address_sender = Mutex::new(Some(node_address_sender));
+
+                move |address| {
+                    if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                        if let Some(node_address_sender) = node_address_sender
+                            .lock()
+                            .expect("Must not be poisoned here")
+                            .take()
+                        {
+                            node_address_sender.send(address.clone()).unwrap();
+                        }
+                    }
+                }
+            }));
+
+            let mut node_listeners = node.listeners();
+
+            if node_listeners.is_empty() {
+                let Ok(listener) = node_address_receiver.await else {
+                    return Err(Error::Other(
+                        "Oneshot receiver dropped before DSN node listener was ready"
+                            .to_string()
+                            .into(),
+                    ));
+                };
+
+                node_listeners = vec![listener];
+            }
+
+            node_listeners.iter_mut().for_each(|multiaddr| {
+                multiaddr.push(Protocol::P2p(node.id().into()));
+            });
+
+            node_listeners
+        } else {
+            config.dsn_config.bootstrap_nodes.clone()
+        }
+    };
 
     sc_consensus_subspace::start_subspace_archiver(
         &subspace_link,
@@ -562,7 +605,7 @@ where
                     reward_signing_notification_stream: reward_signing_notification_stream.clone(),
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
-                    piece_cache: piece_cache.clone(),
+                    dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

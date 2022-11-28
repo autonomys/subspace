@@ -11,7 +11,7 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGM
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    Node, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
 
@@ -20,11 +20,11 @@ pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
 pub struct DsnConfig {
-    /// DSN 'listen-on' multi-address
-    pub dsn_listen_on: Vec<Multiaddr>,
+    /// Where local DSN node will listen for incoming connections.
+    pub listen_on: Vec<Multiaddr>,
 
-    /// DSN 'bootstrap_node' multi-address
-    pub dsn_bootstrap_node: Vec<Multiaddr>,
+    /// Bootstrap nodes for DSN.
+    pub bootstrap_nodes: Vec<Multiaddr>,
 
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
@@ -39,7 +39,7 @@ pub async fn start_dsn_node<Block, Spawner, AS: sc_client_api::AuxStore + Sync +
     piece_cache: AuxPieceCache<AS>,
     piece_getter: PieceGetter,
     segment_index_getter: SegmentIndexGetter,
-) -> Result<(), CreationError>
+) -> Result<Node, CreationError>
 where
     Block: BlockT,
     Spawner: SpawnEssentialNamed,
@@ -47,6 +47,7 @@ where
     let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
 
+    // TODO: Combine `AuxPieceCache` with `AuxRecordStorage` and remove `PieceCache` abstraction
     let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
 
     trace!("Subspace networking starting.");
@@ -55,10 +56,10 @@ where
         CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>,
     > {
         keypair: dsn_config.keypair,
-        listen_on: dsn_config.dsn_listen_on,
+        listen_on: dsn_config.listen_on,
         allow_non_globals_in_dht: true,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(
-            dsn_config.dsn_bootstrap_node,
+            dsn_config.bootstrap_nodes,
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
@@ -98,7 +99,9 @@ where
     spawner.spawn_essential(
         "archiver",
         Some("subspace-networking"),
-        Box::pin(
+        Box::pin({
+            let node = node.clone();
+
             async move {
                 trace!("Subspace DSN archiver started.");
 
@@ -143,9 +146,9 @@ where
                     info!(%segment_index, "Segment processed.");
                 }
             }
-            .in_current_span(),
-        ),
+            .in_current_span()
+        }),
     );
 
-    Ok(())
+    Ok(node)
 }

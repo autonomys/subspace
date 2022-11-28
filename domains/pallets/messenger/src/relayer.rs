@@ -5,13 +5,14 @@ use crate::{
 };
 use frame_support::ensure;
 use frame_support::traits::ReservableCurrency;
-use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
     MessageId, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
+use sp_std::borrow::ToOwned;
+use sp_std::vec::Vec;
 
 /// Relayer address to which rewards are paid.
 pub type RelayerId<T> = <T as frame_system::Config>::AccountId;
@@ -146,8 +147,8 @@ impl<T: Config> Pallet<T> {
         // create storage keys for inbox responses
         assigned_messages.inbox_responses.into_iter().for_each(
             |(domain_id, (channel_id, nonce))| {
-                let key = InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
-                let storage_key = StorageKey(key);
+                let storage_key =
+                    InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
                 messages_with_storage_key
                     .inbox_responses
                     .push(RelayerMessageWithStorageKey {
@@ -165,8 +166,7 @@ impl<T: Config> Pallet<T> {
             .outbox
             .into_iter()
             .for_each(|(domain_id, (channel_id, nonce))| {
-                let key = Outbox::<T>::hashed_key_for((domain_id, channel_id, nonce));
-                let storage_key = StorageKey(key);
+                let storage_key = Outbox::<T>::hashed_key_for((domain_id, channel_id, nonce));
                 messages_with_storage_key
                     .outbox
                     .push(RelayerMessageWithStorageKey {

@@ -28,10 +28,8 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
-use sp_domains::{
-    BundleEquivocationProof, ExecutionReceipt, FraudProof, InvalidTransactionCode,
-    InvalidTransactionProof, ProofOfElection, SignedOpaqueBundle,
-};
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::{ExecutionReceipt, InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
@@ -43,9 +41,9 @@ mod pallet {
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::{
-        BundleEquivocationProof, ExecutionReceipt, ExecutorPublicKey, FraudProof,
-        InvalidTransactionCode, InvalidTransactionProof, SignedOpaqueBundle,
+        ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
         CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
@@ -56,8 +54,8 @@ mod pallet {
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        /// Secondary chain block hash type.
-        type SecondaryHash: Parameter
+        /// Domain block hash type.
+        type DomainHash: Parameter
             + Member
             + MaybeSerializeDeserialize
             + Debug
@@ -190,7 +188,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
-            signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
+            signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -329,7 +327,7 @@ mod pallet {
         _,
         Twox64Concat,
         H256,
-        ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
         OptionQuery,
     >;
 
@@ -349,8 +347,8 @@ mod pallet {
         Twox64Concat,
         T::BlockNumber,
         Blake2_128Concat,
-        T::SecondaryHash,
-        T::SecondaryHash,
+        T::DomainHash,
+        T::DomainHash,
         OptionQuery,
     >;
 
@@ -494,7 +492,7 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     /// Returns the block number of the latest receipt.
-    pub fn best_execution_chain_number() -> T::BlockNumber {
+    pub fn head_receipt_number() -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get();
         best_number
     }
@@ -514,7 +512,7 @@ impl<T: Config> Pallet<T> {
         let genesis_receipt = ExecutionReceipt {
             primary_number: Zero::zero(),
             primary_hash: genesis_hash,
-            secondary_hash: T::SecondaryHash::default(),
+            domain_hash: T::DomainHash::default(),
             trace: Vec::new(),
             trace_root: Default::default(),
         };
@@ -524,7 +522,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_submit_bundle(
-        signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
         let execution_receipts = &signed_opaque_bundle.bundle.receipts;
 
@@ -569,8 +567,8 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_system_bundle_solution(
-        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
-        proof_of_election: &ProofOfElection<T::SecondaryHash>,
+        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+        proof_of_election: &ProofOfElection<T::DomainHash>,
     ) -> Result<(), BundleError> {
         let ProofOfElection {
             state_root,
@@ -584,8 +582,7 @@ impl<T: Config> Pallet<T> {
 
             let maybe_state_root = receipts.iter().find_map(|receipt| {
                 receipt.trace.last().and_then(|state_root| {
-                    if (receipt.primary_number, receipt.secondary_hash)
-                        == (block_number, *block_hash)
+                    if (receipt.primary_number, receipt.domain_hash) == (block_number, *block_hash)
                     {
                         Some(*state_root)
                     } else {
@@ -615,7 +612,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_execution_receipts(
-        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>],
+        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
     ) -> Result<(), ExecutionReceiptError> {
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
@@ -670,7 +667,7 @@ impl<T: Config> Pallet<T> {
             bundle,
             proof_of_election,
             signature,
-        }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
         if !proof_of_election
             .executor_public_key
@@ -738,7 +735,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn apply_new_best_receipt(
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
@@ -757,7 +754,7 @@ impl<T: Config> Pallet<T> {
                 .last()
                 .expect("There are at least 2 elements in trace after the genesis block; qed");
 
-            <StateRoots<T>>::insert(primary_number, execution_receipt.secondary_hash, state_root);
+            <StateRoots<T>>::insert(primary_number, execution_receipt.domain_hash, state_root);
         }
 
         // Remove the expired receipts once the receipts cache is full.
@@ -780,7 +777,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn apply_non_new_best_receipt(
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
@@ -795,11 +792,7 @@ impl<T: Config> Pallet<T> {
                     .last()
                     .expect("There are at least 2 elements in trace after the genesis block; qed");
 
-                <StateRoots<T>>::insert(
-                    primary_number,
-                    execution_receipt.secondary_hash,
-                    state_root,
-                );
+                <StateRoots<T>>::insert(primary_number, execution_receipt.domain_hash, state_root);
             }
             Self::deposit_event(Event::NewExecutionReceipt {
                 primary_number,
@@ -818,7 +811,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(
-        signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::SecondaryHash>,
+        signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
         let call = Call::submit_bundle {
             signed_opaque_bundle,

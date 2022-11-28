@@ -24,9 +24,9 @@ use tracing::{debug, trace};
 type FailureTime = Option<DateTime<Utc>>;
 
 // Size of the LRU cache for peers.
-const PEER_CACHE_SIZE: usize = 100;
+const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 // Size of the LRU cache for addresses.
-const ADDRESSES_CACHE_SIZE: usize = 30;
+const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
 // Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 // Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
@@ -217,7 +217,7 @@ impl NetworkingParametersManager {
 // Generic LRU-cache cloning function.
 fn clone_lru_cache<K: Clone + Hash + Eq, V: Clone>(
     cache: &LruCache<K, V>,
-    cap: usize,
+    cap: NonZeroUsize,
 ) -> LruCache<K, V> {
     let mut cloned_cache = LruCache::new(cap);
 

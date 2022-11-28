@@ -685,6 +685,7 @@ pub fn dummy_claim_slot(
                 piece_offset: 0,
                 piece_record_hash: Default::default(),
                 piece_witness: Default::default(),
+                chunk_offset: 0,
                 chunk: Default::default(),
                 chunk_signature: ChunkSignature {
                     output: [0; 32],

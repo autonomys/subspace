@@ -32,8 +32,8 @@ use sc_service::config::{
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, Error as ServiceError, NetworkStarter, Role,
-    RpcHandlers, TFullBackend, TFullClient, TaskManager,
+    BasePath, BlocksPruning, Configuration as ServiceConfiguration, Error as ServiceError,
+    NetworkStarter, Role, RpcHandlers, TFullBackend, TFullClient, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -43,11 +43,14 @@ use sp_runtime::codec::Encode;
 use sp_runtime::{generic, OpaqueExtrinsic};
 use std::future::Future;
 use std::sync::Arc;
+use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block as PBlock;
+use subspace_service::DsnConfig;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
+use domain_service::Configuration;
 pub use domain_test_runtime as runtime;
 pub use sp_keyring::Sr25519Keyring as Keyring;
 
@@ -96,8 +99,8 @@ pub type Client =
 /// the production.
 #[sc_tracing::logging::prefix_logs_with(secondary_chain_config.network.node_name.as_str())]
 async fn run_executor(
-    secondary_chain_config: Configuration,
-    primary_chain_config: Configuration,
+    secondary_chain_config: ServiceConfiguration,
+    primary_chain_config: ServiceConfiguration,
 ) -> sc_service::error::Result<(
     TaskManager,
     Arc<Client>,
@@ -118,7 +121,14 @@ async fn run_executor(
             base: primary_chain_config,
             // Always enable the slot notification.
             force_new_slot_notifications: true,
-            dsn_config: None,
+            dsn_config: DsnConfig {
+                listen_on: vec!["/ip4/127.0.0.1/tcp/0"
+                    .parse()
+                    .expect("Correct multiaddr; qed")],
+                bootstrap_nodes: vec![],
+                keypair: identity::Keypair::generate_ed25519(),
+            },
+            piece_cache_size: 1024 * 1024 * 1024,
         };
 
         subspace_service::new_full::<
@@ -135,6 +145,7 @@ async fn run_executor(
         })?
     };
 
+    let secondary_chain_config = Configuration::new(secondary_chain_config, None);
     let block_import_throttling_buffer_size = 10;
     let secondary_chain_node = domain_service::new_full::<
         _,
@@ -372,7 +383,7 @@ pub fn node_config(
     nodes_exclusive: bool,
     role: Role,
     base_path: BasePath,
-) -> Result<Configuration, ServiceError> {
+) -> Result<ServiceConfiguration, ServiceError> {
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
 
@@ -400,7 +411,7 @@ pub fn node_config(
 
     network_config.transport = TransportConfig::MemoryOnly;
 
-    Ok(Configuration {
+    Ok(ServiceConfiguration {
         impl_name: "domain-test-node".to_string(),
         impl_version: "0.1".to_string(),
         role,

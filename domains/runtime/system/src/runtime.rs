@@ -1,3 +1,4 @@
+use domain_runtime_primitives::RelayerId;
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -9,15 +10,21 @@ use frame_support::weights::constants::{
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
+use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
+#[cfg(any(feature = "std", test))]
+pub use sp_runtime::BuildStorage;
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -26,9 +33,6 @@ use subspace_runtime_primitives::{SHANNON, SSC};
 
 // Make core-payments WASM runtime available.
 include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
-
-#[cfg(any(feature = "std", test))]
-pub use sp_runtime::BuildStorage;
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -297,6 +301,64 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainOperatorStake = MinDomainOperatorStake;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
+    type CoreDomainTracker = DomainTracker;
+}
+
+parameter_types! {
+    pub const StateRootsBound: u32 = 50;
+    pub const RelayConfirmationDepth: BlockNumber = 7;
+}
+
+impl pallet_domain_tracker::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type ConfirmedStateRootsBound = StateRootsBound;
+    type RelayerConfirmationDepth = RelayConfirmationDepth;
+}
+
+parameter_types! {
+    pub const MaximumRelayers: u32 = 100;
+    pub const RelayerDeposit: Balance = 100 * SSC;
+    pub const SystemDomainId: DomainId = DomainId::SYSTEM;
+}
+
+impl pallet_messenger::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = SystemDomainId;
+    type DomainTracker = DomainTracker;
+
+    fn get_endpoint_response_handler(
+        endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>::default())))
+        } else {
+            None
+        }
+    }
+
+    type Currency = Balances;
+    type MaximumRelayers = MaximumRelayers;
+    type RelayerDeposit = RelayerDeposit;
+}
+
+impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    type Extrinsic = UncheckedExtrinsic;
+    type OverarchingCall = RuntimeCall;
+}
+
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = SystemDomainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -322,7 +384,17 @@ construct_runtime!(
         // built.
         ExecutorRegistry: pallet_executor_registry = 4,
         DomainRegistry: pallet_domain_registry = 5,
+        DomainTracker: pallet_domain_tracker = 6,
+        Messenger: pallet_messenger = 7,
+        Transporter: pallet_transporter = 8,
     }
+);
+
+#[cfg(feature = "runtime-benchmarks")]
+frame_benchmarking::define_benchmarks!(
+    [frame_benchmarking, BaselineBench::<Runtime>]
+    [frame_system, SystemBench::<Runtime>]
+    [pallet_balances, Balances]
 );
 
 impl_runtime_apis! {
@@ -503,8 +575,8 @@ impl_runtime_apis! {
             Some(storage_keys)
         }
 
-        fn best_execution_chain_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::best_execution_chain_number(domain_id)
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            DomainRegistry::head_receipt_number(domain_id)
         }
 
         fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
@@ -516,52 +588,83 @@ impl_runtime_apis! {
         }
     }
 
+    impl sp_domain_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
+        fn storage_key_for_core_domain_state_root(
+            domain_id: DomainId,
+            block_number: BlockNumber,
+        ) -> Option<Vec<u8>> {
+            DomainTracker::storage_key_for_core_domain_state_root(domain_id, block_number)
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
+        fn domain_id() -> DomainId {
+            SystemDomainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
+            Messenger::relayer_assigned_messages(relayer_id)
+        }
+
+        fn submit_outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) {
+            Messenger::submit_outbox_message_unsigned(msg)
+        }
+
+        fn submit_inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) {
+            Messenger::submit_inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_domain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
+        }
+    }
+
+
     #[cfg(feature = "runtime-benchmarks")]
     impl frame_benchmarking::Benchmark<Block> for Runtime {
         fn benchmark_metadata(extra: bool) -> (
             Vec<frame_benchmarking::BenchmarkList>,
             Vec<frame_support::traits::StorageInfo>,
         ) {
-            use frame_benchmarking::{Benchmarking, BenchmarkList};
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
+            use baseline::Pallet as BaselineBench;
 
             let mut list = Vec::<BenchmarkList>::new();
-
             list_benchmarks!(list, extra);
 
             let storage_info = AllPalletsWithSystem::storage_info();
 
-            return (list, storage_info)
+            (list, storage_info)
         }
 
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{Benchmarking, BenchmarkBatch, TrackedStorageKey};
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch, TrackedStorageKey};
 
             use frame_system_benchmarking::Pallet as SystemBench;
-            impl frame_system_benchmarking::Config for Runtime {}
+            use baseline::Pallet as BaselineBench;
 
-            let whitelist: Vec<TrackedStorageKey> = vec![
-                // Block Number
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef702a5c1b19ab7a04f536c519aca4983ac").to_vec().into(),
-                // Total Issuance
-                hex_literal::hex!("c2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80").to_vec().into(),
-                // Execution Phase
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef7ff553b5a9862a516939d82b3d3d8661a").to_vec().into(),
-                // Event Count
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef70a98fdbe9ce6c55837576c60c7af3850").to_vec().into(),
-                // System Events
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7").to_vec().into(),
-            ];
+            impl frame_system_benchmarking::Config for Runtime {}
+            impl baseline::Config for Runtime {}
+
+            use frame_support::traits::WhitelistedStorageKeys;
+            let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 
             let mut batches = Vec::<BenchmarkBatch>::new();
             let params = (&config, &whitelist);
-
             add_benchmarks!(params, batches);
 
-            if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
         }
     }

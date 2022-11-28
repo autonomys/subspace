@@ -14,10 +14,10 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
 parking_lot = "0.12.1"
-codec = { package = "parity-scale-codec", version = "3.1.5" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sp-runtime = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "66d3f73c5ef66c975fa5f54b6736ccd6821e395f" }
-futures = "0.3.21"
+codec = { package = "parity-scale-codec", version = "3.2.1" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+futures = "0.3.25"
 thiserror = "1.0.32"

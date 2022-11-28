@@ -78,10 +78,7 @@ fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeMode
     assert_eq!(messages_with_keys.inbox_responses.len(), 0);
     let expected_key =
         Outbox::<domain_a::Runtime>::hashed_key_for((domain_id, channel_id, Nonce::zero()));
-    assert_eq!(
-        messages_with_keys.outbox[0].storage_key,
-        StorageKey(expected_key)
-    );
+    assert_eq!(messages_with_keys.outbox[0].storage_key, expected_key);
 }
 
 fn close_channel(domain_id: DomainId, channel_id: ChannelId, last_delivered_nonce: Option<Nonce>) {
@@ -314,7 +311,7 @@ fn open_channel_between_domains(
         ));
         assert_eq!(
             messages_with_keys.inbox_responses[0].storage_key,
-            StorageKey(expected_key)
+            expected_key
         );
     });
 
@@ -509,7 +506,7 @@ fn channel_relay_request_and_response(
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
-        domain_b::DomainTracker::do_update_system_domain_state_root(xdm.proof.state_root);
+        domain_b::DomainTracker::set_state_root(xdm.proof.state_root);
 
         // validate the message
         let pre_check =
@@ -572,7 +569,7 @@ fn channel_relay_request_and_response(
         },
     };
     domain_a_test_ext.execute_with(|| {
-        domain_a::DomainTracker::do_update_system_domain_state_root(xdm.proof.state_root);
+        domain_a::DomainTracker::set_state_root(xdm.proof.state_root);
 
         // validate message response
         let pre_check = crate::Pallet::<domain_a::Runtime>::pre_dispatch(

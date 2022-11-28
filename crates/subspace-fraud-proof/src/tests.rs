@@ -9,7 +9,8 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
-use sp_domains::{BundleHeader, ExecutionPhase, ExecutionReceipt, FraudProof, OpaqueBundle};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::{BundleHeader, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
@@ -113,7 +114,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let dummy_receipt = ExecutionReceipt {
         primary_number: ferdie.client.info().best_number,
         primary_hash: ferdie.client.info().best_hash,
-        secondary_hash: alice.client.info().best_hash,
+        domain_hash: alice.client.info().best_hash,
         trace: Vec::new(),
         trace_root: Default::default(),
     };

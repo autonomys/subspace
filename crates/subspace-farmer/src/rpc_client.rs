@@ -1,13 +1,12 @@
-pub mod bench_rpc_client;
 pub(crate) mod node_rpc_client;
 
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{RecordsRoot, SegmentIndex};
 use subspace_rpc_primitives::{
-    FarmerProtocolInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
 
 /// To become error type agnostic
@@ -16,8 +15,8 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 /// Abstraction of the Remote Procedure Call Client
 #[async_trait]
 pub trait RpcClient: Clone + Send + Sync + 'static {
-    /// Get farmer metadata
-    async fn farmer_protocol_info(&self) -> Result<FarmerProtocolInfo, Error>;
+    /// Get farmer app info
+    async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
 
     /// Subscribe to slot
     async fn subscribe_slot_info(
@@ -51,6 +50,4 @@ pub trait RpcClient: Clone + Send + Sync + 'static {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<RecordsRoot>>, Error>;
-
-    async fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error>;
 }
