@@ -19,8 +19,7 @@
 
 use base58::FromBase58;
 use ss58_registry::Ss58AddressFormat;
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
-use subspace_core_primitives::{Blake2b256Hash, PublicKey, PUBLIC_KEY_LENGTH};
+use subspace_core_primitives::{PublicKey, PUBLIC_KEY_LENGTH};
 use thiserror::Error;
 
 const PREFIX: &[u8] = b"SS58PRE";
@@ -75,7 +74,7 @@ pub(crate) fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58Parsin
     }
 
     let hash = ss58hash(&data[0..PUBLIC_KEY_LENGTH + prefix_len]);
-    let checksum = &hash[0..CHECKSUM_LEN];
+    let checksum = &hash.as_bytes()[0..CHECKSUM_LEN];
     if data[PUBLIC_KEY_LENGTH + prefix_len..PUBLIC_KEY_LENGTH + prefix_len + CHECKSUM_LEN]
         != *checksum
     {
@@ -90,6 +89,9 @@ pub(crate) fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58Parsin
     Ok(PublicKey::from(bytes))
 }
 
-fn ss58hash(data: &[u8]) -> Blake2b256Hash {
-    blake2b_256_hash_list(&[PREFIX, data])
+fn ss58hash(data: &[u8]) -> blake2_rfc::blake2b::Blake2bResult {
+    let mut context = blake2_rfc::blake2b::Blake2b::new(64);
+    context.update(PREFIX);
+    context.update(data);
+    context.finalize()
 }

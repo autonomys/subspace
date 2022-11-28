@@ -1,16 +1,14 @@
-use blake2::digest::typenum::U32;
-use blake2::digest::FixedOutput;
-use blake2::{Blake2b, Digest};
+use blake2_rfc::blake2b::Blake2b;
 use merkletree::hash::Algorithm;
 use std::hash::Hasher;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::{Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 
 #[derive(Clone)]
-pub(super) struct Blake2b256Algorithm(Blake2b<U32>);
+pub(super) struct Blake2b256Algorithm(Blake2b);
 
 impl Default for Blake2b256Algorithm {
     fn default() -> Self {
-        Self(Blake2b::new())
+        Self(Blake2b::new(BLAKE2B_256_HASH_SIZE))
     }
 }
 
@@ -29,7 +27,12 @@ impl Hasher for Blake2b256Algorithm {
 impl Algorithm<Blake2b256Hash> for Blake2b256Algorithm {
     #[inline]
     fn hash(&mut self) -> Blake2b256Hash {
-        self.0.clone().finalize_fixed().into()
+        self.0
+            .clone()
+            .finalize()
+            .as_bytes()
+            .try_into()
+            .expect("Initialized with correct length; qed")
     }
 
     #[inline]
