@@ -19,8 +19,7 @@ bench = false
 ark-bls12-381 = "0.3.0"
 ark-ff = "0.3.0"
 ark-poly = "0.3.0"
-# Not using `blake2` crate due to https://github.com/RustCrypto/hashes/issues/360
-blake2-rfc = { version = "0.2.18", default-features = false }
+blake2 = { version = "0.10.5", default-features = false }
 derive_more = "0.99.17"
 dusk-bls12_381 = { version = "0.11.2", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
 dusk-bytes = "0.1"
@@ -47,7 +46,7 @@ std = [
     "ark-bls12-381/std",
     "ark-ff/std",
     "ark-poly/std",
-    "blake2-rfc/std",
+    "blake2/std",
     "dusk-bls12_381/std",
     "dusk-plonk/std",
     "hex/serde",

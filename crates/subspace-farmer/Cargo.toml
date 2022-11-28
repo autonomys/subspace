@@ -15,7 +15,6 @@ include = [
 anyhow = "1.0.66"
 async-trait = "0.1.58"
 base58 = "0.2.0"
-blake2-rfc = "0.2.18"
 bytesize = "1.1.0"
 clap = { version = "4.0.26", features = ["color", "derive"] }
 derive_more = "0.99.17"
