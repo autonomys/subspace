@@ -17,7 +17,6 @@ bench = false
 
 [dependencies]
 async-trait = "0.1.58"
-blake2-rfc = "0.2.18"
 fs2 = "0.4.3"
 libc = "0.2.131"
 parity-scale-codec = "3.2.1"
