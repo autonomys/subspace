@@ -60,8 +60,8 @@ frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false
 pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 
 [build-dependencies]
-subspace-wasm-tools = { version = "0.1.0", default-features = false, path = "../../crates/subspace-wasm-tools" }
-substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+subspace-wasm-tools = { version = "0.1.0", path = "../../crates/subspace-wasm-tools" }
+substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", optional = true }
 
 [features]
 default = ["std"]
@@ -104,6 +104,7 @@ std = [
 	"sp-version/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
-	"subspace-verification/std"
+	"subspace-verification/std",
+	"substrate-wasm-builder",
 ]
 do-not-enforce-cost-of-storage = []

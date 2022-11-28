@@ -1,5 +1,3 @@
-use substrate_wasm_builder::WasmBuilder;
-
 fn main() {
     subspace_wasm_tools::create_runtime_bundle_inclusion_file(
         "core-payments-domain-runtime",
@@ -7,12 +5,15 @@ fn main() {
         "core_payments_wasm_bundle.rs",
     );
 
-    WasmBuilder::new()
-        .with_current_project()
-        .enable_feature("wasm-builder")
-        .export_heap_base()
-        .import_memory()
-        .build();
+    #[cfg(feature = "std")]
+    {
+        substrate_wasm_builder::WasmBuilder::new()
+            .with_current_project()
+            .enable_feature("wasm-builder")
+            .export_heap_base()
+            .import_memory()
+            .build();
+    }
 
     subspace_wasm_tools::export_wasm_bundle_path();
 }
