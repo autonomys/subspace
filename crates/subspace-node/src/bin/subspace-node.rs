@@ -196,8 +196,18 @@ fn main() -> Result<(), Error> {
                     client,
                     import_queue,
                     task_manager,
+                    other: (_block_import, subspace_link, _telemetry),
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+
+                sc_consensus_subspace::start_subspace_archiver(
+                    &subspace_link,
+                    client.clone(),
+                    None,
+                    &task_manager.spawn_essential_handle(),
+                    config.role.is_authority(),
+                );
+
                 Ok((
                     cmd.run(client, import_queue, task_manager.spawn_essential_handle())
                         .map_err(Error::SubstrateCli),

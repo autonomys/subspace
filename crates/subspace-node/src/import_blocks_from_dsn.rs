@@ -121,7 +121,7 @@ impl<B: BlockT> Link<B> for WaitLink<B> {
             B::Hash,
         )>,
     ) {
-        println!("Imported {imported} blocks");
+        debug!("Imported {imported} blocks");
         self.imported_blocks += imported as u64;
 
         for result in results {
@@ -297,9 +297,11 @@ where
     }
 
     info!(
-        "🎉 Imported {} blocks, best #{}, exiting...",
+        "🎉 Imported {} blocks, best #{}/#{}, check against reliable sources to make sure it is a \
+        block on canonical chain",
         imported_blocks,
-        client.info().best_number
+        client.info().best_number,
+        client.info().best_hash
     );
 
     Ok(())
