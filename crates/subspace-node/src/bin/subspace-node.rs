@@ -199,7 +199,8 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
                 Ok((
-                    cmd.run(client, import_queue).map_err(Error::SubstrateCli),
+                    cmd.run(client, import_queue, task_manager.spawn_essential_handle())
+                        .map_err(Error::SubstrateCli),
                     task_manager,
                 ))
             })?;

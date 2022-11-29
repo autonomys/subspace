@@ -22,6 +22,7 @@ use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
 use sc_service::ImportQueue;
 use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
@@ -58,15 +59,26 @@ pub struct ImportBlocksFromDsnCmd {
 
 impl ImportBlocksFromDsnCmd {
     /// Run the import-blocks command
-    pub async fn run<B, C, IQ>(&self, client: Arc<C>, import_queue: IQ) -> sc_cli::Result<()>
+    pub async fn run<B, C, IQ>(
+        &self,
+        client: Arc<C>,
+        import_queue: IQ,
+        spawner: impl SpawnEssentialNamed,
+    ) -> sc_cli::Result<()>
     where
         C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
         B: BlockT + for<'de> serde::Deserialize<'de>,
         IQ: sc_service::ImportQueue<B> + 'static,
     {
-        import_blocks(self.bootstrap_node.clone(), client, import_queue, false)
-            .await
-            .map_err(Into::into)
+        import_blocks(
+            self.bootstrap_node.clone(),
+            client,
+            import_queue,
+            &spawner,
+            false,
+        )
+        .await
+        .map_err(Into::into)
     }
 }
 
@@ -126,6 +138,7 @@ async fn import_blocks<B, IQ, C>(
     bootstrap_nodes: Vec<Multiaddr>,
     client: Arc<C>,
     mut import_queue: IQ,
+    spawner: &impl SpawnEssentialNamed,
     force: bool,
 ) -> Result<(), sc_service::Error>
 where
@@ -142,9 +155,13 @@ where
     .await
     .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    tokio::spawn(async move {
-        node_runner.run().await;
-    });
+    spawner.spawn_essential(
+        "node-runner",
+        Some("subspace-networking"),
+        Box::pin(async move {
+            node_runner.run().await;
+        }),
+    );
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;

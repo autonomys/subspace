@@ -58,7 +58,6 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
 system-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/system" }
 thiserror = "1.0.32"
-tokio = "1.21.2"
 
 [build-dependencies]
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
