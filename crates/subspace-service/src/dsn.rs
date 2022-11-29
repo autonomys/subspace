@@ -50,9 +50,6 @@ where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
-    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
-    let _enter = span.enter();
-
     // TODO: Combine `AuxPieceCache` with `AuxRecordStorage` and remove `PieceCache` abstraction
     let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
 
@@ -86,43 +83,14 @@ where
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
 /// pub-sub protocol.
-pub(crate) async fn start_dsn_node<Block, Spawner, AS>(
+pub(crate) fn start_dsn_archiver<Block, Spawner>(
     subspace_link: &SubspaceLink<Block>,
-    dsn_config: DsnConfig,
+    node: Node,
     spawner: Spawner,
-    piece_cache: AuxPieceCache<AS>,
-    piece_getter: PieceGetter,
-    segment_index_getter: SegmentIndexGetter,
-) -> Result<Node, CreationError>
-where
+) where
     Block: BlockT,
     Spawner: SpawnEssentialNamed,
-    AS: AuxStore + Sync + Send + 'static,
 {
-    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
-    let _enter = span.enter();
-
-    let (node, mut node_runner) = create_dsn_instance::<Block, AS>(
-        dsn_config,
-        piece_cache,
-        piece_getter,
-        segment_index_getter,
-    )
-    .await?;
-
-    info!("Subspace networking initialized: Node ID is {}", node.id());
-
-    spawner.spawn_essential(
-        "node-runner",
-        Some("subspace-networking"),
-        Box::pin(
-            async move {
-                node_runner.run().await;
-            }
-            .in_current_span(),
-        ),
-    );
-
     let mut archived_segment_notification_stream = subspace_link
         .archived_segment_notification_stream()
         .subscribe();
@@ -130,9 +98,7 @@ where
     spawner.spawn_essential(
         "archiver",
         Some("subspace-networking"),
-        Box::pin({
-            let node = node.clone();
-
+        Box::pin(
             async move {
                 trace!("Subspace DSN archiver started.");
 
@@ -177,9 +143,7 @@ where
                     info!(%segment_index, "Segment processed.");
                 }
             }
-            .in_current_span()
-        }),
+            .in_current_span(),
+        ),
     );
-
-    Ok(node)
 }
