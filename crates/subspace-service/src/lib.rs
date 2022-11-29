@@ -457,6 +457,7 @@ where
                 .archived_segment_notification_stream()
                 .subscribe(),
             node.clone(),
+            task_manager.spawn_handle(),
         );
 
         task_manager.spawn_essential_handle().spawn_essential(

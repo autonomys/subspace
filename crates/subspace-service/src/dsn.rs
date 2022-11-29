@@ -5,6 +5,7 @@ use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
 use sc_piece_cache::AuxPieceCache;
+use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
@@ -13,7 +14,7 @@ use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, Instrument};
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -82,10 +83,13 @@ where
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
 /// pub-sub protocol.
-pub(crate) async fn start_dsn_archiver(
+pub(crate) async fn start_dsn_archiver<Spawner>(
     mut archived_segment_notification_stream: impl Stream<Item = ArchivedSegmentNotification> + Unpin,
     node: Node,
-) {
+    spawner: Spawner,
+) where
+    Spawner: SpawnNamed,
+{
     trace!("Subspace DSN archiver started.");
 
     let mut last_published_segment_index: Option<u64> = None;
@@ -110,22 +114,34 @@ pub(crate) async fn start_dsn_archiver(
             .map(|idx| (idx, PieceIndexHash::from_index(idx)))
             .map(|(idx, hash)| (idx, hash.to_multihash()));
 
-        for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
-            //TODO: restore annoucing after https://github.com/libp2p/rust-libp2p/issues/3048
-            // trace!(?key, ?idx, "Announcing key...");
-            //
-            // let announcing_result = node.start_announcing(key).await;
-            //
-            // trace!(?key, "Announcing result: {:?}", announcing_result);
+        spawner.spawn(
+            "segment-publishing",
+            Some("subspace-networking"),
+            Box::pin({
+                let node = node.clone();
 
-            let put_value_result = node.put_value(key, piece.to_vec()).await;
+                async move {
+                    for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
+                        //TODO: restore announcing after https://github.com/libp2p/rust-libp2p/issues/3048
+                        // trace!(?key, ?idx, "Announcing key...");
+                        //
+                        // let announcing_result = node.start_announcing(key).await;
+                        //
+                        // trace!(?key, "Announcing result: {:?}", announcing_result);
 
-            trace!(?key, "Put value result: {:?}", put_value_result);
+                        let put_value_result = node.put_value(key, piece.to_vec()).await;
 
-            //TODO: ensure republication of failed announcements
-        }
+                        trace!(?key, "Put value result: {:?}", put_value_result);
+
+                        //TODO: ensure republication of failed announcements
+                    }
+
+                    info!(%segment_index, "Segment processed.");
+                }
+                .in_current_span()
+            }),
+        );
 
         last_published_segment_index = Some(segment_index);
-        info!(%segment_index, "Segment processed.");
     }
 }
