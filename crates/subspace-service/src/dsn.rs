@@ -1,11 +1,10 @@
 mod piece_record_store;
 
 use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
-use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
+use sc_consensus_subspace::ArchivedSegmentNotification;
 use sc_piece_cache::AuxPieceCache;
-use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
@@ -14,7 +13,7 @@ use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{debug, info, trace, Instrument};
+use tracing::{debug, info, trace};
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -83,67 +82,50 @@ where
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
 /// pub-sub protocol.
-pub(crate) fn start_dsn_archiver<Block, Spawner>(
-    subspace_link: &SubspaceLink<Block>,
+pub(crate) async fn start_dsn_archiver(
+    mut archived_segment_notification_stream: impl Stream<Item = ArchivedSegmentNotification> + Unpin,
     node: Node,
-    spawner: Spawner,
-) where
-    Block: BlockT,
-    Spawner: SpawnEssentialNamed,
-{
-    let mut archived_segment_notification_stream = subspace_link
-        .archived_segment_notification_stream()
-        .subscribe();
+) {
+    trace!("Subspace DSN archiver started.");
 
-    spawner.spawn_essential(
-        "archiver",
-        Some("subspace-networking"),
-        Box::pin(
-            async move {
-                trace!("Subspace DSN archiver started.");
+    let mut last_published_segment_index: Option<u64> = None;
+    while let Some(ArchivedSegmentNotification {
+        archived_segment, ..
+    }) = archived_segment_notification_stream.next().await
+    {
+        let segment_index = archived_segment.root_block.segment_index();
+        let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
 
-                let mut last_published_segment_index: Option<u64> = None;
-                while let Some(ArchivedSegmentNotification {
-                    archived_segment, ..
-                }) = archived_segment_notification_stream.next().await
-                {
-                    let segment_index = archived_segment.root_block.segment_index();
-                    let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
+        info!(%segment_index, "Processing a segment.");
 
-                    info!(%segment_index, "Processing a segment.");
-
-                    // skip repeating publication
-                    if let Some(last_published_segment_index) = last_published_segment_index {
-                        if last_published_segment_index == segment_index {
-                            info!(?segment_index, "Archived segment skipped.");
-                            continue;
-                        }
-                    }
-                    let keys_iter = (first_piece_index..)
-                        .take(archived_segment.pieces.count())
-                        .map(|idx| (idx, PieceIndexHash::from_index(idx)))
-                        .map(|(idx, hash)| (idx, hash.to_multihash()));
-
-                    for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
-                        //TODO: restore annoucing after https://github.com/libp2p/rust-libp2p/issues/3048
-                        // trace!(?key, ?idx, "Announcing key...");
-                        //
-                        // let announcing_result = node.start_announcing(key).await;
-                        //
-                        // trace!(?key, "Announcing result: {:?}", announcing_result);
-
-                        let put_value_result = node.put_value(key, piece.to_vec()).await;
-
-                        trace!(?key, "Put value result: {:?}", put_value_result);
-
-                        //TODO: ensure republication of failed announcements
-                    }
-
-                    last_published_segment_index = Some(segment_index);
-                    info!(%segment_index, "Segment processed.");
-                }
+        // skip repeating publication
+        if let Some(last_published_segment_index) = last_published_segment_index {
+            if last_published_segment_index == segment_index {
+                info!(?segment_index, "Archived segment skipped.");
+                continue;
             }
-            .in_current_span(),
-        ),
-    );
+        }
+        let keys_iter = (first_piece_index..)
+            .take(archived_segment.pieces.count())
+            .map(|idx| (idx, PieceIndexHash::from_index(idx)))
+            .map(|(idx, hash)| (idx, hash.to_multihash()));
+
+        for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
+            //TODO: restore annoucing after https://github.com/libp2p/rust-libp2p/issues/3048
+            // trace!(?key, ?idx, "Announcing key...");
+            //
+            // let announcing_result = node.start_announcing(key).await;
+            //
+            // trace!(?key, "Announcing result: {:?}", announcing_result);
+
+            let put_value_result = node.put_value(key, piece.to_vec()).await;
+
+            trace!(?key, "Put value result: {:?}", put_value_result);
+
+            //TODO: ensure republication of failed announcements
+        }
+
+        last_published_segment_index = Some(segment_index);
+        info!(%segment_index, "Segment processed.");
+    }
 }

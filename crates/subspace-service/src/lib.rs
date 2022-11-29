@@ -452,10 +452,22 @@ where
             ),
         );
 
-        start_dsn_archiver(
-            &subspace_link,
+        let dsn_archiving_fut = start_dsn_archiver(
+            subspace_link
+                .archived_segment_notification_stream()
+                .subscribe(),
             node.clone(),
-            task_manager.spawn_essential_handle(),
+        );
+
+        task_manager.spawn_essential_handle().spawn_essential(
+            "archiver",
+            Some("subspace-networking"),
+            Box::pin(
+                async move {
+                    dsn_archiving_fut.await;
+                }
+                .in_current_span(),
+            ),
         );
 
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
