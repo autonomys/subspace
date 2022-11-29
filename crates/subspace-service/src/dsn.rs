@@ -2,6 +2,7 @@ mod piece_record_store;
 
 use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
 use futures::StreamExt;
+use sc_client_api::AuxStore;
 use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
 use sc_piece_cache::AuxPieceCache;
 use sp_core::traits::SpawnEssentialNamed;
@@ -11,7 +12,7 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGM
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    Node, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
 
@@ -33,19 +34,21 @@ pub struct DsnConfig {
     pub allow_non_global_addresses_in_dht: bool,
 }
 
-/// Start an archiver that will listen for archived segments and send it to DSN network using
-/// pub-sub protocol.
-pub async fn start_dsn_node<Block, Spawner, AS: sc_client_api::AuxStore + Sync + Send + 'static>(
-    subspace_link: &SubspaceLink<Block>,
+pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
-    spawner: Spawner,
     piece_cache: AuxPieceCache<AS>,
     piece_getter: PieceGetter,
     segment_index_getter: SegmentIndexGetter,
-) -> Result<Node, CreationError>
+) -> Result<
+    (
+        Node,
+        NodeRunner<CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>>,
+    ),
+    CreationError,
+>
 where
     Block: BlockT,
-    Spawner: SpawnEssentialNamed,
+    AS: AuxStore + Sync + Send + 'static,
 {
     let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
     let _enter = span.enter();
@@ -55,9 +58,7 @@ where
 
     trace!("Subspace networking starting.");
 
-    let networking_config = subspace_networking::Config::<
-        CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>,
-    > {
+    let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
@@ -80,7 +81,34 @@ where
         ..subspace_networking::Config::with_generated_keypair()
     };
 
-    let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
+    subspace_networking::create(networking_config).await
+}
+
+/// Start an archiver that will listen for archived segments and send it to DSN network using
+/// pub-sub protocol.
+pub(crate) async fn start_dsn_node<Block, Spawner, AS>(
+    subspace_link: &SubspaceLink<Block>,
+    dsn_config: DsnConfig,
+    spawner: Spawner,
+    piece_cache: AuxPieceCache<AS>,
+    piece_getter: PieceGetter,
+    segment_index_getter: SegmentIndexGetter,
+) -> Result<Node, CreationError>
+where
+    Block: BlockT,
+    Spawner: SpawnEssentialNamed,
+    AS: AuxStore + Sync + Send + 'static,
+{
+    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
+    let _enter = span.enter();
+
+    let (node, mut node_runner) = create_dsn_instance::<Block, AS>(
+        dsn_config,
+        piece_cache,
+        piece_getter,
+        segment_index_getter,
+    )
+    .await?;
 
     info!("Subspace networking initialized: Node ID is {}", node.id());
 
