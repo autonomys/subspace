@@ -520,7 +520,6 @@ where
         client.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
         &task_manager.spawn_essential_handle(),
-        config.role.is_authority(),
     );
 
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =

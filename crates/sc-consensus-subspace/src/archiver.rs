@@ -380,7 +380,6 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
     client: Arc<Client>,
     telemetry: Option<TelemetryHandle>,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
-    is_authoring_blocks: bool,
 ) where
     Block: BlockT,
     Backend: BackendT<Block>,
@@ -423,16 +422,12 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
 
             async move {
                 // Farmers may have not received all previous segments, send them now.
-                if is_authoring_blocks {
-                    for archived_segment in older_archived_segments {
-                        send_archived_segment_notification(
-                            &archived_segment_notification_sender,
-                            archived_segment,
-                        )
-                        .await;
-                    }
-                } else {
-                    drop(older_archived_segments);
+                for archived_segment in older_archived_segments {
+                    send_archived_segment_notification(
+                        &archived_segment_notification_sender,
+                        archived_segment,
+                    )
+                    .await;
                 }
 
                 while let Some(ImportedBlockNotification {
@@ -509,13 +504,11 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                     {
                         let root_block = archived_segment.root_block;
 
-                        if is_authoring_blocks {
-                            send_archived_segment_notification(
-                                &archived_segment_notification_sender,
-                                archived_segment,
-                            )
-                            .await;
-                        }
+                        send_archived_segment_notification(
+                            &archived_segment_notification_sender,
+                            archived_segment,
+                        )
+                        .await;
 
                         let _ = root_block_sender.send(root_block).await;
                     }
