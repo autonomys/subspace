@@ -133,11 +133,9 @@ pub fn gemini_3a_compiled(
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::RootFarmer(
-                        FarmerPublicKey::unchecked_from([
-                            0x50, 0x69, 0x60, 0xf3, 0x50, 0x33, 0xee, 0xc1, 0x12, 0xb5, 0xbc, 0xb4,
-                            0xe5, 0x91, 0xfb, 0xbb, 0xf5, 0x88, 0xac, 0x45, 0x26, 0x90, 0xd4, 0x70,
-                            0x32, 0x6c, 0x3f, 0x7b, 0x4e, 0xd9, 0x41, 0x17,
-                        ]),
+                        FarmerPublicKey::unchecked_from(hex_literal::hex!(
+                            "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
+                        )),
                     ),
                     enable_executor: true,
                 },

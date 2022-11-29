@@ -8783,6 +8783,7 @@ dependencies = [
  "frame-benchmarking-cli",
  "frame-support",
  "futures 0.3.25",
+ "hex-literal",
  "log",
  "once_cell",
  "parity-scale-codec",
