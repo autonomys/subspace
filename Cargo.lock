@@ -8792,6 +8792,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-slots",
+ "sc-consensus-subspace",
  "sc-executor",
  "sc-service",
  "sc-subspace-chain-specs",
@@ -8813,7 +8814,6 @@ dependencies = [
  "substrate-build-script-utils",
  "system-domain-runtime",
  "thiserror",
- "tokio",
 ]
 
 [[package]]
