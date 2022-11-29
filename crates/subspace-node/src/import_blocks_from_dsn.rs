@@ -280,6 +280,22 @@ where
         }
     }
 
+    while link.imported_blocks < imported_blocks {
+        futures::future::poll_fn(|ctx| {
+            import_queue.poll_actions(ctx, &mut link);
+
+            Poll::Ready(())
+        })
+        .await;
+
+        if let Some(WaitLinkError { error, hash }) = &link.error {
+            return Err(sc_service::Error::Other(format!(
+                "Stopping block import after #{} blocks on {} because of an error: {}",
+                link.imported_blocks, hash, error
+            )));
+        }
+    }
+
     info!(
         "🎉 Imported {} blocks, best #{}, exiting...",
         imported_blocks,
