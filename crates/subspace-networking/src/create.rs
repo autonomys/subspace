@@ -25,7 +25,8 @@ use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::swarm::SwarmBuilder;
-use libp2p::tcp::{GenTcpConfig, TokioTcpTransport};
+use libp2p::tcp::tokio::Transport as TokioTcpTransport;
+use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
@@ -266,10 +267,7 @@ where
             request_response_protocols,
         });
 
-        let mut swarm = SwarmBuilder::new(transport, behaviour, local_peer_id)
-            .executor(Box::new(|fut| {
-                tokio::spawn(fut);
-            }))
+        let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
             .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
             .build();
 

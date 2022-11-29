@@ -13,8 +13,8 @@ use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
-    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, PutRecordOk,
-    QueryId, QueryResult, Quorum, Record,
+    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, ProgressStep,
+    PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -461,7 +461,8 @@ where
                     }
                 }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { .. },
                 id,
                 result: QueryResult::GetClosestPeers(results),
                 ..
@@ -502,7 +503,8 @@ where
                     }
                 }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { .. },
                 id,
                 result: QueryResult::GetRecord(results),
                 ..
@@ -511,22 +513,20 @@ where
                     self.query_id_receivers.remove(&id)
                 {
                     match results {
-                        Ok(GetRecordOk { records, .. }) => {
-                            let records_len = records.len();
-                            let record = records
-                                .into_iter()
-                                .next()
-                                .expect("Success means we have at least one record")
-                                .record;
-
+                        Ok(GetRecordOk::FoundRecord(rec)) => {
                             trace!(
-                                "Get record query for {} yielded {} results",
-                                hex::encode(&record.key),
-                                records_len,
+                                key = hex::encode(&rec.record.key),
+                                "Get record query succeeded",
                             );
 
                             // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(Some(record.value));
+                            let _ = sender.send(Some(rec.record.value)); //TODO: remove vec type
+                        }
+                        Ok(GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => {
+                            trace!("Get record query yielded no results");
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(None);
                         }
                         Err(error) => {
                             // Doesn't matter if receiver still waits for response.
@@ -535,30 +535,27 @@ where
                             match error {
                                 GetRecordError::NotFound { key, .. } => {
                                     debug!(
-                                        "Get record query for {} failed with no results",
-                                        hex::encode(&key),
+                                        key = hex::encode(&key),
+                                        "Get record query failed with no results",
                                     );
                                 }
                                 GetRecordError::QuorumFailed { key, records, .. } => {
                                     debug!(
-                                        "Get record query quorum for {} failed with {} results",
-                                        hex::encode(&key),
+                                        key = hex::encode(&key),
+                                        "Get record query quorum failed with {} results",
                                         records.len(),
                                     );
                                 }
-                                GetRecordError::Timeout { key, records, .. } => {
-                                    debug!(
-                                        "Get record query for {} timed out with {} results",
-                                        hex::encode(&key),
-                                        records.len(),
-                                    );
+                                GetRecordError::Timeout { key } => {
+                                    debug!(key = hex::encode(&key), "Get record query timed out");
                                 }
                             }
                         }
                     }
                 }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { .. },
                 id,
                 result: QueryResult::GetProviders(results),
                 ..
@@ -567,15 +564,21 @@ where
                     self.query_id_receivers.remove(&id)
                 {
                     match results {
-                        Ok(GetProvidersOk { key, providers, .. }) => {
+                        Ok(GetProvidersOk::FoundProviders { key, providers }) => {
                             trace!(
-                                "Get providers query for {} yielded {} results",
-                                hex::encode(&key),
+                                key = hex::encode(&key),
+                                "Get providers query yielded {} results",
                                 providers.len(),
                             );
 
                             // Doesn't matter if receiver still waits for response.
                             let _ = sender.send(Some(providers.into_iter().collect()));
+                        }
+                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { .. }) => {
+                            trace!("Get providers query yielded no results");
+
+                            // Doesn't matter if receiver still waits for response.
+                            let _ = sender.send(None);
                         }
                         Err(error) => {
                             let GetProvidersError::Timeout { key, .. } = error;
@@ -584,14 +587,15 @@ where
                             let _ = sender.send(None);
 
                             debug!(
-                                "Get providers query for {} failed with no results",
-                                hex::encode(&key),
+                                key = hex::encode(&key),
+                                "Get providers query failed with no results",
                             );
                         }
                     }
                 }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { .. },
                 id,
                 result: QueryResult::StartProviding(results),
                 stats,
@@ -619,7 +623,8 @@ where
                     }
                 }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { .. },
                 id,
                 result: QueryResult::PutRecord(result),
                 ..
@@ -672,7 +677,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .get_record(key.to_bytes().into(), Quorum::One);
+                    .get_record(key.to_bytes().into());
 
                 self.query_id_receivers.insert(
                     query_id,
