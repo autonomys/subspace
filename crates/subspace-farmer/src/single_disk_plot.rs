@@ -663,8 +663,8 @@ impl SingleDiskPlot {
                                 // Some sectors may already be plotted, skip them
                                 metadata_header.lock().sector_count as usize,
                             )
-                            .map(|(sector_index, (sector, metadata))| {
-                                (sector_index as u64 + first_sector_index, sector, metadata)
+                            .map(|(sector_offset, (sector, metadata))| {
+                                (sector_offset as u64 + first_sector_index, sector, metadata)
                             });
 
                         // TODO: Concurrency
@@ -676,6 +676,8 @@ impl SingleDiskPlot {
                                 );
                                 return;
                             }
+
+                            debug!(%sector_index, "Plotting sector");
 
                             let farmer_app_info = handle
                                 .block_on(rpc_client.farmer_app_info())
