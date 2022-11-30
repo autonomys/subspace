@@ -35,7 +35,7 @@ use std::time::Duration;
 use std::{fmt, io};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::{error, info, trace};
+use tracing::{error, info};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
@@ -315,7 +315,7 @@ where
         Ok((node, node_runner))
     });
 
-    info!(%allow_non_global_addresses_in_dht, peer_id = ?local_peer_id.to_string(), "DSN instance configured.");
+    info!(%allow_non_global_addresses_in_dht, peer_id = %local_peer_id, "DSN instance configured.");
 
     create_swarm_fut.await.expect(
         "Blocking tasks never panics, if it does it is an implementation bug and everything \

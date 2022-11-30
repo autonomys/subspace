@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use sub_array::SubArray;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
@@ -359,9 +358,10 @@ async fn configure_dsn(
 fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
     const SECRET_KEY_LENGTH: usize = 32;
 
-    let schnorrkel_sk_bytes: [u8; SECRET_KEY_LENGTH] = *schnorrkel_sk
-        .to_bytes()
-        .sub_array_ref::<SECRET_KEY_LENGTH>(0);
+    let schnorrkel_sk_bytes: [u8; SECRET_KEY_LENGTH] = schnorrkel_sk.to_bytes()
+        [..SECRET_KEY_LENGTH]
+        .try_into()
+        .expect("Should be correct array length here.");
 
     let sk = ed25519::SecretKey::from_bytes(schnorrkel_sk_bytes)
         .expect("Bytes array length should be compatible");
