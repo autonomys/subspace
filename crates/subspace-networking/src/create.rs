@@ -315,7 +315,7 @@ where
         Ok((node, node_runner))
     });
 
-    trace!(%allow_non_global_addresses_in_dht, "DSN configured.");
+    info!(%allow_non_global_addresses_in_dht, peer_id = ?local_peer_id.to_string(), "DSN instance configured.");
 
     create_swarm_fut.await.expect(
         "Blocking tasks never panics, if it does it is an implementation bug and everything \

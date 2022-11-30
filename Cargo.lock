@@ -8611,6 +8611,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sub-array"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db385104512311d6f5cf3b80a9e7b8248258f590762a7361166f8b75caf6c477"
+
+[[package]]
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
@@ -8683,6 +8689,7 @@ dependencies = [
  "ss58-registry",
  "static_assertions",
  "std-semaphore",
+ "sub-array",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-farmer-components",
