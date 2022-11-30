@@ -34,7 +34,7 @@ use sp_domains::{
     SignedOpaqueBundle, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::{BlakeTwo256, Hash, One, Saturating, Zero};
+use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec;
@@ -178,6 +178,15 @@ mod pallet {
     #[pallet::storage]
     pub(super) type DomainTotalStakeWeight<T: Config> =
         StorageMap<_, Twox64Concat, DomainId, T::StakeWeight, OptionQuery>;
+
+    /// Map of primary block number to primary block hash.
+    ///
+    /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
+    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
+    /// this mapping will grow indefinitely.
+    #[pallet::storage]
+    pub(super) type BlockHash<T: Config> =
+        StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     ////  Same receipt tracking data structure as in pallet-domains, with the dimension `domain_id` added.
@@ -984,6 +993,10 @@ impl<T: Config> Pallet<T> {
         let primary_number = execution_receipt.primary_number;
         let receipt_hash = execution_receipt.hash();
 
+        // (primary_number, primary_hash) has been verified on the primary chain, thus it
+        // can be used directly.
+        <BlockHash<T>>::insert(primary_number, primary_hash);
+
         // Apply the new best receipt.
         <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
         <ReceiptHead<T>>::insert(domain_id, (primary_hash, primary_number));
@@ -1005,20 +1018,20 @@ impl<T: Config> Pallet<T> {
             T::CoreDomainTracker::add_core_domain_state_root(domain_id, primary_number, *state_root)
         }
 
-        /* TODO:
         // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
             BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
                 if let Some(block_hash) = maybe_block_hash.take() {
-                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                        Receipts::<T>::remove(receipt_hash);
+                    for (receipt_hash, _) in
+                        <ReceiptVotes<T>>::drain_prefix((domain_id, block_hash))
+                    {
+                        Receipts::<T>::remove(domain_id, receipt_hash);
                     }
                 }
             });
-            OldestReceiptNumber::<T>::put(to_prune + One::one());
-            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
+            OldestReceiptNumber::<T>::insert(domain_id, to_prune + One::one());
+            let _ = <StateRoots<T>>::clear_prefix((domain_id, to_prune), u32::MAX, None);
         }
-        */
 
         Self::deposit_event(Event::NewCoreDomainReceipt {
             domain_id,
