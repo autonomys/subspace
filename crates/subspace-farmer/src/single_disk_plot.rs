@@ -14,7 +14,7 @@ use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use memmap2::{Mmap, MmapMut, MmapOptions};
@@ -42,7 +42,7 @@ use subspace_core_primitives::{
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
 use subspace_networking::Node;
-use subspace_rpc_primitives::SolutionResponse;
+use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
@@ -341,8 +341,8 @@ pub enum SingleDiskPlotError {
 /// Errors that happen during plotting
 #[derive(Debug, Error)]
 pub enum PlottingError {
-    /// Failed to retriever farmer protocol info
-    #[error("Failed to retriever farmer info: {error}")]
+    /// Failed to retrieve farmer info
+    #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
         error: rpc_client::Error,
@@ -355,8 +355,14 @@ pub enum PlottingError {
 /// Errors that happen during farming
 #[derive(Debug, Error)]
 pub enum FarmingError {
-    /// Failed to retriever farmer protocol info
-    #[error("Failed to retriever farmer info: {error}")]
+    /// Failed to substribe to slot info notifications
+    #[error("Failed to substribe to slot info notifications: {error}")]
+    FailedToSubscribeSlotInfo {
+        /// Lower-level error
+        error: rpc_client::Error,
+    },
+    /// Failed to retrieve farmer info
+    #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
         error: rpc_client::Error,
@@ -698,7 +704,11 @@ impl SingleDiskPlot {
                                 sector,
                                 sector_metadata,
                             )) {
-                                Ok(plotted_sector) => plotted_sector,
+                                Ok(plotted_sector) => {
+                                    debug!(%sector_index, "Sector plotted");
+
+                                    plotted_sector
+                                }
                                 Err(plotting::PlottingError::Cancelled) => {
                                     return;
                                 }
@@ -751,6 +761,42 @@ impl SingleDiskPlot {
                 .map(&metadata_file)?
         };
 
+        let (mut slot_info_forwarder_sender, mut slot_info_forwarder_receiver) =
+            mpsc::channel::<SlotInfo>(0);
+
+        tasks.push(Box::pin({
+            let shutting_down = Arc::clone(&shutting_down);
+            let rpc_client = rpc_client.clone();
+
+            async move {
+                info!("Subscribing to slot info notifications");
+
+                let mut slot_info_notifications = rpc_client
+                    .subscribe_slot_info()
+                    .await
+                    .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
+
+                while let Some(slot_info) = slot_info_notifications.next().await {
+                    if shutting_down.load(Ordering::Acquire) {
+                        debug!("Instance is shutting down, interrupting slot info forwarding");
+                        return Ok(());
+                    }
+
+                    debug!(?slot_info, "New slot");
+
+                    let slot = slot_info.slot_number;
+
+                    // Error means farmer is still solving for previous slot, which is too late and
+                    // we need to skip this slot
+                    if slot_info_forwarder_sender.try_send(slot_info).is_err() {
+                        debug!(%slot, "Slow farming, skipping slot");
+                    }
+                }
+
+                Ok(())
+            }
+        }));
+
         let farming_join_handle = thread::Builder::new()
             .name(format!("f-{single_disk_plot_id}"))
             .spawn({
@@ -773,21 +819,18 @@ impl SingleDiskPlot {
                     }
 
                     let farming_result = try {
-                        info!("Subscribing to slot info notifications");
-                        let mut slot_info_notifications = handle
-                            .block_on(rpc_client.subscribe_slot_info())
-                            .map_err(|error| FarmingError::FailedToGetFarmerInfo { error })?;
-
-                        while let Some(slot_info) = handle.block_on(slot_info_notifications.next())
+                        while let Some(slot_info) =
+                            handle.block_on(slot_info_forwarder_receiver.next())
                         {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!("Instance is shutting down, interrupting farming");
                                 return;
                             }
 
-                            debug!(?slot_info, "New slot");
-
+                            let slot = slot_info.slot_number;
                             let sector_count = metadata_header.lock().sector_count;
+
+                            debug!(%slot, %sector_count, "Reading sectors");
 
                             let plot_mmap = unsafe {
                                 MmapOptions::new()
@@ -834,6 +877,8 @@ impl SingleDiskPlot {
                                     return;
                                 }
 
+                                trace!(%slot, %sector_index, "Auditing sector");
+
                                 let maybe_eligible_sector = audit_sector(
                                     &public_key,
                                     sector_index,
@@ -857,7 +902,7 @@ impl SingleDiskPlot {
                                     )
                                     .map_err(FarmingError::LowLevel)?
                                 {
-                                    debug!("Solution found");
+                                    debug!(%slot, %sector_index, "Solution found");
                                     trace!(?solution, "Solution found");
 
                                     solutions.push(solution);
