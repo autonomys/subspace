@@ -359,6 +359,32 @@ fn submit_bundle_with_many_reeipts_should_work() {
 }
 
 #[test]
+fn only_system_domain_receipts_are_maintained_on_primary_chain() {
+    let primary_hash = Hash::random();
+
+    let system_receipt = create_dummy_receipt(1, primary_hash);
+    let system_bundle = create_dummy_bundle_with_receipts(
+        DomainId::SYSTEM,
+        primary_hash,
+        vec![system_receipt.clone()],
+    );
+    let core_receipt = create_dummy_receipt(1, primary_hash);
+    let core_bundle = create_dummy_bundle_with_receipts(
+        DomainId::new(1),
+        primary_hash,
+        vec![core_receipt.clone()],
+    );
+
+    new_test_ext().execute_with(|| {
+        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), system_bundle));
+        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), core_bundle));
+        // Only system domain receipt is tracked, core domain receipt is ignored.
+        assert!(Receipts::<Test>::get(system_receipt.hash()).is_some());
+        assert!(Receipts::<Test>::get(core_receipt.hash()).is_none());
+    });
+}
+
+#[test]
 fn submit_fraud_proof_should_work() {
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64)
         .map(|n| {
