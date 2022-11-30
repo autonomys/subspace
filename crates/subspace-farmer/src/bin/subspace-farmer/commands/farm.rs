@@ -11,7 +11,8 @@ use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
-use subspace_farmer::{NodeRpcClient, RpcClient};
+use subspace_farmer::{Identity, NodeRpcClient, RpcClient};
+use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
     LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
@@ -68,6 +69,16 @@ pub(crate) async fn farm_multi_disk(
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
     let (node, mut node_runner) = {
+        // TODO: Temporary networking identity derivation from the first disk farm identity.
+        let directory = disk_farms
+            .first()
+            .expect("Disk farm collection should not be empty at this point.")
+            .directory
+            .clone();
+        // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
+        let identity = Identity::open_or_create(&directory).unwrap();
+        let keypair = derive_libp2p_keypair(identity.secret_key());
+
         if dsn.bootstrap_nodes.is_empty() {
             dsn.bootstrap_nodes = {
                 info!("Connecting to node RPC at {}", node_rpc_url);
@@ -80,7 +91,7 @@ pub(crate) async fn farm_multi_disk(
                     .dsn_bootstrap_nodes
             };
         }
-        configure_dsn(base_path, dsn, &readers_and_pieces).await?
+        configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
@@ -240,6 +251,7 @@ pub(crate) async fn farm_multi_disk(
 
 async fn configure_dsn(
     base_path: PathBuf,
+    keypair: Keypair,
     DsnArgs {
         listen_on,
         bootstrap_nodes,
@@ -266,6 +278,7 @@ async fn configure_dsn(
     let default_config = Config::with_generated_keypair();
 
     let config = Config::<ConfiguredRecordStore> {
+        keypair,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
@@ -339,4 +352,20 @@ async fn configure_dsn(
     create::<ConfiguredRecordStore>(config)
         .await
         .map_err(Into::into)
+}
+
+// TODO: implement proper conversion function with crypto entropy generator and zeroizing
+fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
+    const SECRET_KEY_LENGTH: usize = 32;
+
+    let schnorrkel_sk_bytes: [u8; SECRET_KEY_LENGTH] = schnorrkel_sk.to_bytes()
+        [..SECRET_KEY_LENGTH]
+        .try_into()
+        .expect("Should be correct array length here.");
+
+    let sk = ed25519::SecretKey::from_bytes(schnorrkel_sk_bytes)
+        .expect("Bytes array length should be compatible");
+    let ed25519_keypair: ed25519::Keypair = sk.into();
+
+    Keypair::Ed25519(ed25519_keypair)
 }
