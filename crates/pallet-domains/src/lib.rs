@@ -29,7 +29,9 @@ pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-use sp_domains::{ExecutionReceipt, InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle};
+use sp_domains::{
+    DomainId, ExecutionReceipt, InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle,
+};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
@@ -43,7 +45,7 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::{
-        ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
+        DomainId, ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
     };
     use sp_runtime::traits::{
         CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
@@ -164,13 +166,15 @@ mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         // TODO: We do not rely on this event to collect the receipts included in a block, perhaps can be removed later.
-        /// A new execution receipt was backed.
-        NewExecutionReceipt {
+        /// A new system domain receipt was backed.
+        NewSystemDomainReceipt {
+            domain_id: DomainId,
             primary_number: T::BlockNumber,
             primary_hash: T::Hash,
         },
         /// A domain bundle was included.
         BundleStored {
+            domain_id: DomainId,
             bundle_hash: H256,
             bundle_author: ExecutorPublicKey,
         },
@@ -198,33 +202,39 @@ mod pallet {
                 signed_opaque_bundle
             );
 
-            let oldest_receipt_number = OldestReceiptNumber::<T>::get();
-            let (_, mut best_number) = <ReceiptHead<T>>::get();
+            let domain_id = signed_opaque_bundle.domain_id();
 
-            for receipt in &signed_opaque_bundle.bundle.receipts {
-                // Ignore the receipt if it has already been pruned.
-                if receipt.primary_number < oldest_receipt_number {
-                    continue;
-                }
+            // Only process the system domain receipts.
+            if domain_id.is_system() {
+                let oldest_receipt_number = OldestReceiptNumber::<T>::get();
+                let (_, mut best_number) = <ReceiptHead<T>>::get();
 
-                if receipt.primary_number <= best_number {
-                    // Either increase the vote for a known receipt or add a fork receipt at this height.
-                    Self::apply_non_new_best_receipt(receipt);
-                } else if receipt.primary_number == best_number + One::one() {
-                    Self::apply_new_best_receipt(receipt);
-                    best_number += One::one();
-                } else {
-                    // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
-                    //
-                    // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                    return Err(Error::<T>::Bundle(BundleError::Receipt(
-                        ExecutionReceiptError::MissingParent,
-                    ))
-                    .into());
+                for receipt in &signed_opaque_bundle.bundle.receipts {
+                    // Ignore the receipt if it has already been pruned.
+                    if receipt.primary_number < oldest_receipt_number {
+                        continue;
+                    }
+
+                    if receipt.primary_number <= best_number {
+                        // Either increase the vote for a known receipt or add a fork receipt at this height.
+                        Self::apply_non_new_best_receipt(domain_id, receipt);
+                    } else if receipt.primary_number == best_number + One::one() {
+                        Self::apply_new_best_receipt(domain_id, receipt);
+                        best_number += One::one();
+                    } else {
+                        // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
+                        //
+                        // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
+                        return Err(Error::<T>::Bundle(BundleError::Receipt(
+                            ExecutionReceiptError::MissingParent,
+                        ))
+                        .into());
+                    }
                 }
             }
 
             Self::deposit_event(Event::BundleStored {
+                domain_id,
                 bundle_hash: signed_opaque_bundle.hash(),
                 bundle_author: signed_opaque_bundle.proof_of_election.executor_public_key,
             });
@@ -516,7 +526,7 @@ impl<T: Config> Pallet<T> {
             trace: Vec::new(),
             trace_root: Default::default(),
         };
-        Self::apply_new_best_receipt(&genesis_receipt);
+        Self::apply_new_best_receipt(DomainId::SYSTEM, &genesis_receipt);
         // Explicitly initialize the oldest receipt number even not necessary as ValueQuery is used.
         OldestReceiptNumber::<T>::put::<T::BlockNumber>(Zero::zero());
     }
@@ -735,6 +745,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn apply_new_best_receipt(
+        domain_id: DomainId,
         execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
         let primary_hash = execution_receipt.primary_hash;
@@ -770,13 +781,15 @@ impl<T: Config> Pallet<T> {
             let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
         }
 
-        Self::deposit_event(Event::NewExecutionReceipt {
+        Self::deposit_event(Event::NewSystemDomainReceipt {
+            domain_id,
             primary_number,
             primary_hash,
         });
     }
 
     fn apply_non_new_best_receipt(
+        domain_id: DomainId,
         execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
         let primary_hash = execution_receipt.primary_hash;
@@ -794,7 +807,8 @@ impl<T: Config> Pallet<T> {
 
                 <StateRoots<T>>::insert(primary_number, execution_receipt.domain_hash, state_root);
             }
-            Self::deposit_event(Event::NewExecutionReceipt {
+            Self::deposit_event(Event::NewSystemDomainReceipt {
+                domain_id,
                 primary_number,
                 primary_hash,
             });

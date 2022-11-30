@@ -61,9 +61,7 @@ mod pallet {
     use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-    use sp_domains::{
-        DomainId, ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
-    };
+    use sp_domains::{DomainId, ExecutionReceipt, InvalidTransactionCode, SignedOpaqueBundle};
     use sp_executor_registry::ExecutorRegistry;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, One};
     use sp_runtime::{FixedPointOperand, Percent};
@@ -383,11 +381,6 @@ mod pallet {
                 }
             }
 
-            Self::deposit_event(Event::CoreBundleStored {
-                bundle_hash: signed_opaque_bundle.hash(),
-                bundle_author: signed_opaque_bundle.proof_of_election.executor_public_key,
-            });
-
             Ok(())
         }
 
@@ -543,6 +536,9 @@ mod pallet {
 
         /// Invalid core domain state root.
         BadStateRoot,
+
+        /// Not a core domain bundle.
+        NotCoreDomainBundle,
     }
 
     #[pallet::event]
@@ -576,12 +572,8 @@ mod pallet {
             domain_id: DomainId,
         },
 
-        CoreBundleStored {
-            bundle_hash: H256,
-            bundle_author: ExecutorPublicKey,
-        },
-
         NewCoreDomainReceipt {
+            domain_id: DomainId,
             primary_number: T::BlockNumber,
             primary_hash: T::Hash,
         },
@@ -776,6 +768,10 @@ impl<T: Config> Pallet<T> {
             core_state_root,
             ..
         } = &signed_opaque_bundle.proof_of_election;
+
+        if !domain_id.is_core() {
+            return Err(Error::<T>::NotCoreDomainBundle);
+        }
 
         let core_block_number =
             T::BlockNumber::from(core_block_number.ok_or(Error::<T>::CoreBlockInfoNotFound)?);
@@ -1027,6 +1023,7 @@ impl<T: Config> Pallet<T> {
         */
 
         Self::deposit_event(Event::NewCoreDomainReceipt {
+            domain_id,
             primary_number,
             primary_hash,
         });
@@ -1055,6 +1052,7 @@ impl<T: Config> Pallet<T> {
                 );
             }
             Self::deposit_event(Event::NewCoreDomainReceipt {
+                domain_id,
                 primary_number,
                 primary_hash,
             });

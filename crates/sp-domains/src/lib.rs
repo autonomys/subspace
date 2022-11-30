@@ -229,9 +229,9 @@ pub struct ProofOfElection<DomainHash> {
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
     #[cfg(feature = "std")]
-    pub fn with_public_key(executor_public_key: ExecutorPublicKey) -> Self {
+    pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
         Self {
-            domain_id: DomainId::default(),
+            domain_id,
             vrf_output: [0u8; VRF_OUTPUT_LENGTH],
             vrf_proof: [0u8; VRF_PROOF_LENGTH],
             executor_public_key,
