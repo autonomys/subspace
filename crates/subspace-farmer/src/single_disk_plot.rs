@@ -704,7 +704,11 @@ impl SingleDiskPlot {
                                 sector,
                                 sector_metadata,
                             )) {
-                                Ok(plotted_sector) => plotted_sector,
+                                Ok(plotted_sector) => {
+                                    debug!(%sector_index, "Sector plotted");
+
+                                    plotted_sector
+                                }
                                 Err(plotting::PlottingError::Cancelled) => {
                                     return;
                                 }
@@ -823,7 +827,10 @@ impl SingleDiskPlot {
                                 return;
                             }
 
+                            let slot = slot_info.slot_number;
                             let sector_count = metadata_header.lock().sector_count;
+
+                            debug!(%slot, %sector_count, "Reading sectors");
 
                             let plot_mmap = unsafe {
                                 MmapOptions::new()
@@ -870,6 +877,8 @@ impl SingleDiskPlot {
                                     return;
                                 }
 
+                                trace!(%slot, %sector_index, "Auditing sector");
+
                                 let maybe_eligible_sector = audit_sector(
                                     &public_key,
                                     sector_index,
@@ -893,7 +902,7 @@ impl SingleDiskPlot {
                                     )
                                     .map_err(FarmingError::LowLevel)?
                                 {
-                                    debug!("Solution found");
+                                    debug!(%slot, %sector_index, "Solution found");
                                     trace!(?solution, "Solution found");
 
                                     solutions.push(solution);
