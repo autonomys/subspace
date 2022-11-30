@@ -60,7 +60,10 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     1_000 * SSC,
                     // TODO: proper genesis domain config
                     DomainConfig {
-                        wasm_runtime_hash: Hash::random(),
+                        wasm_runtime_hash: blake2b_256_hash(
+                            system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                        )
+                        .into(),
                         max_bundle_size: 1024 * 1024,
                         bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
@@ -114,7 +117,10 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     1_000 * SSC,
                     // TODO: proper genesis domain config
                     DomainConfig {
-                        wasm_runtime_hash: Hash::zero(),
+                        wasm_runtime_hash: blake2b_256_hash(
+                            system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                        )
+                        .into(),
                         max_bundle_size: 1024 * 1024,
                         bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
