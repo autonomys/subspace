@@ -11,7 +11,7 @@ use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
-use sp_domains::{Bundle, BundleHeader, ExecutorPair, ProofOfElection, SignedBundle};
+use sp_domains::{Bundle, BundleHeader, DomainId, ExecutorPair, ProofOfElection, SignedBundle};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
@@ -385,7 +385,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
         let signed_opaque_bundle = SignedBundle {
             bundle,
-            proof_of_election: ProofOfElection::with_public_key(pair.public()), // TODO: mock ProofOfElection properly
+            proof_of_election: ProofOfElection::dummy(DomainId::SYSTEM, pair.public()), // TODO: mock ProofOfElection properly
             signature,
         }
         .into_signed_opaque_bundle();

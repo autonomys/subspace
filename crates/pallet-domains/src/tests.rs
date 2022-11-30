@@ -5,8 +5,8 @@ use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::{
-    Bundle, BundleHeader, ExecutionReceipt, ExecutorPair, InvalidTransactionCode, ProofOfElection,
-    SignedOpaqueBundle,
+    Bundle, BundleHeader, DomainId, ExecutionReceipt, ExecutorPair, InvalidTransactionCode,
+    ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -98,6 +98,7 @@ fn create_dummy_receipt(
 }
 
 fn create_dummy_bundle(
+    domain_id: DomainId,
     primary_number: BlockNumber,
     primary_hash: Hash,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
@@ -119,12 +120,13 @@ fn create_dummy_bundle(
 
     SignedOpaqueBundle {
         bundle,
-        proof_of_election: ProofOfElection::with_public_key(pair.public()),
+        proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
         signature,
     }
 }
 
 fn create_dummy_bundle_with_receipts(
+    domain_id: DomainId,
     primary_hash: Hash,
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
@@ -146,7 +148,7 @@ fn create_dummy_bundle_with_receipts(
 
     SignedOpaqueBundle {
         bundle,
-        proof_of_election: ProofOfElection::with_public_key(pair.public()),
+        proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
         signature,
     }
 }
@@ -156,7 +158,10 @@ fn submit_execution_receipt_incrementally_should_work() {
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64 + 3u64)
         .map(|n| {
             let primary_hash = Hash::random();
-            (create_dummy_bundle(n, primary_hash), primary_hash)
+            (
+                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                primary_hash,
+            )
         })
         .unzip();
 
@@ -225,7 +230,10 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64 + 2)
         .map(|n| {
             let primary_hash = Hash::random();
-            (create_dummy_bundle(n, primary_hash), primary_hash)
+            (
+                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                primary_hash,
+            )
         })
         .unzip();
 
@@ -292,19 +300,19 @@ fn submit_bundle_with_many_reeipts_should_work() {
         .unzip();
 
     let primary_hash_255 = *block_hashes.last().unwrap();
-    let bundle1 = create_dummy_bundle_with_receipts(primary_hash_255, receipts);
+    let bundle1 = create_dummy_bundle_with_receipts(DomainId::SYSTEM, primary_hash_255, receipts);
 
     let primary_hash_256 = Hash::random();
     block_hashes.push(primary_hash_256);
-    let bundle2 = create_dummy_bundle(256, primary_hash_256);
+    let bundle2 = create_dummy_bundle(DomainId::SYSTEM, 256, primary_hash_256);
 
     let primary_hash_257 = Hash::random();
     block_hashes.push(primary_hash_257);
-    let bundle3 = create_dummy_bundle(257, primary_hash_257);
+    let bundle3 = create_dummy_bundle(DomainId::SYSTEM, 257, primary_hash_257);
 
     let primary_hash_258 = Hash::random();
     block_hashes.push(primary_hash_258);
-    let bundle4 = create_dummy_bundle(258, primary_hash_258);
+    let bundle4 = create_dummy_bundle(DomainId::SYSTEM, 258, primary_hash_258);
 
     let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
         System::set_block_number(1);
@@ -351,11 +359,40 @@ fn submit_bundle_with_many_reeipts_should_work() {
 }
 
 #[test]
+fn only_system_domain_receipts_are_maintained_on_primary_chain() {
+    let primary_hash = Hash::random();
+
+    let system_receipt = create_dummy_receipt(1, primary_hash);
+    let system_bundle = create_dummy_bundle_with_receipts(
+        DomainId::SYSTEM,
+        primary_hash,
+        vec![system_receipt.clone()],
+    );
+    let core_receipt = create_dummy_receipt(1, primary_hash);
+    let core_bundle = create_dummy_bundle_with_receipts(
+        DomainId::new(1),
+        primary_hash,
+        vec![core_receipt.clone()],
+    );
+
+    new_test_ext().execute_with(|| {
+        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), system_bundle));
+        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), core_bundle));
+        // Only system domain receipt is tracked, core domain receipt is ignored.
+        assert!(Receipts::<Test>::get(system_receipt.hash()).is_some());
+        assert!(Receipts::<Test>::get(core_receipt.hash()).is_none());
+    });
+}
+
+#[test]
 fn submit_fraud_proof_should_work() {
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64)
         .map(|n| {
             let primary_hash = Hash::random();
-            (create_dummy_bundle(n, primary_hash), primary_hash)
+            (
+                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                primary_hash,
+            )
         })
         .unzip();
 
