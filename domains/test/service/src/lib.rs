@@ -126,6 +126,7 @@ async fn run_executor(
                     .parse()
                     .expect("Correct multiaddr; qed")],
                 bootstrap_nodes: vec![],
+                reserved_peers: vec![],
                 keypair: identity::Keypair::generate_ed25519(),
                 allow_non_global_addresses_in_dht: true,
             },

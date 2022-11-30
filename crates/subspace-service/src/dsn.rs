@@ -27,6 +27,9 @@ pub struct DsnConfig {
     /// Bootstrap nodes for DSN.
     pub bootstrap_nodes: Vec<Multiaddr>,
 
+    /// Reserved nodes for DSN.
+    pub reserved_peers: Vec<Multiaddr>,
+
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
 
