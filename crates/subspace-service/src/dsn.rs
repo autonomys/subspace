@@ -1,17 +1,18 @@
 mod piece_record_store;
 
 use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
-use futures::StreamExt;
-use sc_consensus_subspace::{ArchivedSegmentNotification, SubspaceLink};
+use futures::{Stream, StreamExt};
+use sc_client_api::AuxStore;
+use sc_consensus_subspace::ArchivedSegmentNotification;
 use sc_piece_cache::AuxPieceCache;
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    Node, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
 
@@ -33,31 +34,28 @@ pub struct DsnConfig {
     pub allow_non_global_addresses_in_dht: bool,
 }
 
-/// Start an archiver that will listen for archived segments and send it to DSN network using
-/// pub-sub protocol.
-pub async fn start_dsn_node<Block, Spawner, AS: sc_client_api::AuxStore + Sync + Send + 'static>(
-    subspace_link: &SubspaceLink<Block>,
+pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
-    spawner: Spawner,
     piece_cache: AuxPieceCache<AS>,
     piece_getter: PieceGetter,
     segment_index_getter: SegmentIndexGetter,
-) -> Result<Node, CreationError>
+) -> Result<
+    (
+        Node,
+        NodeRunner<CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>>,
+    ),
+    CreationError,
+>
 where
     Block: BlockT,
-    Spawner: SpawnEssentialNamed,
+    AS: AuxStore + Sync + Send + 'static,
 {
-    let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
-    let _enter = span.enter();
-
     // TODO: Combine `AuxPieceCache` with `AuxRecordStorage` and remove `PieceCache` abstraction
     let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
 
     trace!("Subspace networking starting.");
 
-    let networking_config = subspace_networking::Config::<
-        CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>,
-    > {
+    let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
@@ -80,58 +78,51 @@ where
         ..subspace_networking::Config::with_generated_keypair()
     };
 
-    let (node, mut node_runner) = subspace_networking::create(networking_config).await?;
+    subspace_networking::create(networking_config).await
+}
 
-    info!("Subspace networking initialized: Node ID is {}", node.id());
+/// Start an archiver that will listen for archived segments and send it to DSN network using
+/// pub-sub protocol.
+pub(crate) async fn start_dsn_archiver<Spawner>(
+    mut archived_segment_notification_stream: impl Stream<Item = ArchivedSegmentNotification> + Unpin,
+    node: Node,
+    spawner: Spawner,
+) where
+    Spawner: SpawnNamed,
+{
+    trace!("Subspace DSN archiver started.");
 
-    spawner.spawn_essential(
-        "node-runner",
-        Some("subspace-networking"),
-        Box::pin(
-            async move {
-                node_runner.run().await;
+    let mut last_published_segment_index: Option<u64> = None;
+    while let Some(ArchivedSegmentNotification {
+        archived_segment, ..
+    }) = archived_segment_notification_stream.next().await
+    {
+        let segment_index = archived_segment.root_block.segment_index();
+        let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
+
+        info!(%segment_index, "Processing a segment.");
+
+        // skip repeating publication
+        if let Some(last_published_segment_index) = last_published_segment_index {
+            if last_published_segment_index == segment_index {
+                info!(?segment_index, "Archived segment skipped.");
+                continue;
             }
-            .in_current_span(),
-        ),
-    );
+        }
+        let keys_iter = (first_piece_index..)
+            .take(archived_segment.pieces.count())
+            .map(|idx| (idx, PieceIndexHash::from_index(idx)))
+            .map(|(idx, hash)| (idx, hash.to_multihash()));
 
-    let mut archived_segment_notification_stream = subspace_link
-        .archived_segment_notification_stream()
-        .subscribe();
+        spawner.spawn(
+            "segment-publishing",
+            Some("subspace-networking"),
+            Box::pin({
+                let node = node.clone();
 
-    spawner.spawn_essential(
-        "archiver",
-        Some("subspace-networking"),
-        Box::pin({
-            let node = node.clone();
-
-            async move {
-                trace!("Subspace DSN archiver started.");
-
-                let mut last_published_segment_index: Option<u64> = None;
-                while let Some(ArchivedSegmentNotification {
-                    archived_segment, ..
-                }) = archived_segment_notification_stream.next().await
-                {
-                    let segment_index = archived_segment.root_block.segment_index();
-                    let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
-
-                    info!(%segment_index, "Processing a segment.");
-
-                    // skip repeating publication
-                    if let Some(last_published_segment_index) = last_published_segment_index {
-                        if last_published_segment_index == segment_index {
-                            info!(?segment_index, "Archived segment skipped.");
-                            continue;
-                        }
-                    }
-                    let keys_iter = (first_piece_index..)
-                        .take(archived_segment.pieces.count())
-                        .map(|idx| (idx, PieceIndexHash::from_index(idx)))
-                        .map(|(idx, hash)| (idx, hash.to_multihash()));
-
+                async move {
                     for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
-                        //TODO: restore annoucing after https://github.com/libp2p/rust-libp2p/issues/3048
+                        //TODO: restore announcing after https://github.com/libp2p/rust-libp2p/issues/3048
                         // trace!(?key, ?idx, "Announcing key...");
                         //
                         // let announcing_result = node.start_announcing(key).await;
@@ -145,13 +136,12 @@ where
                         //TODO: ensure republication of failed announcements
                     }
 
-                    last_published_segment_index = Some(segment_index);
                     info!(%segment_index, "Segment processed.");
                 }
-            }
-            .in_current_span()
-        }),
-    );
+                .in_current_span()
+            }),
+        );
 
-    Ok(node)
+        last_published_segment_index = Some(segment_index);
+    }
 }

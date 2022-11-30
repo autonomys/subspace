@@ -21,10 +21,11 @@ mod dsn;
 mod pool;
 pub mod rpc;
 
+use crate::dsn::create_dsn_instance;
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
-use dsn::start_dsn_node;
+use dsn::start_dsn_archiver;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -54,6 +55,7 @@ use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -67,7 +69,7 @@ use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
-use tracing::error;
+use tracing::{error, info, Instrument};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -409,10 +411,11 @@ where
         });
 
     let dsn_bootstrap_nodes = {
-        let node = start_dsn_node(
-            &subspace_link,
+        let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
+        let _enter = span.enter();
+
+        let (node, mut node_runner) = create_dsn_instance::<Block, _>(
             config.dsn_config.clone(),
-            task_manager.spawn_essential_handle(),
             piece_cache.clone(),
             Arc::new({
                 let piece_cache = piece_cache.clone();
@@ -435,6 +438,38 @@ where
             }),
         )
         .await?;
+
+        info!("Subspace networking initialized: Node ID is {}", node.id());
+
+        task_manager.spawn_essential_handle().spawn_essential(
+            "node-runner",
+            Some("subspace-networking"),
+            Box::pin(
+                async move {
+                    node_runner.run().await;
+                }
+                .in_current_span(),
+            ),
+        );
+
+        let dsn_archiving_fut = start_dsn_archiver(
+            subspace_link
+                .archived_segment_notification_stream()
+                .subscribe(),
+            node.clone(),
+            task_manager.spawn_handle(),
+        );
+
+        task_manager.spawn_essential_handle().spawn_essential(
+            "archiver",
+            Some("subspace-networking"),
+            Box::pin(
+                async move {
+                    dsn_archiving_fut.await;
+                }
+                .in_current_span(),
+            ),
+        );
 
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
         // connect to
@@ -485,7 +520,6 @@ where
         client.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
         &task_manager.spawn_essential_handle(),
-        config.role.is_authority(),
     );
 
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =

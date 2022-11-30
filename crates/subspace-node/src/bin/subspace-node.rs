@@ -205,7 +205,6 @@ fn main() -> Result<(), Error> {
                     client.clone(),
                     None,
                     &task_manager.spawn_essential_handle(),
-                    config.role.is_authority(),
                 );
 
                 Ok((
