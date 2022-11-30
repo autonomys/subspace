@@ -71,6 +71,9 @@ struct DsnArgs {
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     disable_private_ips: bool,
+    /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
+    #[arg(long)]
+    reserved_peers: Vec<Multiaddr>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

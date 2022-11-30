@@ -413,6 +413,7 @@ fn main() -> Result<(), Error> {
                             keypair: network_keypair,
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
+                            reserved_peers: cli.dsn_reserved_peers,
                             allow_non_global_addresses_in_dht: !cli.dsn_disable_private_ips,
                         }
                     };

@@ -187,6 +187,10 @@ pub struct Cli {
     #[arg(long)]
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
 
+    /// Reserved peers for DSN.
+    #[arg(long)]
+    pub dsn_reserved_peers: Vec<Multiaddr>,
+
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
     /// in Kademlia DHT for the DSN.
     #[arg(long, default_value_t = false)]
