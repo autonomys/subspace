@@ -245,6 +245,7 @@ async fn configure_dsn(
         bootstrap_nodes,
         record_cache_size,
         disable_private_ips,
+        reserved_peers,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
 ) -> Result<(Node, NodeRunner<ConfiguredRecordStore>), anyhow::Error> {
@@ -266,6 +267,7 @@ async fn configure_dsn(
     let default_config = Config::with_generated_keypair();
 
     let config = Config::<ConfiguredRecordStore> {
+        reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
