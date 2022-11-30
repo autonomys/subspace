@@ -226,6 +226,8 @@ impl<'a> PieceReceiver for MultiChannelPieceReceiver<'a> {
 
             while let Some(maybe_piece) = piece_attempts.next().await {
                 if let Ok(Some(piece)) = maybe_piece {
+                    debug!(%piece_index, "Piece request succeeded.");
+
                     return Ok(Some(piece));
                 }
             }

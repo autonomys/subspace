@@ -698,7 +698,11 @@ impl SingleDiskPlot {
                                 sector,
                                 sector_metadata,
                             )) {
-                                Ok(plotted_sector) => plotted_sector,
+                                Ok(plotted_sector) => {
+                                    info!(%sector_index, "Sector plotted.");
+
+                                    plotted_sector
+                                }
                                 Err(plotting::PlottingError::Cancelled) => {
                                     return;
                                 }
