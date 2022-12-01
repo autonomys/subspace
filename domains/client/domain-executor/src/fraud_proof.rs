@@ -1,7 +1,7 @@
+use crate::utils::to_number_primitive;
 use crate::TransactionFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -14,7 +14,6 @@ use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor}
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
@@ -31,7 +30,7 @@ pub enum FraudProofError {
     RuntimeApi(#[from] sp_api::ApiError),
 }
 
-pub(crate) struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+pub struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     backend: Arc<Backend>,
@@ -59,8 +58,7 @@ where
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + sp_block_builder::BlockBuilder<Block>
+    Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<
             Block,
             StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
@@ -69,7 +67,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
-    pub(crate) fn new(
+    pub fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         backend: Arc<Backend>,
@@ -91,10 +89,7 @@ where
         bad_signed_bundle_hash: H256,
     ) -> Result<FraudProof, FraudProofError> {
         let block_hash = local_receipt.domain_hash;
-        let block_number: BlockNumber = local_receipt
-            .primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let block_number = to_number_primitive(local_receipt.primary_number);
 
         let header = self.header(block_hash)?;
         let parent_header = self.header(*header.parent_hash())?;
@@ -111,8 +106,7 @@ where
             self.spawner.clone() as Box<dyn SpawnNamed>,
         );
 
-        let parent_number = TryInto::<BlockNumber>::try_into(*parent_header.number())
-            .unwrap_or_else(|_| panic!("Parent number must fit into u32; qed"));
+        let parent_number = to_number_primitive(*parent_header.number());
 
         let local_root = local_receipt.trace.get(local_trace_index as usize).ok_or(
             FraudProofError::InvalidTraceIndex {

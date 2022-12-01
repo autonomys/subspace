@@ -36,8 +36,6 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
-const LOG_TARGET: &str = "executor-worker";
-
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn start_worker<
     Block,
@@ -129,12 +127,7 @@ pub(super) async fn start_worker<
                 .produce_bundle(primary_info, slot_info, receipt_interface)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        ?primary_info,
-                        error = ?error,
-                        "Error at producing bundle.",
-                    );
+                    tracing::error!(?primary_info, ?error, "Error at producing bundle.");
                     None
                 })
                 .boxed()

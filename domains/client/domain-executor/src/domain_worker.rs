@@ -1,5 +1,4 @@
-use crate::utils::{BlockInfo, DomainBundles, ExecutorSlotInfo};
-use crate::LOG_TARGET;
+use crate::utils::{to_number_primitive, BlockInfo, DomainBundles, ExecutorSlotInfo};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
@@ -15,7 +14,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 
 pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
@@ -45,11 +44,7 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
             on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
                 .await
         {
-            tracing::error!(
-                target: LOG_TARGET,
-                error = ?error,
-                "Failed to submit transaction bundle"
-            );
+            tracing::error!(?error, "Failed to submit transaction bundle");
             break;
         }
     }
@@ -86,9 +81,7 @@ pub(crate) async fn handle_block_import_notifications<
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
-    let best_secondary_number: BlockNumber = best_secondary_number
-        .try_into()
-        .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
+    let best_secondary_number = to_number_primitive(best_secondary_number);
 
     // Notify about active leaves on startup before starting the loop
     for (hash, number, fork_choice) in std::mem::take(&mut leaves) {
@@ -103,11 +96,7 @@ pub(crate) async fn handle_block_import_notifications<
             )
             .await
             {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    ?error,
-                    "Failed to process primary block on startup"
-                );
+                tracing::error!(?error, "Failed to process primary block on startup");
                 // Bring down the service as bundles processor is an essential task.
                 // TODO: more graceful shutdown.
                 return;
@@ -150,11 +139,7 @@ pub(crate) async fn handle_block_import_notifications<
                     &mut active_leaves,
                     block_info,
                 ).await {
-                    tracing::error!(
-                        target: LOG_TARGET,
-                        ?error,
-                        "Failed to process primary block"
-                    );
+                    tracing::error!(?error, "Failed to process primary block");
                     // Bring down the service as bundles processor is an essential task.
                     // TODO: more graceful shutdown.
                     break;
@@ -198,10 +183,7 @@ where
     let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
-            tracing::debug!(
-                target: LOG_TARGET,
-                "executor returned no bundle on bundling",
-            );
+            tracing::debug!("executor returned no bundle on bundling");
             return Ok(());
         }
     };
@@ -284,15 +266,11 @@ where
     let block_id = BlockId::Hash(block_hash);
     let extrinsics = match primary_chain_client.block_body(block_hash) {
         Err(err) => {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to get block body from primary chain"
-            );
+            tracing::error!(?err, "Failed to get block body from primary chain");
             return Ok(());
         }
         Ok(None) => {
-            tracing::error!(target: LOG_TARGET, ?block_hash, "BlockBody unavailable");
+            tracing::error!(?block_hash, "BlockBody unavailable");
             return Ok(());
         }
         Ok(Some(body)) => body,
@@ -300,15 +278,11 @@ where
 
     let header = match primary_chain_client.header(block_id) {
         Err(err) => {
-            tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to get block from primary chain"
-            );
+            tracing::error!(?err, "Failed to get block from primary chain");
             return Ok(());
         }
         Ok(None) => {
-            tracing::error!(target: LOG_TARGET, ?block_hash, "BlockHeader unavailable");
+            tracing::error!(?block_hash, "BlockHeader unavailable");
             return Ok(());
         }
         Ok(Some(header)) => header,

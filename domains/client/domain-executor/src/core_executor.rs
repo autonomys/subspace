@@ -1,34 +1,23 @@
 use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_block_processor::DomainBlockProcessor;
-use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
-use crate::utils::BlockInfo;
-use crate::{BundleSender, ExecutionReceiptFor, TransactionFor, LOG_TARGET};
-use codec::{Decode, Encode};
-use domain_client_executor_gossip::{Action, GossipMessageHandler};
+use crate::fraud_proof::FraudProofGenerator;
+use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_consensus::ForkChoiceStrategy;
-use sc_network::NetworkService;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
-use sp_core::H256;
-use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
-use sp_domains::{Bundle, DomainId, ExecutorApi, ExecutorPublicKey, SignedBundle};
-use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{
-    Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
-};
-use sp_runtime::RuntimeAppPublic;
+use sp_domains::{DomainId, ExecutorApi};
+use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
 /// The implementation of the Domain `Executor`.
@@ -107,25 +96,22 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    #[allow(clippy::too_many_arguments)]
     pub async fn new<SE, SC, IBNS, NSNS>(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
-        primary_chain_client: Arc<PClient>,
-        primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         spawn_essential: &SE,
         select_chain: &SC,
-        imported_block_notification_stream: IBNS,
-        new_slot_notification_stream: NSNS,
-        client: Arc<Client>,
-        spawner: Box<dyn SpawnNamed + Send + Sync>,
-        transaction_pool: Arc<TransactionPool>,
-        bundle_sender: Arc<BundleSender<Block, PBlock>>,
-        backend: Arc<Backend>,
-        code_executor: Arc<E>,
-        is_authority: bool,
-        keystore: SyncCryptoStorePtr,
-        block_import_throttling_buffer_size: u32,
+        params: EssentialExecutorParams<
+            Block,
+            PBlock,
+            Client,
+            PClient,
+            TransactionPool,
+            Backend,
+            E,
+            IBNS,
+            NSNS,
+        >,
     ) -> Result<Self, sp_consensus::Error>
     where
         SE: SpawnEssentialNamed,
@@ -135,43 +121,44 @@ where
             + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     {
-        let active_leaves = active_leaves(primary_chain_client.as_ref(), select_chain).await?;
+        let active_leaves =
+            active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
 
         let bundle_producer = CoreBundleProducer::new(
             domain_id,
             system_domain_client.clone(),
-            client.clone(),
-            transaction_pool.clone(),
-            bundle_sender,
-            is_authority,
-            keystore.clone(),
+            params.client.clone(),
+            params.transaction_pool.clone(),
+            params.bundle_sender,
+            params.is_authority,
+            params.keystore.clone(),
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(
-            client.clone(),
-            spawner.clone(),
-            backend.clone(),
-            code_executor,
+            params.client.clone(),
+            params.spawner.clone(),
+            params.backend.clone(),
+            params.code_executor,
         );
 
         let domain_block_processor = DomainBlockProcessor::new(
             domain_id,
-            client.clone(),
-            primary_chain_client.clone(),
-            primary_network,
-            backend.clone(),
+            params.client.clone(),
+            params.primary_chain_client.clone(),
+            params.primary_network,
+            params.backend.clone(),
             fraud_proof_generator.clone(),
         );
 
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
-            primary_chain_client.clone(),
+            params.primary_chain_client.clone(),
             system_domain_client,
-            client.clone(),
-            backend.clone(),
-            is_authority,
-            keystore,
-            spawner.clone(),
+            params.client.clone(),
+            params.backend.clone(),
+            params.is_authority,
+            params.keystore,
+            params.spawner.clone(),
             domain_block_processor,
         );
 
@@ -180,378 +167,30 @@ where
             None,
             crate::core_domain_worker::start_worker(
                 domain_id,
-                primary_chain_client.clone(),
-                client.clone(),
+                params.primary_chain_client.clone(),
+                params.client.clone(),
                 bundle_producer,
                 bundle_processor,
-                imported_block_notification_stream,
-                new_slot_notification_stream,
+                params.imported_block_notification_stream,
+                params.new_slot_notification_stream,
                 active_leaves,
-                block_import_throttling_buffer_size,
+                params.block_import_throttling_buffer_size,
             )
             .boxed(),
         );
 
         Ok(Self {
-            primary_chain_client,
-            client,
-            spawner,
-            transaction_pool,
-            backend,
+            primary_chain_client: params.primary_chain_client,
+            client: params.client,
+            spawner: params.spawner,
+            transaction_pool: params.transaction_pool,
+            backend: params.backend,
             fraud_proof_generator,
             _phantom_data: PhantomData::default(),
         })
     }
 
-    /// The background is that a receipt received from the network points to a future block
-    /// from the local view, so we need to wait for the receipt for the block at the same
-    /// height to be produced locally in order to check the validity of the external receipt.
-    async fn wait_for_local_future_receipt(
-        &self,
-        secondary_block_hash: Block::Hash,
-        secondary_block_number: <Block::Header as HeaderT>::Number,
-        tx: crossbeam::channel::Sender<
-            sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
-        >,
-    ) -> Result<(), GossipMessageError> {
-        loop {
-            match crate::aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
-                Ok(Some(local_receipt)) => {
-                    return tx
-                        .send(Ok(local_receipt))
-                        .map_err(|_| GossipMessageError::SendError)
-                }
-                Ok(None) => {
-                    // TODO: test how this works under the primary forks.
-                    //       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
-                    //
-                    // Whether or not the best execution chain number on primary chain has been
-                    // updated, the local client has proceeded to a higher block, that means the receipt
-                    // of `block_hash` received from the network does not match the local one,
-                    // we should just send back the local receipt at the same height.
-                    if self.client.info().best_number >= secondary_block_number {
-                        let local_block_hash = self
-                            .client
-                            .expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
-                        let local_receipt_result = crate::aux_schema::load_execution_receipt(
-                            &*self.client,
-                            local_block_hash,
-                        )?
-                        .ok_or_else(|| {
-                            sp_blockchain::Error::Backend(format!(
-                                "Execution receipt not found for {:?}",
-                                local_block_hash
-                            ))
-                        });
-                        return tx
-                            .send(local_receipt_result)
-                            .map_err(|_| GossipMessageError::SendError);
-                    } else {
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    }
-                }
-                Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
-            }
-        }
+    pub fn fraud_proof_generator(&self) -> FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+        self.fraud_proof_generator.clone()
     }
-
-    fn validate_gossiped_execution_receipt(
-        &self,
-        signed_bundle_hash: H256,
-        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
-    ) -> Result<(), GossipMessageError> {
-        let primary_number: BlockNumber = execution_receipt
-            .primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        let head_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(self.primary_chain_client.info().best_hash))?;
-        let head_receipt_number: BlockNumber = head_receipt_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        // Just ignore it if the receipt is too old and has been pruned.
-        if crate::aux_schema::target_receipt_is_pruned(head_receipt_number, primary_number) {
-            return Ok(());
-        }
-
-        let block_hash = execution_receipt.domain_hash;
-        let block_number = primary_number.into();
-
-        // TODO: more efficient execution receipt checking strategy?
-        let local_receipt = if let Some(local_receipt) =
-            crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?
-        {
-            local_receipt
-        } else {
-            // Wait for the local execution receipt until it's ready.
-            let (tx, rx) = crossbeam::channel::bounded::<
-                sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
-            >(1);
-            let executor = self.clone();
-            self.spawner.spawn(
-                "wait-for-local-execution-receipt",
-                None,
-                async move {
-                    if let Err(err) = executor
-                        .wait_for_local_future_receipt(block_hash, block_number, tx)
-                        .await
-                    {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Error occurred while waiting for the local receipt"
-                        );
-                    }
-                }
-                .boxed(),
-            );
-            rx.recv()??
-        };
-
-        // TODO: What happens for this obvious error?
-        if local_receipt.trace.len() != execution_receipt.trace.len() {}
-
-        if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof(
-                trace_mismatch_index,
-                &local_receipt,
-                signed_bundle_hash,
-            )?;
-
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    fraud_proof,
-                )?;
-        }
-
-        Ok(())
-    }
-}
-
-/// Error type for domain gossip handling.
-#[derive(Debug, thiserror::Error)]
-pub enum GossipMessageError {
-    #[error("Bundle equivocation error")]
-    BundleEquivocation,
-    #[error(transparent)]
-    FraudProof(#[from] FraudProofError),
-    #[error(transparent)]
-    Client(Box<sp_blockchain::Error>),
-    #[error(transparent)]
-    RuntimeApi(#[from] sp_api::ApiError),
-    #[error(transparent)]
-    RecvError(#[from] crossbeam::channel::RecvError),
-    #[error("Failed to send local receipt result because the channel is disconnected")]
-    SendError,
-    #[error("The signature of bundle is invalid")]
-    BadBundleSignature,
-    #[error("Invalid bundle author, got: {got}, expected: {expected}")]
-    InvalidBundleAuthor {
-        got: ExecutorPublicKey,
-        expected: ExecutorPublicKey,
-    },
-}
-
-impl From<sp_blockchain::Error> for GossipMessageError {
-    fn from(error: sp_blockchain::Error) -> Self {
-        Self::Client(Box::new(error))
-    }
-}
-
-impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
-    GossipMessageHandler<PBlock, Block>
-    for Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
-where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
-    Client: HeaderBackend<Block>
-        + BlockBackend<Block>
-        + ProvideRuntimeApi<Block>
-        + AuxStore
-        + ProofProvider<Block>
-        + Send
-        + Sync
-        + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
-    for<'b> &'b Client: sc_consensus::BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + Send
-        + Sync
-        + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
-    E: CodeExecutor,
-{
-    type Error = GossipMessageError;
-
-    fn on_bundle(
-        &self,
-        signed_bundle: &SignedBundle<
-            Block::Extrinsic,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-            Block::Hash,
-        >,
-    ) -> Result<Action, Self::Error> {
-        let signed_bundle_hash = signed_bundle.hash();
-
-        let SignedBundle {
-            bundle,
-            proof_of_election,
-            signature,
-        } = signed_bundle;
-
-        let check_equivocation =
-            |_bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>| {
-                // TODO: check bundle equivocation
-                let bundle_is_an_equivocation = false;
-                if bundle_is_an_equivocation {
-                    Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
-                } else {
-                    None
-                }
-            };
-
-        // A bundle equivocation occurs.
-        if let Some(equivocation_proof) = check_equivocation(bundle) {
-            self.primary_chain_client
-                .runtime_api()
-                .submit_bundle_equivocation_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    equivocation_proof,
-                )?;
-            return Err(GossipMessageError::BundleEquivocation);
-        }
-
-        let bundle_exists = false;
-
-        if bundle_exists {
-            Ok(Action::Empty)
-        } else {
-            let _primary_hash =
-                PBlock::Hash::decode(&mut bundle.header.primary_hash.encode().as_slice())
-                    .expect("Hash type must be correct");
-
-            let executor_public_key = &proof_of_election.executor_public_key;
-
-            if !executor_public_key.verify(&bundle.hash(), signature) {
-                return Err(Self::Error::BadBundleSignature);
-            }
-
-            // TODO: validate the bundle election.
-
-            // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
-            for receipt in &bundle.receipts {
-                self.validate_gossiped_execution_receipt(signed_bundle_hash, receipt)?;
-            }
-
-            for extrinsic in bundle.extrinsics.iter() {
-                let tx_hash = self.transaction_pool.hash_of(extrinsic);
-
-                if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
-                    // TODO: Set the status of each tx in the bundle to seen
-                } else {
-                    // TODO: check the legality
-                    //
-                    // if illegal => illegal tx proof
-                    let invalid_transaction_proof = InvalidTransactionProof;
-
-                    self.primary_chain_client
-                        .runtime_api()
-                        .submit_invalid_transaction_proof_unsigned(
-                            &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                            invalid_transaction_proof,
-                        )?;
-                }
-            }
-
-            // TODO: all checks pass, add to the bundle pool
-
-            Ok(Action::RebroadcastBundle)
-        }
-    }
-}
-
-/// Returns the active leaves the overseer should start with.
-///
-/// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
-/// is only available in the imported primary block notifications.
-async fn active_leaves<PBlock, PClient, SC>(
-    client: &PClient,
-    select_chain: &SC,
-) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
-where
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    SC: SelectChain<PBlock>,
-{
-    let best_block = select_chain.best_chain().await?;
-
-    // No leaves if starting from the genesis.
-    if best_block.number().is_zero() {
-        return Ok(Vec::new());
-    }
-
-    let mut leaves = select_chain
-        .leaves()
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|hash| {
-            let number = client.number(hash).ok()??;
-
-            // Only consider leaves that are in maximum an uncle of the best block.
-            if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
-            {
-                return None;
-            };
-
-            let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
-
-            Some(BlockInfo {
-                hash,
-                parent_hash,
-                number,
-                fork_choice: ForkChoiceStrategy::LongestChain,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    // Sort by block number and get the maximum number of leaves
-    leaves.sort_by_key(|b| b.number);
-
-    leaves.push(BlockInfo {
-        hash: best_block.hash(),
-        parent_hash: *best_block.parent_hash(),
-        number: *best_block.number(),
-        fork_choice: ForkChoiceStrategy::LongestChain,
-    });
-
-    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
-    const MAX_ACTIVE_LEAVES: usize = 4;
-
-    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
 }

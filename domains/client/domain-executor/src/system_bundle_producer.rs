@@ -1,7 +1,7 @@
 use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_producer::{sign_new_bundle, ReceiptInterface};
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::utils::ExecutorSlotInfo;
+use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -16,8 +16,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
-
-const LOG_TARGET: &str = "bundle-producer";
 
 pub(super) struct SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
@@ -69,12 +67,7 @@ where
             .primary_chain_client
             .runtime_api()
             .head_receipt_number(&BlockId::Hash(at))?;
-
-        let head_receipt_number: BlockNumber = head_receipt_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        Ok(head_receipt_number)
+        Ok(to_number_primitive(head_receipt_number))
     }
 
     fn maximum_receipt_drift(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
@@ -82,12 +75,7 @@ where
             .primary_chain_client
             .runtime_api()
             .maximum_receipt_drift(&BlockId::Hash(at))?;
-
-        let max_drift: BlockNumber = max_drift
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        Ok(max_drift)
+        Ok(to_number_primitive(max_drift))
     }
 }
 
@@ -161,7 +149,7 @@ where
                 global_challenge,
             )?
         {
-            tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
+            tracing::info!("📦 Claimed bundle at slot {slot}");
 
             let bundle = self
                 .domain_bundle_proposer

@@ -1,7 +1,7 @@
 use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_producer::{sign_new_bundle, ReceiptInterface};
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::utils::ExecutorSlotInfo;
+use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -17,8 +17,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
-
-const LOG_TARGET: &str = "bundle-producer";
 
 pub(super) struct CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
 where
@@ -73,26 +71,15 @@ where
             .system_domain_client
             .runtime_api()
             .head_receipt_number(&BlockId::Hash(at), self.domain_id)?;
-
-        let head_receipt_number: BlockNumber = head_receipt_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        Ok(head_receipt_number)
+        Ok(to_number_primitive(head_receipt_number))
     }
 
     fn maximum_receipt_drift(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        // Receipts for some previous blocks are missing.
         let max_drift = self
             .system_domain_client
             .runtime_api()
             .maximum_receipt_drift(&BlockId::Hash(at))?;
-
-        let max_drift: BlockNumber = max_drift
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
-
-        Ok(max_drift)
+        Ok(to_number_primitive(max_drift))
     }
 }
 
@@ -165,19 +152,14 @@ where
                 global_challenge,
             )?
         {
-            tracing::info!(target: LOG_TARGET, "📦 Claimed bundle at slot {slot}");
+            tracing::info!("📦 Claimed bundle at slot {slot}");
 
             let bundle = self
                 .domain_bundle_proposer
                 .propose_bundle_at::<PBlock, _, _>(slot, primary_info, receipt_interface, best_hash)
                 .await?;
 
-            let core_block_number: BlockNumber = self
-                .client
-                .info()
-                .best_number
-                .try_into()
-                .unwrap_or_else(|_| panic!("Domain block number must fit into u32; qed"));
+            let core_block_number = to_number_primitive(self.client.info().best_number);
             let core_block_hash = self.client.info().best_hash;
 
             let as_core_block_hash = |system_block_hash: SBlock::Hash| {

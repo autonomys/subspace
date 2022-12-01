@@ -42,7 +42,7 @@ pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
 
             // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
             // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-            // tracing::error!(target: LOG_TARGET, error = ?e, "Failed to send transaction bundle");
+            // tracing::error!(error = ?e, "Failed to send transaction bundle");
             // }
 
             Ok(signed_bundle.into_signed_opaque_bundle())

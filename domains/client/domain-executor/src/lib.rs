@@ -66,28 +66,46 @@ mod core_bundle_processor;
 mod core_bundle_producer;
 mod core_domain_worker;
 mod core_executor;
+mod core_gossip_message_validator;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
 mod fraud_proof;
+mod gossip_message_validator;
 mod merkle_tree;
 mod system_bundle_processor;
 mod system_bundle_producer;
 mod system_domain_worker;
 mod system_executor;
+mod system_gossip_message_validator;
 #[cfg(test)]
 mod tests;
 mod utils;
 
 pub use self::core_executor::Executor as CoreExecutor;
+pub use self::core_gossip_message_validator::CoreGossipMessageValidator;
 pub use self::system_executor::Executor as SystemExecutor;
+pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
+use crate::utils::BlockInfo;
+use futures::channel::mpsc;
+use futures::Stream;
+use sc_consensus::ForkChoiceStrategy;
+use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus::SelectChain;
+use sp_consensus_slots::Slot;
+use sp_core::traits::SpawnNamed;
 use sp_domains::{ExecutionReceipt, SignedBundle};
-use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
-
-/// The logging target.
-const LOG_TARGET: &str = "domain::executor";
+use sp_keystore::SyncCryptoStorePtr;
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{
+    Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
+};
+use std::sync::Arc;
+use subspace_core_primitives::Blake2b256Hash;
 
 type ExecutionReceiptFor<PBlock, Hash> =
     ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
@@ -105,3 +123,95 @@ type BundleSender<Block, PBlock> = TracingUnboundedSender<
         <Block as BlockT>::Hash,
     >,
 >;
+
+pub struct EssentialExecutorParams<
+    Block,
+    PBlock,
+    Client,
+    PClient,
+    TransactionPool,
+    Backend,
+    E,
+    IBNS,
+    NSNS,
+> where
+    Block: BlockT,
+    PBlock: BlockT,
+    IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+{
+    pub primary_chain_client: Arc<PClient>,
+    pub primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    pub client: Arc<Client>,
+    pub transaction_pool: Arc<TransactionPool>,
+    pub backend: Arc<Backend>,
+    pub code_executor: Arc<E>,
+    pub is_authority: bool,
+    pub keystore: SyncCryptoStorePtr,
+    pub spawner: Box<dyn SpawnNamed + Send + Sync>,
+    pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    pub block_import_throttling_buffer_size: u32,
+    pub imported_block_notification_stream: IBNS,
+    pub new_slot_notification_stream: NSNS,
+}
+
+/// Returns the active leaves the overseer should start with.
+///
+/// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
+/// is only available in the imported primary block notifications.
+async fn active_leaves<PBlock, PClient, SC>(
+    client: &PClient,
+    select_chain: &SC,
+) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
+where
+    PBlock: BlockT,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    SC: SelectChain<PBlock>,
+{
+    let best_block = select_chain.best_chain().await?;
+
+    // No leaves if starting from the genesis.
+    if best_block.number().is_zero() {
+        return Ok(Vec::new());
+    }
+
+    let mut leaves = select_chain
+        .leaves()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|hash| {
+            let number = client.number(hash).ok()??;
+
+            // Only consider leaves that are in maximum an uncle of the best block.
+            if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
+            {
+                return None;
+            };
+
+            let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
+
+            Some(BlockInfo {
+                hash,
+                parent_hash,
+                number,
+                fork_choice: ForkChoiceStrategy::LongestChain,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // Sort by block number and get the maximum number of leaves
+    leaves.sort_by_key(|b| b.number);
+
+    leaves.push(BlockInfo {
+        hash: best_block.hash(),
+        parent_hash: *best_block.parent_hash(),
+        number: *best_block.number(),
+        fork_choice: ForkChoiceStrategy::LongestChain,
+    });
+
+    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
+    const MAX_ACTIVE_LEAVES: usize = 4;
+
+    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
+}

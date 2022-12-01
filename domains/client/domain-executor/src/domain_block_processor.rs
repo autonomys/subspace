@@ -1,6 +1,6 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::utils::shuffle_extrinsics;
-use crate::{ExecutionReceiptFor, TransactionFor, LOG_TARGET};
+use crate::utils::{shuffle_extrinsics, to_number_primitive};
+use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -21,7 +21,7 @@ use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 
 pub(crate) struct DomainBlockResult<Block, PBlock>
 where
@@ -124,7 +124,6 @@ where
                         Ok(uxt) => Some(uxt),
                         Err(e) => {
                             tracing::error!(
-                                target: LOG_TARGET,
                                 error = ?e,
                                 "Failed to decode the opaque extrisic in bundle, this should not happen"
                             );
@@ -147,7 +146,7 @@ where
         let mut seen = Vec::with_capacity(extrinsics.len());
         extrinsics.retain(|uxt| match seen.contains(uxt) {
             true => {
-                tracing::trace!(target: LOG_TARGET, extrinsic = ?uxt, "Duplicated extrinsic");
+                tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
                 false
             }
             false => {
@@ -157,11 +156,7 @@ where
         });
         drop(seen);
 
-        tracing::trace!(
-            target: LOG_TARGET,
-            ?extrinsics,
-            "Origin deduplicated extrinsics"
-        );
+        tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
 
         let extrinsics: Vec<_> = match self
             .client
@@ -170,11 +165,7 @@ where
         {
             Ok(res) => res,
             Err(e) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    "Error at calling runtime api: extract_signer"
-                );
+                tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
                 return Err(e.into());
             }
         };
@@ -194,9 +185,7 @@ where
         fork_choice: ForkChoiceStrategy,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
-        let primary_number: BlockNumber = primary_number
-            .try_into()
-            .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+        let primary_number = to_number_primitive(primary_number);
 
         assert_eq!(
             Into::<NumberFor<Block>>::into(primary_number),
@@ -237,7 +226,6 @@ where
             .collect();
 
         tracing::debug!(
-            target: LOG_TARGET,
             ?trace,
             ?trace_root,
             "Trace root calculated for #{}",
@@ -365,7 +353,6 @@ where
 
         if self.primary_network.is_major_syncing() {
             tracing::debug!(
-                target: LOG_TARGET,
                 "Skip checking the receipts as the primary node is still major syncing..."
             );
             return Ok(None);
@@ -421,10 +408,7 @@ where
                     }
                 }
                 None => {
-                    let block_number: BlockNumber = execution_receipt
-                        .primary_number
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Primary number must fit into u32; qed"));
+                    let block_number = to_number_primitive(execution_receipt.primary_number);
 
                     // TODO: Ensure the `block_hash` aligns with the one returned in
                     // `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are
@@ -489,11 +473,10 @@ where
                 bad_signed_bundle_hash,
             ) {
                 tracing::error!(
-                    target: LOG_TARGET,
                     error = ?e,
                     ?bad_receipt_number,
                     ?bad_signed_bundle_hash,
-                    "Failed to delete bad receipt",
+                    "Failed to delete bad receipt"
                 );
             }
         }

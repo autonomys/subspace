@@ -1,3 +1,4 @@
+use crate::utils::to_number_primitive;
 use sc_client_api::ProofProvider;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -13,7 +14,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct BundleElectionSolver<SBlock, PBlock, SClient> {
@@ -140,10 +141,6 @@ where
                         .expect("Best block header must exist; qed")
                         .state_root();
 
-                    let best_number: BlockNumber = best_number
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Secondary number must fit into u32; qed"));
-
                     let proof_of_election = ProofOfElection {
                         domain_id,
                         vrf_output: vrf_signature.output.to_bytes(),
@@ -152,7 +149,7 @@ where
                         global_challenge,
                         state_root,
                         storage_proof,
-                        block_number: best_number,
+                        block_number: to_number_primitive(best_number),
                         block_hash: best_hash,
                         core_block_number: None,
                         core_block_hash: None,
