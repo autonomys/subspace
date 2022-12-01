@@ -11,6 +11,7 @@ use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{Bundle, BundleHeader, DomainId, ExecutorPair, ProofOfElection, SignedBundle};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
@@ -215,10 +216,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     match submit_invalid_fraud_proof_result.unwrap_err() {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
-        ) => assert_eq!(
-            invalid_tx,
-            sp_domains::InvalidTransactionCode::FraudProof.into()
-        ),
+        ) => assert_eq!(invalid_tx, InvalidTransactionCode::FraudProof.into()),
         e => panic!("Unexpected error while submitting an invalid fraud proof: {e}"),
     }
 }
@@ -458,10 +456,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     match create_and_send_submit_bundle(5).await.unwrap_err() {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
-        ) => assert_eq!(
-            invalid_tx,
-            sp_domains::InvalidTransactionCode::ExecutionReceipt.into()
-        ),
+        ) => assert_eq!(invalid_tx, InvalidTransactionCode::ExecutionReceipt.into()),
         e => panic!("Unexpected error while submitting execution receipt: {e}"),
     }
 

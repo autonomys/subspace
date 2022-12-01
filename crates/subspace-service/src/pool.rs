@@ -17,6 +17,7 @@ use sc_transaction_pool_api::{
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
+use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::ExecutorApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
@@ -166,7 +167,7 @@ where
                                         Err(err) => {
                                             tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
                                             Err(TxPoolError::InvalidTransaction(
-                                                sp_domains::InvalidTransactionCode::FraudProof.into(),
+                                                InvalidTransactionCode::FraudProof.into(),
                                             )
                                             .into())
                                         }

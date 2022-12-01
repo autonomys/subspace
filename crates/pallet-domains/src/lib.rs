@@ -29,9 +29,8 @@ pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-use sp_domains::{
-    DomainId, ExecutionReceipt, InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle,
-};
+use sp_domains::transaction::InvalidTransactionCode;
+use sp_domains::{DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
@@ -44,9 +43,8 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-    use sp_domains::{
-        DomainId, ExecutionReceipt, ExecutorPublicKey, InvalidTransactionCode, SignedOpaqueBundle,
-    };
+    use sp_domains::transaction::InvalidTransactionCode;
+    use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
     use sp_runtime::traits::{
         CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
     };
