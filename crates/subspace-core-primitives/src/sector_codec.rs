@@ -6,9 +6,7 @@ mod tests;
 use crate::Scalar;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
-use ark_poly::univariate::DensePolynomial;
-use ark_poly::{EvaluationDomain, GeneralEvaluationDomain, Polynomial, UVPolynomial};
-use core::mem;
+use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
 use num_integer::Roots;
 
 #[derive(Debug, Copy, Clone)]
@@ -139,20 +137,16 @@ impl SectorCodec {
             );
 
             domain.coset_ifft_in_place(&mut row);
-
-            let polynomial = DensePolynomial::from_coefficients_vec(mem::take(&mut row));
+            domain.fft_in_place(&mut row);
 
             sector
                 .iter_mut()
                 .skip(row_index)
                 .step_by(self.sector_side_size_in_scalars)
-                .zip(domain.elements())
-                .for_each(|(output, column)| {
-                    *output = Scalar(polynomial.evaluate(&column));
-                });
+                .zip(row.iter())
+                .for_each(|(output, input)| *output = Scalar(*input));
 
-            // Reuse allocation and clear for next iteration of the loop
-            row = polynomial.coeffs;
+            // Clear for next iteration of the loop
             row.clear();
         }
         Ok(())
