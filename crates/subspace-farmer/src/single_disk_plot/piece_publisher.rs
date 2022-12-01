@@ -14,6 +14,7 @@ use tracing::{debug, error, trace};
 const PUBLISH_PIECE_BY_SECTOR_WAITING_DURATION_IN_SECS: u64 = 1;
 
 // Piece-by-sector DSN publishing helper.
+#[derive(Clone)]
 pub(crate) struct PieceSectorPublisher {
     dsn_node: Node,
     cancelled: Arc<AtomicBool>,

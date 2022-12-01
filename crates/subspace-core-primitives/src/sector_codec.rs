@@ -6,10 +6,10 @@ mod tests;
 use crate::Scalar;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
-use ark_poly::univariate::DensePolynomial;
-use ark_poly::{EvaluationDomain, GeneralEvaluationDomain, Polynomial, UVPolynomial};
-use core::mem;
+use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
 use num_integer::Roots;
+#[cfg(feature = "parallel-decoding")]
+use rayon::prelude::*;
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
@@ -127,34 +127,66 @@ impl SectorCodec {
             return Err(SectorCodecError::FailedToInstantiateDomain);
         };
 
-        let mut row = Vec::with_capacity(self.sector_side_size_in_scalars);
+        #[cfg(not(feature = "parallel-decoding"))]
+        {
+            let mut row = Vec::with_capacity(self.sector_side_size_in_scalars);
 
-        for row_index in 0..self.sector_side_size_in_scalars {
-            row.extend(
+            for row_index in 0..self.sector_side_size_in_scalars {
+                row.extend(
+                    sector
+                        .iter()
+                        .skip(row_index)
+                        .step_by(self.sector_side_size_in_scalars)
+                        .map(|scalar| scalar.0),
+                );
+
+                domain.coset_ifft_in_place(&mut row);
+                domain.fft_in_place(&mut row);
+
+                sector
+                    .iter_mut()
+                    .skip(row_index)
+                    .step_by(self.sector_side_size_in_scalars)
+                    .zip(row.iter())
+                    .for_each(|(output, input)| *output = Scalar(*input));
+
+                // Clear for next iteration of the loop
+                row.clear();
+            }
+        }
+        #[cfg(feature = "parallel-decoding")]
+        {
+            // Transform sector grid from columns to rows
+            let mut rows = vec![
+                vec![Fr::default(); self.sector_side_size_in_scalars];
+                self.sector_side_size_in_scalars
+            ];
+            for (row_index, row) in rows.iter_mut().enumerate() {
                 sector
                     .iter()
                     .skip(row_index)
                     .step_by(self.sector_side_size_in_scalars)
-                    .map(|scalar| scalar.0),
-            );
+                    .zip(row)
+                    .for_each(|(input, output)| *output = input.0);
+            }
 
-            domain.coset_ifft_in_place(&mut row);
+            // Decode rows in parallel
+            rows.par_iter_mut().for_each(|row| {
+                domain.coset_ifft_in_place(row);
+                domain.fft_in_place(row);
+            });
 
-            let polynomial = DensePolynomial::from_coefficients_vec(mem::take(&mut row));
-
-            sector
-                .iter_mut()
-                .skip(row_index)
-                .step_by(self.sector_side_size_in_scalars)
-                .zip(domain.elements())
-                .for_each(|(output, column)| {
-                    *output = Scalar(polynomial.evaluate(&column));
-                });
-
-            // Reuse allocation and clear for next iteration of the loop
-            row = polynomial.coeffs;
-            row.clear();
+            // Store result back into inout sector
+            for (row_index, row) in rows.into_iter().enumerate() {
+                sector
+                    .iter_mut()
+                    .skip(row_index)
+                    .step_by(self.sector_side_size_in_scalars)
+                    .zip(row)
+                    .for_each(|(output, input)| *output = Scalar(input));
+            }
         }
+
         Ok(())
     }
 }

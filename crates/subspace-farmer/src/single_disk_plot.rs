@@ -46,7 +46,7 @@ use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, info_span, trace, Instrument, Span};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
@@ -715,23 +715,29 @@ impl SingleDiskPlot {
                                 Err(error) => Err(PlottingError::LowLevel(error))?,
                             };
 
-                            let mut metadata_header = metadata_header.lock();
-                            metadata_header.sector_count += 1;
-                            metadata_header_mmap
-                                .copy_from_slice(metadata_header.encode().as_slice());
+                            {
+                                let mut metadata_header = metadata_header.lock();
+                                metadata_header.sector_count += 1;
+                                metadata_header_mmap
+                                    .copy_from_slice(metadata_header.encode().as_slice());
+                            }
 
                             handlers.sector_plotted.call_simple(&plotted_sector);
 
                             // TODO: Migrate this over to using `on_sector_plotted` instead
                             // Publish pieces-by-sector if we use DSN
-                            let publishing_result = handle.block_on(
-                                piece_publisher.publish_pieces(plotted_sector.piece_indexes),
-                            );
+                            tokio::spawn({
+                                let piece_publisher = piece_publisher.clone();
 
-                            // cancelled
-                            if publishing_result.is_err() {
-                                return;
-                            }
+                                async move {
+                                    if let Err(error) = piece_publisher
+                                        .publish_pieces(plotted_sector.piece_indexes)
+                                        .await
+                                    {
+                                        warn!(%sector_index, %error, "Failed to publish pieces to DSN");
+                                    }
+                                }
+                            });
                         }
                     };
 
@@ -913,6 +919,13 @@ impl SingleDiskPlot {
                                 }
 
                                 if solutions.len() >= SOLUTIONS_LIMIT {
+                                    break;
+                                }
+                                // TODO: It is known that decoding is slow now and we'll only be
+                                //  able to decode a single sector within time slot reliably, in the
+                                //  future we may want allow more than one sector to be valid within
+                                //  the same disk plot.
+                                if !solutions.is_empty() {
                                     break;
                                 }
                             }

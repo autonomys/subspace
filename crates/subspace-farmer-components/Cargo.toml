@@ -34,7 +34,7 @@ tracing = "0.1.37"
 criterion = "0.4.0"
 futures = "0.3.25"
 memmap2 = "0.5.8"
-rayon = "1.5.3"
+rayon = "1.6.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 
 [[bench]]
