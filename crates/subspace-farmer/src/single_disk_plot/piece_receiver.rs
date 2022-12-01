@@ -212,6 +212,7 @@ impl<'a> PieceReceiver for MultiChannelPieceReceiver<'a> {
                     Box::pin(self.get_piece_from_cache(piece_index))
                         as Pin<Box<dyn Future<Output = _> + Send>>,
                 ),
+                //TODO: verify "broken pipe" error cause
                 timeout(
                     GET_PIECE_TIMEOUT,
                     Box::pin(async {

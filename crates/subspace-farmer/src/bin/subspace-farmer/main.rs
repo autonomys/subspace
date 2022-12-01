@@ -53,6 +53,9 @@ struct FarmingArgs {
     /// DSN parameters
     #[clap(flatten)]
     dsn: DsnArgs,
+    /// Defines size for the pieces batch of the piece receiving process.
+    #[arg(long, default_value_t = 20)]
+    piece_receiver_batch_size: usize,
 }
 
 /// Arguments for DSN
