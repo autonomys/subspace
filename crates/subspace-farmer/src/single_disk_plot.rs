@@ -915,6 +915,13 @@ impl SingleDiskPlot {
                                 if solutions.len() >= SOLUTIONS_LIMIT {
                                     break;
                                 }
+                                // TODO: It is known that decoding is slow now and we'll only be
+                                //  able to decode a single sector within time slot reliably, in the
+                                //  future we may want allow more than one sector to be valid within
+                                //  the same disk plot.
+                                if !solutions.is_empty() {
+                                    break;
+                                }
                             }
 
                             let response = SolutionResponse {
