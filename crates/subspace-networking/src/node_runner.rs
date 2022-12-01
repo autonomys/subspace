@@ -348,20 +348,29 @@ where
             } => {
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
             }
-            SwarmEvent::OutgoingConnectionError { peer_id, error } => {
-                if let DialError::Transport(ref addresses) = error {
+            SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
+                DialError::Transport(ref addresses) => {
                     for (addr, _) in addresses {
-                        debug!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError for peer.");
+                        debug!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError (DialError::Transport) for peer.");
                         if let Some(peer_id) = peer_id {
                             self.networking_parameters_registry
                                 .remove_known_peer_addresses(peer_id, vec![addr.clone()])
                                 .await;
                         }
                     }
-                } else {
-                    trace!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
                 }
-            }
+                DialError::WrongPeerId { obtained, .. } => {
+                    debug!(?error, ?peer_id, obtained_peer_id=?obtained, "SwarmEvent::WrongPeerId (DialError::WrongPeerId) for peer.");
+
+                    if let Some(ref peer_id) = peer_id {
+                        let kademlia = &mut self.swarm.behaviour_mut().kademlia;
+                        let _ = kademlia.remove_peer(peer_id);
+                    }
+                }
+                _ => {
+                    debug!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
+                }
+            },
             other => {
                 trace!("Other swarm event: {:?}", other);
             }
