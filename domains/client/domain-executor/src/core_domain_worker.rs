@@ -22,7 +22,7 @@ use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -80,10 +80,7 @@ pub(super) async fn start_worker<
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,

@@ -96,9 +96,9 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
     pub enum BundleError {
-        /// The signer of transaction bundle is unexpected.
+        /// The signer of bundle is unexpected.
         UnexpectedSigner,
-        /// Invalid transaction bundle signature.
+        /// Invalid bundle signature.
         BadSignature,
         /// Invalid vrf proof.
         BadVrfProof,
@@ -196,11 +196,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            log::debug!(
-                target: "runtime::subspace::executor",
-                "Submitting transaction bundle: {:?}",
-                signed_opaque_bundle
-            );
+            log::trace!(target: "runtime::domains", "Processing bundle: {signed_opaque_bundle:?}");
 
             let domain_id = signed_opaque_bundle.domain_id();
 
@@ -247,11 +243,7 @@ mod pallet {
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
 
-            log::debug!(
-                target: "runtime::subspace::executor",
-                "Submitting fraud proof: {:?}",
-                fraud_proof
-            );
+            log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             // Revert the execution chain.
             let (_, mut to_remove) = ReceiptHead::<T>::get();
@@ -284,11 +276,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            log::debug!(
-                target: "runtime::subspace::executor",
-                "Submitting bundle equivocation proof: {:?}",
-                bundle_equivocation_proof
-            );
+            log::trace!(target: "runtime::domains", "Processing bundle equivocation proof: {bundle_equivocation_proof:?}");
 
             // TODO: slash the executor accordingly.
 
@@ -305,11 +293,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            log::debug!(
-                target: "runtime::subspace::executor",
-                "Submitting invalid transaction proof: {:?}",
-                invalid_transaction_proof
-            );
+            log::trace!(target: "runtime::domains", "Processing invalid transaction proof: {invalid_transaction_proof:?}");
 
             // TODO: slash the executor accordingly.
 
@@ -422,9 +406,8 @@ mod pallet {
                 } => {
                     if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid signed opaque bundle: {:?}, error: {:?}",
-                            signed_opaque_bundle, e
+                            target: "runtime::domains",
+                            "Bad bundle: {signed_opaque_bundle:?}, error: {e:?}",
                         );
                         if let BundleError::Receipt(_) = e {
                             return InvalidTransactionCode::ExecutionReceipt.into();
@@ -445,9 +428,8 @@ mod pallet {
                 Call::submit_fraud_proof { fraud_proof } => {
                     if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid fraud proof: {:?}, error: {:?}",
-                            fraud_proof, e
+                            target: "runtime::domains",
+                            "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
                         );
                         return InvalidTransactionCode::FraudProof.into();
                     }
@@ -462,9 +444,8 @@ mod pallet {
                         Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid bundle equivocation proof: {:?}, error: {:?}",
-                            bundle_equivocation_proof, e
+                            target: "runtime::domains",
+                            "Bad bundle equivocation proof: {bundle_equivocation_proof:?}, error: {e:?}",
                         );
                         return InvalidTransactionCode::BundleEquivicationProof.into();
                     }
@@ -481,9 +462,8 @@ mod pallet {
                         Self::validate_invalid_transaction_proof(invalid_transaction_proof)
                     {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Wrong InvalidTransactionProof: {:?}, error: {:?}",
-                            invalid_transaction_proof, e
+                            target: "runtime::domains",
+                            "Bad invalid transaction proof: {invalid_transaction_proof:?}, error: {e:?}",
                         );
                         return InvalidTransactionCode::TrasactionProof.into();
                     }
@@ -833,13 +813,10 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted transaction bundle");
+                log::info!(target: "runtime::domains", "Submitted bundle");
             }
             Err(()) => {
-                log::error!(
-                    target: "runtime::subspace::executor",
-                    "Error submitting transaction bundle",
-                );
+                log::error!(target: "runtime::domains", "Error submitting bundle");
             }
         }
     }
@@ -850,10 +827,10 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted fraud proof");
+                log::info!(target: "runtime::domains", "Submitted fraud proof");
             }
             Err(()) => {
-                log::error!(target: "runtime::subspace::executor", "Error submitting fraud proof");
+                log::error!(target: "runtime::domains", "Error submitting fraud proof");
             }
         }
     }
@@ -868,16 +845,10 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(
-                    target: "runtime::subspace::executor",
-                    "Submitted bundle equivocation proof"
-                );
+                log::info!(target: "runtime::domains", "Submitted bundle equivocation proof");
             }
             Err(()) => {
-                log::error!(
-                    target: "runtime::subspace::executor",
-                    "Error submitting bundle equivocation proof",
-                );
+                log::error!(target: "runtime::domains", "Error submitting bundle equivocation proof");
             }
         }
     }
@@ -892,13 +863,10 @@ where
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::subspace::executor", "Submitted invalid transaction proof")
+                log::info!(target: "runtime::domains", "Submitted invalid transaction proof")
             }
             Err(()) => {
-                log::error!(
-                    target: "runtime::subspace::executor",
-                    "Error submitting invalid transaction proof",
-                );
+                log::error!(target: "runtime::domains", "Error submitting invalid transaction proof");
             }
         }
     }

@@ -2047,7 +2047,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
- "system-domain-runtime",
  "system-runtime-primitives",
 ]
 

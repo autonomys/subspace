@@ -2,7 +2,7 @@ use crate::domain_block_processor::DomainBlockProcessor;
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
-use sc_client_api::{AuxStore, BlockBackend};
+use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -71,10 +71,7 @@ where
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,

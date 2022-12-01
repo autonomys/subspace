@@ -39,7 +39,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Development",
         // ID
-        "execution_dev",
+        "system_domain_dev",
         ChainType::Development,
         move || {
             testnet_genesis(
@@ -85,7 +85,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Local Testnet",
         // ID
-        "execution_local_testnet",
+        "system_domain_local_testnet",
         ChainType::Local,
         move || {
             testnet_genesis(
