@@ -606,11 +606,16 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
         .collect()
 }
 
-fn extract_pre_validation_object(extrinsic: UncheckedExtrinsic) -> PreValidationObject {
+fn extract_pre_validation_object(
+    extrinsic: UncheckedExtrinsic,
+) -> PreValidationObject<Block, domain_runtime_primitives::Hash> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(fraud_proof)
         }
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+            signed_opaque_bundle,
+        }) => PreValidationObject::Receipts(signed_opaque_bundle.bundle.receipts),
         _ => PreValidationObject::Null,
     }
 }
@@ -817,8 +822,8 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block> for Runtime {
-        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic) -> sp_domains::transaction::PreValidationObject {
+    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic) -> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
             extract_pre_validation_object(extrinsic)
         }
     }

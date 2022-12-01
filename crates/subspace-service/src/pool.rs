@@ -20,6 +20,7 @@ use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
 use sp_domains::transaction::{
     InvalidTransactionCode, PreValidationObject, PreValidationObjectApi,
 };
+use sp_domains::ExecutionReceipt;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
 use sp_runtime::transaction_validity::{
@@ -70,7 +71,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + PreValidationObjectApi<Block>,
+    Client::Api: TaggedTransactionQueue<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     fn new(
@@ -99,6 +101,32 @@ where
     ) -> TxPoolResult<TransactionValidity> {
         self.inner.validate_transaction_blocking(at, source, uxt)
     }
+
+    fn validate_receipts_at(
+        &self,
+        receipts: Vec<
+            ExecutionReceipt<NumberFor<Block>, Block::Hash, domain_runtime_primitives::Hash>,
+        >,
+        at: BlockId<Block>,
+    ) -> sp_blockchain::Result<()> {
+        let block_number =
+            self.client
+                .block_number_from_id(&at)?
+                .ok_or(sp_blockchain::Error::Backend(format!(
+                    "Can not convert BlockId {at:?} to block number"
+                )))?;
+
+        for receipt in receipts {
+            if receipt.primary_number > block_number {
+                return Err(sp_blockchain::Error::UnknownBlock(format!(
+                    "Receipt points to a future block {:?}, current block number: {block_number:?}",
+                    receipt.primary_number
+                )));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<Block, Client, Verifier> ChainApi for FullChainApiWrapper<Block, Client, Verifier>
@@ -112,7 +140,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + PreValidationObjectApi<Block>,
+    Client::Api: TaggedTransactionQueue<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -139,6 +168,13 @@ where
                 match pre_validation_object {
                     PreValidationObject::Null => {
                         // No pre-validation is required.
+                    }
+                    PreValidationObject::Receipts(receipts) => {
+                        if let Err(err) = self.validate_receipts_at(receipts, *at) {
+                            tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
+                            return async move { Err(TxPoolError::ImmediatelyDropped.into()) }
+                                .boxed();
+                        }
                     }
                     PreValidationObject::FraudProof(fraud_proof) => {
                         let inner = self.inner.clone();
@@ -289,7 +325,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + PreValidationObjectApi<Block>,
+    Client::Api: TaggedTransactionQueue<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     type Block = Block;
@@ -438,7 +475,8 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + PreValidationObjectApi<Block>,
+    Client::Api: TaggedTransactionQueue<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();

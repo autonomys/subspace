@@ -181,7 +181,7 @@ where
         + TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
@@ -310,7 +310,7 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
-        + PreValidationObjectApi<Block>,
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -367,7 +367,7 @@ where
         + TransactionPaymentApi<Block, Balance>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

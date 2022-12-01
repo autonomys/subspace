@@ -1,9 +1,12 @@
 #[cfg(not(feature = "std"))]
 pub use self::runtime_decl_for_PreValidationObjectApi::PreValidationObjectApi;
 use crate::fraud_proof::FraudProof;
+use crate::ExecutionReceipt;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
+use sp_std::vec::Vec;
 
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
@@ -30,17 +33,19 @@ impl From<InvalidTransactionCode> for TransactionValidity {
 /// Object for performing the pre-validation in the transaction pool
 /// before calling into the regular `validate_transaction` runtime api.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum PreValidationObject {
+pub enum PreValidationObject<Block, DomainHash>
+where
+    Block: BlockT,
+{
     Null,
     FraudProof(FraudProof),
-    // TODO: extract receipts from submit_bundle extrinsic.
-    // Receipts(Vec<ExecutionReceipt>)
+    Receipts(Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>),
 }
 
 sp_api::decl_runtime_apis! {
     /// API for extracting the pre-validation objects in the primary chain transaction pool wrapper.
-    pub trait PreValidationObjectApi {
+    pub trait PreValidationObjectApi<DomainHash: Encode + Decode> {
         /// Extract the pre-validation object from the given extrinsic.
-        fn extract_pre_validation_object(extrinsics: Block::Extrinsic) -> PreValidationObject;
+        fn extract_pre_validation_object(extrinsics: Block::Extrinsic) -> PreValidationObject<Block, DomainHash>;
     }
 }
