@@ -1638,6 +1638,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cross-domain-message-gossip"
+version = "0.1.0"
+dependencies = [
+ "domain-client-consensus-relay-chain",
+ "futures 0.3.25",
+ "sc-transaction-pool-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "crossbeam"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
