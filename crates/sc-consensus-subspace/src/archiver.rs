@@ -19,7 +19,7 @@ use crate::{
     SubspaceNotificationSender,
 };
 use codec::Encode;
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use log::{debug, error, info, warn};
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
@@ -419,6 +419,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                 subspace_link.imported_block_notification_stream.subscribe();
             let archived_segment_notification_sender =
                 subspace_link.archived_segment_notification_sender.clone();
+            let root_blocks = Arc::clone(&subspace_link.root_blocks);
 
             async move {
                 // Farmers may have not received all previous segments, send them now.
@@ -432,12 +433,12 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
 
                 while let Some(ImportedBlockNotification {
                     block_number,
-                    mut root_block_sender,
-                    block_import_acknowledgement_sender,
+                    // Just to be very explicit that block import shouldn't continue until archiving
+                    // is over
+                    block_import_acknowledgement_sender: _block_import_acknowledgement_sender,
                     ..
                 }) = imported_block_notification_stream.next().await
                 {
-                    drop(block_import_acknowledgement_sender);
                     let block_number_to_archive =
                         match block_number.checked_sub(&confirmation_depth_k.into()) {
                             Some(block_number_to_archive) => block_number_to_archive,
@@ -500,6 +501,8 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                         block_number_to_archive,
                         encoded_block.len() as f32 / 1024.0
                     );
+
+                    let mut new_root_blocks = Vec::new();
                     for archived_segment in archiver.add_block(encoded_block, block_object_mappings)
                     {
                         let root_block = archived_segment.root_block;
@@ -510,7 +513,13 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                         )
                         .await;
 
-                        let _ = root_block_sender.send(root_block).await;
+                        new_root_blocks.push(root_block);
+                    }
+
+                    if !new_root_blocks.is_empty() {
+                        root_blocks
+                            .lock()
+                            .put(block_number + One::one(), new_root_blocks);
                     }
 
                     finalize_block(
