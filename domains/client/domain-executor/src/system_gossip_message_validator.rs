@@ -3,7 +3,7 @@ use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator
 use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
@@ -16,13 +16,12 @@ use sp_runtime::RuntimeAppPublic;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-/// The implementation of the Domain `Executor`.
+/// Gossip message validator for system domain.
 pub struct SystemGossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
 {
-    // TODO: no longer used in executor, revisit this with ParachainBlockImport together.
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
@@ -58,10 +57,7 @@ where
         + 'static,
     Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
@@ -132,10 +128,7 @@ where
         + 'static,
     Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,

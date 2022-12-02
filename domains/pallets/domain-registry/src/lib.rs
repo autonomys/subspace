@@ -604,13 +604,14 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::submit_core_bundle {
-                    signed_opaque_bundle
-                } => {
-                    Self::pre_dispatch_submit_core_bundle(signed_opaque_bundle).map_err(|e| {
-                        log::error!(target: "runtime::subspace::executor", "Invalid core bundle: {e:?}");
-                        TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
-                    })
-                }
+                    signed_opaque_bundle,
+                } => Self::pre_dispatch_submit_core_bundle(signed_opaque_bundle).map_err(|e| {
+                    log::error!(
+                        target: "runtime::domain-registry",
+                        "Bad core bundle: {signed_opaque_bundle:?}, error: {e:?}",
+                    );
+                    TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
+                }),
                 Call::submit_fraud_proof { .. } => Ok(()),
                 Call::submit_bundle_equivocation_proof { .. } => Ok(()),
                 Call::submit_invalid_transaction_proof { .. } => Ok(()),
@@ -623,9 +624,8 @@ mod pallet {
                 Call::submit_fraud_proof { fraud_proof } => {
                     if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid fraud proof: {:?}, error: {:?}",
-                            fraud_proof, e
+                            target: "runtime::domain-registry",
+                            "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
                         );
                         return InvalidTransactionCode::FraudProof.into();
                     }
@@ -640,9 +640,8 @@ mod pallet {
                         Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Invalid bundle equivocation proof: {:?}, error: {:?}",
-                            bundle_equivocation_proof, e
+                            target: "runtime::domain-registry",
+                            "Bad bundle equivocation proof: {bundle_equivocation_proof:?}, error: {e:?}",
                         );
                         return InvalidTransactionCode::BundleEquivicationProof.into();
                     }
@@ -659,9 +658,8 @@ mod pallet {
                         Self::validate_invalid_transaction_proof(invalid_transaction_proof)
                     {
                         log::error!(
-                            target: "runtime::subspace::executor",
-                            "Wrong InvalidTransactionProof: {:?}, error: {:?}",
-                            invalid_transaction_proof, e
+                            target: "runtime::domain-registry",
+                            "Bad invalid transaction proof: {invalid_transaction_proof:?}, error: {e:?}",
                         );
                         return InvalidTransactionCode::TrasactionProof.into();
                     }

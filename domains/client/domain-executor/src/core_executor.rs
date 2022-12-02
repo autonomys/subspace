@@ -6,7 +6,7 @@ use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -20,14 +20,13 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
-/// The implementation of the Domain `Executor`.
+/// Core domain executor.
 pub struct Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
 {
-    // TODO: no longer used in executor, revisit this with ParachainBlockImport together.
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
@@ -71,10 +70,7 @@ where
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<
-            Block,
-            StateBackend = sc_client_api::backend::StateBackendFor<Backend, Block>,
-        >,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: sc_consensus::BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
@@ -163,7 +159,7 @@ where
         );
 
         spawn_essential.spawn_essential_blocking(
-            "executor-worker",
+            "core-executor-worker",
             None,
             crate::core_domain_worker::start_worker(
                 domain_id,

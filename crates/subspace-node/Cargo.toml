@@ -71,7 +71,6 @@ do-not-enforce-cost-of-storage = [
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-benchmarking-cli/runtime-benchmarks",
-	"domain-service/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 	"system-domain-runtime/runtime-benchmarks",
 ]
