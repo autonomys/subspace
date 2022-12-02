@@ -181,82 +181,6 @@ where
     })
 }
 
-// TODO: remove on deciding on the correct algorithm
-#[allow(dead_code)]
-async fn plot_pieces_sequentially<PR: PieceReceiver>(
-    in_memory_sector_scalars: &mut Vec<Scalar>,
-    sector_index: u64,
-    piece_receiver: &PR,
-    piece_indexes: Vec<PieceIndex>,
-    cancelled: &AtomicBool,
-) -> Result<(), PlottingError> {
-    for piece_index in piece_indexes.iter().copied() {
-        check_cancellation(cancelled, sector_index)?;
-
-        let piece = piece_receiver
-            .get_piece(piece_index)
-            .await
-            .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
-            .ok_or(PlottingError::PieceNotFound { piece_index })?;
-
-        in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
-            Scalar::from(
-                <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
-                    .expect("Chunked into scalar safe bytes above; qed"),
-            )
-        }));
-    }
-
-    Ok(())
-}
-
-// TODO: remove on deciding on the correct algorithm
-#[allow(dead_code)]
-async fn plot_pieces_in_batches<PR: PieceReceiver>(
-    in_memory_sector_scalars: &mut Vec<Scalar>,
-    sector_index: u64,
-    piece_receiver: &PR,
-    piece_indexes: Vec<PieceIndex>,
-    cancelled: &AtomicBool,
-) -> Result<(), PlottingError> {
-    const PIECE_RECEIVER_BATCH_SIZE: usize = 30;
-    let pieces_receiving_chunks =
-        piece_indexes
-            .chunks(PIECE_RECEIVER_BATCH_SIZE)
-            .map(|piece_index_chunk| {
-                piece_index_chunk
-                    .iter()
-                    .map(|piece_index| Box::pin(piece_receiver.get_piece(*piece_index)))
-                    .collect::<FuturesOrdered<_>>()
-            });
-
-    for mut piece_receiving_chunk in pieces_receiving_chunks {
-        let mut piece_counter = 0usize;
-
-        while let Some(piece_result) = piece_receiving_chunk.next().await {
-            check_cancellation(cancelled, sector_index)?;
-
-            // should match piece indexes because of the ordered future collection
-            let piece_index = piece_indexes[piece_counter];
-
-            let piece = piece_result
-                .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
-                .ok_or(PlottingError::PieceNotFound { piece_index })?;
-
-            in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
-                Scalar::from(
-                    <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
-                        .expect("Chunked into scalar safe bytes above; qed"),
-                )
-            }));
-
-            piece_counter += 1;
-        }
-    }
-
-    Ok(())
-}
-
 async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     in_memory_sector_scalars: &mut Vec<Scalar>,
     sector_index: u64,
@@ -277,7 +201,7 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
         .iter()
         .map(|piece_index| {
             Box::pin(async {
-                let permit = semaphore
+                let _permit = semaphore
                     .acquire()
                     .await
                     .expect("Should be valid on non-closed semaphore");
@@ -285,7 +209,6 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
 
                 let piece = piece_receiver.get_piece(*piece_index).await;
 
-                drop(permit);
                 piece
             })
         })
