@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -56,18 +57,24 @@ impl PieceSectorPublisher {
 
                 let result = self.dsn_node.put_value(key, set.encode()).await;
 
-                if let Err(error) = result {
-                    error!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");
+                match result {
+                    Ok(mut stream) => {
+                        if stream.next().await.is_some() {
+                            trace!(%piece_index, ?key, "Piece publishing for a sector succeeded");
+                            break 'attempts;
+                        } else {
+                            trace!(%piece_index, ?key, "Piece publishing for a sector failed");
+                        }
+                    }
+                    Err(error) => {
+                        error!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");
 
-                    // pause before retrying
-                    sleep(Duration::from_secs(
-                        PUBLISH_PIECE_BY_SECTOR_WAITING_DURATION_IN_SECS,
-                    ))
-                    .await;
-                } else {
-                    trace!(%piece_index, ?key, "Piece publishing for a sector succeeded");
-
-                    break 'attempts;
+                        // pause before retrying
+                        sleep(Duration::from_secs(
+                            PUBLISH_PIECE_BY_SECTOR_WAITING_DURATION_IN_SECS,
+                        ))
+                        .await;
+                    }
                 }
             }
         }

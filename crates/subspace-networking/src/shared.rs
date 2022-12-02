@@ -24,12 +24,12 @@ pub(crate) struct CreatedSubscription {
 pub(crate) enum Command {
     GetValue {
         key: Multihash,
-        result_sender: oneshot::Sender<Option<Vec<u8>>>,
+        result_sender: mpsc::UnboundedSender<Vec<u8>>,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
-        result_sender: oneshot::Sender<bool>,
+        result_sender: mpsc::UnboundedSender<()>,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -46,7 +46,7 @@ pub(crate) enum Command {
     },
     GetClosestPeers {
         key: Multihash,
-        result_sender: oneshot::Sender<Vec<PeerId>>,
+        result_sender: mpsc::UnboundedSender<PeerId>,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -59,7 +59,7 @@ pub(crate) enum Command {
     },
     StartAnnouncing {
         key: Multihash,
-        result_sender: oneshot::Sender<bool>,
+        result_sender: mpsc::UnboundedSender<()>,
     },
     StopAnnouncing {
         key: Multihash,
@@ -67,7 +67,7 @@ pub(crate) enum Command {
     },
     GetProviders {
         key: Multihash,
-        result_sender: oneshot::Sender<Option<Vec<PeerId>>>,
+        result_sender: mpsc::UnboundedSender<PeerId>,
     },
 }
 
