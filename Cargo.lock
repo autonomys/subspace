@@ -1641,9 +1641,11 @@ dependencies = [
 name = "cross-domain-message-gossip"
 version = "0.1.0"
 dependencies = [
- "domain-client-consensus-relay-chain",
  "futures 0.3.25",
+ "parity-scale-codec",
+ "sc-network-gossip",
  "sc-transaction-pool-api",
+ "sc-utils",
  "sp-blockchain",
  "sp-core",
  "sp-domains",
