@@ -379,15 +379,10 @@ mod pallet {
                     Self::apply_new_best_receipt(domain_id, receipt);
                     best_number += One::one();
                 } else {
-                    /*
                     // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
                     //
                     // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                    return Err(Error::<T>::Bundle(BundleError::Receipt(
-                        ExecutionReceiptError::MissingParent,
-                    ))
-                    .into());
-                    */
+                    return Err(Error::<T>::MissingParentReceipt.into());
                 }
             }
 
@@ -546,6 +541,9 @@ mod pallet {
 
         /// Not a core domain bundle.
         NotCoreDomainBundle,
+
+        /// A missing core domain parent receipt.
+        MissingParentReceipt,
     }
 
     #[pallet::event]
@@ -767,6 +765,20 @@ impl<T: Config> Pallet<T> {
         } = &signed_opaque_bundle.bundle_solution else {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
+
+        let mut best_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        for receipt in &signed_opaque_bundle.bundle.receipts {
+            // Non-best receipt
+            if receipt.primary_number <= best_number {
+                continue;
+            // New nest receipt.
+            } else if receipt.primary_number == best_number + One::one() {
+                best_number += One::one();
+            // Missing receipt.
+            } else {
+                return Err(Error::<T>::MissingParentReceipt);
+            }
+        }
 
         // The validity of vrf proof itself has been verified on the primary chain, thus only the
         // proof_of_election is necessary to be checked here.
