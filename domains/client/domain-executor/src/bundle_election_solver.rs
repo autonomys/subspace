@@ -151,9 +151,6 @@ where
                         storage_proof,
                         block_number: to_number_primitive(best_number),
                         block_hash: best_hash,
-                        core_block_number: None,
-                        core_block_hash: None,
-                        core_state_root: None,
                     };
 
                     return Ok(Some(proof_of_election));

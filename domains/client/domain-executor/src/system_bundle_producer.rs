@@ -8,7 +8,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, ExecutorApi, SignedOpaqueBundle};
+use sp_domains::{BundleSolution, DomainId, ExecutorApi, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
@@ -164,7 +164,7 @@ where
             Ok(Some(sign_new_bundle::<Block, PBlock>(
                 bundle,
                 self.keystore,
-                proof_of_election,
+                BundleSolution::System(proof_of_election),
             )?))
         } else {
             Ok(None)
