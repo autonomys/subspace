@@ -1,5 +1,5 @@
 use codec::Decode;
-use sp_domains::{Bundle, ExecutorPublicKey, ExecutorSignature, ProofOfElection, SignedBundle};
+use sp_domains::{Bundle, BundleSolution, ExecutorPublicKey, ExecutorSignature, SignedBundle};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::RuntimeAppPublic;
@@ -20,19 +20,23 @@ type SignedOpaqueBundle<Block, PBlock> = sp_domains::SignedOpaqueBundle<
 pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
     bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     keystore: SyncCryptoStorePtr,
-    proof_of_election: ProofOfElection<Block::Hash>,
+    bundle_solution: BundleSolution<Block::Hash>,
 ) -> Result<SignedOpaqueBundle<Block, PBlock>, sp_blockchain::Error> {
     let to_sign = bundle.hash();
+    let bundle_author = bundle_solution
+        .proof_of_election()
+        .executor_public_key
+        .clone();
     match SyncCryptoStore::sign_with(
         &*keystore,
         ExecutorPublicKey::ID,
-        &proof_of_election.executor_public_key.clone().into(),
+        &bundle_author.into(),
         to_sign.as_ref(),
     ) {
         Ok(Some(signature)) => {
             let signed_bundle = SignedBundle {
                 bundle,
-                proof_of_election,
+                bundle_solution,
                 signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to decode the signature of bundle: {err}"
