@@ -252,6 +252,7 @@ where
         sector_expiration: 100,
     };
 
+    let piece_receiver_batch_size = 20usize;
     plot_sector(
         &public_key,
         sector_index,
@@ -262,6 +263,7 @@ where
         sector_codec,
         Cursor::new(sector.as_mut_slice()),
         Cursor::new(sector_metadata.as_mut_slice()),
+        piece_receiver_batch_size,
     )
     .await
     .expect("Plotting one sector in memory must not fail");

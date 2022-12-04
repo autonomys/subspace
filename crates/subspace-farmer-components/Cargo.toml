@@ -18,6 +18,7 @@ bench = false
 [dependencies]
 async-trait = "0.1.58"
 fs2 = "0.4.3"
+futures = "0.3.25"
 libc = "0.2.131"
 parity-scale-codec = "3.2.1"
 rand = "0.8.5"
@@ -28,6 +29,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.32"
+tokio = { version = "1.21.2", features = ["sync"] }
 tracing = "0.1.37"
 
 [dev-dependencies]

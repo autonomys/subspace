@@ -1,9 +1,12 @@
 use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
+use futures::stream::FuturesOrdered;
+use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
@@ -11,7 +14,8 @@ use subspace_core_primitives::{
     Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
-use tracing::debug;
+use tokio::sync::Semaphore;
+use tracing::{debug, info};
 
 #[async_trait]
 pub trait PieceReceiver {
@@ -63,6 +67,9 @@ pub enum PlottingError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Incorrect batch size for piece receiver.
+    #[error("Incorrect batch size for piece receiver.")]
+    IncorrectPieceReceivingBatchSize,
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
@@ -81,6 +88,7 @@ pub async fn plot_sector<PR, S, SM>(
     sector_codec: &SectorCodec,
     mut sector_output: S,
     mut sector_metadata_output: SM,
+    piece_receiver_batch_size: usize,
 ) -> Result<PlottedSector, PlottingError>
 where
     PR: PieceReceiver,
@@ -109,28 +117,16 @@ where
 
     let mut in_memory_sector_scalars =
         Vec::with_capacity(PLOT_SECTOR_SIZE as usize / Scalar::FULL_BYTES);
-    for piece_index in piece_indexes.iter().copied() {
-        if cancelled.load(Ordering::Acquire) {
-            debug!(
-                %sector_index,
-                "Plotting was cancelled, interrupting plotting"
-            );
-            return Err(PlottingError::Cancelled);
-        }
 
-        let piece = piece_receiver
-            .get_piece(piece_index)
-            .await
-            .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
-            .ok_or(PlottingError::PieceNotFound { piece_index })?;
-
-        in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
-            Scalar::from(
-                <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
-                    .expect("Chunked into scalar safe bytes above; qed"),
-            )
-        }));
-    }
+    plot_pieces_in_batches_non_blocking(
+        &mut in_memory_sector_scalars,
+        sector_index,
+        piece_receiver,
+        &piece_indexes,
+        cancelled,
+        piece_receiver_batch_size,
+    )
+    .await?;
 
     sector_codec
         .encode(&mut in_memory_sector_scalars)
@@ -183,4 +179,70 @@ where
         sector_metadata,
         piece_indexes,
     })
+}
+
+async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
+    in_memory_sector_scalars: &mut Vec<Scalar>,
+    sector_index: u64,
+    piece_receiver: &PR,
+    piece_indexes: &[PieceIndex],
+    cancelled: &AtomicBool,
+    piece_receiver_batch_size: usize,
+) -> Result<(), PlottingError> {
+    const MAX_PIECE_RECEIVER_BATCH_SIZE: usize = 60;
+
+    if piece_receiver_batch_size == 0 || piece_receiver_batch_size > MAX_PIECE_RECEIVER_BATCH_SIZE {
+        return Err(PlottingError::IncorrectPieceReceivingBatchSize);
+    }
+
+    let semaphore = Arc::new(Semaphore::new(piece_receiver_batch_size));
+
+    let mut pieces_receiving_futures = piece_indexes
+        .iter()
+        .map(|piece_index| {
+            Box::pin(async {
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("Should be valid on non-closed semaphore");
+
+                let piece_result = match check_cancellation(cancelled, sector_index) {
+                    Ok(()) => piece_receiver.get_piece(*piece_index).await,
+                    Err(error) => Err(error.into()),
+                };
+                (*piece_index, piece_result)
+            })
+        })
+        .collect::<FuturesOrdered<_>>();
+
+    while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
+        check_cancellation(cancelled, sector_index)?;
+
+        let piece = piece_result
+            .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
+            .ok_or(PlottingError::PieceNotFound { piece_index })?;
+
+        in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
+            Scalar::from(
+                <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
+                    .expect("Chunked into scalar safe bytes above; qed"),
+            )
+        }));
+    }
+
+    info!(%sector_index, "Plotting was successful.");
+
+    Ok(())
+}
+
+fn check_cancellation(cancelled: &AtomicBool, sector_index: u64) -> Result<(), PlottingError> {
+    if cancelled.load(Ordering::Acquire) {
+        debug!(
+            %sector_index,
+            "Plotting was cancelled, interrupting plotting"
+        );
+        return Err(PlottingError::Cancelled);
+    }
+
+    Ok(())
 }
