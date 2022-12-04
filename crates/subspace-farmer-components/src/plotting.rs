@@ -122,7 +122,7 @@ where
         &mut in_memory_sector_scalars,
         sector_index,
         piece_receiver,
-        piece_indexes.clone(),
+        &piece_indexes,
         cancelled,
         piece_receiver_batch_size,
     )
@@ -185,7 +185,7 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     in_memory_sector_scalars: &mut Vec<Scalar>,
     sector_index: u64,
     piece_receiver: &PR,
-    piece_indexes: Vec<PieceIndex>,
+    piece_indexes: &[PieceIndex],
     cancelled: &AtomicBool,
     piece_receiver_batch_size: usize,
 ) -> Result<(), PlottingError> {
@@ -205,21 +205,18 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
                     .acquire()
                     .await
                     .expect("Should be valid on non-closed semaphore");
-                check_cancellation(cancelled, sector_index)?;
 
-                let piece = piece_receiver.get_piece(*piece_index).await;
-
-                piece
+                let piece_result = match check_cancellation(cancelled, sector_index) {
+                    Ok(()) => piece_receiver.get_piece(*piece_index).await,
+                    Err(error) => Err(error.into()),
+                };
+                (*piece_index, piece_result)
             })
         })
         .collect::<FuturesOrdered<_>>();
 
-    let mut piece_counter = 0usize;
-    while let Some(piece_result) = pieces_receiving_futures.next().await {
+    while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
         check_cancellation(cancelled, sector_index)?;
-
-        // should match piece indexes because of the ordered future collection
-        let piece_index = piece_indexes[piece_counter];
 
         let piece = piece_result
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
@@ -231,8 +228,6 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
                     .expect("Chunked into scalar safe bytes above; qed"),
             )
         }));
-
-        piece_counter += 1;
     }
 
     info!(%sector_index, "Plotting was successful.");
