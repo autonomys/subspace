@@ -62,7 +62,8 @@ mod pallet {
     use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-    use sp_domains::{DomainId, ExecutionReceipt, InvalidTransactionCode, SignedOpaqueBundle};
+    use sp_domains::transaction::InvalidTransactionCode;
+    use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
     use sp_executor_registry::ExecutorRegistry;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, One};
     use sp_runtime::{FixedPointOperand, Percent};

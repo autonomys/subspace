@@ -4,9 +4,10 @@ use frame_support::{assert_noop, assert_ok, parameter_types};
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
     Bundle, BundleHeader, BundleSolution, DomainId, ExecutionReceipt, ExecutorPair,
-    InvalidTransactionCode, ProofOfElection, SignedOpaqueBundle,
+    ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};

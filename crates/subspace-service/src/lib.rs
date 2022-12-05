@@ -56,6 +56,7 @@ use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
+use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -175,12 +176,13 @@ where
     RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
         + Metadata<Block>
         + BlockBuilder<Block>
-        + ExecutorApi<Block, DomainHash>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
+        + TaggedTransactionQueue<Block>
+        + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + TaggedTransactionQueue<Block>,
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
+        + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -306,7 +308,9 @@ where
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + ExecutorApi<Block, DomainHash>,
+    Client::Api: TaggedTransactionQueue<Block>
+        + ExecutorApi<Block, DomainHash>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -355,15 +359,16 @@ where
         + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
         + Metadata<Block>
+        + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>
-        + ExecutorApi<Block, DomainHash>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + SubspaceApi<Block, FarmerPublicKey>
-        + ObjectsApi<Block>
         + TaggedTransactionQueue<Block>
-        + AccountNonceApi<Block, AccountId, Nonce>
-        + TransactionPaymentApi<Block, Balance>,
+        + TransactionPaymentApi<Block, Balance>
+        + ExecutorApi<Block, DomainHash>
+        + ObjectsApi<Block>
+        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
+        + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let PartialComponents {

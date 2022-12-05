@@ -19,6 +19,7 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+mod domains;
 mod feed_processor;
 mod fees;
 mod object_mapping;
@@ -51,8 +52,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_feeds::feed_processor::FeedProcessor;
 pub use pallet_subspace::AllowAuthoringBy;
-use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
-use sp_consensus_subspace::digests::CompatibleDigestItem;
+use sp_api::{impl_runtime_apis, BlockT};
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, SignedVote,
     SolutionRanges, Vote,
@@ -61,7 +61,7 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::OpaqueMetadata;
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor, Zero};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
 use sp_std::borrow::Cow;
@@ -71,14 +71,13 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
+    Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
     MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
-use subspace_verification::derive_randomness;
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
@@ -526,118 +525,6 @@ fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
     }
 }
 
-fn extract_system_bundles(
-    extrinsics: Vec<UncheckedExtrinsic>,
-) -> (
-    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-    sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
-) {
-    let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
-        .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) = uxt.function
-            {
-                if signed_opaque_bundle.domain_id().is_system() {
-                    Some((Some(signed_opaque_bundle.bundle), None))
-                } else {
-                    Some((None, Some(signed_opaque_bundle)))
-                }
-            } else {
-                None
-            }
-        })
-        .unzip();
-    (
-        system_bundles.into_iter().flatten().collect(),
-        core_bundles.into_iter().flatten().collect(),
-    )
-}
-
-fn extract_core_bundles(
-    extrinsics: Vec<UncheckedExtrinsic>,
-    domain_id: DomainId,
-) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id => {
-                Some(signed_opaque_bundle.bundle)
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-fn extract_receipts(
-    extrinsics: Vec<UncheckedExtrinsic>,
-    domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id => {
-                Some(signed_opaque_bundle.bundle.receipts)
-            }
-            _ => None,
-        })
-        .flatten()
-        .collect()
-}
-
-fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> {
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
-                uxt.function
-            {
-                Some(fraud_proof)
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
-    if header.number().is_zero() {
-        Randomness::default()
-    } else {
-        let mut pre_digest: Option<_> = None;
-        for log in header.digest().logs() {
-            match (
-                log.as_subspace_pre_digest::<FarmerPublicKey>(),
-                pre_digest.is_some(),
-            ) {
-                (Some(_), true) => panic!("Multiple Subspace pre-runtime digests in a header"),
-                (None, _) => {}
-                (s, false) => pre_digest = s,
-            }
-        }
-
-        let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
-
-        let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(
-            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk.to_bytes(),
-            &pre_digest.solution.chunk_signature,
-        )
-        .expect("Tag signature is verified by the client and must always be valid; qed");
-        let mut data = Vec::with_capacity(seed.len() + randomness.len());
-        data.extend_from_slice(seed);
-        data.extend_from_slice(&randomness);
-
-        BlakeTwo256::hash_of(&data).into()
-    }
-}
-
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
@@ -807,6 +694,12 @@ impl_runtime_apis! {
         }
     }
 
+    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic) -> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+            crate::domains::extract_pre_validation_object(extrinsic)
+        }
+    }
+
     impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>) {
             Domains::submit_bundle_unsigned(opaque_bundle)
@@ -834,29 +727,29 @@ impl_runtime_apis! {
             sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
             sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
         ) {
-            extract_system_bundles(extrinsics)
+            crate::domains::extract_system_bundles(extrinsics)
         }
 
         fn extract_core_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
             domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
-            extract_core_bundles(extrinsics, domain_id)
+            crate::domains::extract_core_bundles(extrinsics, domain_id)
         }
 
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
             domain_id: DomainId,
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
-            extract_receipts(extrinsics, domain_id)
+            crate::domains::extract_receipts(extrinsics, domain_id)
         }
 
         fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
-            extract_fraud_proofs(extrinsics)
+            crate::domains::extract_fraud_proofs(extrinsics)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
-            extrinsics_shuffling_seed::<Block>(header)
+            crate::domains::extrinsics_shuffling_seed::<Block>(header)
         }
 
         fn execution_wasm_bundle() -> Cow<'static, [u8]> {

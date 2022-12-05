@@ -19,6 +19,7 @@
 
 pub mod bundle_election;
 pub mod fraud_proof;
+pub mod transaction;
 
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use parity_scale_codec::{Decode, Encode};
@@ -27,7 +28,6 @@ use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor};
-use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
@@ -157,28 +157,6 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
     /// Minimum executor stake value to be an operator on this domain.
     pub min_operator_stake: Balance,
-}
-
-/// Custom invalid validity code for the extrinsics in pallet-executor.
-#[repr(u8)]
-pub enum InvalidTransactionCode {
-    BundleEquivicationProof = 101,
-    TrasactionProof = 102,
-    ExecutionReceipt = 103,
-    Bundle = 104,
-    FraudProof = 105,
-}
-
-impl From<InvalidTransactionCode> for InvalidTransaction {
-    fn from(invalid_code: InvalidTransactionCode) -> Self {
-        InvalidTransaction::Custom(invalid_code as u8)
-    }
-}
-
-impl From<InvalidTransactionCode> for TransactionValidity {
-    fn from(invalid_code: InvalidTransactionCode) -> Self {
-        InvalidTransaction::Custom(invalid_code as u8).into()
-    }
 }
 
 /// Header of transaction bundle.

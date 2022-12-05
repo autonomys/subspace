@@ -51,6 +51,7 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
@@ -892,6 +893,20 @@ fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> 
         .collect()
 }
 
+fn extract_pre_validation_object(
+    extrinsic: UncheckedExtrinsic,
+) -> PreValidationObject<Block, domain_runtime_primitives::Hash> {
+    match extrinsic.function {
+        RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
+            PreValidationObject::FraudProof(fraud_proof)
+        }
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+            signed_opaque_bundle,
+        }) => PreValidationObject::Receipts(signed_opaque_bundle.bundle.receipts),
+        _ => PreValidationObject::Null,
+    }
+}
+
 fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
     if header.number().is_zero() {
         Randomness::default()
@@ -1081,6 +1096,12 @@ impl_runtime_apis! {
 
         fn chain_constants() -> ChainConstants {
             Subspace::chain_constants()
+        }
+    }
+
+    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic)-> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+            extract_pre_validation_object(extrinsic)
         }
     }
 
