@@ -16,7 +16,7 @@
 
 //! Subspace node implementation.
 
-use cross_domain_message_gossip::gossip_worker::GossipWorker;
+use cross_domain_message_gossip::GossipWorker;
 use domain_service::Configuration;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
@@ -27,6 +27,7 @@ use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
 use std::any::TypeId;
 use std::collections::BTreeMap;
@@ -514,6 +515,9 @@ fn main() -> Result<(), Error> {
                             })
                     };
 
+                    let (gossip_msg_sink, gossip_msg_stream) =
+                        sc_utils::mpsc::tracing_unbounded("Cross domain gossip messages");
+
                     let secondary_chain_node = domain_service::new_full::<
                         _,
                         _,
@@ -530,16 +534,13 @@ fn main() -> Result<(), Error> {
                         imported_block_notification_stream(),
                         new_slot_notification_stream(),
                         block_import_throttling_buffer_size,
+                        gossip_msg_sink.clone(),
                     )
                     .await?;
 
-                    let mut cross_domain_message_sink = BTreeMap::new();
-                    cross_domain_message_sink
+                    let mut domain_tx_pool_sinks = BTreeMap::new();
+                    domain_tx_pool_sinks
                         .insert(DomainId::SYSTEM, secondary_chain_node.tx_pool_sink);
-
-                    primary_chain_node
-                        .task_manager
-                        .add_child(secondary_chain_node.task_manager);
 
                     if let Some(mut core_domain_cli) = maybe_core_domain_cli {
                         let span = sc_tracing::tracing::info_span!(
@@ -592,6 +593,7 @@ fn main() -> Result<(), Error> {
                                     imported_block_notification_stream(),
                                     new_slot_notification_stream(),
                                     block_import_throttling_buffer_size,
+                                    gossip_msg_sink,
                                 )
                                 .await?
                             }
@@ -604,7 +606,7 @@ fn main() -> Result<(), Error> {
                             }
                         };
 
-                        cross_domain_message_sink
+                        domain_tx_pool_sinks
                             .insert(core_domain_cli.domain_id, core_domain_node.tx_pool_sink);
                         primary_chain_node
                             .task_manager
@@ -613,10 +615,23 @@ fn main() -> Result<(), Error> {
                         core_domain_node.network_starter.start_network();
                     }
 
-                    let _cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
+                    let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
                         secondary_chain_node.network.clone(),
-                        cross_domain_message_sink,
+                        domain_tx_pool_sinks,
                     );
+
+                    secondary_chain_node
+                        .task_manager
+                        .spawn_essential_handle()
+                        .spawn_essential_blocking(
+                            "cross-domain-gossip-message-worker",
+                            None,
+                            Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
+                        );
+
+                    primary_chain_node
+                        .task_manager
+                        .add_child(secondary_chain_node.task_manager);
 
                     secondary_chain_node.network_starter.start_network();
                 }

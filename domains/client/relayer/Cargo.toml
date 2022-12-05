@@ -12,6 +12,7 @@ include = [
 ]
 
 [dependencies]
+cross-domain-message-gossip = { path = "../../client/cross-domain-message-gossip" }
 domain-runtime-primitives = { path = "../../primitives/runtime" }
 futures = "0.3.25"
 parity-scale-codec = { version = "3.2.1", features = ["derive"] }

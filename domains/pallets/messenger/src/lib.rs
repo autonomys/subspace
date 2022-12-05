@@ -31,13 +31,12 @@ mod verification;
 
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
-use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::DomainId;
 use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce};
-use sp_runtime::traits::Hash;
+use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
 /// State of a channel.
@@ -131,7 +130,7 @@ mod pallet {
 
     /// Pallet messenger used to communicate between domains and other blockchains.
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -222,7 +221,7 @@ mod pallet {
 
     /// `pallet-messenger` events
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Emits when a channel between two domains in initiated.
         ChannelInitiated {
@@ -308,6 +307,7 @@ mod pallet {
     }
 
     type Tag = (DomainId, ChannelId, Nonce);
+
     fn unsigned_validity<T: Config>(prefix: &'static str, provides: Tag) -> TransactionValidity {
         ValidTransaction::with_tag_prefix(prefix)
             .priority(TransactionPriority::MAX)
@@ -827,36 +827,18 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    pub fn submit_outbox_message_unsigned(msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>) {
+    pub fn outbox_message_unsigned(
+        msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+    ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::messenger", "Submitted outbox message");
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Error submitting outbox message",
-                );
-            }
-        }
+        T::Extrinsic::new(call.into(), None)
     }
 
-    pub fn submit_inbox_response_message_unsigned(
+    pub fn inbox_response_message_unsigned(
         msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
-    ) {
+    ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::messenger", "Submitted inbox response message");
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Error submitting inbox response message",
-                );
-            }
-        }
+        T::Extrinsic::new(call.into(), None)
     }
 
     /// Returns true if the outbox message has not received the response yet.

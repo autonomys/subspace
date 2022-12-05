@@ -1,4 +1,4 @@
-use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use domain_runtime_primitives::RelayerId;
 use futures::{Stream, StreamExt};
 use sc_client_api::{AuxStore, ProofProvider};
@@ -18,6 +18,7 @@ pub async fn relay_system_domain_messages<Client, Block, DBI, SO>(
     system_domain_client: Arc<Client>,
     system_domain_block_import: DBI,
     system_domain_sync_oracle: SO,
+    gossip_message_sink: GossipMessageSink,
 ) where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
@@ -29,7 +30,14 @@ pub async fn relay_system_domain_messages<Client, Block, DBI, SO>(
         relayer_id,
         system_domain_client,
         system_domain_block_import,
-        Relayer::submit_messages_from_system_domain,
+        |relayer_id, client, block_id| {
+            Relayer::submit_messages_from_system_domain(
+                relayer_id,
+                client,
+                block_id,
+                &gossip_message_sink,
+            )
+        },
         system_domain_sync_oracle,
     )
     .await;
@@ -53,6 +61,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, DBI, SDSO, CDSO
     core_domain_block_import: DBI,
     system_domain_sync_oracle: SDSO,
     core_domain_sync_oracle: CDSO,
+    gossip_message_sink: GossipMessageSink,
 ) where
     Block: BlockT,
     SBlock: BlockT,
@@ -78,6 +87,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, DBI, SDSO, CDSO
                 client,
                 &system_domain_client,
                 block_id,
+                &gossip_message_sink,
             )
         },
         combined_sync_oracle,

@@ -37,10 +37,12 @@ use sc_service::{
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::codec::Encode;
 use sp_runtime::{generic, OpaqueExtrinsic};
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
@@ -50,8 +52,10 @@ use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
+use cross_domain_message_gossip::GossipWorker;
 use domain_service::Configuration;
 pub use domain_test_runtime as runtime;
+use sp_domains::DomainId;
 pub use sp_keyring::Sr25519Keyring as Keyring;
 
 /// The signature of the announce block fn.
@@ -147,6 +151,8 @@ async fn run_executor(
         })?
     };
 
+    let (gossip_msg_sink, gossip_msg_stream) =
+        sc_utils::mpsc::tracing_unbounded("Cross domain gossip messages");
     let secondary_chain_config = Configuration::new(secondary_chain_config, None);
     let block_import_throttling_buffer_size = 10;
     let secondary_chain_node = domain_service::new_full::<
@@ -182,6 +188,7 @@ async fn run_executor(
                 )
             }),
         block_import_throttling_buffer_size,
+        gossip_msg_sink,
     )
     .await?;
 
@@ -194,8 +201,21 @@ async fn run_executor(
         network_starter,
         rpc_handlers,
         executor,
-        tx_pool_sink: _,
+        tx_pool_sink,
     } = secondary_chain_node;
+
+    let mut domain_tx_pool_sinks = BTreeMap::new();
+    domain_tx_pool_sinks.insert(DomainId::SYSTEM, tx_pool_sink);
+    let cross_domain_message_gossip_worker =
+        GossipWorker::<Block>::new(network.clone(), domain_tx_pool_sinks);
+
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "cross-domain-gossip-message-worker",
+            None,
+            Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
+        );
 
     task_manager.add_child(primary_chain_full_node.task_manager);
 

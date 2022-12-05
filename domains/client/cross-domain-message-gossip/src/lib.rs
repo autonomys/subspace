@@ -1,4 +1,7 @@
 #![warn(rust_2018_idioms)]
 
-pub mod gossip_worker;
-pub mod message_listener;
+mod gossip_worker;
+mod message_listener;
+
+pub use gossip_worker::{DomainTxPoolSink, GossipWorker, Message};
+pub use message_listener::start_domain_message_listener;

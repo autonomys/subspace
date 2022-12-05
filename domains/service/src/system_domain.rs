@@ -1,9 +1,10 @@
 use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
-use cross_domain_message_gossip::gossip_worker::DomainExtSender;
+use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
+use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
@@ -81,12 +82,13 @@ where
     /// Executor.
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
-    pub tx_pool_sink: DomainExtSender,
+    pub tx_pool_sink: DomainTxPoolSink,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
+#[allow(clippy::too_many_arguments)]
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut secondary_chain_config: Configuration,
     primary_chain_client: Arc<PClient>,
@@ -95,6 +97,7 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     block_import_throttling_buffer_size: u32,
+    gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -255,6 +258,7 @@ where
             client.clone(),
             import_block_notification_stream.subscribe(),
             network.clone(),
+            gossip_message_sink,
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -267,13 +271,12 @@ where
     let (msg_sender, msg_receiver) = tracing_unbounded("system_domain_message_channel");
 
     // start cross domain message listener for system domain
-    let system_domain_listener =
-        cross_domain_message_gossip::message_listener::start_domain_message_listener(
-            DomainId::SYSTEM,
-            client.clone(),
-            params.transaction_pool.clone(),
-            msg_receiver,
-        );
+    let system_domain_listener = cross_domain_message_gossip::start_domain_message_listener(
+        DomainId::SYSTEM,
+        client.clone(),
+        params.transaction_pool.clone(),
+        msg_receiver,
+    );
 
     spawn_essential.spawn_essential_blocking(
         "system-domain-message-listener",

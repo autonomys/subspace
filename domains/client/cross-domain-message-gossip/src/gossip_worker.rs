@@ -16,7 +16,7 @@ const LOG_TARGET: &str = "cross_domain_gossip_worker";
 const PROTOCOL_NAME: &str = "/subspace/cross-domain-messages";
 
 /// Unbounded sender to send encoded ext to listeners.
-pub type DomainExtSender = TracingUnboundedSender<Vec<u8>>;
+pub type DomainTxPoolSink = TracingUnboundedSender<Vec<u8>>;
 type MessageHash = [u8; 32];
 
 /// A cross domain message with encoded data.
@@ -26,10 +26,12 @@ pub struct Message {
     pub encoded_data: Vec<u8>,
 }
 
+/// Gossip worker to gossip incoming and outgoing messages to other peers.
+/// Also, streams the decoded extrinsics to destination domain tx pool if available.
 pub struct GossipWorker<Block: BlockT> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     gossip_validator: Arc<GossipValidator>,
-    domain_ext_senders: BTreeMap<DomainId, DomainExtSender>,
+    domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
 }
 
 /// Cross domain message topic.
@@ -40,7 +42,7 @@ fn topic<Block: BlockT>() -> Block::Hash {
 impl<Block: BlockT> GossipWorker<Block> {
     pub fn new<Network>(
         network: Network,
-        domain_ext_senders: BTreeMap<DomainId, DomainExtSender>,
+        domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
     ) -> Self
     where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
@@ -55,13 +57,14 @@ impl<Block: BlockT> GossipWorker<Block> {
         GossipWorker {
             gossip_engine,
             gossip_validator,
-            domain_ext_senders,
+            domain_tx_pool_sinks,
         }
     }
 
-    pub async fn run<MsgSubmitter>(mut self, mut msg_submitter: MsgSubmitter)
+    /// Starts the Gossip message worker.
+    pub async fn run<GossipMessageStream>(mut self, mut gossip_msg_stream: GossipMessageStream)
     where
-        MsgSubmitter: Stream<Item = Message> + Unpin + futures::stream::FusedStream,
+        GossipMessageStream: Stream<Item = Message> + Unpin + futures::stream::FusedStream,
     {
         let mut incoming_cross_domain_messages = Box::pin(
             self.gossip_engine
@@ -81,7 +84,7 @@ impl<Block: BlockT> GossipWorker<Block> {
                     }
                 },
 
-                cross_domain_message = msg_submitter.next() => {
+                cross_domain_message = gossip_msg_stream.next() => {
                     if let Some(msg) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Submitted cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);
@@ -103,7 +106,7 @@ impl<Block: BlockT> GossipWorker<Block> {
             domain_id,
             encoded_data,
         } = msg;
-        let sink = match self.domain_ext_senders.get(&domain_id) {
+        let sink = match self.domain_tx_pool_sinks.get(&domain_id) {
             Some(sink) => sink,
             None => return,
         };
@@ -120,7 +123,7 @@ impl<Block: BlockT> GossipWorker<Block> {
             "Failed to send incoming domain message: {:?}",
             domain_id
         );
-        self.domain_ext_senders.remove(&domain_id);
+        self.domain_tx_pool_sinks.remove(&domain_id);
     }
 }
 

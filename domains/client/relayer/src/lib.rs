@@ -2,9 +2,12 @@
 
 pub mod worker;
 
+use cross_domain_message_gossip::Message as GossipMessage;
 use domain_runtime_primitives::RelayerId;
+use futures::channel::mpsc::TrySendError;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_domain_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
@@ -24,11 +27,16 @@ const LOG_TARGET: &str = "message::relayer";
 /// Relayer relays messages between core domains using system domain as trusted third party.
 struct Relayer<Client, Block>(PhantomData<(Client, Block)>);
 
+/// Sink used to submit all the gossip messages.
+pub type GossipMessageSink = TracingUnboundedSender<GossipMessage>;
+
 /// Relayer error types.
 #[derive(Debug)]
 pub enum Error {
     /// Emits when storage proof construction fails.
     ConstructStorageProof,
+    /// Emits when unsigned extrinsic construction fails.
+    FailedToConstructExtrinsic,
     /// Emits when failed to fetch assigned messages for a given relayer.
     FetchAssignedMessages,
     /// Emits when failed to store the processed block number.
@@ -39,14 +47,16 @@ pub enum Error {
     UnableToFetchRelayConfirmationDepth,
     /// Blockchain related error.
     BlockchainError(Box<sp_blockchain::Error>),
-    /// Arithmatic related error.
-    ArithmaticError(ArithmeticError),
+    /// Arithmetic related error.
+    ArithmeticError(ArithmeticError),
     /// Api related error.
     ApiError(sp_api::ApiError),
     /// Emits when the core domain block is not yet confirmed on the system domain.
     CoreDomainNonConfirmedOnSystemDomain,
     /// Unable to fetch block number against a block hash.
     UnableToFetchBlockNumber,
+    /// Failed to submit a cross domain message
+    UnableToSubmitCrossDomainMessage(TrySendError<GossipMessage>),
 }
 
 impl From<sp_blockchain::Error> for Error {
@@ -57,7 +67,7 @@ impl From<sp_blockchain::Error> for Error {
 
 impl From<ArithmeticError> for Error {
     fn from(err: ArithmeticError) -> Self {
-        Error::ArithmaticError(err)
+        Error::ArithmeticError(err)
     }
 }
 
@@ -135,7 +145,7 @@ where
     }
 
     fn construct_cross_domain_message_and_submit<
-        Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), sp_api::ApiError>,
+        Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), Error>,
         ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
@@ -216,6 +226,7 @@ where
         relayer_id: RelayerId,
         system_domain_client: &Arc<Client>,
         confirmed_block_hash: Block::Hash,
+        gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let api = system_domain_client.runtime_api();
         let confirmed_block_id = BlockId::Hash(confirmed_block_hash);
@@ -230,7 +241,6 @@ where
             return Ok(());
         }
 
-        let best_block_id = BlockId::Hash(system_domain_client.info().best_hash);
         Self::construct_cross_domain_message_and_submit(
             confirmed_block_hash,
             filtered_messages.outbox,
@@ -241,7 +251,7 @@ where
                     key,
                 )
             },
-            |msg| api.submit_outbox_message_unsigned(&best_block_id, msg),
+            |msg| Self::gossip_outbox_message(system_domain_client, msg, gossip_message_sink),
         )?;
 
         Self::construct_cross_domain_message_and_submit(
@@ -254,7 +264,9 @@ where
                     key,
                 )
             },
-            |msg| api.submit_inbox_response_message_unsigned(&best_block_id, msg),
+            |msg| {
+                Self::gossip_inbox_response_message(system_domain_client, msg, gossip_message_sink)
+            },
         )?;
 
         Ok(())
@@ -265,6 +277,7 @@ where
         core_domain_client: &Arc<Client>,
         system_domain_client: &Arc<SDC>,
         confirmed_block_hash: Block::Hash,
+        gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error>
     where
         SBlock: BlockT,
@@ -313,7 +326,6 @@ where
             }
         };
 
-        let best_block_id = BlockId::Hash(core_domain_client.info().best_hash);
         Self::construct_cross_domain_message_and_submit(
             confirmed_block_hash,
             filtered_messages.outbox,
@@ -325,7 +337,7 @@ where
                     core_domain_state_root_proof.clone(),
                 )
             },
-            |msg| core_domain_api.submit_outbox_message_unsigned(&best_block_id, msg),
+            |msg| Self::gossip_outbox_message(core_domain_client, msg, gossip_message_sink),
         )?;
 
         Self::construct_cross_domain_message_and_submit(
@@ -339,10 +351,48 @@ where
                     core_domain_state_root_proof.clone(),
                 )
             },
-            |msg| core_domain_api.submit_inbox_response_message_unsigned(&best_block_id, msg),
+            |msg| Self::gossip_inbox_response_message(core_domain_client, msg, gossip_message_sink),
         )?;
 
         Ok(())
+    }
+
+    fn gossip_outbox_message(
+        client: &Arc<Client>,
+        msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
+        sink: &GossipMessageSink,
+    ) -> Result<(), Error> {
+        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let dst_domain_id = msg.dst_domain_id;
+        let ext = client
+            .runtime_api()
+            .outbox_message_unsigned(&best_block_id, msg)?
+            .ok_or(Error::FailedToConstructExtrinsic)?;
+
+        sink.unbounded_send(GossipMessage {
+            domain_id: dst_domain_id,
+            encoded_data: ext.encode(),
+        })
+        .map_err(Error::UnableToSubmitCrossDomainMessage)
+    }
+
+    fn gossip_inbox_response_message(
+        client: &Arc<Client>,
+        msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
+        sink: &GossipMessageSink,
+    ) -> Result<(), Error> {
+        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let dst_domain_id = msg.dst_domain_id;
+        let ext = client
+            .runtime_api()
+            .inbox_response_message_unsigned(&best_block_id, msg)?
+            .ok_or(Error::FailedToConstructExtrinsic)?;
+
+        sink.unbounded_send(GossipMessage {
+            domain_id: dst_domain_id,
+            encoded_data: ext.encode(),
+        })
+        .map_err(Error::UnableToSubmitCrossDomainMessage)
     }
 
     fn last_relayed_block_key(domain_id: DomainId) -> Vec<u8> {
