@@ -462,11 +462,12 @@ where
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { mut last, .. },
+                step: ProgressStep { last, .. },
                 id,
                 result: QueryResult::GetClosestPeers(result),
                 ..
             } => {
+                let mut cancelled = false;
                 if let Some(QueryResultSender::ClosestPeers { sender }) =
                     self.query_id_receivers.get_mut(&id)
                 {
@@ -486,13 +487,13 @@ where
                             }
 
                             for peer in peers {
-                                last = Self::unbounded_send_and_cancel_on_error(
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
                                     peer,
                                     "GetClosestPeersOk",
                                     &id,
-                                ) || last;
+                                ) || cancelled;
                             }
                         }
                         Err(GetClosestPeersError::Timeout { key, peers }) => {
@@ -503,29 +504,30 @@ where
                             );
 
                             for peer in peers {
-                                last = Self::unbounded_send_and_cancel_on_error(
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
                                     peer,
                                     "GetClosestPeersError::Timeout",
                                     &id,
-                                ) || last;
+                                ) || cancelled;
                             }
                         }
                     }
                 }
 
-                if last {
+                if last || cancelled {
                     // There will be no more progress
                     self.query_id_receivers.remove(&id);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { mut last, .. },
+                step: ProgressStep { last, .. },
                 id,
                 result: QueryResult::GetRecord(result),
                 ..
             } => {
+                let mut cancelled = false;
                 if let Some(QueryResultSender::Value { sender }) =
                     self.query_id_receivers.get_mut(&id)
                 {
@@ -536,13 +538,13 @@ where
                                 "Get record query succeeded",
                             );
 
-                            last = Self::unbounded_send_and_cancel_on_error(
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
                                 sender,
                                 rec.record.value,
                                 "GetRecordOk",
                                 &id,
-                            ) || last;
+                            ) || cancelled;
                         }
                         Ok(GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => {
                             trace!("Get record query yielded no results");
@@ -568,17 +570,18 @@ where
                     }
                 }
 
-                if last {
+                if last || cancelled {
                     // There will be no more progress
                     self.query_id_receivers.remove(&id);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { mut last, .. },
+                step: ProgressStep { last, .. },
                 id,
                 result: QueryResult::GetProviders(result),
                 ..
             } => {
+                let mut cancelled = false;
                 if let Some(QueryResultSender::Providers { sender }) =
                     self.query_id_receivers.get_mut(&id)
                 {
@@ -591,13 +594,13 @@ where
                             );
 
                             for provider in providers {
-                                last = Self::unbounded_send_and_cancel_on_error(
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
                                     &mut self.swarm.behaviour_mut().kademlia,
                                     sender,
                                     provider,
                                     "GetProvidersOk",
                                     &id,
-                                ) || last;
+                                ) || cancelled;
                             }
                         }
                         Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { .. }) => {
@@ -614,17 +617,18 @@ where
                     }
                 }
 
-                if last {
+                if last || cancelled {
                     // There will be no more progress
                     self.query_id_receivers.remove(&id);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { mut last, .. },
+                step: ProgressStep { last, .. },
                 id,
                 result: QueryResult::StartProviding(result),
                 stats,
             } => {
+                let mut cancelled = false;
                 trace!("Start providing stats: {:?}", stats);
 
                 if let Some(QueryResultSender::Announce { sender }) =
@@ -634,13 +638,13 @@ where
                         Ok(AddProviderOk { key }) => {
                             trace!("Start providing query for {} succeeded", hex::encode(&key),);
 
-                            last = Self::unbounded_send_and_cancel_on_error(
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
                                 sender,
                                 (),
                                 "AddProviderOk",
                                 &id,
-                            ) || last;
+                            ) || cancelled;
                         }
                         Err(error) => {
                             let AddProviderError::Timeout { key } = error;
@@ -650,17 +654,18 @@ where
                     }
                 }
 
-                if last {
+                if last || cancelled {
                     // There will be no more progress
                     self.query_id_receivers.remove(&id);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { mut last, .. },
+                step: ProgressStep { last, .. },
                 id,
                 result: QueryResult::PutRecord(result),
                 ..
             } => {
+                let mut cancelled = false;
                 if let Some(QueryResultSender::PutValue { sender }) =
                     self.query_id_receivers.get_mut(&id)
                 {
@@ -668,13 +673,13 @@ where
                         Ok(PutRecordOk { key, .. }) => {
                             trace!("Put record query for {} succeeded", hex::encode(&key),);
 
-                            last = Self::unbounded_send_and_cancel_on_error(
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
                                 sender,
                                 (),
                                 "PutRecordOk",
                                 &id,
-                            ) || last;
+                            ) || cancelled;
                         }
                         Err(error) => {
                             debug!(?error, "Put record query failed.",);
@@ -682,7 +687,7 @@ where
                     }
                 }
 
-                if last {
+                if last || cancelled {
                     // There will be no more progress
                     self.query_id_receivers.remove(&id);
                 }
