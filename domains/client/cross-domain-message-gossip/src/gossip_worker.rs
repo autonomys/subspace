@@ -1,17 +1,22 @@
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::{Mutex, RwLock};
+use sc_network::PeerId;
 use sc_network_gossip::{
     GossipEngine, MessageIntent, ValidationResult, Validator, ValidatorContext,
 };
 use sc_utils::mpsc::TracingUnboundedSender;
+use sp_core::twox_256;
 use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
 
 const LOG_TARGET: &str = "cross_domain_gossip_worker";
 
 /// Unbounded sender to send encoded ext to listeners.
 pub type DomainExtSender = TracingUnboundedSender<Vec<u8>>;
+type MessageHash = [u8; 32];
 
 /// A cross domain message with encoded data.
 #[derive(Debug, Encode, Decode)]
@@ -21,7 +26,8 @@ pub struct Message {
 }
 
 struct GossipWorker<Block: BlockT> {
-    gossip_engine: GossipEngine<Block>,
+    gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
+    gossip_validator: GossipValidator,
     domain_ext_senders: BTreeMap<DomainId, DomainExtSender>,
 }
 
@@ -32,11 +38,12 @@ fn topic<Block: BlockT>() -> Block::Hash {
 
 impl<Block: BlockT> GossipWorker<Block> {
     pub fn new(
-        gossip_engine: GossipEngine<Block>,
+        gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
         domain_ext_senders: BTreeMap<DomainId, DomainExtSender>,
     ) -> Self {
         GossipWorker {
             gossip_engine,
+            gossip_validator: Default::default(),
             domain_ext_senders,
         }
     }
@@ -44,6 +51,7 @@ impl<Block: BlockT> GossipWorker<Block> {
     pub async fn run(mut self) {
         let mut incoming_cross_domain_messages = Box::pin(
             self.gossip_engine
+                .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
                     Message::decode(&mut &notification.message[..]).ok()
@@ -53,23 +61,34 @@ impl<Block: BlockT> GossipWorker<Block> {
         loop {
             futures::select! {
                 cross_domain_message = incoming_cross_domain_messages.next() => {
-                    if let Some(Message{domain_id, encoded_data}) = cross_domain_message {
-                        tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", domain_id);
-                        self.incoming_cross_domain_message(domain_id, encoded_data);
+                    if let Some(msg) = cross_domain_message {
+                        tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
+                        self.handle_cross_domain_message(msg);
                     }
                 }
             }
         }
     }
 
-    fn incoming_cross_domain_message(&mut self, domain_id: DomainId, encoded_ext: Vec<u8>) {
+    fn handle_cross_domain_message(&mut self, msg: Message) {
+        // mark and rebroadcast message
+        let encoded_msg = msg.encode();
+        self.gossip_validator.note_broadcast(&encoded_msg);
+        self.gossip_engine
+            .lock()
+            .gossip_message(topic::<Block>(), encoded_msg, false);
+
+        let Message {
+            domain_id,
+            encoded_data,
+        } = msg;
         let sink = match self.domain_ext_senders.get(&domain_id) {
             Some(sink) => sink,
             None => return,
         };
 
         // send the message to the open and ready channel
-        if !sink.is_closed() && sink.unbounded_send(encoded_ext).is_ok() {
+        if !sink.is_closed() && sink.unbounded_send(encoded_data).is_ok() {
             return;
         }
 
@@ -81,5 +100,62 @@ impl<Block: BlockT> GossipWorker<Block> {
             domain_id
         );
         self.domain_ext_senders.remove(&domain_id);
+    }
+}
+
+/// Gossip validator to retain or clean up Gossiped messages.
+#[derive(Debug, Default)]
+struct GossipValidator {
+    should_broadcast: RwLock<HashSet<MessageHash>>,
+}
+
+impl GossipValidator {
+    fn note_broadcast(&self, msg: &[u8]) {
+        let msg_hash = twox_256(msg);
+        let mut msg_set = self.should_broadcast.write();
+        msg_set.insert(msg_hash);
+    }
+
+    fn should_broadcast(&self, msg: &[u8]) -> bool {
+        let msg_hash = twox_256(msg);
+        let msg_set = self.should_broadcast.read();
+        msg_set.contains(&msg_hash)
+    }
+
+    fn note_broadcasted(&self, msg: &[u8]) {
+        let msg_hash = twox_256(msg);
+        let mut msg_set = self.should_broadcast.write();
+        msg_set.remove(&msg_hash);
+    }
+}
+
+impl<Block: BlockT> Validator<Block> for GossipValidator {
+    fn validate(
+        &self,
+        _context: &mut dyn ValidatorContext<Block>,
+        _sender: &PeerId,
+        mut data: &[u8],
+    ) -> ValidationResult<Block::Hash> {
+        match Message::decode(&mut data) {
+            Ok(_) => ValidationResult::ProcessAndKeep(topic::<Block>()),
+            Err(_) => ValidationResult::Discard,
+        }
+    }
+
+    fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
+        Box::new(move |_topic, data| !self.should_broadcast(data))
+    }
+
+    fn message_allowed<'a>(
+        &'a self,
+    ) -> Box<dyn FnMut(&PeerId, MessageIntent, &Block::Hash, &[u8]) -> bool + 'a> {
+        Box::new(move |_who, _intent, _topic, data| {
+            let should_broadcast = self.should_broadcast(data);
+            if should_broadcast {
+                self.note_broadcasted(data)
+            }
+
+            should_broadcast
+        })
     }
 }

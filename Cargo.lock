@@ -1643,6 +1643,8 @@ version = "0.1.0"
 dependencies = [
  "futures 0.3.25",
  "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-network",
  "sc-network-gossip",
  "sc-transaction-pool-api",
  "sc-utils",
