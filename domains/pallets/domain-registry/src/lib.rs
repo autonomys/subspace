@@ -34,7 +34,7 @@ use sp_domains::{
     SignedOpaqueBundle, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
-use sp_runtime::traits::{BlakeTwo256, Hash, One, Saturating, Zero};
+use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Saturating, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec;
@@ -228,6 +228,25 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Map of primary block number to primary block hash for tracking bounded receipts per domain.
+    ///
+    /// NOTE: This storage item is extended on adding a new non-system receipt since each receipt
+    /// is validated to point to a valid primary block on the primary chain.
+    ///
+    /// The oldest block hash will be pruned once the oldest receipt is pruned. However, if a
+    /// core domain stalls, i.e., no receipts are included in the system domain for a long time,
+    /// the corresponding entry will grow indefinitely.
+    #[pallet::storage]
+    pub(super) type BlockHash<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        T::BlockNumber,
+        T::Hash,
+        ValueQuery,
+    >;
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
@@ -371,15 +390,10 @@ mod pallet {
                     Self::apply_new_best_receipt(domain_id, receipt);
                     best_number += One::one();
                 } else {
-                    /*
                     // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
                     //
                     // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                    return Err(Error::<T>::Bundle(BundleError::Receipt(
-                        ExecutionReceiptError::MissingParent,
-                    ))
-                    .into());
-                    */
+                    return Err(Error::<T>::MissingParentReceipt.into());
                 }
             }
 
@@ -538,6 +552,9 @@ mod pallet {
 
         /// Not a core domain bundle.
         NotCoreDomainBundle,
+
+        /// A missing core domain parent receipt.
+        MissingParentReceipt,
     }
 
     #[pallet::event]
@@ -759,6 +776,20 @@ impl<T: Config> Pallet<T> {
         } = &signed_opaque_bundle.bundle_solution else {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
+
+        let mut best_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        for receipt in &signed_opaque_bundle.bundle.receipts {
+            // Non-best receipt
+            if receipt.primary_number <= best_number {
+                continue;
+            // New nest receipt.
+            } else if receipt.primary_number == best_number + One::one() {
+                best_number += One::one();
+            // Missing receipt.
+            } else {
+                return Err(Error::<T>::MissingParentReceipt);
+            }
+        }
 
         // The validity of vrf proof itself has been verified on the primary chain, thus only the
         // proof_of_election is necessary to be checked here.
@@ -985,6 +1016,10 @@ impl<T: Config> Pallet<T> {
         let primary_number = execution_receipt.primary_number;
         let receipt_hash = execution_receipt.hash();
 
+        // (primary_number, primary_hash) has been verified on the primary chain, thus it
+        // can be used directly.
+        <BlockHash<T>>::insert(domain_id, primary_number, primary_hash);
+
         // Apply the new best receipt.
         <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
         <ReceiptHead<T>>::insert(domain_id, (primary_hash, primary_number));
@@ -1006,20 +1041,20 @@ impl<T: Config> Pallet<T> {
             T::CoreDomainTracker::add_core_domain_state_root(domain_id, primary_number, *state_root)
         }
 
-        /* TODO:
         // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
+            BlockHash::<T>::mutate_exists(domain_id, to_prune, |maybe_block_hash| {
                 if let Some(block_hash) = maybe_block_hash.take() {
-                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                        Receipts::<T>::remove(receipt_hash);
+                    for (receipt_hash, _) in
+                        <ReceiptVotes<T>>::drain_prefix((domain_id, block_hash))
+                    {
+                        Receipts::<T>::remove(domain_id, receipt_hash);
                     }
                 }
             });
-            OldestReceiptNumber::<T>::put(to_prune + One::one());
-            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
+            OldestReceiptNumber::<T>::insert(domain_id, to_prune + One::one());
+            let _ = <StateRoots<T>>::clear_prefix((domain_id, to_prune), u32::MAX, None);
         }
-        */
 
         Self::deposit_event(Event::NewCoreDomainReceipt {
             domain_id,

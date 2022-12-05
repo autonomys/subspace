@@ -305,10 +305,10 @@ mod pallet {
         }
     }
 
-    /// Map of block number to block hash.
+    /// Map of primary block number to primary block hash.
     ///
     /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
-    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
+    /// system domain stalls, i.e., no receipts are included in the primary chain for a long time,
     /// this mapping will grow indefinitely.
     #[pallet::storage]
     pub(super) type BlockHash<T: Config> =
@@ -528,30 +528,40 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
-        let (_, mut best_number) = <ReceiptHead<T>>::get();
+        if signed_opaque_bundle.domain_id().is_system() {
+            let (_, mut best_number) = <ReceiptHead<T>>::get();
 
-        for receipt in execution_receipts {
-            // Non-best receipt
-            if receipt.primary_number <= best_number {
+            for receipt in execution_receipts {
+                // Non-best receipt
+                if receipt.primary_number <= best_number {
+                    if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
+                        return Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::ExecutionReceipt.into(),
+                        ));
+                    }
+                    continue;
+                // New nest receipt.
+                } else if receipt.primary_number == best_number + One::one() {
+                    if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
+                        return Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::ExecutionReceipt.into(),
+                        ));
+                    }
+                    best_number += One::one();
+                // Missing receipt.
+                } else {
+                    return Err(TransactionValidityError::Invalid(
+                        InvalidTransactionCode::ExecutionReceipt.into(),
+                    ));
+                }
+            }
+        } else {
+            for receipt in execution_receipts {
                 if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
                     return Err(TransactionValidityError::Invalid(
                         InvalidTransactionCode::ExecutionReceipt.into(),
                     ));
                 }
-                continue;
-            // New nest receipt.
-            } else if receipt.primary_number == best_number + One::one() {
-                if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
-                    return Err(TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into(),
-                    ));
-                }
-                best_number += One::one();
-            // Missing receipt.
-            } else {
-                return Err(TransactionValidityError::Invalid(
-                    InvalidTransactionCode::ExecutionReceipt.into(),
-                ));
             }
         }
 
