@@ -1,4 +1,5 @@
 use futures::channel::oneshot;
+use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use libp2p::multihash::Code;
 use parking_lot::Mutex;
@@ -66,7 +67,13 @@ async fn main() {
         &Code::Identity,
         &U256::from(hashed_peer_id).to_be_bytes(),
     );
-    let peer_id = node_2.get_closest_peers(key).await.unwrap()[0];
+    let peer_id = node_2
+        .get_closest_peers(key)
+        .await
+        .unwrap()
+        .next()
+        .await
+        .unwrap();
     assert_eq!(node_1.id(), peer_id);
 
     println!("Exiting..");

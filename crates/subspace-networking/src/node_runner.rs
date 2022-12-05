@@ -5,7 +5,7 @@ use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
 use bytes::Bytes;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
@@ -13,8 +13,8 @@ use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
-    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, KademliaEvent, PutRecordOk,
-    QueryId, QueryResult, Quorum, Record,
+    GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent,
+    ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -32,19 +32,19 @@ use tracing::{debug, error, trace, warn};
 
 enum QueryResultSender {
     Value {
-        sender: oneshot::Sender<Option<Vec<u8>>>,
+        sender: mpsc::UnboundedSender<Vec<u8>>,
     },
     ClosestPeers {
-        sender: oneshot::Sender<Vec<PeerId>>,
+        sender: mpsc::UnboundedSender<PeerId>,
     },
     Providers {
-        sender: oneshot::Sender<Option<Vec<PeerId>>>,
+        sender: mpsc::UnboundedSender<PeerId>,
     },
     Announce {
-        sender: oneshot::Sender<bool>,
+        sender: mpsc::UnboundedSender<()>,
     },
     PutValue {
-        sender: oneshot::Sender<bool>,
+        sender: mpsc::UnboundedSender<()>,
     },
 }
 
@@ -461,15 +461,17 @@ where
                     }
                 }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
                 id,
-                result: QueryResult::GetClosestPeers(results),
+                result: QueryResult::GetClosestPeers(result),
                 ..
             } => {
+                let mut cancelled = false;
                 if let Some(QueryResultSender::ClosestPeers { sender }) =
-                    self.query_id_receivers.remove(&id)
+                    self.query_id_receivers.get_mut(&id)
                 {
-                    match results {
+                    match result {
                         Ok(GetClosestPeersOk { key, peers }) => {
                             trace!(
                                 "Get closest peers query for {} yielded {} results",
@@ -484,166 +486,234 @@ where
                                 debug!("Random Kademlia query has yielded empty list of peers");
                             }
 
-                            if sender.send(peers).is_err() {
-                                debug!("GetClosestPeersOk channel was dropped");
+                            for peer in peers {
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
+                                    &mut self.swarm.behaviour_mut().kademlia,
+                                    sender,
+                                    peer,
+                                    "GetClosestPeersOk",
+                                    &id,
+                                ) || cancelled;
                             }
                         }
                         Err(GetClosestPeersError::Timeout { key, peers }) => {
-                            if sender.send(Vec::new()).is_err() {
-                                debug!("GetClosestPeersOk channel was dropped");
-                            }
-
                             debug!(
                                 "Get closest peers query for {} timed out with {} results",
                                 hex::encode(key),
                                 peers.len(),
                             );
-                        }
-                    }
-                }
-            }
-            KademliaEvent::OutboundQueryCompleted {
-                id,
-                result: QueryResult::GetRecord(results),
-                ..
-            } => {
-                if let Some(QueryResultSender::Value { sender }) =
-                    self.query_id_receivers.remove(&id)
-                {
-                    match results {
-                        Ok(GetRecordOk { records, .. }) => {
-                            let records_len = records.len();
-                            let record = records
-                                .into_iter()
-                                .next()
-                                .expect("Success means we have at least one record")
-                                .record;
 
-                            trace!(
-                                "Get record query for {} yielded {} results",
-                                hex::encode(&record.key),
-                                records_len,
-                            );
-
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(Some(record.value));
-                        }
-                        Err(error) => {
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(None);
-
-                            match error {
-                                GetRecordError::NotFound { key, .. } => {
-                                    debug!(
-                                        "Get record query for {} failed with no results",
-                                        hex::encode(&key),
-                                    );
-                                }
-                                GetRecordError::QuorumFailed { key, records, .. } => {
-                                    debug!(
-                                        "Get record query quorum for {} failed with {} results",
-                                        hex::encode(&key),
-                                        records.len(),
-                                    );
-                                }
-                                GetRecordError::Timeout { key, records, .. } => {
-                                    debug!(
-                                        "Get record query for {} timed out with {} results",
-                                        hex::encode(&key),
-                                        records.len(),
-                                    );
-                                }
+                            for peer in peers {
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
+                                    &mut self.swarm.behaviour_mut().kademlia,
+                                    sender,
+                                    peer,
+                                    "GetClosestPeersError::Timeout",
+                                    &id,
+                                ) || cancelled;
                             }
                         }
                     }
                 }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+                }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
                 id,
-                result: QueryResult::GetProviders(results),
+                result: QueryResult::GetRecord(result),
                 ..
             } => {
-                if let Some(QueryResultSender::Providers { sender }) =
-                    self.query_id_receivers.remove(&id)
+                let mut cancelled = false;
+                if let Some(QueryResultSender::Value { sender }) =
+                    self.query_id_receivers.get_mut(&id)
                 {
-                    match results {
-                        Ok(GetProvidersOk { key, providers, .. }) => {
+                    match result {
+                        Ok(GetRecordOk::FoundRecord(rec)) => {
                             trace!(
-                                "Get providers query for {} yielded {} results",
-                                hex::encode(&key),
+                                key = hex::encode(&rec.record.key),
+                                "Get record query succeeded",
+                            );
+
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
+                                &mut self.swarm.behaviour_mut().kademlia,
+                                sender,
+                                rec.record.value,
+                                "GetRecordOk",
+                                &id,
+                            ) || cancelled;
+                        }
+                        Ok(GetRecordOk::FinishedWithNoAdditionalRecord { .. }) => {
+                            trace!("Get record query yielded no results");
+                        }
+                        Err(error) => match error {
+                            GetRecordError::NotFound { key, .. } => {
+                                debug!(
+                                    key = hex::encode(&key),
+                                    "Get record query failed with no results",
+                                );
+                            }
+                            GetRecordError::QuorumFailed { key, records, .. } => {
+                                debug!(
+                                    key = hex::encode(&key),
+                                    "Get record query quorum failed with {} results",
+                                    records.len(),
+                                );
+                            }
+                            GetRecordError::Timeout { key } => {
+                                debug!(key = hex::encode(&key), "Get record query timed out");
+                            }
+                        },
+                    }
+                }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+                }
+            }
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
+                id,
+                result: QueryResult::GetProviders(result),
+                ..
+            } => {
+                let mut cancelled = false;
+                if let Some(QueryResultSender::Providers { sender }) =
+                    self.query_id_receivers.get_mut(&id)
+                {
+                    match result {
+                        Ok(GetProvidersOk::FoundProviders { key, providers }) => {
+                            trace!(
+                                key = hex::encode(&key),
+                                "Get providers query yielded {} results",
                                 providers.len(),
                             );
 
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(Some(providers.into_iter().collect()));
+                            for provider in providers {
+                                cancelled = Self::unbounded_send_and_cancel_on_error(
+                                    &mut self.swarm.behaviour_mut().kademlia,
+                                    sender,
+                                    provider,
+                                    "GetProvidersOk",
+                                    &id,
+                                ) || cancelled;
+                            }
+                        }
+                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { .. }) => {
+                            trace!("Get providers query yielded no results");
                         }
                         Err(error) => {
                             let GetProvidersError::Timeout { key, .. } = error;
 
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(None);
-
                             debug!(
-                                "Get providers query for {} failed with no results",
-                                hex::encode(&key),
+                                key = hex::encode(&key),
+                                "Get providers query failed with no results",
                             );
                         }
                     }
                 }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+                }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
                 id,
-                result: QueryResult::StartProviding(results),
+                result: QueryResult::StartProviding(result),
                 stats,
             } => {
+                let mut cancelled = false;
                 trace!("Start providing stats: {:?}", stats);
 
                 if let Some(QueryResultSender::Announce { sender }) =
-                    self.query_id_receivers.remove(&id)
+                    self.query_id_receivers.get_mut(&id)
                 {
-                    match results {
+                    match result {
                         Ok(AddProviderOk { key }) => {
                             trace!("Start providing query for {} succeeded", hex::encode(&key),);
 
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(true);
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
+                                &mut self.swarm.behaviour_mut().kademlia,
+                                sender,
+                                (),
+                                "AddProviderOk",
+                                &id,
+                            ) || cancelled;
                         }
                         Err(error) => {
                             let AddProviderError::Timeout { key } = error;
-
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(false);
 
                             debug!("Start providing query for {} failed.", hex::encode(&key),);
                         }
                     }
                 }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+                }
             }
-            KademliaEvent::OutboundQueryCompleted {
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
                 id,
                 result: QueryResult::PutRecord(result),
                 ..
             } => {
+                let mut cancelled = false;
                 if let Some(QueryResultSender::PutValue { sender }) =
-                    self.query_id_receivers.remove(&id)
+                    self.query_id_receivers.get_mut(&id)
                 {
                     match result {
                         Ok(PutRecordOk { key, .. }) => {
                             trace!("Put record query for {} succeeded", hex::encode(&key),);
 
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(true);
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
+                                &mut self.swarm.behaviour_mut().kademlia,
+                                sender,
+                                (),
+                                "PutRecordOk",
+                                &id,
+                            ) || cancelled;
                         }
                         Err(error) => {
                             debug!(?error, "Put record query failed.",);
-
-                            // Doesn't matter if receiver still waits for response.
-                            let _ = sender.send(false);
                         }
                     }
                 }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+                }
             }
             _ => {}
+        }
+    }
+
+    // Returns `true` if query was cancelled
+    fn unbounded_send_and_cancel_on_error<T>(
+        kademlia: &mut Kademlia<RecordStore>,
+        sender: &mut mpsc::UnboundedSender<T>,
+        value: T,
+        channel: &'static str,
+        id: &QueryId,
+    ) -> bool {
+        if sender.unbounded_send(value).is_err() {
+            debug!("{} channel was dropped", channel);
+
+            // Cancel query
+            if let Some(mut query) = kademlia.query_mut(id) {
+                query.finish();
+            }
+            true
+        } else {
+            false
         }
     }
 
@@ -672,7 +742,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .get_record(key.to_bytes().into(), Quorum::One);
+                    .get_record(key.to_bytes().into());
 
                 self.query_id_receivers.insert(
                     query_id,
@@ -851,8 +921,6 @@ where
                     }
                     Err(error) => {
                         error!(?key, ?error, "Failed to announce a piece.");
-
-                        let _ = result_sender.send(false);
                     }
                 }
             }

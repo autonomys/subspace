@@ -409,8 +409,19 @@ fn main() -> Result<(), Error> {
                             cli.dsn_bootstrap_nodes
                         };
 
+                        // TODO: Libp2p versions for Substrate and Subspace diverged.
+                        // We get type compatibility by encoding and decoding the original keypair.
+                        let encoded_keypair = network_keypair
+                            .to_protobuf_encoding()
+                            .expect("Keypair-to-protobuf encoding should succeed.");
+                        let keypair =
+                            subspace_networking::libp2p::identity::Keypair::from_protobuf_encoding(
+                                &encoded_keypair,
+                            )
+                            .expect("Keypair-from-protobuf decoding should succeed.");
+
                         DsnConfig {
-                            keypair: network_keypair,
+                            keypair,
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,

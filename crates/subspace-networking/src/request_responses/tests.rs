@@ -56,7 +56,7 @@ fn build_swarm(
         .collect::<Vec<_>>();
     let behaviour = RequestResponsesBehaviour::new(configs).unwrap();
 
-    let mut swarm = Swarm::new(transport, behaviour, keypair.public().to_peer_id());
+    let mut swarm = Swarm::with_tokio_executor(transport, behaviour, keypair.public().to_peer_id());
     let listen_addr: Multiaddr = format!("/memory/{}", rand::random::<u64>())
         .parse()
         .unwrap();
@@ -65,8 +65,8 @@ fn build_swarm(
     (swarm, listen_addr)
 }
 
-#[test]
-fn basic_request_response_works() {
+#[tokio::test(flavor = "multi_thread")]
+async fn basic_request_response_works() {
     let protocol_name = "/test/req-resp/1";
     let mut pool = LocalPool::new();
 
@@ -166,8 +166,8 @@ fn basic_request_response_works() {
     });
 }
 
-#[test]
-fn max_response_size_exceeded() {
+#[tokio::test(flavor = "multi_thread")]
+async fn max_response_size_exceeded() {
     let protocol_name = "/test/req-resp/1";
     let mut pool = LocalPool::new();
 
@@ -277,8 +277,8 @@ fn max_response_size_exceeded() {
 /// without a [`RequestId`] collision.
 ///
 /// See [`ProtocolRequestId`] for additional information.
-#[test]
-fn request_id_collision() {
+#[tokio::test(flavor = "multi_thread")]
+async fn request_id_collision() {
     let protocol_name_1 = "/test/req-resp-1/1";
     let protocol_name_2 = "/test/req-resp-2/1";
     let mut pool = LocalPool::new();

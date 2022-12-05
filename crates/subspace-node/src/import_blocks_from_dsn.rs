@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use clap::Parser;
+use futures::StreamExt;
 use parity_scale_codec::Encode;
 use sc_cli::{CliConfiguration, ImportParams, SharedParams};
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -191,7 +192,9 @@ where
             let maybe_piece = node
                 .get_value(multihash::create_multihash_by_piece_index(piece_index))
                 .await
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+                .map_err(|error| sc_service::Error::Other(error.to_string()))?
+                .next()
+                .await;
 
             trace!(
                 ?piece_index,

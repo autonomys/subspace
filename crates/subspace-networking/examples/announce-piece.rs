@@ -1,4 +1,5 @@
 use futures::channel::oneshot;
+use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -66,12 +67,15 @@ async fn main() {
         piece_index_hash.to_multihash()
     };
 
-    node_2.start_announcing(key).await.unwrap();
+    node_2.start_announcing(key).await.unwrap().next().await;
     println!("Node 2 announced key: {:?}", key);
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let providers_result = node_1.get_providers(key).await;
+    let providers_result = match node_1.get_providers(key).await {
+        Ok(stream) => Ok(stream.collect::<Vec<_>>().await),
+        Err(error) => Err(error),
+    };
 
     println!("Node 1 get_providers result: {:?}", providers_result);
 
@@ -79,7 +83,10 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(31)).await;
 
-    let providers_result = node_1.get_providers(key).await;
+    let providers_result = match node_1.get_providers(key).await {
+        Ok(stream) => Ok(stream.collect::<Vec<_>>().await),
+        Err(error) => Err(error),
+    };
 
     println!("Node 1 get_providers result: {:?}", providers_result);
 

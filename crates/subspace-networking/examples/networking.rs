@@ -84,7 +84,7 @@ async fn main() {
     );
     println!("Get value result for:");
     println!("Key: {key:?}");
-    let result = node_2.get_value(key).await;
+    let result = node_2.get_value(key).await.unwrap().next().await;
     println!("Value: {result:?}");
 
     tokio::spawn(async move {

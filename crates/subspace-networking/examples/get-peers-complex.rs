@@ -1,4 +1,5 @@
 use futures::channel::oneshot;
+use futures::StreamExt;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::multihash::{Code, MultihashDigest};
@@ -105,15 +106,20 @@ async fn main() {
     // Prepare multihash to look for in Kademlia
     let key = Code::Identity.digest(&expected_kaypair.public().encode());
 
-    let peers = node.get_closest_peers(key).await.unwrap();
+    let peers = node
+        .get_closest_peers(key)
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
 
     // Uncomment on debugging:
     // println!("Received closest peers: {:?}", peers);
 
     let peer_id = peers
         .first()
-        .expect("get_closest_peers returned empty set. ");
-    assert_eq!(*peer_id, expected_node_id);
+        .expect("get_closest_peers must return non-empty set.");
+    assert_eq!(peer_id, &expected_node_id);
     println!("Expected Peer ID received.");
 
     tokio::time::sleep(Duration::from_secs(120)).await;
