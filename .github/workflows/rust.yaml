@@ -12,6 +12,11 @@ on:
       - '**.md'
       - '.github/CODEOWNERS'
   workflow_dispatch:
+    test-macos:
+      description: 'Whether to run macOS tests'
+      required: true
+      default: false
+      type: boolean
 
 env:
   # Not needed in CI, should make things a bit faster
@@ -121,6 +126,7 @@ jobs:
           - windows-2022
 
     runs-on: ${{ matrix.os }}
+    if: runner.os != 'macOS' || inputs.test-macos == true || github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout
