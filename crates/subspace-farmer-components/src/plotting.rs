@@ -67,9 +67,6 @@ pub enum PlottingError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
-    /// Incorrect batch size for piece receiver.
-    #[error("Incorrect batch size for piece receiver.")]
-    IncorrectPieceReceivingBatchSize,
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
@@ -189,12 +186,6 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     cancelled: &AtomicBool,
     piece_receiver_batch_size: usize,
 ) -> Result<(), PlottingError> {
-    const MAX_PIECE_RECEIVER_BATCH_SIZE: usize = 60;
-
-    if piece_receiver_batch_size == 0 || piece_receiver_batch_size > MAX_PIECE_RECEIVER_BATCH_SIZE {
-        return Err(PlottingError::IncorrectPieceReceivingBatchSize);
-    }
-
     let semaphore = Arc::new(Semaphore::new(piece_receiver_batch_size));
 
     let mut pieces_receiving_futures = piece_indexes

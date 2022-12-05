@@ -273,6 +273,8 @@ pub struct SingleDiskPlotOptions<RC> {
     pub dsn_node: Node,
     /// Defines size for the pieces batch of the piece receiving process.
     pub piece_receiver_batch_size: usize,
+    /// Defines size for the pieces batch of the piece publishing process.
+    pub piece_publisher_batch_size: usize,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -467,6 +469,7 @@ impl SingleDiskPlot {
             reward_address,
             dsn_node,
             piece_receiver_batch_size,
+            piece_publisher_batch_size,
         } = options;
 
         // TODO: Account for plot overhead
@@ -735,7 +738,7 @@ impl SingleDiskPlot {
 
                                 async move {
                                     if let Err(error) = piece_publisher
-                                        .publish_pieces(plotted_sector.piece_indexes)
+                                        .publish_pieces(plotted_sector.piece_indexes, piece_publisher_batch_size)
                                         .await
                                     {
                                         warn!(%sector_index, %error, "Failed to publish pieces to DSN");
