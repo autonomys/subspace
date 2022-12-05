@@ -307,10 +307,10 @@ mod pallet {
         }
     }
 
-    /// Map of block number to block hash.
+    /// Map of primary block number to primary block hash.
     ///
     /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
-    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
+    /// system domain stalls, i.e., no receipts are included in the primary chain for a long time,
     /// this mapping will grow indefinitely.
     #[pallet::storage]
     pub(super) type BlockHash<T: Config> =

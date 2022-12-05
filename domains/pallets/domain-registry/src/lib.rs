@@ -179,15 +179,6 @@ mod pallet {
     pub(super) type DomainTotalStakeWeight<T: Config> =
         StorageMap<_, Twox64Concat, DomainId, T::StakeWeight, OptionQuery>;
 
-    /// Map of primary block number to primary block hash.
-    ///
-    /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
-    /// execution chain stalls, i.e., no receipts are included in the primary chain for a long time,
-    /// this mapping will grow indefinitely.
-    #[pallet::storage]
-    pub(super) type BlockHash<T: Config> =
-        StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     ////  Same receipt tracking data structure as in pallet-domains, with the dimension `domain_id` added.
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -234,6 +225,25 @@ mod pallet {
         ),
         T::Hash,
         OptionQuery,
+    >;
+
+    /// Map of primary block number to primary block hash for tracking bounded receipts per domain.
+    ///
+    /// NOTE: This storage item is extended on adding a new non-system receipt since each receipt
+    /// is validated to point to a valid primary block on the primary chain.
+    ///
+    /// The oldest block hash will be pruned once the oldest receipt is pruned. However, if a
+    /// core domain stalls, i.e., no receipts are included in the system domain for a long time,
+    /// the corresponding entry will grow indefinitely.
+    #[pallet::storage]
+    pub(super) type BlockHash<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        DomainId,
+        Twox64Concat,
+        T::BlockNumber,
+        T::Hash,
+        ValueQuery,
     >;
 
     #[pallet::call]
@@ -1007,7 +1017,7 @@ impl<T: Config> Pallet<T> {
 
         // (primary_number, primary_hash) has been verified on the primary chain, thus it
         // can be used directly.
-        <BlockHash<T>>::insert(primary_number, primary_hash);
+        <BlockHash<T>>::insert(domain_id, primary_number, primary_hash);
 
         // Apply the new best receipt.
         <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
@@ -1032,7 +1042,7 @@ impl<T: Config> Pallet<T> {
 
         // Remove the expired receipts once the receipts cache is full.
         if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
+            BlockHash::<T>::mutate_exists(domain_id, to_prune, |maybe_block_hash| {
                 if let Some(block_hash) = maybe_block_hash.take() {
                     for (receipt_hash, _) in
                         <ReceiptVotes<T>>::drain_prefix((domain_id, block_hash))
