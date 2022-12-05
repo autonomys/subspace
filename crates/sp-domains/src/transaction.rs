@@ -1,5 +1,3 @@
-#[cfg(not(feature = "std"))]
-pub use self::runtime_decl_for_PreValidationObjectApi::PreValidationObjectApi;
 use crate::fraud_proof::FraudProof;
 use crate::ExecutionReceipt;
 use parity_scale_codec::{Decode, Encode};
