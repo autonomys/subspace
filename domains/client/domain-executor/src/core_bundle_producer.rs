@@ -9,7 +9,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, ProofOfElection, SignedOpaqueBundle};
+use sp_domains::{BundleSolution, DomainId, ProofOfElection, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
@@ -161,6 +161,11 @@ where
 
             let core_block_number = to_number_primitive(self.client.info().best_number);
             let core_block_hash = self.client.info().best_hash;
+            let core_state_root = *self
+                .client
+                .header(BlockId::Hash(core_block_hash))?
+                .expect("Best block header must exist; qed")
+                .state_root();
 
             let as_core_block_hash = |system_block_hash: SBlock::Hash| {
                 Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
@@ -176,23 +181,17 @@ where
                 storage_proof: proof_of_election.storage_proof,
                 block_number: proof_of_election.block_number,
                 block_hash: as_core_block_hash(proof_of_election.block_hash),
-                // TODO: override the core block info, see if there is a nicer way
-                // later.
-                core_block_number: Some(core_block_number),
-                core_block_hash: Some(core_block_hash),
-                core_state_root: Some(
-                    *self
-                        .client
-                        .header(BlockId::Hash(core_block_hash))?
-                        .expect("Best block header must exist; qed")
-                        .state_root(),
-                ),
             };
 
             Ok(Some(sign_new_bundle::<Block, PBlock>(
                 bundle,
                 self.keystore,
-                proof_of_election,
+                BundleSolution::Core {
+                    proof_of_election,
+                    core_block_number,
+                    core_block_hash,
+                    core_state_root,
+                },
             )?))
         } else {
             Ok(None)

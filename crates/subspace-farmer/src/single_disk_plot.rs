@@ -271,6 +271,8 @@ pub struct SingleDiskPlotOptions<RC> {
     pub reward_address: PublicKey,
     /// Optional DSN Node.
     pub dsn_node: Node,
+    /// Defines size for the pieces batch of the piece receiving process.
+    pub piece_receiver_batch_size: usize,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -464,6 +466,7 @@ impl SingleDiskPlot {
             rpc_client,
             reward_address,
             dsn_node,
+            piece_receiver_batch_size,
         } = options;
 
         // TODO: Account for plot overhead
@@ -703,6 +706,7 @@ impl SingleDiskPlot {
                                 &sector_codec,
                                 sector,
                                 sector_metadata,
+                                piece_receiver_batch_size,
                             )) {
                                 Ok(plotted_sector) => {
                                     debug!(%sector_index, "Sector plotted");

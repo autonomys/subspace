@@ -197,12 +197,6 @@ pub struct ProofOfElection<DomainHash> {
     pub block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
     pub block_hash: DomainHash,
-    /// Number of the core domain block at which the proof of election was created.
-    pub core_block_number: Option<BlockNumber>,
-    /// Block hash corresponding to the `core_block_number` above.
-    pub core_block_hash: Option<DomainHash>,
-    /// Core domain state root corresponding to the `core_block_hash` above.
-    pub core_state_root: Option<DomainHash>,
 }
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
@@ -218,9 +212,35 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             storage_proof: StorageProof::empty(),
             block_number: Default::default(),
             block_hash: Default::default(),
-            core_block_number: None,
-            core_block_hash: None,
-            core_state_root: None,
+        }
+    }
+}
+
+/// Domain bundle election solution.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum BundleSolution<DomainHash> {
+    /// System domain bundle election.
+    System(ProofOfElection<DomainHash>),
+    /// Core domain bundle election.
+    Core {
+        /// Proof of election.
+        proof_of_election: ProofOfElection<DomainHash>,
+        /// Number of the core domain block at which the proof of election was created.
+        core_block_number: BlockNumber,
+        /// Block hash corresponding to the `core_block_number` above.
+        core_block_hash: DomainHash,
+        /// Core domain state root corresponding to the `core_block_hash` above.
+        core_state_root: DomainHash,
+    },
+}
+
+impl<DomainHash> BundleSolution<DomainHash> {
+    pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
+        match self {
+            Self::System(proof_of_election)
+            | Self::Core {
+                proof_of_election, ..
+            } => proof_of_election,
         }
     }
 }
@@ -274,8 +294,8 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
 pub struct SignedBundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
     pub bundle: Bundle<Extrinsic, Number, Hash, DomainHash>,
-    /// Proof of bundle election.
-    pub proof_of_election: ProofOfElection<DomainHash>,
+    /// Solution of the bundle election.
+    pub bundle_solution: BundleSolution<DomainHash>,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
 }
@@ -294,7 +314,7 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
 
     /// Returns the domain_id of this bundle.
     pub fn domain_id(&self) -> DomainId {
-        self.proof_of_election.domain_id
+        self.bundle_solution.proof_of_election().domain_id
     }
 }
 
@@ -305,7 +325,7 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash>
     pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, DomainHash> {
         SignedOpaqueBundle {
             bundle: self.bundle.into_opaque_bundle(),
-            proof_of_election: self.proof_of_election,
+            bundle_solution: self.bundle_solution,
             signature: self.signature,
         }
     }

@@ -151,7 +151,7 @@ where
 
         let SignedBundle {
             bundle,
-            proof_of_election,
+            bundle_solution,
             signature,
         } = signed_bundle;
 
@@ -182,7 +182,7 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            let executor_public_key = &proof_of_election.executor_public_key;
+            let executor_public_key = &bundle_solution.proof_of_election().executor_public_key;
 
             if !executor_public_key.verify(&bundle.hash(), signature) {
                 return Err(Self::Error::BadBundleSignature);

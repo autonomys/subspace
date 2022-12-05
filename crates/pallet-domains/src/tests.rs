@@ -6,8 +6,8 @@ use sp_core::{H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    Bundle, BundleHeader, DomainId, ExecutionReceipt, ExecutorPair, ProofOfElection,
-    SignedOpaqueBundle,
+    Bundle, BundleHeader, BundleSolution, DomainId, ExecutionReceipt, ExecutorPair,
+    ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -119,9 +119,24 @@ fn create_dummy_bundle(
 
     let signature = pair.sign(bundle.hash().as_ref());
 
+    let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
+
+    let bundle_solution = if domain_id.is_system() {
+        BundleSolution::System(proof_of_election)
+    } else if domain_id.is_core() {
+        BundleSolution::Core {
+            proof_of_election,
+            core_block_number: Default::default(),
+            core_block_hash: Default::default(),
+            core_state_root: Default::default(),
+        }
+    } else {
+        panic!("Open domain unsupported");
+    };
+
     SignedOpaqueBundle {
         bundle,
-        proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
+        bundle_solution,
         signature,
     }
 }
@@ -147,9 +162,24 @@ fn create_dummy_bundle_with_receipts(
 
     let signature = pair.sign(bundle.hash().as_ref());
 
+    let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
+
+    let bundle_solution = if domain_id.is_system() {
+        BundleSolution::System(proof_of_election)
+    } else if domain_id.is_core() {
+        BundleSolution::Core {
+            proof_of_election,
+            core_block_number: Default::default(),
+            core_block_hash: Default::default(),
+            core_state_root: Default::default(),
+        }
+    } else {
+        panic!("Open domain unsupported");
+    };
+
     SignedOpaqueBundle {
         bundle,
-        proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
+        bundle_solution,
         signature,
     }
 }

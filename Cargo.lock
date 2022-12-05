@@ -8719,6 +8719,7 @@ dependencies = [
  "subspace-solving",
  "subspace-verification",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

@@ -30,7 +30,8 @@ use sp_domains::bundle_election::{
 };
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{
-    DomainId, ExecutionReceipt, ExecutorPublicKey, ProofOfElection, SignedOpaqueBundle, StakeWeight,
+    BundleSolution, DomainId, ExecutionReceipt, ExecutorPublicKey, ProofOfElection,
+    SignedOpaqueBundle, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::{BlakeTwo256, Hash, One, Saturating, Zero};
@@ -352,7 +353,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            let domain_id = signed_opaque_bundle.proof_of_election.domain_id;
+            let domain_id = signed_opaque_bundle.domain_id();
 
             let oldest_receipt_number = OldestReceiptNumber::<T>::get(domain_id);
             let (_, mut best_number) = <ReceiptHead<T>>::get(domain_id);
@@ -528,9 +529,6 @@ mod pallet {
 
         /// Invalid core domain bundle solution.
         BadBundleElectionSolution,
-
-        /// Either `core_block_hash` or `core_state_root` is missing in the proof of election.
-        CoreBlockInfoNotFound,
 
         /// Cannot verify the core domain state root.
         StateRootUnverifiable,
@@ -753,6 +751,15 @@ impl<T: Config> Pallet<T> {
     fn pre_dispatch_submit_core_bundle(
         signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::Hash>,
     ) -> Result<(), Error<T>> {
+        let BundleSolution::Core {
+            proof_of_election,
+            core_block_number,
+            core_block_hash,
+            core_state_root
+        } = &signed_opaque_bundle.bundle_solution else {
+            return Err(Error::<T>::NotCoreDomainBundle);
+        };
+
         // The validity of vrf proof itself has been verified on the primary chain, thus only the
         // proof_of_election is necessary to be checked here.
         let ProofOfElection {
@@ -762,23 +769,16 @@ impl<T: Config> Pallet<T> {
             state_root,
             executor_public_key,
             global_challenge,
-            core_block_number,
-            core_block_hash,
-            core_state_root,
             ..
-        } = &signed_opaque_bundle.proof_of_election;
+        } = &proof_of_election;
 
         if !domain_id.is_core() {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
-        let core_block_number =
-            T::BlockNumber::from(core_block_number.ok_or(Error::<T>::CoreBlockInfoNotFound)?);
+        let core_block_number = T::BlockNumber::from(*core_block_number);
 
         if !core_block_number.is_zero() {
-            let core_block_hash = core_block_hash.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
-            let core_state_root = core_state_root.ok_or(Error::<T>::CoreBlockInfoNotFound)?;
-
             let maybe_state_root =
                 signed_opaque_bundle
                     .bundle
@@ -787,7 +787,7 @@ impl<T: Config> Pallet<T> {
                     .find_map(|receipt| {
                         receipt.trace.last().and_then(|state_root| {
                             if (receipt.primary_number, receipt.domain_hash)
-                                == (core_block_number, core_block_hash)
+                                == (core_block_number, *core_block_hash)
                             {
                                 Some(*state_root)
                             } else {
@@ -802,7 +802,7 @@ impl<T: Config> Pallet<T> {
                     .ok_or(Error::<T>::StateRootUnverifiable)?,
             };
 
-            if expected_state_root != core_state_root {
+            if expected_state_root != *core_state_root {
                 return Err(Error::<T>::BadStateRoot);
             }
         }

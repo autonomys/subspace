@@ -230,7 +230,11 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash: signed_opaque_bundle.hash(),
-                bundle_author: signed_opaque_bundle.proof_of_election.executor_public_key,
+                bundle_author: signed_opaque_bundle
+                    .bundle_solution
+                    .proof_of_election()
+                    .executor_public_key
+                    .clone(),
             });
 
             Ok(())
@@ -653,10 +657,12 @@ impl<T: Config> Pallet<T> {
     fn validate_bundle(
         SignedOpaqueBundle {
             bundle,
-            proof_of_election,
+            bundle_solution,
             signature,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
+        let proof_of_election = bundle_solution.proof_of_election();
+
         if !proof_of_election
             .executor_public_key
             .verify(&bundle.hash(), signature)
