@@ -187,9 +187,6 @@ pub enum AnnounceError {
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
-    /// Failed to announce an item.
-    #[error("Failed to announce an item.")]
-    Announce,
 }
 
 impl From<oneshot::Canceled> for AnnounceError {
@@ -313,8 +310,11 @@ impl Node {
         self.shared.id
     }
 
-    pub async fn get_value(&self, key: Multihash) -> Result<Option<Vec<u8>>, GetValueError> {
-        let (result_sender, result_receiver) = oneshot::channel();
+    pub async fn get_value(
+        &self,
+        key: Multihash,
+    ) -> Result<impl Stream<Item = Vec<u8>>, GetValueError> {
+        let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
             .command_sender
@@ -322,11 +322,16 @@ impl Node {
             .send(Command::GetValue { key, result_sender })
             .await?;
 
-        Ok(result_receiver.await?)
+        // TODO: A wrapper that'll immediately cancel query on drop
+        Ok(result_receiver)
     }
 
-    pub async fn put_value(&self, key: Multihash, value: Vec<u8>) -> Result<bool, PutValueError> {
-        let (result_sender, result_receiver) = oneshot::channel();
+    pub async fn put_value(
+        &self,
+        key: Multihash,
+        value: Vec<u8>,
+    ) -> Result<impl Stream<Item = ()>, PutValueError> {
+        let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
             .command_sender
@@ -338,7 +343,8 @@ impl Node {
             })
             .await?;
 
-        Ok(result_receiver.await?)
+        // TODO: A wrapper that'll immediately cancel query on drop
+        Ok(result_receiver)
     }
 
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
@@ -410,10 +416,10 @@ impl Node {
     pub async fn get_closest_peers(
         &self,
         key: Multihash,
-    ) -> Result<Vec<PeerId>, GetClosestPeersError> {
+    ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
-        let (result_sender, result_receiver) = oneshot::channel();
+        let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
             .command_sender
@@ -421,11 +427,8 @@ impl Node {
             .send(Command::GetClosestPeers { key, result_sender })
             .await?;
 
-        let peers = result_receiver.await?;
-
-        trace!("Kademlia 'GetClosestPeers' returned {} peers", peers.len());
-
-        Ok(peers)
+        // TODO: A wrapper that'll immediately cancel query on drop
+        Ok(result_receiver)
     }
 
     // TODO: add timeout
@@ -458,8 +461,11 @@ impl Node {
     }
 
     /// Start announcing item by its key. Initiate 'start_providing' Kademlia operation.
-    pub async fn start_announcing(&self, key: Multihash) -> Result<(), AnnounceError> {
-        let (result_sender, result_receiver) = oneshot::channel();
+    pub async fn start_announcing(
+        &self,
+        key: Multihash,
+    ) -> Result<impl Stream<Item = ()>, AnnounceError> {
+        let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'start_announcing' request.");
 
@@ -469,10 +475,8 @@ impl Node {
             .send(Command::StartAnnouncing { key, result_sender })
             .await?;
 
-        result_receiver
-            .await?
-            .then_some(())
-            .ok_or(AnnounceError::Announce)
+        // TODO: A wrapper that'll immediately cancel query on drop
+        Ok(result_receiver)
     }
 
     /// Stop announcing item by its key. Initiate 'stop_providing' Kademlia operation.
@@ -494,8 +498,11 @@ impl Node {
     }
 
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.
-    pub async fn get_providers(&self, key: Multihash) -> Result<Vec<PeerId>, GetProvidersError> {
-        let (result_sender, result_receiver) = oneshot::channel();
+    pub async fn get_providers(
+        &self,
+        key: Multihash,
+    ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
+        let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'get_providers' request.");
 
@@ -505,18 +512,8 @@ impl Node {
             .send(Command::GetProviders { key, result_sender })
             .await?;
 
-        if let Some(providers) = result_receiver.await? {
-            trace!(
-                "Kademlia 'GetProviders' returned {} providers.",
-                providers.len()
-            );
-
-            Ok(providers)
-        } else {
-            trace!("Kademlia 'GetProviders' returned an error (timeout).");
-
-            Err(GetProvidersError::GetProviders)
-        }
+        // TODO: A wrapper that'll immediately cancel query on drop
+        Ok(result_receiver)
     }
 
     /// Node's own addresses where it listens for incoming requests.

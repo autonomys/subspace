@@ -13,7 +13,8 @@ use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthe
 use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
-use libp2p::{NetworkBehaviour, PeerId};
+use libp2p::swarm::NetworkBehaviour;
+use libp2p::PeerId;
 
 pub(crate) struct BehaviorConfig<RecordStore = CustomRecordStore> {
     /// Identity keypair of a node used for authenticated connections.

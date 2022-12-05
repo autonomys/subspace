@@ -1,4 +1,5 @@
 use futures::channel::oneshot;
+use futures::StreamExt;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
@@ -85,13 +86,16 @@ async fn main() {
         piece_index_hash.to_multihash()
     };
 
-    node.start_announcing(key).await.unwrap();
+    node.start_announcing(key).await.unwrap().next().await;
     println!("Node announced key: {:?}", key);
 
     tokio::time::sleep(Duration::from_secs(15)).await;
 
     let some_node = nodes.first().unwrap();
-    let providers_result = some_node.get_providers(key).await;
+    let providers_result = match some_node.get_providers(key).await {
+        Ok(stream) => Ok(stream.collect::<Vec<_>>().await),
+        Err(error) => Err(error),
+    };
 
     println!(
         "Some Node get_piece_providers result: {:?}",
@@ -100,7 +104,10 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(20)).await;
 
-    let providers_result = some_node.get_providers(key).await;
+    let providers_result = match some_node.get_providers(key).await {
+        Ok(stream) => Ok(stream.collect::<Vec<_>>().await),
+        Err(error) => Err(error),
+    };
 
     println!(
         "Some Node get_piece_providers result: {:?}",

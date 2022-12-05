@@ -140,15 +140,16 @@ impl PieceSectorPublisher {
 
                 Err("Piece publishing failed".into())
             }
-            Ok(false) => {
-                debug!(%piece_index, ?key, "Piece publishing for a sector was unsuccessful");
+            Ok(mut stream) => {
+                if stream.next().await.is_some() {
+                    trace!(%piece_index, ?key, "Piece publishing for a sector succeeded");
 
-                Err("Piece publishing was unsuccessful".into())
-            }
-            Ok(true) => {
-                trace!(%piece_index, ?key, "Piece publishing succeeded.");
+                    Ok(())
+                } else {
+                    debug!(%piece_index, ?key, "Piece publishing for a sector failed");
 
-                Ok(())
+                    Err("Piece publishing was unsuccessful".into())
+                }
             }
         }
     }

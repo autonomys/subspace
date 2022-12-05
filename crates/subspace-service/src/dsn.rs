@@ -132,9 +132,18 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
                         //
                         // trace!(?key, "Announcing result: {:?}", announcing_result);
 
-                        let put_value_result = node.put_value(key, piece.to_vec()).await;
-
-                        trace!(?key, "Put value result: {:?}", put_value_result);
+                        match node.put_value(key, piece.to_vec()).await {
+                            Ok(mut stream) => {
+                                if stream.next().await.is_some() {
+                                    trace!(?key, "Put value succeeded");
+                                } else {
+                                    trace!(?key, "Put value failed");
+                                }
+                            }
+                            Err(error) => {
+                                trace!(?key, "Put value failed: {}", error);
+                            }
+                        }
 
                         //TODO: ensure republication of failed announcements
                     }
