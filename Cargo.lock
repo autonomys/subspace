@@ -9965,6 +9965,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "backoff",
  "derive_more",
  "domain-runtime-primitives",
  "frame-support",
@@ -10009,6 +10010,7 @@ dependencies = [
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
+ "subspace-archiving",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-networking",
@@ -10016,6 +10018,7 @@ dependencies = [
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
