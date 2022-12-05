@@ -2330,6 +2330,7 @@ name = "domain-service"
 version = "0.1.0"
 dependencies = [
  "clap 4.0.26",
+ "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
@@ -9849,6 +9850,7 @@ dependencies = [
  "bytesize",
  "clap 4.0.26",
  "core-payments-domain-runtime",
+ "cross-domain-message-gossip",
  "dirs",
  "domain-runtime-primitives",
  "domain-service",
@@ -9870,6 +9872,7 @@ dependencies = [
  "sc-subspace-chain-specs",
  "sc-telemetry",
  "sc-tracing",
+ "sc-utils",
  "serde",
  "serde_json",
  "sp-consensus",

@@ -16,6 +16,7 @@
 
 //! Subspace node implementation.
 
+use cross_domain_message_gossip::gossip_worker::GossipWorker;
 use domain_service::Configuration;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
@@ -28,6 +29,7 @@ use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_domains::DomainId;
 use std::any::TypeId;
+use std::collections::BTreeMap;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration};
@@ -531,6 +533,10 @@ fn main() -> Result<(), Error> {
                     )
                     .await?;
 
+                    let mut cross_domain_message_sink = BTreeMap::new();
+                    cross_domain_message_sink
+                        .insert(DomainId::SYSTEM, secondary_chain_node.tx_pool_sink);
+
                     primary_chain_node
                         .task_manager
                         .add_child(secondary_chain_node.task_manager);
@@ -598,12 +604,19 @@ fn main() -> Result<(), Error> {
                             }
                         };
 
+                        cross_domain_message_sink
+                            .insert(core_domain_cli.domain_id, core_domain_node.tx_pool_sink);
                         primary_chain_node
                             .task_manager
                             .add_child(core_domain_node.task_manager);
 
                         core_domain_node.network_starter.start_network();
                     }
+
+                    let _cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
+                        secondary_chain_node.network.clone(),
+                        cross_domain_message_sink,
+                    );
 
                     secondary_chain_node.network_starter.start_network();
                 }

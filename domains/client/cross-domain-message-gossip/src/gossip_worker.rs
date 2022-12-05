@@ -1,4 +1,4 @@
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::PeerId;
@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 const LOG_TARGET: &str = "cross_domain_gossip_worker";
+const PROTOCOL_NAME: &str = "/subspace/cross-domain-messages";
 
 /// Unbounded sender to send encoded ext to listeners.
 pub type DomainExtSender = TracingUnboundedSender<Vec<u8>>;
@@ -25,9 +26,9 @@ pub struct Message {
     pub encoded_data: Vec<u8>,
 }
 
-struct GossipWorker<Block: BlockT> {
+pub struct GossipWorker<Block: BlockT> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    gossip_validator: GossipValidator,
+    gossip_validator: Arc<GossipValidator>,
     domain_ext_senders: BTreeMap<DomainId, DomainExtSender>,
 }
 
@@ -37,18 +38,31 @@ fn topic<Block: BlockT>() -> Block::Hash {
 }
 
 impl<Block: BlockT> GossipWorker<Block> {
-    pub fn new(
-        gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
+    pub fn new<Network>(
+        network: Network,
         domain_ext_senders: BTreeMap<DomainId, DomainExtSender>,
-    ) -> Self {
+    ) -> Self
+    where
+        Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
+    {
+        let gossip_validator = Arc::new(GossipValidator::default());
+        let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
+            network,
+            PROTOCOL_NAME,
+            gossip_validator.clone(),
+            None,
+        )));
         GossipWorker {
             gossip_engine,
-            gossip_validator: Default::default(),
+            gossip_validator,
             domain_ext_senders,
         }
     }
 
-    pub async fn run(mut self) {
+    pub async fn run<MsgSubmitter>(mut self, mut msg_submitter: MsgSubmitter)
+    where
+        MsgSubmitter: Stream<Item = Message> + Unpin + futures::stream::FusedStream,
+    {
         let mut incoming_cross_domain_messages = Box::pin(
             self.gossip_engine
                 .lock()
@@ -63,6 +77,13 @@ impl<Block: BlockT> GossipWorker<Block> {
                 cross_domain_message = incoming_cross_domain_messages.next() => {
                     if let Some(msg) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
+                        self.handle_cross_domain_message(msg);
+                    }
+                },
+
+                cross_domain_message = msg_submitter.next() => {
+                    if let Some(msg) = cross_domain_message {
+                        tracing::debug!(target: LOG_TARGET, "Submitted cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);
                     }
                 }

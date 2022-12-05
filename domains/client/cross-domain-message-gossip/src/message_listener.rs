@@ -41,8 +41,8 @@ where
 
 pub async fn start_domain_message_listener<Client, TxPool, TxnListener>(
     domain_id: DomainId,
-    client: &Arc<Client>,
-    tx_pool: &Arc<TxPool>,
+    client: Arc<Client>,
+    tx_pool: Arc<TxPool>,
     mut listener: TxnListener,
 ) where
     TxPool: TransactionPool + 'static,
@@ -55,7 +55,7 @@ pub async fn start_domain_message_listener<Client, TxPool, TxnListener>(
         domain_id
     );
     while let Some(encoded_ext) = listener.next().await {
-        let res = submit_one(client, tx_pool, encoded_ext).await;
+        let res = submit_one(&client, &tx_pool, encoded_ext).await;
         if let Err(err) = res {
             tracing::error!(
                 target: LOG_TARGET,

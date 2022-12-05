@@ -22,6 +22,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 bytesize = "1.1.0"
 clap = { version = "4.0.26", features = ["derive"] }
+cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "4.0.0"
 domain-service = { version = "0.1.0", path = "../../domains/service" }
@@ -44,6 +45,7 @@ sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/subst
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false, features = ["wasmtime"] }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 serde = "1.0.147"
 serde_json = "1.0.83"
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }

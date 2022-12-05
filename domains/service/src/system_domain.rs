@@ -1,4 +1,5 @@
 use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
+use cross_domain_message_gossip::gossip_worker::DomainExtSender;
 use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
 };
@@ -21,7 +22,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
@@ -79,6 +80,8 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    /// Transaction pool sink
+    pub tx_pool_sink: DomainExtSender,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -261,6 +264,23 @@ where
         );
     }
 
+    let (msg_sender, msg_receiver) = tracing_unbounded("system_domain_message_channel");
+
+    // start cross domain message listener for system domain
+    let system_domain_listener =
+        cross_domain_message_gossip::message_listener::start_domain_message_listener(
+            DomainId::SYSTEM,
+            client.clone(),
+            params.transaction_pool.clone(),
+            msg_receiver,
+        );
+
+    spawn_essential.spawn_essential_blocking(
+        "system-domain-message-listener",
+        None,
+        Box::pin(system_domain_listener),
+    );
+
     let new_full = NewFull {
         task_manager,
         client,
@@ -270,6 +290,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        tx_pool_sink: msg_sender,
     };
 
     Ok(new_full)

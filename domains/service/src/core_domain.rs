@@ -1,4 +1,5 @@
 use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
+use cross_domain_message_gossip::gossip_worker::DomainExtSender;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_runtime_primitives::opaque::Block;
@@ -73,7 +74,7 @@ where
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
@@ -81,6 +82,8 @@ where
     /// Executor.
     pub executor:
         CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+    /// Transaction pool sink
+    pub tx_pool_sink: DomainExtSender,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -285,6 +288,23 @@ where
         );
     }
 
+    let (msg_sender, msg_receiver) = tracing_unbounded("core_domain_message_channel");
+
+    // start cross domain message listener for system domain
+    let core_domain_listener =
+        cross_domain_message_gossip::message_listener::start_domain_message_listener(
+            domain_id,
+            client.clone(),
+            params.transaction_pool.clone(),
+            msg_receiver,
+        );
+
+    spawn_essential.spawn_essential_blocking(
+        "core-domain-message-listener",
+        None,
+        Box::pin(core_domain_listener),
+    );
+
     let new_full = NewFull {
         task_manager,
         client,
@@ -294,6 +314,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        tx_pool_sink: msg_sender,
     };
 
     Ok(new_full)
