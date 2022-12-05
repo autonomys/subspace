@@ -23,6 +23,12 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 
+// Defines a maximum constraint for the piece publisher batch.
+const MAX_PIECE_PUBLISHER_BATCH_SIZE: usize = 30;
+
+// Defines a maximum constraint for the piece receiver batch.
+const MAX_PIECE_RECEIVER_BATCH_SIZE: usize = 30;
+
 #[cfg(all(
     target_arch = "x86_64",
     target_vendor = "unknown",
@@ -54,8 +60,11 @@ struct FarmingArgs {
     #[clap(flatten)]
     dsn: DsnArgs,
     /// Defines size for the pieces batch of the piece receiving process.
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, default_value_t = 12)]
     piece_receiver_batch_size: usize,
+    /// Defines size for the pieces batch of the piece publishing process.
+    #[arg(long, default_value_t = 12)]
+    piece_publisher_batch_size: usize,
 }
 
 /// Arguments for DSN
@@ -286,6 +295,26 @@ async fn main() -> Result<()> {
 
                 command.farm
             };
+
+            if farming_args.piece_publisher_batch_size == 0
+                || farming_args.piece_publisher_batch_size > MAX_PIECE_PUBLISHER_BATCH_SIZE
+            {
+                return Err(anyhow::anyhow!(
+                    "Incorrect piece publisher batch size: {}. Should be 1-{}",
+                    farming_args.piece_publisher_batch_size,
+                    MAX_PIECE_PUBLISHER_BATCH_SIZE
+                ));
+            }
+
+            if farming_args.piece_receiver_batch_size == 0
+                || farming_args.piece_receiver_batch_size > MAX_PIECE_RECEIVER_BATCH_SIZE
+            {
+                return Err(anyhow::anyhow!(
+                    "Incorrect piece receiver batch size: {}. Should be 1-{}",
+                    farming_args.piece_receiver_batch_size,
+                    MAX_PIECE_RECEIVER_BATCH_SIZE
+                ));
+            }
 
             commands::farm_multi_disk(base_path, disk_farms, farming_args).await?;
         }

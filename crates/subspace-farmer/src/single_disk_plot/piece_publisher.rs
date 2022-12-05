@@ -1,17 +1,29 @@
+use backoff::future::retry;
+use backoff::ExponentialBackoff;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::collections::BTreeSet;
 use std::error::Error;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, ToMultihash};
-use tokio::time::sleep;
-use tracing::{debug, error, trace};
+use tokio::sync::Semaphore;
+use tokio::time::error::Elapsed;
+use tokio::time::timeout;
+use tracing::{debug, error, info, trace};
 
-/// Defines a duration between piece publishing calls.
-const PUBLISH_PIECE_BY_SECTOR_WAITING_DURATION_IN_SECS: u64 = 1;
+/// Max time allocated for putting piece from DSN before attempt is considered to fail
+const PUT_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Defines initial duration between put_piece calls.
+const PUT_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
+/// Defines max duration between put_piece calls.
+const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 
 // Piece-by-sector DSN publishing helper.
 #[derive(Clone)]
@@ -41,37 +53,103 @@ impl PieceSectorPublisher {
     // Publishes pieces-by-sector to DSN in bulk. Supports cancellation.
     pub(crate) async fn publish_pieces(
         &self,
-        pieces_indexes: Vec<PieceIndex>,
+        piece_indexes: Vec<PieceIndex>,
+        piece_publisher_batch_size: usize,
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        for piece_index in pieces_indexes {
-            'attempts: loop {
-                self.check_cancellation()?;
+        let semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
 
-                let key = PieceIndexHash::from_index(piece_index)
-                    .to_multihash_by_code(MultihashCode::Sector);
+        let mut pieces_receiving_futures = piece_indexes
+            .iter()
+            .map(|piece_index| {
+                Box::pin(async {
+                    let _permit = semaphore
+                        .acquire()
+                        .await
+                        .expect("Should be valid on non-closed semaphore");
 
-                // TODO: rework to piece announcing (pull-model) after fixing
-                // https://github.com/libp2p/rust-libp2p/issues/3048
-                let set = BTreeSet::from_iter(vec![self.dsn_node.id().to_bytes()]);
+                    self.publish_single_piece_with_backoff(*piece_index).await
+                })
+            })
+            .collect::<FuturesUnordered<_>>();
 
-                let result = self.dsn_node.put_value(key, set.encode()).await;
-
-                if let Err(error) = result {
-                    error!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");
-
-                    // pause before retrying
-                    sleep(Duration::from_secs(
-                        PUBLISH_PIECE_BY_SECTOR_WAITING_DURATION_IN_SECS,
-                    ))
-                    .await;
-                } else {
-                    trace!(%piece_index, ?key, "Piece publishing for a sector succeeded");
-
-                    break 'attempts;
-                }
-            }
+        while pieces_receiving_futures.next().await.is_some() {
+            self.check_cancellation()?;
         }
 
+        info!("Piece publishing was successful.");
+
         Ok(())
+    }
+
+    async fn publish_single_piece_with_backoff(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+        let backoff = ExponentialBackoff {
+            initial_interval: PUT_PIECE_INITIAL_INTERVAL,
+            max_interval: PUT_PIECE_MAX_INTERVAL,
+            // Try until we get a valid piece
+            max_elapsed_time: None,
+            ..ExponentialBackoff::default()
+        };
+
+        retry(backoff, || async {
+            self.check_cancellation()
+                .map_err(backoff::Error::Permanent)?;
+
+            let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
+                PUT_PIECE_TIMEOUT,
+                Box::pin(self.publish_single_piece(piece_index))
+                    as Pin<Box<dyn Future<Output = _> + Send>>,
+            )
+            .await;
+
+            if let Ok(publish_result) = publish_timeout_result {
+                if publish_result.is_ok() {
+                    return Ok(());
+                }
+            }
+
+            error!(%piece_index, "Couldn't publish a piece. Retrying...");
+
+            Err(backoff::Error::transient(
+                "Couldn't publish piece to DSN".into(),
+            ))
+        })
+        .await
+    }
+
+    async fn publish_single_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+        self.check_cancellation()?;
+
+        let key =
+            PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
+
+        // TODO: rework to piece announcing (pull-model) after fixing
+        // https://github.com/libp2p/rust-libp2p/issues/3048
+        let set = BTreeSet::from_iter(vec![self.dsn_node.id().to_bytes()]);
+
+        let result = self.dsn_node.put_value(key, set.encode()).await;
+
+        match result {
+            Err(error) => {
+                debug!(?error, %piece_index, ?key, "Piece publishing for a sector returned an error");
+
+                Err("Piece publishing failed".into())
+            }
+            Ok(false) => {
+                debug!(%piece_index, ?key, "Piece publishing for a sector was unsuccessful");
+
+                Err("Piece publishing was unsuccessful".into())
+            }
+            Ok(true) => {
+                trace!(%piece_index, ?key, "Piece publishing succeeded.");
+
+                Ok(())
+            }
+        }
     }
 }

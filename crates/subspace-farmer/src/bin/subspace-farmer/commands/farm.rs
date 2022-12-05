@@ -65,6 +65,7 @@ pub(crate) async fn farm_multi_disk(
         disable_farming,
         mut dsn,
         piece_receiver_batch_size,
+        piece_publisher_batch_size,
     } = farming_args;
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
@@ -119,6 +120,7 @@ pub(crate) async fn farm_multi_disk(
             reward_address,
             dsn_node: node.clone(),
             piece_receiver_batch_size: farming_args.piece_receiver_batch_size,
+            piece_publisher_batch_size: farming_args.piece_publisher_batch_size,
         })?;
 
         single_disk_plots.push(single_disk_plot);
