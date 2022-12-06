@@ -381,24 +381,7 @@ where
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    let record_storage = AuxRecordStorage::new(
-        client.clone(),
-        config.piece_cache_size,
-        Arc::new({
-            let client = client.clone();
-
-            move || {
-                let best_block_id = BlockId::Hash(client.info().best_hash);
-                let total_pieces = client
-                    .runtime_api()
-                    .total_pieces(&best_block_id)
-                    .expect("Can't receive total pieces number.");
-
-                // segment index with a zero-based index-shift
-                (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
-            }
-        }),
-    );
+    let record_storage = AuxRecordStorage::new(client.clone(), config.piece_cache_size);
 
     // Start before archiver below, so we don't have potential race condition and miss pieces
     task_manager

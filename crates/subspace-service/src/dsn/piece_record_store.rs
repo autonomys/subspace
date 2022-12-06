@@ -17,13 +17,9 @@ const ONE_GB: u64 = 1024 * 1024 * 1024;
 // Defines how often we clear pieces from cache.
 const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
 
-pub(crate) type SegmentIndexGetter = Arc<dyn Fn() -> u64 + Send + Sync + 'static>;
-
 pub(crate) struct AuxRecordStorage<AS> {
     aux_store: Arc<AS>,
     max_segments_number_in_cache: u64,
-    // TODO: Remove it when we delete RPC-endpoint for farmers.
-    last_segment_index_getter: SegmentIndexGetter,
 }
 
 impl<AS> Clone for AuxRecordStorage<AS> {
@@ -31,7 +27,6 @@ impl<AS> Clone for AuxRecordStorage<AS> {
         Self {
             aux_store: self.aux_store.clone(),
             max_segments_number_in_cache: self.max_segments_number_in_cache,
-            last_segment_index_getter: self.last_segment_index_getter.clone(),
         }
     }
 }
@@ -42,11 +37,7 @@ where
 {
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
-    pub(crate) fn new(
-        aux_store: Arc<AS>,
-        cache_size: u64,
-        last_segment_index_getter: SegmentIndexGetter,
-    ) -> Self {
+    pub(crate) fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
         let segment_number = Self::segments_number_in_cache(cache_size);
         let min_segment_number = Self::min_segments_number_in_cache();
 
@@ -59,7 +50,6 @@ where
         Self {
             aux_store,
             max_segments_number_in_cache,
-            last_segment_index_getter,
         }
     }
 
@@ -157,8 +147,6 @@ impl<'a, AS> RecordStorage<'a> for AuxRecordStorage<AS>
 where
     AS: AuxStore + 'a,
 {
-    type RecordsIter = AuxStoreRecordIterator<'a, AS>;
-
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         let get_result = self.get_piece_by_key(key.to_vec());
 
@@ -194,57 +182,5 @@ where
             ?key,
             "Attempted to remove a record from the aux piece record store."
         );
-    }
-
-    fn records(&'a self) -> Self::RecordsIter {
-        let segment_index = (self.last_segment_index_getter)();
-
-        let starting_piece_index: PieceIndex = segment_index
-            .saturating_sub(self.max_segments_number_in_cache())
-            * PIECES_IN_SEGMENT as u64;
-
-        AuxStoreRecordIterator::new(starting_piece_index, self)
-    }
-}
-
-pub(crate) struct AuxStoreRecordIterator<'a, AS> {
-    next_piece_index: PieceIndex,
-    record_storage: &'a AuxRecordStorage<AS>,
-}
-
-impl<'a, AS: AuxStore> AuxStoreRecordIterator<'a, AS> {
-    pub(crate) fn new(
-        first_piece_index: PieceIndex,
-        record_storage: &'a AuxRecordStorage<AS>,
-    ) -> Self {
-        Self {
-            next_piece_index: first_piece_index,
-            record_storage,
-        }
-    }
-}
-
-impl<'a, AS: AuxStore> Iterator for AuxStoreRecordIterator<'a, AS> {
-    type Item = Cow<'a, Record>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let key = Key::from(PieceIndexHash::from_index(self.next_piece_index).to_multihash());
-
-        let result = self
-            .record_storage
-            .get_piece_by_key(key.to_vec())
-            .ok()
-            .flatten()
-            .map(move |piece| Record {
-                key,
-                value: piece.to_vec(),
-                publisher: None,
-                expires: None,
-            })
-            .map(Cow::Owned);
-
-        self.next_piece_index += 1;
-
-        result
     }
 }
