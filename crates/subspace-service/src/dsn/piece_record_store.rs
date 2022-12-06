@@ -3,27 +3,23 @@ use sc_client_api::backend::AuxStore;
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::{
-    FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE,
-};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::Record;
 use subspace_networking::{RecordStorage, ToMultihash};
 use tracing::{trace, warn};
 
-// Defines how often we clear pieces from cache.
-const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
-
 pub(crate) struct AuxRecordStorage<AS> {
     aux_store: Arc<AS>,
-    max_segments_number_in_cache: u64,
+    /// Limit for number of pieces to be stored in cache
+    max_pieces_in_cache: PieceIndex,
 }
 
 impl<AS> Clone for AuxRecordStorage<AS> {
     fn clone(&self) -> Self {
         Self {
             aux_store: self.aux_store.clone(),
-            max_segments_number_in_cache: self.max_segments_number_in_cache,
+            max_pieces_in_cache: self.max_pieces_in_cache,
         }
     }
 }
@@ -35,12 +31,11 @@ where
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
     pub(crate) fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
-        let max_segments_number_in_cache =
-            cache_size / (PIECES_IN_SEGMENT as u64 * PIECE_SIZE as u64);
+        let max_pieces_in_cache: PieceIndex = cache_size / PIECE_SIZE as PieceIndex;
 
         Self {
             aux_store,
-            max_segments_number_in_cache,
+            max_pieces_in_cache,
         }
     }
 
@@ -56,11 +51,6 @@ where
         PieceIndexHash::from_index(piece_index)
             .to_multihash()
             .to_bytes()
-    }
-
-    /// Returns configured maximum configured segments number in the cache.
-    pub(crate) fn max_segments_number_in_cache(&self) -> u64 {
-        self.max_segments_number_in_cache
     }
 
     /// Add pieces to cache
@@ -82,21 +72,13 @@ where
             &[],
         )?;
 
-        // Remove obsolete pieces once in TOLERANCE_SEGMENTS_NUMBER times
-        let segment_index = first_piece_index / PIECES_IN_SEGMENT as u64;
-
-        let starting_piece_index = segment_index
-            .checked_sub(self.max_segments_number_in_cache() + TOLERANCE_SEGMENTS_NUMBER - 1)
-            .map(|starting_segment_index| starting_segment_index * PIECES_IN_SEGMENT as u64);
-
-        let pieces_to_delete_number =
-            (TOLERANCE_SEGMENTS_NUMBER * PIECES_IN_SEGMENT as u64) as usize;
-        if let Some(starting_piece_index) = starting_piece_index {
-            let keys = (starting_piece_index..)
-                .take(pieces_to_delete_number)
+        if let Some(delete_pieces_from_index) =
+            first_piece_index.checked_sub(self.max_pieces_in_cache)
+        {
+            let keys = (delete_pieces_from_index..first_piece_index)
+                .into_iter()
                 .map(Self::key)
                 .collect::<Vec<_>>();
-
             self.aux_store.insert_aux(
                 &[],
                 keys.iter()
