@@ -6,16 +6,13 @@ use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
-use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tracing::{debug, info, trace, Instrument};
-
-pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -39,7 +36,6 @@ pub struct DsnConfig {
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     record_storage: AuxRecordStorage<AS>,
-    piece_getter: PieceGetter,
 ) -> Result<
     (
         Node,
@@ -53,6 +49,9 @@ where
 {
     trace!("Subspace networking starting.");
 
+    let record_store =
+        CustomRecordStore::new(record_storage.clone(), MemoryProviderStorage::default());
+
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
         listen_on: dsn_config.listen_on,
@@ -62,8 +61,8 @@ where
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::PieceIndex(idx) = req.key {
-                piece_getter(&idx)
+            let result = if let PieceKey::PieceIndex(piece_index) = req.key {
+                record_storage.get_piece(piece_index).ok().flatten()
             } else {
                 debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
 
@@ -72,7 +71,7 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(record_storage, MemoryProviderStorage::default()),
+        record_store,
         ..subspace_networking::Config::with_generated_keypair()
     };
 

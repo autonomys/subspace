@@ -418,16 +418,9 @@ where
         let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
         let _enter = span.enter();
 
-        let (node, mut node_runner) = create_dsn_instance::<Block, _>(
-            config.dsn_config.clone(),
-            record_storage.clone(),
-            Arc::new({
-                let record_storage = record_storage.clone();
-
-                move |piece_index| record_storage.get_piece(*piece_index).ok().flatten()
-            }),
-        )
-        .await?;
+        let (node, mut node_runner) =
+            create_dsn_instance::<Block, _>(config.dsn_config.clone(), record_storage.clone())
+                .await?;
 
         info!("Subspace networking initialized: Node ID is {}", node.id());
 
