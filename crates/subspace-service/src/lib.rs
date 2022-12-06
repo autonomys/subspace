@@ -21,7 +21,7 @@ mod dsn;
 mod pool;
 pub mod rpc;
 
-use crate::dsn::create_dsn_instance;
+use crate::dsn::{create_dsn_instance, AuxPieceCache, PieceCache};
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
@@ -42,7 +42,6 @@ use sc_consensus_subspace::{
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_piece_cache::{AuxPieceCache, PieceCache};
 use sc_service::error::Error as ServiceError;
 use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,

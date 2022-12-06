@@ -1,5 +1,7 @@
+pub mod piece_cache;
+
+use piece_cache::{AuxPieceCache, PieceCache};
 use sc_client_api::AuxStore;
-use sc_piece_cache::{AuxPieceCache, PieceCache};
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;

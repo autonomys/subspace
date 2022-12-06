@@ -1,8 +1,6 @@
 //! Caching layer for pieces produced during archiving to make them available for some time after
 //! they were produced.
 
-#![warn(rust_2018_idioms, missing_docs, missing_debug_implementations)]
-
 #[cfg(test)]
 mod tests;
 

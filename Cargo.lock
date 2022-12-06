@@ -7938,17 +7938,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-piece-cache"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sc-client-api",
- "subspace-core-primitives",
- "subspace-networking",
- "tracing",
-]
-
-[[package]]
 name = "sc-proposer-metrics"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=6d57dbc639bb3d9460dabeccb063cc6556452535#6d57dbc639bb3d9460dabeccb063cc6556452535"
@@ -9970,7 +9959,6 @@ dependencies = [
  "sc-consensus-subspace-rpc",
  "sc-executor",
  "sc-network",
- "sc-piece-cache",
  "sc-rpc",
  "sc-rpc-api",
  "sc-rpc-spec-v2",

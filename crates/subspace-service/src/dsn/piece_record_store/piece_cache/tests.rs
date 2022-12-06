@@ -1,4 +1,4 @@
-use crate::{AuxPieceCache, PieceCache, ONE_GB, TOLERANCE_SEGMENTS_NUMBER};
+use super::{AuxPieceCache, PieceCache, ONE_GB, TOLERANCE_SEGMENTS_NUMBER};
 use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
