@@ -542,6 +542,10 @@ fn main() -> Result<(), Error> {
                     domain_tx_pool_sinks
                         .insert(DomainId::SYSTEM, secondary_chain_node.tx_pool_sink);
 
+                    primary_chain_node
+                        .task_manager
+                        .add_child(secondary_chain_node.task_manager);
+
                     if let Some(mut core_domain_cli) = maybe_core_domain_cli {
                         let span = sc_tracing::tracing::info_span!(
                             sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -616,11 +620,11 @@ fn main() -> Result<(), Error> {
                     }
 
                     let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
-                        secondary_chain_node.network.clone(),
+                        primary_chain_node.network.clone(),
                         domain_tx_pool_sinks,
                     );
 
-                    secondary_chain_node
+                    primary_chain_node
                         .task_manager
                         .spawn_essential_handle()
                         .spawn_essential_blocking(
@@ -628,10 +632,6 @@ fn main() -> Result<(), Error> {
                             None,
                             Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
                         );
-
-                    primary_chain_node
-                        .task_manager
-                        .add_child(secondary_chain_node.task_manager);
 
                     secondary_chain_node.network_starter.start_network();
                 }
