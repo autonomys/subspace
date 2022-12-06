@@ -11,9 +11,6 @@ use subspace_networking::libp2p::kad::Record;
 use subspace_networking::{RecordStorage, ToMultihash};
 use tracing::{trace, warn};
 
-// Defines a minimum piece cache size.
-const ONE_GB: u64 = 1024 * 1024 * 1024;
-
 // Defines how often we clear pieces from cache.
 const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
 
@@ -38,14 +35,8 @@ where
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
     pub(crate) fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
-        let segment_number = Self::segments_number_in_cache(cache_size);
-        let min_segment_number = Self::min_segments_number_in_cache();
-
-        let max_segments_number_in_cache = if segment_number >= min_segment_number {
-            segment_number
-        } else {
-            min_segment_number
-        };
+        let max_segments_number_in_cache =
+            cache_size / (PIECES_IN_SEGMENT as u64 * PIECE_SIZE as u64);
 
         Self {
             aux_store,
@@ -65,14 +56,6 @@ where
         PieceIndexHash::from_index(piece_index)
             .to_multihash()
             .to_bytes()
-    }
-
-    fn segments_number_in_cache(size: u64) -> u64 {
-        size / (PIECES_IN_SEGMENT as u64 * PIECE_SIZE as u64)
-    }
-
-    fn min_segments_number_in_cache() -> u64 {
-        Self::segments_number_in_cache(ONE_GB)
     }
 
     /// Returns configured maximum configured segments number in the cache.
