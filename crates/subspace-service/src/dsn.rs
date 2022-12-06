@@ -2,7 +2,7 @@ mod piece_record_store;
 
 use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
 use futures::{Stream, StreamExt};
-pub use piece_record_store::piece_cache::{AuxPieceCache, PieceCache};
+pub(crate) use piece_record_store::piece_cache::AuxPieceCache;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
 use sp_core::traits::SpawnNamed;

@@ -21,7 +21,7 @@ mod dsn;
 mod pool;
 pub mod rpc;
 
-use crate::dsn::{create_dsn_instance, AuxPieceCache, PieceCache};
+use crate::dsn::{create_dsn_instance, AuxPieceCache};
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;

@@ -1,6 +1,6 @@
 pub mod piece_cache;
 
-use piece_cache::{AuxPieceCache, PieceCache};
+use piece_cache::AuxPieceCache;
 use sc_client_api::AuxStore;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -11,16 +11,16 @@ use subspace_networking::libp2p::kad::Record;
 use subspace_networking::{RecordStorage, ToMultihash};
 use tracing::{trace, warn};
 
-pub type SegmentIndexGetter = Arc<dyn Fn() -> u64 + Send + Sync + 'static>;
+pub(crate) type SegmentIndexGetter = Arc<dyn Fn() -> u64 + Send + Sync + 'static>;
 
-pub struct AuxRecordStorage<AS> {
+pub(crate) struct AuxRecordStorage<AS> {
     piece_cache: AuxPieceCache<AS>,
     // TODO: Remove it when we delete RPC-endpoint for farmers.
     last_segment_index_getter: SegmentIndexGetter,
 }
 
 impl<AS> AuxRecordStorage<AS> {
-    pub fn new(
+    pub(crate) fn new(
         piece_cache: AuxPieceCache<AS>,
         last_segment_index_getter: SegmentIndexGetter,
     ) -> Self {
@@ -82,14 +82,14 @@ impl<'a, AS: AuxStore> RecordStorage<'a> for AuxRecordStorage<AS> {
     }
 }
 
-pub struct AuxStoreRecordIterator<'a, AS> {
+pub(crate) struct AuxStoreRecordIterator<'a, AS> {
     next_piece_index: PieceIndex,
     piece_cache: AuxPieceCache<AS>,
     marker: PhantomData<&'a ()>,
 }
 
 impl<'a, AS: AuxStore> AuxStoreRecordIterator<'a, AS> {
-    pub fn new(first_piece_index: PieceIndex, piece_cache: AuxPieceCache<AS>) -> Self {
+    pub(crate) fn new(first_piece_index: PieceIndex, piece_cache: AuxPieceCache<AS>) -> Self {
         Self {
             next_piece_index: first_piece_index,
             piece_cache,

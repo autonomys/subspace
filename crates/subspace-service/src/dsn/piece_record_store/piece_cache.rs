@@ -16,32 +16,15 @@ use subspace_networking::ToMultihash;
 use tracing::debug;
 
 // Defines a minimum piece cache size.
-pub(crate) const ONE_GB: u64 = 1024 * 1024 * 1024;
+const ONE_GB: u64 = 1024 * 1024 * 1024;
 
 // Defines how often we clear pieces from cache.
-pub(crate) const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
-
-/// Caching layer for pieces produced during archiving to make them available for some time after
-/// they were produced.
-pub trait PieceCache: Clone {
-    /// Add pieces to cache
-    fn add_pieces(
-        &self,
-        first_piece_index: PieceIndex,
-        pieces: &FlatPieces,
-    ) -> Result<(), Box<dyn Error>>;
-
-    /// Get piece from cache
-    fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Box<dyn Error>>;
-
-    /// Get piece from cache using key bytes (expects Multihash.to_bytes() output)
-    fn get_piece_by_key(&self, key: Vec<u8>) -> Result<Option<Piece>, Box<dyn Error>>;
-}
+const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
 
 // TODO: Refactor AuxPieceCache once we remove RPC endpoint.
 /// Cache of pieces in aux storage
 #[derive(Debug)]
-pub struct AuxPieceCache<AS> {
+pub(crate) struct AuxPieceCache<AS> {
     aux_store: Arc<AS>,
     max_segments_number_in_cache: u64,
 }
@@ -62,7 +45,7 @@ where
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
     /// Create a new instance. cache_size parameter could be redefined by the minimum cache size.
-    pub fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
+    pub(crate) fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
         let segment_number = Self::segments_number_in_cache(cache_size);
         let min_segment_number = Self::min_segments_number_in_cache();
 
@@ -112,17 +95,12 @@ where
     }
 
     /// Returns configured maximum configured segments number in the cache.
-    pub fn max_segments_number_in_cache(&self) -> u64 {
+    pub(crate) fn max_segments_number_in_cache(&self) -> u64 {
         self.max_segments_number_in_cache
     }
-}
 
-impl<AS> PieceCache for AuxPieceCache<AS>
-where
-    AS: AuxStore,
-{
     /// Add pieces to cache
-    fn add_pieces(
+    pub(crate) fn add_pieces(
         &self,
         first_piece_index: PieceIndex,
         pieces: &FlatPieces,
@@ -167,11 +145,14 @@ where
         Ok(())
     }
 
-    fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Box<dyn Error>> {
+    pub(crate) fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error>> {
         self.get_piece_by_key(Self::index_to_multihash(piece_index))
     }
 
-    fn get_piece_by_key(&self, key: Vec<u8>) -> Result<Option<Piece>, Box<dyn Error>> {
+    pub(crate) fn get_piece_by_key(&self, key: Vec<u8>) -> Result<Option<Piece>, Box<dyn Error>> {
         Ok(self
             .aux_store
             .get_aux(Self::key_from_bytes(key).as_slice())?
