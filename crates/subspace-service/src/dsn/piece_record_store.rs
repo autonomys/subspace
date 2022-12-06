@@ -1,41 +1,166 @@
-pub mod piece_cache;
-
-use piece_cache::AuxPieceCache;
-use sc_client_api::AuxStore;
+use parity_scale_codec::Encode;
+use sc_client_api::backend::AuxStore;
 use std::borrow::Cow;
-use std::marker::PhantomData;
+use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{
+    FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE,
+};
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::Record;
 use subspace_networking::{RecordStorage, ToMultihash};
 use tracing::{trace, warn};
 
+// Defines a minimum piece cache size.
+const ONE_GB: u64 = 1024 * 1024 * 1024;
+
+// Defines how often we clear pieces from cache.
+const TOLERANCE_SEGMENTS_NUMBER: u64 = 2;
+
 pub(crate) type SegmentIndexGetter = Arc<dyn Fn() -> u64 + Send + Sync + 'static>;
 
 pub(crate) struct AuxRecordStorage<AS> {
-    piece_cache: AuxPieceCache<AS>,
+    aux_store: Arc<AS>,
+    max_segments_number_in_cache: u64,
     // TODO: Remove it when we delete RPC-endpoint for farmers.
     last_segment_index_getter: SegmentIndexGetter,
 }
 
-impl<AS> AuxRecordStorage<AS> {
-    pub(crate) fn new(
-        piece_cache: AuxPieceCache<AS>,
-        last_segment_index_getter: SegmentIndexGetter,
-    ) -> Self {
+impl<AS> Clone for AuxRecordStorage<AS> {
+    fn clone(&self) -> Self {
         Self {
-            piece_cache,
-            last_segment_index_getter,
+            aux_store: self.aux_store.clone(),
+            max_segments_number_in_cache: self.max_segments_number_in_cache,
+            last_segment_index_getter: self.last_segment_index_getter.clone(),
         }
     }
 }
 
-impl<'a, AS: AuxStore> RecordStorage<'a> for AuxRecordStorage<AS> {
+impl<AS> AuxRecordStorage<AS>
+where
+    AS: AuxStore,
+{
+    const KEY_PREFIX: &[u8] = b"piece_cache";
+
+    pub(crate) fn new(
+        aux_store: Arc<AS>,
+        cache_size: u64,
+        last_segment_index_getter: SegmentIndexGetter,
+    ) -> Self {
+        let segment_number = Self::segments_number_in_cache(cache_size);
+        let min_segment_number = Self::min_segments_number_in_cache();
+
+        let max_segments_number_in_cache = if segment_number >= min_segment_number {
+            segment_number
+        } else {
+            min_segment_number
+        };
+
+        Self {
+            aux_store,
+            max_segments_number_in_cache,
+            last_segment_index_getter,
+        }
+    }
+
+    fn key(piece_index: PieceIndex) -> Vec<u8> {
+        Self::key_from_bytes(Self::index_to_multihash(piece_index))
+    }
+
+    fn key_from_bytes(bytes: Vec<u8>) -> Vec<u8> {
+        (Self::KEY_PREFIX, bytes).encode()
+    }
+
+    fn index_to_multihash(piece_index: PieceIndex) -> Vec<u8> {
+        PieceIndexHash::from_index(piece_index)
+            .to_multihash()
+            .to_bytes()
+    }
+
+    fn segments_number_in_cache(size: u64) -> u64 {
+        size / (PIECES_IN_SEGMENT as u64 * PIECE_SIZE as u64)
+    }
+
+    fn min_segments_number_in_cache() -> u64 {
+        Self::segments_number_in_cache(ONE_GB)
+    }
+
+    /// Returns configured maximum configured segments number in the cache.
+    pub(crate) fn max_segments_number_in_cache(&self) -> u64 {
+        self.max_segments_number_in_cache
+    }
+
+    /// Add pieces to cache
+    pub(crate) fn add_pieces(
+        &self,
+        first_piece_index: PieceIndex,
+        pieces: &FlatPieces,
+    ) -> Result<(), Box<dyn Error>> {
+        let keys = (first_piece_index..)
+            .take(pieces.count())
+            .map(Self::key)
+            .collect::<Vec<_>>();
+        self.aux_store.insert_aux(
+            keys.iter()
+                .zip(pieces.as_pieces())
+                .map(|(key, piece)| (key.as_slice(), piece))
+                .collect::<Vec<_>>()
+                .as_slice(),
+            &[],
+        )?;
+
+        // Remove obsolete pieces once in TOLERANCE_SEGMENTS_NUMBER times
+        let segment_index = first_piece_index / PIECES_IN_SEGMENT as u64;
+
+        let starting_piece_index = segment_index
+            .checked_sub(self.max_segments_number_in_cache() + TOLERANCE_SEGMENTS_NUMBER - 1)
+            .map(|starting_segment_index| starting_segment_index * PIECES_IN_SEGMENT as u64);
+
+        let pieces_to_delete_number =
+            (TOLERANCE_SEGMENTS_NUMBER * PIECES_IN_SEGMENT as u64) as usize;
+        if let Some(starting_piece_index) = starting_piece_index {
+            let keys = (starting_piece_index..)
+                .take(pieces_to_delete_number)
+                .map(Self::key)
+                .collect::<Vec<_>>();
+
+            self.aux_store.insert_aux(
+                &[],
+                keys.iter()
+                    .map(|key| key.as_slice())
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error>> {
+        self.get_piece_by_key(Self::index_to_multihash(piece_index))
+    }
+
+    pub(crate) fn get_piece_by_key(&self, key: Vec<u8>) -> Result<Option<Piece>, Box<dyn Error>> {
+        Ok(self
+            .aux_store
+            .get_aux(Self::key_from_bytes(key).as_slice())?
+            .map(|piece| {
+                Piece::try_from(piece).expect("Always correct piece unless DB is corrupted; qed")
+            }))
+    }
+}
+
+impl<'a, AS> RecordStorage<'a> for AuxRecordStorage<AS>
+where
+    AS: AuxStore + 'a,
+{
     type RecordsIter = AuxStoreRecordIterator<'a, AS>;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
-        let get_result = self.piece_cache.get_piece_by_key(key.to_vec());
+        let get_result = self.get_piece_by_key(key.to_vec());
 
         match get_result {
             Ok(result) => result.map(|piece| {
@@ -75,25 +200,26 @@ impl<'a, AS: AuxStore> RecordStorage<'a> for AuxRecordStorage<AS> {
         let segment_index = (self.last_segment_index_getter)();
 
         let starting_piece_index: PieceIndex = segment_index
-            .saturating_sub(self.piece_cache.max_segments_number_in_cache())
+            .saturating_sub(self.max_segments_number_in_cache())
             * PIECES_IN_SEGMENT as u64;
 
-        AuxStoreRecordIterator::new(starting_piece_index, self.piece_cache.clone())
+        AuxStoreRecordIterator::new(starting_piece_index, self)
     }
 }
 
 pub(crate) struct AuxStoreRecordIterator<'a, AS> {
     next_piece_index: PieceIndex,
-    piece_cache: AuxPieceCache<AS>,
-    marker: PhantomData<&'a ()>,
+    record_storage: &'a AuxRecordStorage<AS>,
 }
 
 impl<'a, AS: AuxStore> AuxStoreRecordIterator<'a, AS> {
-    pub(crate) fn new(first_piece_index: PieceIndex, piece_cache: AuxPieceCache<AS>) -> Self {
+    pub(crate) fn new(
+        first_piece_index: PieceIndex,
+        record_storage: &'a AuxRecordStorage<AS>,
+    ) -> Self {
         Self {
             next_piece_index: first_piece_index,
-            piece_cache,
-            marker: PhantomData,
+            record_storage,
         }
     }
 }
@@ -105,7 +231,7 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreRecordIterator<'a, AS> {
         let key = Key::from(PieceIndexHash::from_index(self.next_piece_index).to_multihash());
 
         let result = self
-            .piece_cache
+            .record_storage
             .get_piece_by_key(key.to_vec())
             .ok()
             .flatten()

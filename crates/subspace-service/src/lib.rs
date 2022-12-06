@@ -21,7 +21,7 @@ mod dsn;
 mod pool;
 pub mod rpc;
 
-use crate::dsn::{create_dsn_instance, AuxPieceCache};
+use crate::dsn::{create_dsn_instance, AuxRecordStorage};
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
@@ -381,13 +381,30 @@ where
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    let piece_cache = AuxPieceCache::new(client.clone(), config.piece_cache_size);
+    let record_storage = AuxRecordStorage::new(
+        client.clone(),
+        config.piece_cache_size,
+        Arc::new({
+            let client = client.clone();
+
+            move || {
+                let best_block_id = BlockId::Hash(client.info().best_hash);
+                let total_pieces = client
+                    .runtime_api()
+                    .total_pieces(&best_block_id)
+                    .expect("Can't receive total pieces number.");
+
+                // segment index with a zero-based index-shift
+                (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
+            }
+        }),
+    );
 
     // Start before archiver below, so we don't have potential race condition and miss pieces
     task_manager
         .spawn_handle()
         .spawn_blocking("subspace-piece-cache", None, {
-            let piece_cache = piece_cache.clone();
+            let record_storage = record_storage.clone();
             let mut archived_segment_notification_stream = subspace_link
                 .archived_segment_notification_stream()
                 .subscribe();
@@ -400,7 +417,7 @@ where
                         .archived_segment
                         .root_block
                         .segment_index();
-                    if let Err(error) = piece_cache.add_pieces(
+                    if let Err(error) = record_storage.add_pieces(
                         segment_index * u64::from(PIECES_IN_SEGMENT),
                         &archived_segment_notification.archived_segment.pieces,
                     ) {
@@ -420,25 +437,11 @@ where
 
         let (node, mut node_runner) = create_dsn_instance::<Block, _>(
             config.dsn_config.clone(),
-            piece_cache.clone(),
+            record_storage.clone(),
             Arc::new({
-                let piece_cache = piece_cache.clone();
+                let record_storage = record_storage.clone();
 
-                move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()
-            }),
-            Arc::new({
-                let client = client.clone();
-
-                move || {
-                    let best_block_id = BlockId::Hash(client.info().best_hash);
-                    let total_pieces = client
-                        .runtime_api()
-                        .total_pieces(&best_block_id)
-                        .expect("Can't receive total pieces number.");
-
-                    // segment index with a zero-based index-shift
-                    (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
-                }
+                move |piece_index| record_storage.get_piece(*piece_index).ok().flatten()
             }),
         )
         .await?;
