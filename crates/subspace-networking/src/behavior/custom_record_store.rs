@@ -1,14 +1,12 @@
 use super::record_binary_heap::RecordBinaryHeap;
-use crate::utils::multihash::MultihashCode;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{store, ProviderRecord, Record};
-use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use parity_db::{ColumnOptions, Db, Options};
 use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::iter::IntoIterator;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -198,50 +196,6 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 }
 
-// Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-// It returns `new_record` in case of other multihash or non-Set values
-fn merge_records_in_case_of_sector_multihash(
-    new_record: Record,
-    old_record: Option<Record>,
-) -> Record {
-    let updated_rec = old_record.and_then(|old_record| {
-        let key_multihash = old_record.key.to_vec();
-
-        let multihash = Multihash::from_bytes(key_multihash.as_slice())
-            .expect("Key should represent a valid multihash");
-
-        if multihash.code() == u64::from(MultihashCode::Sector) {
-            let set1 =
-                if let Ok(set) = BTreeSet::<Vec<u8>>::decode(&mut old_record.value.as_slice()) {
-                    set
-                } else {
-                    // Value is not a Set
-                    return Some(new_record.clone());
-                };
-
-            let set2 = if let Ok(set) =
-                BTreeSet::<Vec<u8>>::decode(&mut new_record.value.clone().as_slice())
-            {
-                set
-            } else {
-                // Value is not a Set
-                return Some(new_record.clone());
-            };
-
-            let merged_set = set1.union(&set2).collect::<BTreeSet<_>>();
-
-            Some(Record {
-                value: merged_set.encode(),
-                ..new_record.clone()
-            })
-        } else {
-            None
-        }
-    });
-
-    updated_rec.unwrap_or(new_record)
-}
-
 /// Defines a stub for record storage with all operations defaulted.
 #[derive(Clone, Default)]
 pub struct NoRecordStorage;
@@ -388,16 +342,13 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     }
 
     fn put(&mut self, record: Record) -> store::Result<()> {
-        debug!("Saving a new record to DB, key: {:?}", record.key);
+        let key = record.key.clone();
 
-        // Workaround for Multihash::Sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-        // It returns `new_record` in case of other multihash or non-Set values
-        let old_record = self.get(&record.key).map(|item| item.into_owned());
-        let actual_record = merge_records_in_case_of_sector_multihash(record.clone(), old_record);
+        debug!("Saving a new record to DB, key: {:?}", key);
 
-        let db_rec = ParityDbRecord::from(actual_record);
+        let db_rec = ParityDbRecord::from(record);
 
-        self.save_data(&record.key, Some(db_rec.encode()));
+        self.save_data(&key, Some(db_rec.encode()));
 
         Ok(())
     }

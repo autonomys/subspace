@@ -3,8 +3,6 @@ use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use parity_scale_codec::Decode;
-use std::collections::BTreeSet;
 use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
@@ -12,11 +10,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use subspace_farmer_components::plotting::PieceReceiver;
-use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, PieceByHashRequest, PieceByHashResponse, PieceKey, ToMultihash};
 use tokio::time::{sleep, timeout};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
@@ -31,6 +28,24 @@ const GET_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) struct MultiChannelPieceReceiver<'a> {
     dsn_node: Node,
     cancelled: &'a AtomicBool,
+}
+
+// Defines target storage type for requets.
+#[derive(Debug, Copy, Clone)]
+enum StorageType {
+    // L2 piece cache
+    Cache,
+    // L1 archival storage for pieces
+    ArchivalStorage,
+}
+
+impl From<StorageType> for MultihashCode {
+    fn from(storage_type: StorageType) -> Self {
+        match storage_type {
+            StorageType::Cache => MultihashCode::PieceIndex,
+            StorageType::ArchivalStorage => MultihashCode::Sector,
+        }
+    }
 }
 
 impl<'a> MultiChannelPieceReceiver<'a> {
@@ -51,25 +66,30 @@ impl<'a> MultiChannelPieceReceiver<'a> {
         Ok(())
     }
 
-    // Get from piece cache (L2)
-    async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let key = PieceIndexHash::from_index(piece_index).to_multihash();
+    // Get from piece cache (L2) or archival storage (L1)
+    async fn get_piece_from_storage(
+        &self,
+        piece_index: PieceIndex,
+        storage_type: StorageType,
+    ) -> Option<Piece> {
+        let key = PieceIndexHash::from_index(piece_index).to_multihash_by_code(storage_type.into());
+        let piece_key = match storage_type {
+            StorageType::Cache => PieceKey::PieceIndex(piece_index),
+            StorageType::ArchivalStorage => {
+                PieceKey::Sector(PieceIndexHash::from_index(piece_index))
+            }
+        };
 
         let get_providers_result = self.dsn_node.get_providers(key).await;
 
         match get_providers_result {
-            Ok(mut get_providers_stream) => match get_providers_stream.next().await {
-                Some(provider_id) => {
+            Ok(mut get_providers_stream) => {
+                while let Some(provider_id) = get_providers_stream.next().await {
                     trace!(%piece_index, %provider_id, "get_providers returned an item");
 
                     let request_result = self
                         .dsn_node
-                        .send_generic_request(
-                            provider_id,
-                            PieceByHashRequest {
-                                key: PieceKey::PieceIndex(piece_index),
-                            },
-                        )
+                        .send_generic_request(provider_id, PieceByHashRequest { key: piece_key })
                         .await;
 
                     match request_result {
@@ -85,90 +105,9 @@ impl<'a> MultiChannelPieceReceiver<'a> {
                         }
                     }
                 }
-                None => {
-                    debug!(%piece_index,?key, "get_providers returned no items");
-                }
-            },
+            }
             Err(err) => {
                 warn!(%piece_index,?key, ?err, "get_providers returned an error");
-            }
-        }
-
-        None
-    }
-
-    // Get piece from archival storage (L1) from sectors. Log errors.
-    async fn get_piece_from_archival_storage(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let key =
-            PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
-
-        let get_value_result = self.dsn_node.get_value(key).await;
-
-        match get_value_result {
-            Ok(mut encoded_gset_stream) => {
-                match encoded_gset_stream.next().await {
-                    Some(encoded_gset) => {
-                        trace!(
-                            %piece_index,
-                            ?key,
-                            "get_value returned a piece-by-sector providers"
-                        );
-
-                        // Workaround for archival sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-                        let peer_set = if let Ok(set) =
-                            BTreeSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice())
-                        {
-                            set
-                        } else {
-                            warn!(
-                                %piece_index,
-                                ?key,
-                                "get_value returned a non-gset value"
-                            );
-                            return None;
-                        };
-
-                        for peer_id in peer_set.into_iter() {
-                            if let Ok(piece_provider_id) = PeerId::from_bytes(&peer_id) {
-                                let request_result = self
-                                    .dsn_node
-                                    .send_generic_request(
-                                        piece_provider_id,
-                                        PieceByHashRequest {
-                                            key: PieceKey::Sector(PieceIndexHash::from_index(
-                                                piece_index,
-                                            )),
-                                        },
-                                    )
-                                    .await;
-
-                                match request_result {
-                                    Ok(request) => {
-                                        if let Some(piece) = request.piece {
-                                            return Some(piece);
-                                        }
-                                    }
-                                    Err(error) => {
-                                        error!(%piece_index,?peer_id, ?key, ?error, "Error on piece-by-hash request.");
-                                    }
-                                }
-                            } else {
-                                error!(
-                                    %piece_index,
-                                    ?peer_id,
-                                    ?key,
-                                    "Cannot convert piece-by-sector provider PeerId from received bytes"
-                                );
-                            }
-                        }
-                    }
-                    None => {
-                        info!(%piece_index,?key, "get_value returned no piece-by-sector provider");
-                    }
-                }
-            }
-            Err(err) => {
-                error!(%piece_index,?key, ?err, "get_value returned an error (piece-by-sector)");
             }
         }
 
@@ -200,7 +139,7 @@ impl<'a> PieceReceiver for MultiChannelPieceReceiver<'a> {
             let mut piece_attempts = [
                 timeout(
                     GET_PIECE_TIMEOUT,
-                    Box::pin(self.get_piece_from_cache(piece_index))
+                    Box::pin(self.get_piece_from_storage(piece_index, StorageType::Cache))
                         as Pin<Box<dyn Future<Output = _> + Send>>,
                 ),
                 //TODO: verify "broken pipe" error cause
@@ -209,7 +148,8 @@ impl<'a> PieceReceiver for MultiChannelPieceReceiver<'a> {
                     Box::pin(async {
                         // Prefer cache if it can return quickly, otherwise fall back to archival storage
                         sleep(GET_PIECE_ARCHIVAL_STORAGE_DELAY).await;
-                        self.get_piece_from_archival_storage(piece_index).await
+                        self.get_piece_from_storage(piece_index, StorageType::ArchivalStorage)
+                            .await
                     }) as Pin<Box<dyn Future<Output = _> + Send>>,
                 ),
             ]

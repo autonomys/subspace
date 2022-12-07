@@ -5,7 +5,7 @@ use subspace_core_primitives::{Blake2b256Hash, PieceIndexHash};
 /// https://github.com/multiformats/multicodec/blob/master/table.csv
 const SUBSPACE_MULTICODEC_NAMESPACE_START: u64 = 0xb39910 + 1000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(u64)]
 pub enum MultihashCode {
     Piece = SUBSPACE_MULTICODEC_NAMESPACE_START,
