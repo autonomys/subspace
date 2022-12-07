@@ -46,7 +46,7 @@ use subspace_test_client::{
     chain_spec, start_farmer, Backend, Client, FraudProofVerifier, TestExecutorDispatch,
 };
 use subspace_test_runtime::{
-    BlockHashCount, Runtime, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
+    BlockHashCount, Runtime, RuntimeApi, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -201,8 +201,14 @@ pub async fn run_validator_node(
             piece_cache_size: 1024 * 1024 * 1024,
         };
 
-        subspace_service::new_full::<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>(
+        let partial_components = subspace_service::new_partial::<RuntimeApi, TestExecutorDispatch>(
+            &primary_chain_config,
+        )
+        .expect("Failed to create Subspace primary node");
+
+        subspace_service::new_full(
             primary_chain_config,
+            partial_components,
             false,
             SlotProportion::new(98f32 / 100f32),
         )

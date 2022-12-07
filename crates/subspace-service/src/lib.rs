@@ -348,8 +348,22 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 >;
 
 /// Builds a new service for a full client.
-pub async fn new_full<RuntimeApi, ExecutorDispatch>(
+#[allow(clippy::type_complexity)]
+pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
     config: SubspaceConfiguration,
+    partial_components: PartialComponents<
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        FullBackend,
+        FullSelectChain,
+        DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        FullPool<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        >,
+        (I, SubspaceLink<Block>, Option<Telemetry>),
+    >,
+
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
@@ -371,6 +385,13 @@ where
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
+    I: BlockImport<
+            Block,
+            Error = ConsensusError,
+            Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+        > + Send
+        + Sync
+        + 'static,
 {
     let PartialComponents {
         client,
@@ -381,7 +402,7 @@ where
         select_chain,
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
-    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+    } = partial_components;
 
     let piece_cache = PieceCache::new(client.clone(), config.piece_cache_size);
 

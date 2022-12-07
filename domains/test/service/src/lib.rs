@@ -133,11 +133,17 @@ async fn run_executor(
             piece_cache_size: 1024 * 1024 * 1024,
         };
 
-        subspace_service::new_full::<
+        let partial_components = subspace_service::new_partial::<
             subspace_test_runtime::RuntimeApi,
             subspace_test_client::TestExecutorDispatch,
-        >(
+        >(&primary_chain_config)
+        .map_err(|e| {
+            sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
+        })?;
+
+        subspace_service::new_full(
             primary_chain_config,
+            partial_components,
             false,
             SlotProportion::new(98f32 / 100f32),
         )

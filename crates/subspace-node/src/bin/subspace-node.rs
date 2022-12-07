@@ -437,8 +437,19 @@ fn main() -> Result<(), Error> {
                         piece_cache_size: cli.piece_cache_size.as_u64(),
                     };
 
-                    subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
+                    let partial_components = subspace_service::new_partial::<
+                        RuntimeApi,
+                        ExecutorDispatch,
+                    >(&primary_chain_config)
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node: {error:?}"
+                        ))
+                    })?;
+
+                    subspace_service::new_full(
                         primary_chain_config,
+                        partial_components,
                         true,
                         SlotProportion::new(2f32 / 3f32),
                     )
