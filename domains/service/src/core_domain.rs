@@ -273,7 +273,6 @@ where
             relayer_id,
             client.clone(),
             system_domain_client,
-            import_block_notification_stream.subscribe(),
             secondary_network,
             network.clone(),
         );

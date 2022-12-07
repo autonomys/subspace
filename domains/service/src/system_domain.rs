@@ -250,7 +250,6 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
             relayer_id,
             client.clone(),
-            import_block_notification_stream.subscribe(),
             network.clone(),
         );
 
