@@ -164,8 +164,7 @@ where
 
     let params = new_partial(&secondary_chain_config.service_config)?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor, import_block_notification_stream) =
-        params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
@@ -273,7 +272,6 @@ where
             relayer_id,
             client.clone(),
             system_domain_client,
-            import_block_notification_stream.subscribe(),
             secondary_network,
             network.clone(),
         );
