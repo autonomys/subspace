@@ -128,10 +128,12 @@ pub async fn new_full<
 where
     PBlock: BlockT,
     SBlock: BlockT,
+    SBlock::Hash: Into<Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
-        + sp_domain_tracker::DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+        + sp_domain_tracker::DomainTrackerApi<SBlock, NumberFor<SBlock>>
+        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>

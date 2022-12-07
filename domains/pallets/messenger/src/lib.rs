@@ -655,10 +655,20 @@ mod pallet {
                     // so nonce is 0
                     should_init_channel = true;
                     // TODO(ved): collect fees to open channel
+                    log::debug!(
+                        "Initiating new channel: {:?} to domain: {:?}",
+                        xdm.channel_id,
+                        xdm.src_domain_id
+                    );
                     Nonce::zero()
                 }
                 Some(channel) => {
                     // Ensure channel is ready to receive messages
+                    log::debug!(
+                        "Message to channel: {:?} from domain: {:?}",
+                        xdm.channel_id,
+                        xdm.src_domain_id
+                    );
                     ensure!(
                         channel.state == ChannelState::Open,
                         InvalidTransaction::Call
@@ -770,6 +780,12 @@ mod pallet {
             // fetch state roots from System domain tracker
             let state_roots = T::DomainTracker::system_domain_state_roots();
             if !state_roots.contains(&xdm.proof.state_root) {
+                log::error!(
+                    target: "runtime::messenger",
+                    "XDM state root: {:?} is not in the confirmed state roots: {:?}",
+                    xdm.proof,
+                    state_roots,
+                );
                 return Err(TransactionValidityError::Invalid(
                     InvalidTransaction::BadProof,
                 ));
@@ -796,7 +812,14 @@ mod pallet {
                         proof,
                         core_domain_state_root_key,
                     )
-                    .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))
+                    .map_err(|err| {
+                        log::error!(
+                            target: "runtime::messenger",
+                            "Failed to verify Core domain proof: {:?}",
+                            err
+                        );
+                        TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+                    })
                 } else {
                     Err(TransactionValidityError::Invalid(
                         InvalidTransaction::BadProof,
@@ -805,18 +828,25 @@ mod pallet {
             }?;
 
             // channel should be either already be created or match the next channelId for domain.
-            let next_channel_id = NextChannelId::<T>::get(xdm.dst_domain_id);
+            let next_channel_id = NextChannelId::<T>::get(xdm.src_domain_id);
             ensure!(xdm.channel_id <= next_channel_id, InvalidTransaction::Call);
 
             // verify nonce
             // nonce should be either be next or in future.
-            ensure!(xdm.nonce >= next_nonce, InvalidTransaction::BadProof);
+            ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
                 Message<BalanceOf<T>>,
             >(&state_root, xdm.proof.message_proof.clone(), storage_key)
-            .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
+            .map_err(|err| {
+                log::error!(
+                    target: "runtime::messenger",
+                    "Failed to verify storage proof: {:?}",
+                    err
+                );
+                TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+            })?;
 
             Ok(msg)
         }

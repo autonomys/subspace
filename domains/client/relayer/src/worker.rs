@@ -66,11 +66,13 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, DBI, SDSO, CDSO
     Block: BlockT,
     SBlock: BlockT,
     NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: Into<Block::Hash>,
     CDC: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     DBI: Stream<Item = NumberFor<Block>> + Unpin,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>
+        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
 {
@@ -127,6 +129,12 @@ where
             .ok_or(ArithmeticError::Overflow)?,
     };
 
+    tracing::info!(
+        target: LOG_TARGET,
+        "Starting relayer for domain: {:?} from the block: {:?}",
+        domain_id,
+        relay_block_from,
+    );
     // from the start block, start processing all the messages assigned
     // wait for new block import of system domain,
     // then fetch new messages assigned to to relayer from system domain
@@ -142,12 +150,23 @@ where
         let relay_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
+                tracing::info!(
+                    target: LOG_TARGET,
+                    "Not enough confirmed blocks for domain: {:?}. Skipping...",
+                    domain_id
+                );
                 continue;
             }
             Some(confirmed_block) => confirmed_block,
         };
 
         while relay_block_from <= relay_block_until {
+            tracing::info!(
+                target: LOG_TARGET,
+                "Checking messages to be submitted from domain: {:?} at block: {:?}",
+                domain_id,
+                relay_block_from
+            );
             let block_hash = domain_client
                 .header(BlockId::Number(relay_block_from))?
                 .ok_or(Error::UnableToFetchBlockNumber)?
