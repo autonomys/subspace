@@ -147,7 +147,7 @@ impl Config {
             })
             // Ignore any puts
             // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
-            .set_record_filtering(KademliaStoreInserts::Unfiltered)
+            .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Providers' settings
             .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
             .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)

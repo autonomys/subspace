@@ -14,7 +14,7 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{Node, PieceByHashRequest, PieceKey, ToMultihash};
+use subspace_networking::{Node, PieceByHashRequest, PieceByHashResponse, PieceKey, ToMultihash};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, error, info, trace, warn};
 
@@ -51,65 +51,46 @@ impl<'a> MultiChannelPieceReceiver<'a> {
         Ok(())
     }
 
-    // restore after fixing https://github.com/libp2p/rust-libp2p/issues/3048
-    // Get from piece cache (L2) using providers
-    #[allow(dead_code)]
-    async fn get_piece_from_cache_by_providers(&self, _piece_index: PieceIndex) -> Option<Piece> {
-        None
-
-        // TODO: uncomment on fixing https://github.com/libp2p/rust-libp2p/issues/3048
-        // let providers_result = dsn_node.get_providers(key).await;
-        //
-        // info!(?key, "get_providers result: {:?}", providers_result);
-        //
-        // for provider in providers_result? {
-        //     let response_result = dsn_node
-        //         .send_generic_request(
-        //             provider,
-        //             PieceByHashRequest {
-        //                 key: PieceKey::PieceIndex(piece_index),
-        //             },
-        //         )
-        //         .await;
-        //
-        //     info!(
-        //         ?key,
-        //         "send_generic_request for PieceByHashRequest result: {:?}", response_result
-        //     );
-        //
-        //     if let Some(piece) = response_result?.piece {
-        //         return Ok(Some(piece));
-        //     }
-        // }
-    }
-
     // Get from piece cache (L2)
     async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
         let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
-        let get_value_result = self.dsn_node.get_value(key).await;
+        let get_providers_result = self.dsn_node.get_providers(key).await;
 
-        match get_value_result {
-            Ok(mut get_value_stream) => match get_value_stream.next().await {
-                Some(piece) => {
-                    trace!(%piece_index, ?key, "get_value returned a piece");
+        match get_providers_result {
+            Ok(mut get_providers_stream) => match get_providers_stream.next().await {
+                Some(provider_id) => {
+                    trace!(%piece_index, %provider_id, "get_providers returned an item");
 
-                    match piece.try_into() {
-                        Ok(piece) => {
+                    let request_result = self
+                        .dsn_node
+                        .send_generic_request(
+                            provider_id,
+                            PieceByHashRequest {
+                                key: PieceKey::PieceIndex(piece_index),
+                            },
+                        )
+                        .await;
+
+                    match request_result {
+                        Ok(PieceByHashResponse { piece: Some(piece) }) => {
+                            trace!(%provider_id, %piece_index, ?key, "Piece request succeeded.");
                             return Some(piece);
                         }
+                        Ok(PieceByHashResponse { piece: None }) => {
+                            debug!(%provider_id, %piece_index, ?key, "Piece request returned empty piece.");
+                        }
                         Err(error) => {
-                            error!(%piece_index, ?key, ?error, "Error on piece construction");
+                            warn!(%provider_id, %piece_index, ?key, ?error, "Piece request failed.");
                         }
                     }
                 }
                 None => {
-                    debug!(%piece_index,?key, "get_value returned no piece");
+                    debug!(%piece_index,?key, "get_providers returned no items");
                 }
             },
             Err(err) => {
-                error!(%piece_index,?key, ?err, "get_value returned an error");
-                return None;
+                warn!(%piece_index,?key, ?err, "get_providers returned an error");
             }
         }
 

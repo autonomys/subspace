@@ -14,7 +14,7 @@ use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{debug, info, trace, Instrument};
+use tracing::{debug, error, info, trace, warn, Instrument};
 
 pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
 
@@ -124,28 +124,19 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
                 let node = node.clone();
 
                 async move {
-                    for ((_idx, key), piece) in keys_iter.zip(archived_segment.pieces.as_pieces()) {
-                        //TODO: restore announcing after https://github.com/libp2p/rust-libp2p/issues/3048
-                        // trace!(?key, ?idx, "Announcing key...");
-                        //
-                        // let announcing_result = node.start_announcing(key).await;
-                        //
-                        // trace!(?key, "Announcing result: {:?}", announcing_result);
-
-                        match node.put_value(key, piece.to_vec()).await {
+                    for (idx, key) in keys_iter {
+                        match node.start_announcing(key).await {
                             Ok(mut stream) => {
                                 if stream.next().await.is_some() {
-                                    trace!(?key, "Put value succeeded");
+                                    trace!(%idx, ?key, "Piece announcing succeeded");
                                 } else {
-                                    trace!(?key, "Put value failed");
+                                    warn!(%idx, ?key, "Piece announcing failed");
                                 }
                             }
                             Err(error) => {
-                                trace!(?key, "Put value failed: {}", error);
+                                error!( %idx, ?key, "Piece announcing failed with an error: {}", error);
                             }
                         }
-
-                        //TODO: ensure republication of failed announcements
                     }
 
                     info!(%segment_index, "Segment processed.");
