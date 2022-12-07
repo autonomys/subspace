@@ -25,7 +25,14 @@ impl<T: Config> Pallet<T> {
         // reserve outbox fee by transferring it to the messenger account.
         // we will use the funds to pay the relayers once the response is received.
         let outbox_fee = fee_model.outbox_fee().ok_or(ArithmeticError::Overflow)?;
-        T::Currency::transfer(sender, &msgr_acc_id, outbox_fee, AllowDeath)?;
+        T::Currency::withdraw(
+            sender,
+            outbox_fee,
+            WithdrawReasons::TRANSACTION_PAYMENT,
+            AllowDeath,
+        )?;
+        T::Currency::deposit_creating(&msgr_acc_id, outbox_fee);
+
         // burn the fees that need to be paid on the dst_domain
         let inbox_fee = fee_model.inbox_fee().ok_or(ArithmeticError::Overflow)?;
         T::Currency::withdraw(

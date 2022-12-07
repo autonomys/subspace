@@ -1,6 +1,8 @@
 use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
+use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
+use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
@@ -73,7 +75,7 @@ where
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
@@ -81,6 +83,8 @@ where
     /// Executor.
     pub executor:
         CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+    /// Transaction pool sink
+    pub tx_pool_sink: DomainTxPoolSink,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -108,6 +112,7 @@ pub async fn new_full<
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     block_import_throttling_buffer_size: u32,
+    gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -123,10 +128,12 @@ pub async fn new_full<
 where
     PBlock: BlockT,
     SBlock: BlockT,
+    SBlock::Hash: Into<Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
-        + sp_domain_tracker::DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+        + sp_domain_tracker::DomainTrackerApi<SBlock, NumberFor<SBlock>>
+        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -274,6 +281,7 @@ where
             system_domain_client,
             secondary_network,
             network.clone(),
+            gossip_message_sink,
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -282,6 +290,22 @@ where
             Box::pin(relayer_worker),
         );
     }
+
+    let (msg_sender, msg_receiver) = tracing_unbounded("core_domain_message_channel");
+
+    // start cross domain message listener for system domain
+    let core_domain_listener = cross_domain_message_gossip::start_domain_message_listener(
+        domain_id,
+        client.clone(),
+        params.transaction_pool.clone(),
+        msg_receiver,
+    );
+
+    spawn_essential.spawn_essential_blocking(
+        "core-domain-message-listener",
+        None,
+        Box::pin(core_domain_listener),
+    );
 
     let new_full = NewFull {
         task_manager,
@@ -292,6 +316,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        tx_pool_sink: msg_sender,
     };
 
     Ok(new_full)

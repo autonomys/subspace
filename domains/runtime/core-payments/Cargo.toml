@@ -27,6 +27,7 @@ pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-regis
 pallet-domain-tracker = { version = "0.1.0", path = "../../pallets/domain-tracker", default-features = false }
 pallet-executor-registry = { version = "0.1.0", path = "../../pallets/executor-registry", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger", default-features = false }
+pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 pallet-transporter = { version = "0.1.0", path = "../../pallets/transporter", default-features = false }
@@ -67,6 +68,7 @@ std = [
 	"pallet-domain-tracker/std",
 	"pallet-executor-registry/std",
 	"pallet-messenger/std",
+	"pallet-sudo/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
 	"pallet-transporter/std",

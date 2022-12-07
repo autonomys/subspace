@@ -1423,6 +1423,7 @@ dependencies = [
  "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
+ "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -1635,6 +1636,24 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.3",
+]
+
+[[package]]
+name = "cross-domain-message-gossip"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.25",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-transaction-pool-api",
+ "sc-utils",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "tracing",
 ]
 
 [[package]]
@@ -2255,6 +2274,7 @@ dependencies = [
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
+ "cross-domain-message-gossip",
  "domain-runtime-primitives",
  "futures 0.3.25",
  "parity-scale-codec",
@@ -2312,6 +2332,7 @@ name = "domain-service"
 version = "0.1.0"
 dependencies = [
  "clap 4.0.26",
+ "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
@@ -2407,6 +2428,7 @@ name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-service",
@@ -2426,6 +2448,7 @@ dependencies = [
  "sc-service",
  "sc-tracing",
  "sc-transaction-pool",
+ "sc-utils",
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
@@ -9831,6 +9854,7 @@ dependencies = [
  "bytesize",
  "clap 4.0.26",
  "core-payments-domain-runtime",
+ "cross-domain-message-gossip",
  "dirs",
  "domain-runtime-primitives",
  "domain-service",
@@ -9852,6 +9876,7 @@ dependencies = [
  "sc-subspace-chain-specs",
  "sc-telemetry",
  "sc-tracing",
+ "sc-utils",
  "serde",
  "serde_json",
  "sp-consensus",
@@ -10413,6 +10438,7 @@ dependencies = [
  "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
+ "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",

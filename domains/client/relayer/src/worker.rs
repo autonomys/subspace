@@ -1,4 +1,4 @@
-use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use domain_runtime_primitives::RelayerId;
 use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
@@ -17,6 +17,7 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
     relayer_id: RelayerId,
     system_domain_client: Arc<Client>,
     system_domain_sync_oracle: SO,
+    gossip_message_sink: GossipMessageSink,
 ) where
     Block: BlockT,
     Client: BlockchainEvents<Block>
@@ -30,7 +31,14 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
     let result = relay_domain_messages(
         relayer_id,
         system_domain_client,
-        Relayer::submit_messages_from_system_domain,
+        |relayer_id, client, block_id| {
+            Relayer::submit_messages_from_system_domain(
+                relayer_id,
+                client,
+                block_id,
+                &gossip_message_sink,
+            )
+        },
         system_domain_sync_oracle,
     )
     .await;
@@ -53,10 +61,12 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
     system_domain_client: Arc<SDC>,
     system_domain_sync_oracle: SDSO,
     core_domain_sync_oracle: CDSO,
+    gossip_message_sink: GossipMessageSink,
 ) where
     Block: BlockT,
     SBlock: BlockT,
     NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: Into<Block::Hash>,
     CDC: BlockchainEvents<Block>
         + HeaderBackend<Block>
         + AuxStore
@@ -64,7 +74,8 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
         + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>,
+    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>
+        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
 {
@@ -80,6 +91,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
                 client,
                 &system_domain_client,
                 block_id,
+                &gossip_message_sink,
             )
         },
         combined_sync_oracle,
@@ -121,6 +133,12 @@ where
             .ok_or(ArithmeticError::Overflow)?,
     };
 
+    tracing::info!(
+        target: LOG_TARGET,
+        "Starting relayer for domain: {:?} from the block: {:?}",
+        domain_id,
+        relay_block_from,
+    );
     let mut domain_block_import = domain_client.import_notification_stream();
 
     // from the start block, start processing all the messages assigned
@@ -140,12 +158,23 @@ where
         let relay_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
+                tracing::info!(
+                    target: LOG_TARGET,
+                    "Not enough confirmed blocks for domain: {:?}. Skipping...",
+                    domain_id
+                );
                 continue;
             }
             Some(confirmed_block) => confirmed_block,
         };
 
         while relay_block_from <= relay_block_until {
+            tracing::info!(
+                target: LOG_TARGET,
+                "Checking messages to be submitted from domain: {:?} at block: {:?}",
+                domain_id,
+                relay_block_from
+            );
             let block_hash = domain_client
                 .header(BlockId::Number(relay_block_from))?
                 .ok_or(Error::UnableToFetchBlockNumber)?
