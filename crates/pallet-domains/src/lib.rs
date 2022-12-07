@@ -100,8 +100,8 @@ mod pallet {
         BadSignature,
         /// Invalid vrf proof.
         BadVrfProof,
-        /// Can not verify the state root as the receipt is not been on the primary chain.
-        StateRootUnverifiable,
+        /// State of a system domain block is missing.
+        StateRootNotFound,
         /// Invalid state root in the proof of election.
         BadStateRoot,
         /// The type of state root is not H256.
@@ -579,9 +579,18 @@ impl<T: Config> Pallet<T> {
             ..
         } = proof_of_election;
 
-        if !block_number.is_zero() {
-            let block_number = T::BlockNumber::from(*block_number);
+        let block_number = T::BlockNumber::from(*block_number);
 
+        let new_best_receipt_number = receipts
+            .iter()
+            .map(|receipt| receipt.primary_number)
+            .max()
+            .unwrap_or_default()
+            .max(Self::head_receipt_number());
+
+        let state_root_verifiable = block_number <= new_best_receipt_number;
+
+        if !block_number.is_zero() && state_root_verifiable {
             let maybe_state_root = receipts.iter().find_map(|receipt| {
                 receipt.trace.last().and_then(|state_root| {
                     if (receipt.primary_number, receipt.domain_hash) == (block_number, *block_hash)
@@ -596,7 +605,7 @@ impl<T: Config> Pallet<T> {
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
                 None => StateRoots::<T>::get(block_number, block_hash)
-                    .ok_or(BundleError::StateRootUnverifiable)?,
+                    .ok_or(BundleError::StateRootNotFound)?,
             };
 
             if expected_state_root != *state_root {
