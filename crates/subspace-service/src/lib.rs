@@ -437,45 +437,47 @@ where
             }
         });
 
+    let (node, mut node_runner) =
+        create_dsn_instance::<Block, _>(config.dsn_config.clone(), piece_cache.clone())
+            .instrument(tracing::info_span!(
+                sc_tracing::logging::PREFIX_LOG_SPAN,
+                name = "DSN"
+            ))
+            .await?;
+
+    info!("Subspace networking initialized: Node ID is {}", node.id());
+
+    task_manager.spawn_essential_handle().spawn_essential(
+        "node-runner",
+        Some("subspace-networking"),
+        Box::pin(
+            async move {
+                node_runner.run().await;
+            }
+            .in_current_span(),
+        ),
+    );
+
+    let dsn_archiving_fut = start_dsn_archiver(
+        subspace_link
+            .archived_segment_notification_stream()
+            .subscribe(),
+        node.clone(),
+        task_manager.spawn_handle(),
+    );
+
+    task_manager.spawn_essential_handle().spawn_essential(
+        "archiver",
+        Some("subspace-networking"),
+        Box::pin(
+            async move {
+                dsn_archiving_fut.await;
+            }
+            .in_current_span(),
+        ),
+    );
+
     let dsn_bootstrap_nodes = {
-        let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
-        let _enter = span.enter();
-
-        let (node, mut node_runner) =
-            create_dsn_instance::<Block, _>(config.dsn_config.clone(), piece_cache.clone()).await?;
-
-        info!("Subspace networking initialized: Node ID is {}", node.id());
-
-        task_manager.spawn_essential_handle().spawn_essential(
-            "node-runner",
-            Some("subspace-networking"),
-            Box::pin(
-                async move {
-                    node_runner.run().await;
-                }
-                .in_current_span(),
-            ),
-        );
-
-        let dsn_archiving_fut = start_dsn_archiver(
-            subspace_link
-                .archived_segment_notification_stream()
-                .subscribe(),
-            node.clone(),
-            task_manager.spawn_handle(),
-        );
-
-        task_manager.spawn_essential_handle().spawn_essential(
-            "archiver",
-            Some("subspace-networking"),
-            Box::pin(
-                async move {
-                    dsn_archiving_fut.await;
-                }
-                .in_current_span(),
-            ),
-        );
-
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
         // connect to
         if config.dsn_config.bootstrap_nodes.is_empty() {
