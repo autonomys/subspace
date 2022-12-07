@@ -292,6 +292,11 @@ impl pallet_transporter::Config for Runtime {
     type Sender = Messenger;
 }
 
+impl pallet_sudo::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -313,6 +318,9 @@ construct_runtime!(
         DomainTracker: pallet_domain_tracker = 6,
         Messenger: pallet_messenger = 7,
         Transporter: pallet_transporter = 8,
+
+        // Sudo account
+        Sudo: pallet_sudo = 100,
     }
 );
 

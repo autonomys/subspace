@@ -29,7 +29,7 @@ use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_runtime_primitives::SSC;
 use system_domain_runtime::{
     AccountId, Balance, BalancesConfig, DomainRegistryConfig, ExecutorRegistryConfig,
-    GenesisConfig, Hash, SystemConfig, WASM_BINARY,
+    GenesisConfig, Hash, SudoConfig, SystemConfig, WASM_BINARY,
 };
 
 type DomainConfig = sp_domains::DomainConfig<Hash, Balance, Weight>;
@@ -72,6 +72,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Alice"),
                     Percent::one(),
                 )],
+                Some(get_account_id_from_seed("Alice")),
             )
         },
         vec![],
@@ -129,6 +130,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Alice"),
                     Percent::one(),
                 )],
+                Some(get_account_id_from_seed("Alice")),
             )
         },
         // Bootnodes
@@ -188,6 +190,7 @@ pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
                         .expect("Wrong executor account address"),
                     Percent::one(),
                 )],
+                None,
             )
         },
         // Bootnodes
@@ -246,6 +249,7 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Alice"),
                     Percent::one(),
                 )],
+                None,
             )
         },
         // Bootnodes
@@ -266,12 +270,17 @@ fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
     domains: Vec<(AccountId, Balance, DomainConfig, AccountId, Percent)>,
+    maybe_sudo_account: Option<AccountId>,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
             code: WASM_BINARY
                 .expect("WASM binary was not build, please build it!")
                 .to_vec(),
+        },
+        sudo: SudoConfig {
+            // Assign network admin rights.
+            key: maybe_sudo_account,
         },
         transaction_payment: Default::default(),
         balances: BalancesConfig {
