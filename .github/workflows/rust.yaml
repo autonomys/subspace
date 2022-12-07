@@ -12,6 +12,11 @@ on:
       - '**.md'
       - '.github/CODEOWNERS'
   workflow_dispatch:
+    test-macos:
+      description: 'Whether to run macOS tests'
+      required: true
+      default: false
+      type: boolean
 
 env:
   # Not needed in CI, should make things a bit faster
@@ -148,3 +153,4 @@ jobs:
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: test
+        if: runner.os != 'macOS' || inputs.test-macos == true || github.ref == 'refs/heads/main'
