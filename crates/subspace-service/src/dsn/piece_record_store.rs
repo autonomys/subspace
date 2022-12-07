@@ -52,34 +52,32 @@ where
         first_piece_index: PieceIndex,
         pieces: &FlatPieces,
     ) -> Result<(), Box<dyn Error>> {
-        let keys = (first_piece_index..)
+        let insert_keys = (first_piece_index..)
             .take(pieces.count())
             .map(Self::key)
             .collect::<Vec<_>>();
+
+        let delete_keys = first_piece_index
+            .checked_sub(self.max_pieces_in_cache)
+            .map(|delete_pieces_from_index| {
+                (delete_pieces_from_index..first_piece_index)
+                    .into_iter()
+                    .map(Self::key)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
         self.aux_store.insert_aux(
-            keys.iter()
+            &insert_keys
+                .iter()
                 .zip(pieces.as_pieces())
                 .map(|(key, piece)| (key.as_slice(), piece))
-                .collect::<Vec<_>>()
-                .as_slice(),
-            &[],
+                .collect::<Vec<_>>(),
+            &delete_keys
+                .iter()
+                .map(|key| key.as_slice())
+                .collect::<Vec<_>>(),
         )?;
-
-        if let Some(delete_pieces_from_index) =
-            first_piece_index.checked_sub(self.max_pieces_in_cache)
-        {
-            let keys = (delete_pieces_from_index..first_piece_index)
-                .into_iter()
-                .map(Self::key)
-                .collect::<Vec<_>>();
-            self.aux_store.insert_aux(
-                &[],
-                keys.iter()
-                    .map(|key| key.as_slice())
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            )?;
-        }
 
         Ok(())
     }
