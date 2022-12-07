@@ -126,7 +126,6 @@ jobs:
           - windows-2022
 
     runs-on: ${{ matrix.os }}
-    if: runner.os != 'macOS' || inputs.test-macos == true || github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout
@@ -154,3 +153,4 @@ jobs:
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: test
+        if: runner.os != 'macOS' || inputs.test-macos == true || github.ref == 'refs/heads/main'
