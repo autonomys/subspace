@@ -1,4 +1,3 @@
-pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::custom_record_store::{
     CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
 };
