@@ -212,20 +212,20 @@ where
         });
 
         msgs.inbox_responses.retain(|msg| {
-			let id = (msg.channel_id, msg.nonce);
-			match api.should_relay_inbox_message_response(&best_block_id, msg.dst_domain_id, id) {
-				Ok(valid) => valid,
-				Err(err) => {
-					tracing::error!(
+            let id = (msg.channel_id, msg.nonce);
+            match api.should_relay_inbox_message_response(&best_block_id, msg.dst_domain_id, id) {
+                Ok(valid) => valid,
+                Err(err) => {
+                    tracing::error!(
                         target: LOG_TARGET,
                         ?err,
                         "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
                         msg.dst_domain_id
                     );
-					false
-				}
-			}
-		});
+                    false
+                }
+            }
+        });
 
         Ok(msgs)
     }
@@ -301,7 +301,7 @@ where
                 )
             },
             |msg| {
-                Self::gossip_inbox_response_message(system_domain_client, msg, gossip_message_sink)
+                Self::gossip_inbox_message_response(system_domain_client, msg, gossip_message_sink)
             },
         )?;
 
@@ -399,12 +399,13 @@ where
                     core_domain_state_root_proof.clone(),
                 )
             },
-            |msg| Self::gossip_inbox_response_message(core_domain_client, msg, gossip_message_sink),
+            |msg| Self::gossip_inbox_message_response(core_domain_client, msg, gossip_message_sink),
         )?;
 
         Ok(())
     }
 
+    /// Sends an Outbox message from src_domain to dst_domain.
     fn gossip_outbox_message(
         client: &Arc<Client>,
         msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
@@ -424,7 +425,10 @@ where
         .map_err(Error::UnableToSubmitCrossDomainMessage)
     }
 
-    fn gossip_inbox_response_message(
+    /// Sends an Inbox message response from src_domain to dst_domain
+    /// Inbox message was earlier sent by dst_domain to src_domain and
+    /// this message is the response of the Inbox message execution.
+    fn gossip_inbox_message_response(
         client: &Arc<Client>,
         msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
         sink: &GossipMessageSink,

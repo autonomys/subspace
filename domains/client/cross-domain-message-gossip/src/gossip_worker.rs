@@ -79,14 +79,14 @@ impl<Block: BlockT> GossipWorker<Block> {
             futures::select! {
                 cross_domain_message = incoming_cross_domain_messages.next() => {
                     if let Some(msg) = cross_domain_message {
-                        tracing::info!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
+                        tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);
                     }
                 },
 
                 cross_domain_message = gossip_msg_stream.next() => {
                     if let Some(msg) = cross_domain_message {
-                        tracing::info!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
+                        tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);
                     }
                 }

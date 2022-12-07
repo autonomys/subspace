@@ -26,6 +26,7 @@ use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
+use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
@@ -516,7 +517,7 @@ fn main() -> Result<(), Error> {
                     };
 
                     let (gossip_msg_sink, gossip_msg_stream) =
-                        sc_utils::mpsc::tracing_unbounded("Cross domain gossip messages");
+                        tracing_unbounded("Cross domain gossip messages");
 
                     let secondary_chain_node = domain_service::new_full::<
                         _,

@@ -12,14 +12,6 @@ const LOG_TARGET: &str = "domain_message_listener";
 type DomainBlockOf<T> = <T as TransactionPool>::Block;
 type DomainExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;
 
-#[derive(Debug)]
-enum Error<TxPoolError> {
-    /// Failed to decode extrinsic.
-    FailedToDecodeExtrinsic,
-    /// Transaction Pool error.
-    TxPool(TxPoolError),
-}
-
 pub async fn start_domain_message_listener<Client, TxPool, TxnListener>(
     domain_id: DomainId,
     client: Arc<Client>,
@@ -43,22 +35,30 @@ pub async fn start_domain_message_listener<Client, TxPool, TxnListener>(
             domain_id,
         );
 
-        let tx_pool_res = async {
-            let ext = DomainExtrinsicOf::<TxPool>::decode(&mut encoded_ext.as_ref())
-                .map_err(|_| Error::FailedToDecodeExtrinsic)?;
-
-            let at = BlockId::Hash(client.info().best_hash);
-            tracing::debug!(
-                target: LOG_TARGET,
-                "Submitting extrinsic to tx pool at block: {:?}",
-                at
-            );
-            tx_pool
-                .submit_one(&at, TransactionSource::External, ext)
-                .await
-                .map_err(Error::TxPool)
+        let ext = match DomainExtrinsicOf::<TxPool>::decode(&mut encoded_ext.as_ref()) {
+            Ok(ext) => ext,
+            Err(_) => {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    "Failed to decode extrinsic: {:?}",
+                    encoded_ext
+                );
+                continue;
+            }
         };
-        if let Err(err) = tx_pool_res.await {
+
+        let at = BlockId::Hash(client.info().best_hash);
+        tracing::debug!(
+            target: LOG_TARGET,
+            "Submitting extrinsic to tx pool at block: {:?}",
+            at
+        );
+
+        let tx_pool_res = tx_pool
+            .submit_one(&at, TransactionSource::External, ext)
+            .await;
+
+        if let Err(err) = tx_pool_res {
             tracing::error!(
                 target: LOG_TARGET,
                 "Failed to submit extrinsic to tx pool for domain {:?} with error: {:?}",
