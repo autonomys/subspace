@@ -39,16 +39,11 @@ where
         }
     }
 
-    fn key(piece_index: PieceIndex) -> Vec<u8> {
-        Self::key_from_bytes(
-            &PieceIndexHash::from_index(piece_index)
-                .to_multihash()
-                .to_bytes(),
-        )
-    }
-
-    fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {
-        (Self::KEY_PREFIX, bytes).encode()
+    pub(crate) fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error>> {
+        self.get_piece_by_key(&Self::key(piece_index))
     }
 
     /// Add pieces to cache
@@ -89,11 +84,16 @@ where
         Ok(())
     }
 
-    pub(crate) fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error>> {
-        self.get_piece_by_key(&Self::key(piece_index))
+    fn key(piece_index: PieceIndex) -> Vec<u8> {
+        Self::key_from_bytes(
+            &PieceIndexHash::from_index(piece_index)
+                .to_multihash()
+                .to_bytes(),
+        )
+    }
+
+    fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {
+        (Self::KEY_PREFIX, bytes).encode()
     }
 
     fn get_piece_by_key(&self, key: &[u8]) -> Result<Option<Piece>, Box<dyn Error>> {
