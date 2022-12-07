@@ -9,13 +9,13 @@ use subspace_networking::libp2p::kad::Record;
 use subspace_networking::{RecordStorage, ToMultihash};
 use tracing::{trace, warn};
 
-pub(crate) struct AuxRecordStorage<AS> {
+pub(crate) struct PieceCache<AS> {
     aux_store: Arc<AS>,
     /// Limit for number of pieces to be stored in cache
     max_pieces_in_cache: PieceIndex,
 }
 
-impl<AS> Clone for AuxRecordStorage<AS> {
+impl<AS> Clone for PieceCache<AS> {
     fn clone(&self) -> Self {
         Self {
             aux_store: self.aux_store.clone(),
@@ -24,7 +24,7 @@ impl<AS> Clone for AuxRecordStorage<AS> {
     }
 }
 
-impl<AS> AuxRecordStorage<AS>
+impl<AS> PieceCache<AS>
 where
     AS: AuxStore,
 {
@@ -104,7 +104,7 @@ where
     }
 }
 
-impl<'a, AS> RecordStorage<'a> for AuxRecordStorage<AS>
+impl<'a, AS> RecordStorage<'a> for PieceCache<AS>
 where
     AS: AuxStore + 'a,
 {

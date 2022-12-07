@@ -18,10 +18,12 @@
 #![feature(type_changing_struct_update)]
 
 mod dsn;
+mod piece_cache;
 mod pool;
 pub mod rpc;
 
-use crate::dsn::{create_dsn_instance, AuxRecordStorage};
+use crate::dsn::create_dsn_instance;
+use crate::piece_cache::PieceCache;
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
@@ -381,13 +383,13 @@ where
         other: (block_import, subspace_link, mut telemetry),
     } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-    let record_storage = AuxRecordStorage::new(client.clone(), config.piece_cache_size);
+    let piece_cache = PieceCache::new(client.clone(), config.piece_cache_size);
 
     // Start before archiver below, so we don't have potential race condition and miss pieces
     task_manager
         .spawn_handle()
         .spawn_blocking("subspace-piece-cache", None, {
-            let record_storage = record_storage.clone();
+            let piece_cache = piece_cache.clone();
             let mut archived_segment_notification_stream = subspace_link
                 .archived_segment_notification_stream()
                 .subscribe();
@@ -400,7 +402,7 @@ where
                         .archived_segment
                         .root_block
                         .segment_index();
-                    if let Err(error) = record_storage.add_pieces(
+                    if let Err(error) = piece_cache.add_pieces(
                         segment_index * u64::from(PIECES_IN_SEGMENT),
                         &archived_segment_notification.archived_segment.pieces,
                     ) {
@@ -419,8 +421,7 @@ where
         let _enter = span.enter();
 
         let (node, mut node_runner) =
-            create_dsn_instance::<Block, _>(config.dsn_config.clone(), record_storage.clone())
-                .await?;
+            create_dsn_instance::<Block, _>(config.dsn_config.clone(), piece_cache.clone()).await?;
 
         info!("Subspace networking initialized: Node ID is {}", node.id());
 

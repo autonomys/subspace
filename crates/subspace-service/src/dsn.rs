@@ -1,6 +1,4 @@
-mod piece_record_store;
-
-pub(crate) use crate::dsn::piece_record_store::AuxRecordStorage;
+use crate::piece_cache::PieceCache;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
@@ -35,11 +33,11 @@ pub struct DsnConfig {
 
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
-    record_storage: AuxRecordStorage<AS>,
+    piece_cache: PieceCache<AS>,
 ) -> Result<
     (
         Node,
-        NodeRunner<CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>>,
+        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
     ),
     CreationError,
 >
@@ -50,7 +48,7 @@ where
     trace!("Subspace networking starting.");
 
     let record_store =
-        CustomRecordStore::new(record_storage.clone(), MemoryProviderStorage::default());
+        CustomRecordStore::new(piece_cache.clone(), MemoryProviderStorage::default());
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
@@ -62,7 +60,7 @@ where
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
             let result = if let PieceKey::PieceIndex(piece_index) = req.key {
-                record_storage.get_piece(piece_index).ok().flatten()
+                piece_cache.get_piece(piece_index).ok().flatten()
             } else {
                 debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
 
