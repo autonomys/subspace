@@ -30,7 +30,7 @@ use sp_domains::DomainId;
 use std::any::TypeId;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{DsnConfig, SubspaceConfiguration};
+use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
 /// System domain executor instance.
@@ -433,8 +433,10 @@ fn main() -> Result<(), Error> {
                         base: primary_chain_config,
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
-                        dsn_config,
-                        piece_cache_size: cli.piece_cache_size.as_u64(),
+                        subspace_networking: SubspaceNetworking::Create {
+                            config: dsn_config,
+                            piece_cache_size: cli.piece_cache_size.as_u64(),
+                        },
                     };
 
                     let partial_components = subspace_service::new_partial::<

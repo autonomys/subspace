@@ -9,7 +9,8 @@ use subspace_networking::libp2p::kad::Record;
 use subspace_networking::{RecordStorage, ToMultihash};
 use tracing::{trace, warn};
 
-pub(crate) struct PieceCache<AS> {
+/// Cache of recently produced pieces in aux storage
+pub struct PieceCache<AS> {
     aux_store: Arc<AS>,
     /// Limit for number of pieces to be stored in cache
     max_pieces_in_cache: PieceIndex,
@@ -30,7 +31,8 @@ where
 {
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
-    pub(crate) fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
+    /// Create new instance with specified size (in bytes)
+    pub fn new(aux_store: Arc<AS>, cache_size: u64) -> Self {
         let max_pieces_in_cache: PieceIndex = cache_size / PIECE_SIZE as PieceIndex;
 
         Self {
@@ -39,15 +41,13 @@ where
         }
     }
 
-    pub(crate) fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error>> {
+    /// Get piece from storage
+    pub fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Box<dyn Error>> {
         self.get_piece_by_key(&Self::key(piece_index))
     }
 
-    /// Add pieces to cache
-    pub(crate) fn add_pieces(
+    /// Add pieces to cache (likely as the result of archiving)
+    pub fn add_pieces(
         &self,
         first_piece_index: PieceIndex,
         pieces: &FlatPieces,
