@@ -179,14 +179,17 @@ impl Config {
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
         Self {
-            keypair,
+            keypair: keypair.clone(),
             listen_on: vec![],
             listen_on_fallback_to_random_port: true,
             timeout: Duration::from_secs(10),
             identify,
             kademlia,
             gossipsub,
-            record_store: CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::default()),
+            record_store: CustomRecordStore::new(
+                NoRecordStorage,
+                MemoryProviderStorage::new(peer_id(&keypair)),
+            ),
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),

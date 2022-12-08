@@ -281,6 +281,7 @@ async fn configure_dsn(
 
     let handle = Handle::current();
     let default_config = Config::with_generated_keypair();
+    let peer_id = peer_id(&keypair);
 
     let config = Config::<ConfiguredRecordStore> {
         reserved_peers,
@@ -348,9 +349,9 @@ async fn configure_dsn(
                 ParityDbRecordStorage::new(&record_cache_db_path)
                     .map_err(|err| anyhow::anyhow!(err.to_string()))?,
                 record_cache_size,
-                peer_id(&default_config.keypair),
+                peer_id,
             ),
-            MemoryProviderStorage::default(),
+            MemoryProviderStorage::new(peer_id),
         ),
         ..default_config
     };

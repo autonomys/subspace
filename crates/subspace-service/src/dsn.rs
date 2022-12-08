@@ -11,8 +11,9 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    peer_id, BootstrappedNetworkingParameters, CreationError, CustomRecordStore,
+    MemoryProviderStorage, Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse,
+    PieceKey, ToMultihash,
 };
 use tracing::{debug, error, info, trace, warn, Instrument};
 
@@ -59,7 +60,7 @@ where
     trace!("Subspace networking starting.");
 
     let networking_config = subspace_networking::Config {
-        keypair: dsn_config.keypair,
+        keypair: dsn_config.keypair.clone(),
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(
@@ -77,7 +78,10 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(record_storage, MemoryProviderStorage::default()),
+        record_store: CustomRecordStore::new(
+            record_storage,
+            MemoryProviderStorage::new(peer_id(&dsn_config.keypair)),
+        ),
         ..subspace_networking::Config::with_generated_keypair()
     };
 
