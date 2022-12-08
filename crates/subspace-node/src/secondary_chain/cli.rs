@@ -81,8 +81,12 @@ impl SecondaryChainCli {
         let domain_cli = DomainCli::parse_from(secondary_chain_args);
 
         let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
-            let core_domain_cli =
-                CoreDomainCli::new(base_path.clone(), domain_cli.core_domain_args.iter());
+            let core_domain_cli = CoreDomainCli::new(
+                base_path.clone(),
+                [CoreDomainCli::executable_name()]
+                    .iter()
+                    .chain(domain_cli.core_domain_args.iter()),
+            );
             Some(core_domain_cli)
         } else {
             None

@@ -482,7 +482,9 @@ fn main() -> Result<(), Error> {
                         maybe_secondary_chain_spec.ok_or_else(|| {
                             "Primary chain spec must contain secondary chain spec".to_string()
                         })?,
-                        cli.secondary_chain_args.iter(),
+                        [SecondaryChainCli::executable_name()]
+                            .iter()
+                            .chain(cli.secondary_chain_args.iter()),
                     );
 
                     // Increase default number of peers
