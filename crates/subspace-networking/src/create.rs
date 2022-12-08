@@ -18,10 +18,8 @@ use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::Config as IdentifyConfig;
-use libp2p::identity::Keypair;
 use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
 use libp2p::metrics::Metrics;
-use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
 use libp2p::noise::NoiseConfig;
 use libp2p::swarm::SwarmBuilder;
@@ -101,8 +99,6 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub record_store: RecordStore,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
-    /// Mplex multiplexing configuration.
-    pub mplex_config: MplexConfig,
     /// Should non-global addresses be added to the DHT?
     pub allow_non_global_addresses_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
@@ -157,8 +153,6 @@ impl Config {
         // consumed.
         yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
-        let mplex_config = MplexConfig::default();
-
         let gossipsub = GossipsubConfigBuilder::default()
             .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
             // TODO: Do we want message signing?
@@ -188,7 +182,6 @@ impl Config {
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
             request_response_protocols: Vec::new(),
             yamux_config,
-            mplex_config,
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
@@ -216,7 +209,7 @@ pub enum CreationError {
 
 /// Converts public key from keypair to PeerId.
 /// It serves as the shared PeerId generating algorithm.
-pub fn peer_id(keypair: &Keypair) -> PeerId {
+pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
     keypair.public().to_peer_id()
 }
 
@@ -237,7 +230,6 @@ where
         gossipsub,
         record_store,
         yamux_config,
-        mplex_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
         networking_parameters_registry,
@@ -249,7 +241,7 @@ where
     } = config;
     let local_peer_id = peer_id(&keypair);
 
-    let transport = build_transport(&keypair, timeout, yamux_config, mplex_config)?;
+    let transport = build_transport(&keypair, timeout, yamux_config)?;
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -321,7 +313,6 @@ fn build_transport(
     keypair: &identity::Keypair,
     timeout: Duration,
     yamux_config: YamuxConfig,
-    mplex_config: MplexConfig,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
         let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
@@ -341,10 +332,7 @@ fn build_transport(
     Ok(transport
         .upgrade(core::upgrade::Version::V1Lazy)
         .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(core::upgrade::SelectUpgrade::new(
-            yamux_config,
-            mplex_config,
-        ))
+        .multiplex(yamux_config)
         .timeout(timeout)
         .boxed())
 }

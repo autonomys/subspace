@@ -4205,7 +4205,7 @@ dependencies = [
  "libp2p-kad 0.41.0",
  "libp2p-mdns 0.41.0",
  "libp2p-metrics 0.10.0",
- "libp2p-mplex 0.37.0",
+ "libp2p-mplex",
  "libp2p-noise 0.40.0",
  "libp2p-ping 0.40.1",
  "libp2p-request-response 0.22.1",
@@ -4238,7 +4238,6 @@ dependencies = [
  "libp2p-kad 0.42.0",
  "libp2p-mdns 0.42.0",
  "libp2p-metrics 0.11.0",
- "libp2p-mplex 0.38.0",
  "libp2p-noise 0.41.0",
  "libp2p-ping 0.41.0",
  "libp2p-quic",
@@ -4553,23 +4552,6 @@ dependencies = [
  "bytes",
  "futures 0.3.25",
  "libp2p-core 0.37.0",
- "log",
- "nohash-hasher",
- "parking_lot 0.12.1",
- "rand 0.8.5",
- "smallvec",
- "unsigned-varint",
-]
-
-[[package]]
-name = "libp2p-mplex"
-version = "0.38.0"
-source = "git+https://github.com/libp2p/rust-libp2p?rev=be0b62a78fe9d72811b9eda742137cc8ddc4da35#be0b62a78fe9d72811b9eda742137cc8ddc4da35"
-dependencies = [
- "asynchronous-codec",
- "bytes",
- "futures 0.3.25",
- "libp2p-core 0.38.0",
  "log",
  "nohash-hasher",
  "parking_lot 0.12.1",
