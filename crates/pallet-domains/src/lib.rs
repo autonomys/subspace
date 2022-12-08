@@ -613,6 +613,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    /// Common validation of receipts in all kinds of domain bundle.
     fn validate_execution_receipts(
         execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
     ) -> Result<(), ExecutionReceiptError> {
@@ -632,9 +633,6 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Unsorted);
         }
 
-        let (_, best_number) = <ReceiptHead<T>>::get();
-        let max_allowed = best_number + T::MaximumReceiptDrift::get();
-
         for execution_receipt in execution_receipts {
             // Due to `initialize_block` is skipped while calling the runtime api, the block
             // hash mapping for last block is unknown to the transaction pool, but this info
@@ -648,13 +646,6 @@ impl<T: Config> Pallet<T> {
                     != execution_receipt.primary_hash
             {
                 return Err(ExecutionReceiptError::UnknownBlock);
-            }
-
-            // Ensure the receipt is not too new.
-            let primary_number = execution_receipt.primary_number;
-
-            if primary_number == current_block_number || primary_number > max_allowed {
-                return Err(ExecutionReceiptError::TooFarInFuture);
             }
         }
 
@@ -687,6 +678,20 @@ impl<T: Config> Pallet<T> {
 
         if proof_of_election.domain_id.is_system() {
             Self::validate_system_bundle_solution(&bundle.receipts, proof_of_election)?;
+
+            let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+            let (_, best_number) = <ReceiptHead<T>>::get();
+            let max_allowed = best_number + T::MaximumReceiptDrift::get();
+
+            for execution_receipt in &bundle.receipts {
+                let primary_number = execution_receipt.primary_number;
+
+                // Ensure the receipt is not too new.
+                if primary_number == current_block_number || primary_number > max_allowed {
+                    return Err(BundleError::Receipt(ExecutionReceiptError::TooFarInFuture));
+                }
+            }
         }
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
