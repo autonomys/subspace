@@ -61,7 +61,6 @@ where
             .checked_sub(self.max_pieces_in_cache)
             .map(|delete_pieces_from_index| {
                 (delete_pieces_from_index..first_piece_index)
-                    .into_iter()
                     .map(Self::key)
                     .collect::<Vec<_>>()
             })
