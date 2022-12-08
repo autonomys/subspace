@@ -676,6 +676,8 @@ impl<T: Config> Pallet<T> {
         )
         .map_err(|_| BundleError::BadVrfProof)?;
 
+        Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
+
         if proof_of_election.domain_id.is_system() {
             Self::validate_system_bundle_solution(&bundle.receipts, proof_of_election)?;
 
@@ -693,8 +695,6 @@ impl<T: Config> Pallet<T> {
                 }
             }
         }
-
-        Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
         Ok(())
     }
