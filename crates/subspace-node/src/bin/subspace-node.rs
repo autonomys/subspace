@@ -250,7 +250,7 @@ fn main() -> Result<(), Error> {
                     maybe_secondary_chain_spec.ok_or_else(|| {
                         "Primary chain spec must contain secondary chain spec".to_string()
                     })?,
-                    cli.secondary_chain_args.iter(),
+                    cli.secondary_chain_args.into_iter(),
                 );
 
                 let secondary_chain_config = SubstrateCli::create_configuration(
@@ -482,9 +482,7 @@ fn main() -> Result<(), Error> {
                         maybe_secondary_chain_spec.ok_or_else(|| {
                             "Primary chain spec must contain secondary chain spec".to_string()
                         })?,
-                        [SecondaryChainCli::executable_name()]
-                            .iter()
-                            .chain(cli.secondary_chain_args.iter()),
+                        cli.secondary_chain_args.into_iter(),
                     );
 
                     // Increase default number of peers

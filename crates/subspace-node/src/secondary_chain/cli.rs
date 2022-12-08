@@ -73,19 +73,21 @@ impl SecondaryChainCli {
     /// Constructs a new instance of [`SecondaryChainCli`].
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
-    pub fn new<'a>(
+    pub fn new(
         mut base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
-        secondary_chain_args: impl Iterator<Item = &'a String>,
+        secondary_chain_args: impl Iterator<Item = String>,
     ) -> (Self, Option<CoreDomainCli>) {
-        let domain_cli = DomainCli::parse_from(secondary_chain_args);
+        let domain_cli = DomainCli::parse_from(
+            [Self::executable_name()]
+                .into_iter()
+                .chain(secondary_chain_args),
+        );
 
         let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
             let core_domain_cli = CoreDomainCli::new(
                 base_path.clone(),
-                [CoreDomainCli::executable_name()]
-                    .iter()
-                    .chain(domain_cli.core_domain_args.iter()),
+                domain_cli.core_domain_args.clone().into_iter(),
             );
             Some(core_domain_cli)
         } else {

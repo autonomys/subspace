@@ -72,13 +72,17 @@ impl CoreDomainCli {
     /// Constructs a new instance of [`CoreDomainCli`].
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
-    pub fn new<'a>(
+    pub fn new(
         system_domain_base_path: Option<PathBuf>,
-        core_payments_domain_args: impl Iterator<Item = &'a String>,
+        core_payments_domain_args: impl Iterator<Item = String>,
     ) -> Self {
         let mut cli = Self {
             base_path: system_domain_base_path,
-            ..Self::parse_from(core_payments_domain_args)
+            ..Self::parse_from(
+                [Self::executable_name()]
+                    .into_iter()
+                    .chain(core_payments_domain_args),
+            )
         };
 
         cli.base_path
