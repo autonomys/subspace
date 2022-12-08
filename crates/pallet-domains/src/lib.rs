@@ -632,7 +632,8 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Unsorted);
         }
 
-        let (_, mut best_number) = <ReceiptHead<T>>::get();
+        let (_, best_number) = <ReceiptHead<T>>::get();
+        let max_allowed = best_number + T::MaximumReceiptDrift::get();
 
         for execution_receipt in execution_receipts {
             // Due to `initialize_block` is skipped while calling the runtime api, the block
@@ -652,13 +653,9 @@ impl<T: Config> Pallet<T> {
             // Ensure the receipt is not too new.
             let primary_number = execution_receipt.primary_number;
 
-            if primary_number == current_block_number
-                || primary_number > best_number + T::MaximumReceiptDrift::get()
-            {
+            if primary_number == current_block_number || primary_number > max_allowed {
                 return Err(ExecutionReceiptError::TooFarInFuture);
             }
-
-            best_number += One::one();
         }
 
         Ok(())
