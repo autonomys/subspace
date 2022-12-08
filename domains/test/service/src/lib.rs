@@ -53,7 +53,7 @@ use substrate_test_client::{
 };
 
 use cross_domain_message_gossip::GossipWorker;
-use domain_service::Configuration;
+use domain_service::DomainConfiguration;
 pub use domain_test_runtime as runtime;
 use sp_domains::DomainId;
 pub use sp_keyring::Sr25519Keyring as Keyring;
@@ -161,7 +161,10 @@ async fn run_executor(
 
     let (gossip_msg_sink, gossip_msg_stream) =
         sc_utils::mpsc::tracing_unbounded("Cross domain gossip messages");
-    let secondary_chain_config = Configuration::new(secondary_chain_config, None);
+    let secondary_chain_config = DomainConfiguration {
+        service_config: secondary_chain_config,
+        maybe_relayer_id: None,
+    };
     let block_import_throttling_buffer_size = 10;
     let secondary_chain_node = domain_service::new_full::<
         _,

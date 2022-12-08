@@ -9882,6 +9882,7 @@ dependencies = [
  "substrate-build-script-utils",
  "system-domain-runtime",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -17,7 +17,6 @@
 //! Subspace node implementation.
 
 use cross_domain_message_gossip::GossipWorker;
-use domain_service::Configuration;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -490,30 +489,13 @@ fn main() -> Result<(), Error> {
                         secondary_chain_cli.run.run_system.network_params.out_peers = 50;
                     }
 
-                    let service_config = SubstrateCli::create_configuration(
-                        &secondary_chain_cli,
-                        &secondary_chain_cli,
-                        tokio_handle.clone(),
-                    )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to create secondary chain configuration: {error:?}"
-                        ))
-                    })?;
-
-                    // if is dev, use the known key ring to start relayer
-                    let maybe_relayer_id = if secondary_chain_cli.shared_params().is_dev() {
-                        secondary_chain_cli
-                            .run
-                            .run_system
-                            .get_keyring()
-                            .map(|kr| kr.to_account_id())
-                    } else {
-                        secondary_chain_cli.run.relayer_id
-                    };
-
-                    let secondary_chain_config =
-                        Configuration::new(service_config, maybe_relayer_id);
+                    let secondary_chain_config = secondary_chain_cli
+                        .create_domain_configuration(tokio_handle.clone())
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create secondary chain configuration: {error:?}"
+                            ))
+                        })?;
 
                     let imported_block_notification_stream = || {
                         primary_chain_node
@@ -583,29 +565,13 @@ fn main() -> Result<(), Error> {
                             core_domain_cli.run.network_params.out_peers = 50;
                         }
 
-                        let core_domain_service_config = SubstrateCli::create_configuration(
-                            &core_domain_cli,
-                            &core_domain_cli,
-                            tokio_handle,
-                        )
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to create core domain configuration: {error:?}"
-                            ))
-                        })?;
-
-                        // if is dev, use the known key ring to start relayer
-                        let maybe_relayer_id = if core_domain_cli.shared_params().is_dev() {
-                            core_domain_cli
-                                .run
-                                .get_keyring()
-                                .map(|kr| kr.to_account_id())
-                        } else {
-                            core_domain_cli.relayer_id
-                        };
-
-                        let core_domain_config =
-                            Configuration::new(core_domain_service_config, maybe_relayer_id);
+                        let core_domain_config = core_domain_cli
+                            .create_domain_configuration(tokio_handle)
+                            .map_err(|error| {
+                                sc_service::Error::Other(format!(
+                                    "Failed to create core domain configuration: {error:?}"
+                                ))
+                            })?;
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {

@@ -18,6 +18,7 @@ use crate::core_domain::cli::CoreDomainCli;
 use crate::parser::parse_relayer_id;
 use clap::Parser;
 use domain_runtime_primitives::RelayerId;
+use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams, SubstrateCli,
@@ -102,6 +103,28 @@ impl SecondaryChainCli {
             },
             maybe_core_domain_cli,
         )
+    }
+
+    /// Creates domain configuration from Secondary chain cli.
+    pub fn create_domain_configuration(
+        &self,
+        tokio_handle: tokio::runtime::Handle,
+    ) -> sc_cli::Result<DomainConfiguration> {
+        // if is dev, use the known key ring to start relayer
+        let maybe_relayer_id = if self.shared_params().is_dev() {
+            self.run
+                .run_system
+                .get_keyring()
+                .map(|kr| kr.to_account_id())
+        } else {
+            self.run.relayer_id.clone()
+        };
+
+        let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
+        Ok(DomainConfiguration {
+            service_config,
+            maybe_relayer_id,
+        })
     }
 }
 

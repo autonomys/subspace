@@ -1,4 +1,4 @@
-use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
+use crate::{new_partial, DomainConfiguration, FullBackend, FullClient, FullPool};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
@@ -103,7 +103,7 @@ pub async fn new_full<
     ExecutorDispatch,
 >(
     domain_id: DomainId,
-    mut secondary_chain_config: Configuration,
+    mut secondary_chain_config: DomainConfiguration,
     system_domain_client: Arc<SClient>,
     secondary_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
     primary_chain_client: Arc<PClient>,
