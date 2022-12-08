@@ -306,6 +306,39 @@ mod pallet {
         },
     }
 
+    #[pallet::genesis_config]
+    #[derive(Debug)]
+    pub struct GenesisConfig<T: Config> {
+        /// Genesis relayers that join the relayer pool.
+        pub relayers: Vec<(T::AccountId, RelayerId<T>)>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
+                relayers: Default::default(),
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            for (owner, relayer_id) in self.relayers.iter() {
+                if let Err(err) =
+                    Pallet::<T>::do_join_relayer_set(owner.clone(), relayer_id.clone())
+                {
+                    log::error!(
+                        "Failed to add relayer: {:?} to the pool: {:?}",
+                        relayer_id,
+                        err
+                    )
+                }
+            }
+        }
+    }
+
     type Tag = (DomainId, ChannelId, Nonce);
 
     fn unsigned_validity<T: Config>(prefix: &'static str, provides: Tag) -> TransactionValidity {

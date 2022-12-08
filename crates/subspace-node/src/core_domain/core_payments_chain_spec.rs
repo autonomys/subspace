@@ -18,8 +18,10 @@
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use core_payments_domain_runtime::{
-    AccountId, BalancesConfig, GenesisConfig, SudoConfig, SystemConfig, WASM_BINARY,
+    AccountId, BalancesConfig, GenesisConfig, MessengerConfig, SudoConfig, SystemConfig,
+    WASM_BINARY,
 };
+use domain_runtime_primitives::RelayerId;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
@@ -43,6 +45,10 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Bob//stash"),
                 ],
                 Some(get_account_id_from_seed("Alice")),
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed("Alice"),
+                )],
             )
         },
         vec![],
@@ -78,6 +84,16 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     get_account_id_from_seed("Ferdie//stash"),
                 ],
                 Some(get_account_id_from_seed("Alice")),
+                vec![
+                    (
+                        get_account_id_from_seed("Alice"),
+                        get_account_id_from_seed("Alice"),
+                    ),
+                    (
+                        get_account_id_from_seed("Bob"),
+                        get_account_id_from_seed("Bob"),
+                    ),
+                ],
             )
         },
         // Bootnodes
@@ -109,6 +125,7 @@ pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
                         .expect("Wrong executor account address"),
                 ],
                 None,
+                Default::default(),
             )
         },
         // Bootnodes
@@ -128,6 +145,7 @@ pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,
+    relayers: Vec<(AccountId, RelayerId)>,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -146,5 +164,6 @@ fn testnet_genesis(
                 .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
+        messenger: MessengerConfig { relayers },
     }
 }
