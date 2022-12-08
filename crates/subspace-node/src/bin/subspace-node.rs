@@ -501,8 +501,19 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
+                    // if is dev, use the known key ring to start relayer
+                    let maybe_relayer_id = if secondary_chain_cli.shared_params().is_dev() {
+                        secondary_chain_cli
+                            .run
+                            .run_system
+                            .get_keyring()
+                            .map(|kr| kr.to_account_id())
+                    } else {
+                        secondary_chain_cli.run.relayer_id
+                    };
+
                     let secondary_chain_config =
-                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id);
+                        Configuration::new(service_config, maybe_relayer_id);
 
                     let imported_block_notification_stream = || {
                         primary_chain_node
@@ -583,10 +594,18 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                        let core_domain_config = Configuration::new(
-                            core_domain_service_config,
-                            core_domain_cli.relayer_id,
-                        );
+                        // if is dev, use the known key ring to start relayer
+                        let maybe_relayer_id = if core_domain_cli.shared_params().is_dev() {
+                            core_domain_cli
+                                .run
+                                .get_keyring()
+                                .map(|kr| kr.to_account_id())
+                        } else {
+                            core_domain_cli.relayer_id
+                        };
+
+                        let core_domain_config =
+                            Configuration::new(core_domain_service_config, maybe_relayer_id);
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
