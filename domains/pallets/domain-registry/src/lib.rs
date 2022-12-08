@@ -555,6 +555,9 @@ mod pallet {
 
         /// A missing core domain parent receipt.
         MissingParentReceipt,
+
+        /// Core domain receipt is too far in the future.
+        ReceiptTooFarInFuture,
     }
 
     #[pallet::event]
@@ -777,7 +780,10 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
 
-        let mut best_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        let head_receipt_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
+
+        let mut best_number = head_receipt_number;
         for receipt in &signed_opaque_bundle.bundle.receipts {
             // Non-best receipt
             if receipt.primary_number <= best_number {
@@ -788,6 +794,10 @@ impl<T: Config> Pallet<T> {
             // Missing receipt.
             } else {
                 return Err(Error::<T>::MissingParentReceipt);
+            }
+
+            if receipt.primary_number > max_allowed {
+                return Err(Error::<T>::ReceiptTooFarInFuture);
             }
         }
 
