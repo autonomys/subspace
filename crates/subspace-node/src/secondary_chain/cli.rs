@@ -111,7 +111,7 @@ impl SecondaryChainCli {
         tokio_handle: tokio::runtime::Handle,
     ) -> sc_cli::Result<DomainConfiguration> {
         // if is dev, use the known key ring to start relayer
-        let maybe_relayer_id = if self.shared_params().is_dev() {
+        let maybe_relayer_id = if self.shared_params().is_dev() && self.run.relayer_id.is_none() {
             self.run
                 .run_system
                 .get_keyring()

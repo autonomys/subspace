@@ -103,7 +103,7 @@ impl CoreDomainCli {
         tokio_handle: tokio::runtime::Handle,
     ) -> sc_cli::Result<DomainConfiguration> {
         // if is dev, use the known key ring to start relayer
-        let maybe_relayer_id = if self.shared_params().is_dev() {
+        let maybe_relayer_id = if self.shared_params().is_dev() && self.relayer_id.is_none() {
             self.run.get_keyring().map(|kr| kr.to_account_id())
         } else {
             self.relayer_id.clone()
