@@ -153,7 +153,6 @@ where
     let client = params.client.clone();
     let backend = params.backend.clone();
 
-    let validator = secondary_chain_config.service_config.role.is_authority();
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
@@ -188,6 +187,8 @@ where
         })
     };
 
+    let is_authority = secondary_chain_config.service_config.role.is_authority();
+
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
         client: client.clone(),
@@ -217,7 +218,7 @@ where
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
             code_executor: code_executor.clone(),
-            is_authority: validator,
+            is_authority,
             keystore: params.keystore_container.sync_keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
