@@ -10,7 +10,7 @@ use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{debug, info, trace, Instrument};
+use tracing::{debug, error, info, trace, Instrument};
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -60,7 +60,13 @@ where
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
             let result = if let PieceKey::PieceIndex(piece_index) = req.key {
-                piece_cache.get_piece(piece_index).ok().flatten()
+                match piece_cache.get_piece(piece_index) {
+                    Ok(maybe_piece) => maybe_piece,
+                    Err(error) => {
+                        error!(key=?req.key, %error, "Failed to get piece from cache");
+                        None
+                    }
+                }
             } else {
                 debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
 
