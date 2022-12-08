@@ -18,9 +18,6 @@ use system_runtime_primitives::SystemDomainApi;
 
 /// Gossip message validator for system domain.
 pub struct SystemGossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-where
-    Block: BlockT,
-    PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
@@ -30,9 +27,6 @@ where
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
     for SystemGossipMessageValidator<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-where
-    Block: BlockT,
-    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {

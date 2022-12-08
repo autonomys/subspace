@@ -15,18 +15,14 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 
-pub(super) struct DomainBundleProposer<Block, Client, TransactionPool>
-where
-    Block: BlockT,
-{
+pub(super) struct DomainBundleProposer<Block, Client, TransactionPool> {
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
     _phantom_data: PhantomData<Block>,
 }
 
-impl<Block, Client, TransactionPool> Clone for DomainBundleProposer<Block, Client, TransactionPool>
-where
-    Block: BlockT,
+impl<Block, Client, TransactionPool> Clone
+    for DomainBundleProposer<Block, Client, TransactionPool>
 {
     fn clone(&self) -> Self {
         Self {

@@ -45,11 +45,7 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 }
 
 /// Base domain gossip message validator.
-pub struct GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-{
+pub struct GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E> {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
@@ -58,9 +54,6 @@ where
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
-where
-    Block: BlockT,
-    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
