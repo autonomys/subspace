@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use parity_scale_codec::Encode;
 use sc_client_api::backend::AuxStore;
 use std::borrow::Cow;
@@ -43,7 +46,11 @@ where
 
     /// Get piece from storage
     pub fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Box<dyn Error>> {
-        self.get_piece_by_key(&Self::key(piece_index))
+        self.get_piece_by_index_multihash(
+            &PieceIndexHash::from_index(piece_index)
+                .to_multihash()
+                .to_bytes(),
+        )
     }
 
     /// Add pieces to cache (likely as the result of archiving)
@@ -52,6 +59,10 @@ where
         first_piece_index: PieceIndex,
         pieces: &FlatPieces,
     ) -> Result<(), Box<dyn Error>> {
+        if self.max_pieces_in_cache == 0 {
+            return Ok(());
+        }
+
         let insert_keys = (first_piece_index..)
             .take(pieces.count())
             .map(Self::key)
@@ -93,10 +104,13 @@ where
         (Self::KEY_PREFIX, bytes).encode()
     }
 
-    fn get_piece_by_key(&self, key: &[u8]) -> Result<Option<Piece>, Box<dyn Error>> {
+    fn get_piece_by_index_multihash(
+        &self,
+        piece_index_multihash: &[u8],
+    ) -> Result<Option<Piece>, Box<dyn Error>> {
         Ok(self
             .aux_store
-            .get_aux(Self::key_from_bytes(key).as_slice())?
+            .get_aux(Self::key_from_bytes(piece_index_multihash).as_slice())?
             .map(|piece| {
                 Piece::try_from(piece).expect("Always correct piece unless DB is corrupted; qed")
             }))
@@ -108,7 +122,7 @@ where
     AS: AuxStore + 'a,
 {
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
-        let get_result = self.get_piece_by_key(key.as_ref());
+        let get_result = self.get_piece_by_index_multihash(key.as_ref());
 
         match get_result {
             Ok(result) => result.map(|piece| {
