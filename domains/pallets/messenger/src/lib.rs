@@ -707,9 +707,17 @@ mod pallet {
                     ProtocolMessageRequest::ChannelOpen(params),
                 ))) = msg.payload
                 {
-                    Self::do_init_channel(msg.src_domain_id, params)
-                        .map_err(|_| InvalidTransaction::Call)?;
+                    Self::do_init_channel(msg.src_domain_id, params).map_err(|err| {
+                        log::error!(
+                            "Error initiating channel: {:?} with domain: {:?}: {:?}",
+                            msg.channel_id,
+                            msg.src_domain_id,
+                            err
+                        );
+                        InvalidTransaction::Call
+                    })?;
                 } else {
+                    log::error!("Unexpected call instead of channel open request: {:?}", msg,);
                     return Err(InvalidTransaction::Call.into());
                 }
             }
@@ -729,22 +737,14 @@ mod pallet {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
-                None => return Err(InvalidTransaction::Call.into()),
-                // verify if channel can receive messages
-                Some(channel) => {
-                    match channel.latest_response_received_message_nonce {
-                        None => {
-                            // this is the first message response.
-                            // ensure channel is in init state
-                            ensure!(
-                                channel.state == ChannelState::Initiated,
-                                InvalidTransaction::Call
-                            );
-                            Some(Nonce::zero())
-                        }
-                        Some(last_nonce) => last_nonce.checked_add(Nonce::one()),
-                    }
+                None => {
+                    log::error!("Unexpected inbox message response: {:?}", xdm,);
+                    return Err(InvalidTransaction::Call.into());
                 }
+                Some(channel) => match channel.latest_response_received_message_nonce {
+                    None => Some(Nonce::zero()),
+                    Some(last_nonce) => last_nonce.checked_add(Nonce::one()),
+                },
             }
             .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))?;
 

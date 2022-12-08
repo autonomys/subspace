@@ -34,7 +34,7 @@ use std::any::TypeId;
 use std::collections::BTreeMap;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{DsnConfig, SubspaceConfiguration};
+use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
 /// System domain executor instance.
@@ -437,12 +437,25 @@ fn main() -> Result<(), Error> {
                         base: primary_chain_config,
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
-                        dsn_config,
-                        piece_cache_size: cli.piece_cache_size.as_u64(),
+                        subspace_networking: SubspaceNetworking::Create {
+                            config: dsn_config,
+                            piece_cache_size: cli.piece_cache_size.as_u64(),
+                        },
                     };
 
-                    subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
+                    let partial_components = subspace_service::new_partial::<
+                        RuntimeApi,
+                        ExecutorDispatch,
+                    >(&primary_chain_config)
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node: {error:?}"
+                        ))
+                    })?;
+
+                    subspace_service::new_full(
                         primary_chain_config,
+                        partial_components,
                         true,
                         SlotProportion::new(2f32 / 3f32),
                     )

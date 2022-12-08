@@ -1,22 +1,16 @@
-mod piece_record_store;
-
-use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
+use crate::piece_cache::PieceCache;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
-use sc_piece_cache::AuxPieceCache;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
-use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
     Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
-use tracing::{debug, info, trace, Instrument};
-
-pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
+use tracing::{debug, error, info, trace, Instrument};
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -39,13 +33,11 @@ pub struct DsnConfig {
 
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
-    piece_cache: AuxPieceCache<AS>,
-    piece_getter: PieceGetter,
-    segment_index_getter: SegmentIndexGetter,
+    piece_cache: PieceCache<AS>,
 ) -> Result<
     (
         Node,
-        NodeRunner<CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>>,
+        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
     ),
     CreationError,
 >
@@ -53,10 +45,10 @@ where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
-    // TODO: Combine `AuxPieceCache` with `AuxRecordStorage` and remove `PieceCache` abstraction
-    let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
-
     trace!("Subspace networking starting.");
+
+    let record_store =
+        CustomRecordStore::new(piece_cache.clone(), MemoryProviderStorage::default());
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair,
@@ -67,8 +59,14 @@ where
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::PieceIndex(idx) = req.key {
-                piece_getter(&idx)
+            let result = if let PieceKey::PieceIndex(piece_index) = req.key {
+                match piece_cache.get_piece(piece_index) {
+                    Ok(maybe_piece) => maybe_piece,
+                    Err(error) => {
+                        error!(key=?req.key, %error, "Failed to get piece from cache");
+                        None
+                    }
+                }
             } else {
                 debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
 
@@ -77,7 +75,7 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(record_storage, MemoryProviderStorage::default()),
+        record_store,
         ..subspace_networking::Config::with_generated_keypair()
     };
 

@@ -47,7 +47,7 @@ use std::future::Future;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block as PBlock;
-use subspace_service::DsnConfig;
+use subspace_service::{DsnConfig, SubspaceNetworking};
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
@@ -125,23 +125,31 @@ async fn run_executor(
             base: primary_chain_config,
             // Always enable the slot notification.
             force_new_slot_notifications: true,
-            dsn_config: DsnConfig {
-                listen_on: vec!["/ip4/127.0.0.1/tcp/0"
-                    .parse()
-                    .expect("Correct multiaddr; qed")],
-                bootstrap_nodes: vec![],
-                reserved_peers: vec![],
-                keypair: identity::Keypair::generate_ed25519(),
-                allow_non_global_addresses_in_dht: true,
+            subspace_networking: SubspaceNetworking::Create {
+                config: DsnConfig {
+                    listen_on: vec!["/ip4/127.0.0.1/tcp/0"
+                        .parse()
+                        .expect("Correct multiaddr; qed")],
+                    bootstrap_nodes: vec![],
+                    reserved_peers: vec![],
+                    keypair: identity::Keypair::generate_ed25519(),
+                    allow_non_global_addresses_in_dht: true,
+                },
+                piece_cache_size: 1024 * 1024 * 1024,
             },
-            piece_cache_size: 1024 * 1024 * 1024,
         };
 
-        subspace_service::new_full::<
+        let partial_components = subspace_service::new_partial::<
             subspace_test_runtime::RuntimeApi,
             subspace_test_client::TestExecutorDispatch,
-        >(
+        >(&primary_chain_config)
+        .map_err(|e| {
+            sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
+        })?;
+
+        subspace_service::new_full(
             primary_chain_config,
+            partial_components,
             false,
             SlotProportion::new(98f32 / 100f32),
         )
