@@ -11,7 +11,6 @@ use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -257,52 +256,11 @@ impl From<oneshot::Canceled> for CircuitRelayClientError {
 #[must_use = "Node doesn't do anything if dropped"]
 pub struct Node {
     shared: Arc<Shared>,
-    /// Indicates whether the peer data synchronization is in progress
-    sync_status: NodeSynchronizationStatusHandler,
-}
-
-/// Provides operations for managing thread-safe node synchronization status.
-#[derive(Debug, Clone)]
-pub struct NodeSynchronizationStatusHandler {
-    syncing: Arc<AtomicBool>,
-}
-
-impl NodeSynchronizationStatusHandler {
-    /// Constructor. Set initial sync status to false.
-    pub(crate) fn new() -> Self {
-        Self {
-            syncing: Arc::new(AtomicBool::new(false)),
-        }
-    }
-    /// Sets sync status.
-    pub fn toggle_on(&self) {
-        trace!("Toggle syncing on.");
-        self.syncing.store(true, Ordering::Relaxed);
-    }
-
-    /// Unsets sync status.
-    pub fn toggle_off(&self) {
-        trace!("Toggle syncing off.");
-        self.syncing.store(false, Ordering::Relaxed);
-    }
-
-    /// Returns the current node synchronization status.
-    pub fn status(&self) -> bool {
-        self.syncing.load(Ordering::Relaxed)
-    }
 }
 
 impl Node {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
-        Self {
-            shared,
-            sync_status: NodeSynchronizationStatusHandler::new(),
-        }
-    }
-
-    /// Node's synchronization status handler.
-    pub fn sync_status_handler(&self) -> NodeSynchronizationStatusHandler {
-        self.sync_status.clone()
+        Self { shared }
     }
 
     /// Node's own local ID.

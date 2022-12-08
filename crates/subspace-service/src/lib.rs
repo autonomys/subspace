@@ -18,10 +18,12 @@
 #![feature(type_changing_struct_update)]
 
 mod dsn;
+pub mod piece_cache;
 mod pool;
 pub mod rpc;
 
 use crate::dsn::create_dsn_instance;
+use crate::piece_cache::PieceCache;
 pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
@@ -42,7 +44,6 @@ use sc_consensus_subspace::{
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_piece_cache::{AuxPieceCache, PieceCache};
 use sc_service::error::Error as ServiceError;
 use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
@@ -68,6 +69,8 @@ use std::sync::{Arc, Mutex};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::Node;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use tracing::{error, info, Instrument};
@@ -124,6 +127,26 @@ pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof
     Hash,
 >;
 
+/// Subspace networking instantiation variant
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub enum SubspaceNetworking {
+    /// Use existing networking instance
+    Reuse {
+        /// Node instance
+        node: Node,
+        /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
+        bootstrap_nodes: Vec<Multiaddr>,
+    },
+    /// Networking must be instantiated internally
+    Create {
+        /// Configuration to use for DSN instantiation
+        config: DsnConfig,
+        /// Piece cache size in bytes
+        piece_cache_size: u64,
+    },
+}
+
 /// Subspace-specific service configuration.
 #[derive(Debug, Deref, DerefMut, Into)]
 pub struct SubspaceConfiguration {
@@ -135,10 +158,8 @@ pub struct SubspaceConfiguration {
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
     pub force_new_slot_notifications: bool,
-    /// Subspace networking configuration (for DSN).
-    pub dsn_config: DsnConfig,
-    /// Piece cache size in bytes.
-    pub piece_cache_size: u64,
+    /// Subspace networking (DSN).
+    pub subspace_networking: SubspaceNetworking,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -347,8 +368,22 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 >;
 
 /// Builds a new service for a full client.
-pub async fn new_full<RuntimeApi, ExecutorDispatch>(
+#[allow(clippy::type_complexity)]
+pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
     config: SubspaceConfiguration,
+    partial_components: PartialComponents<
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        FullBackend,
+        FullSelectChain,
+        DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        FullPool<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        >,
+        (I, SubspaceLink<Block>, Option<Telemetry>),
+    >,
+
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
@@ -370,6 +405,13 @@ where
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
+    I: BlockImport<
+            Block,
+            Error = ConsensusError,
+            Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+        > + Send
+        + Sync
+        + 'static,
 {
     let PartialComponents {
         client,
@@ -380,105 +422,98 @@ where
         select_chain,
         transaction_pool,
         other: (block_import, subspace_link, mut telemetry),
-    } = new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+    } = partial_components;
 
-    let piece_cache = AuxPieceCache::new(client.clone(), config.piece_cache_size);
+    let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
+        SubspaceNetworking::Reuse {
+            node,
+            bootstrap_nodes,
+        } => (node, bootstrap_nodes),
+        SubspaceNetworking::Create {
+            config,
+            piece_cache_size,
+        } => {
+            let piece_cache = PieceCache::new(client.clone(), piece_cache_size);
 
-    // Start before archiver below, so we don't have potential race condition and miss pieces
-    task_manager
-        .spawn_handle()
-        .spawn_blocking("subspace-piece-cache", None, {
-            let piece_cache = piece_cache.clone();
-            let mut archived_segment_notification_stream = subspace_link
-                .archived_segment_notification_stream()
-                .subscribe();
+            // Start before archiver below, so we don't have potential race condition and miss pieces
+            task_manager
+                .spawn_handle()
+                .spawn_blocking("subspace-piece-cache", None, {
+                    let piece_cache = piece_cache.clone();
+                    let mut archived_segment_notification_stream = subspace_link
+                        .archived_segment_notification_stream()
+                        .subscribe();
 
-            async move {
-                while let Some(archived_segment_notification) =
-                    archived_segment_notification_stream.next().await
-                {
-                    let segment_index = archived_segment_notification
-                        .archived_segment
-                        .root_block
-                        .segment_index();
-                    if let Err(error) = piece_cache.add_pieces(
-                        segment_index * u64::from(PIECES_IN_SEGMENT),
-                        &archived_segment_notification.archived_segment.pieces,
-                    ) {
-                        error!(
-                            %segment_index,
-                            %error,
-                            "Failed to store pieces for segment in cache"
-                        );
+                    async move {
+                        while let Some(archived_segment_notification) =
+                            archived_segment_notification_stream.next().await
+                        {
+                            let segment_index = archived_segment_notification
+                                .archived_segment
+                                .root_block
+                                .segment_index();
+                            if let Err(error) = piece_cache.add_pieces(
+                                segment_index * u64::from(PIECES_IN_SEGMENT),
+                                &archived_segment_notification.archived_segment.pieces,
+                            ) {
+                                error!(
+                                    %segment_index,
+                                    %error,
+                                    "Failed to store pieces for segment in cache"
+                                );
+                            }
+                        }
                     }
-                }
+                });
+
+            let (node, mut node_runner) =
+                create_dsn_instance::<Block, _>(config.clone(), piece_cache.clone())
+                    .instrument(tracing::info_span!(
+                        sc_tracing::logging::PREFIX_LOG_SPAN,
+                        name = "DSN"
+                    ))
+                    .await?;
+
+            info!("Subspace networking initialized: Node ID is {}", node.id());
+
+            task_manager.spawn_essential_handle().spawn_essential(
+                "node-runner",
+                Some("subspace-networking"),
+                Box::pin(
+                    async move {
+                        node_runner.run().await;
+                    }
+                    .in_current_span(),
+                ),
+            );
+
+            (node, config.bootstrap_nodes)
+        }
+    };
+
+    let dsn_archiving_fut = start_dsn_archiver(
+        subspace_link
+            .archived_segment_notification_stream()
+            .subscribe(),
+        node.clone(),
+        task_manager.spawn_handle(),
+    );
+
+    task_manager.spawn_essential_handle().spawn_essential(
+        "archiver",
+        Some("subspace-networking"),
+        Box::pin(
+            async move {
+                dsn_archiving_fut.await;
             }
-        });
+            .in_current_span(),
+        ),
+    );
 
     let dsn_bootstrap_nodes = {
-        let span = tracing::info_span!(sc_tracing::logging::PREFIX_LOG_SPAN, name = "DSN");
-        let _enter = span.enter();
-
-        let (node, mut node_runner) = create_dsn_instance::<Block, _>(
-            config.dsn_config.clone(),
-            piece_cache.clone(),
-            Arc::new({
-                let piece_cache = piece_cache.clone();
-
-                move |piece_index| piece_cache.get_piece(*piece_index).ok().flatten()
-            }),
-            Arc::new({
-                let client = client.clone();
-
-                move || {
-                    let best_block_id = BlockId::Hash(client.info().best_hash);
-                    let total_pieces = client
-                        .runtime_api()
-                        .total_pieces(&best_block_id)
-                        .expect("Can't receive total pieces number.");
-
-                    // segment index with a zero-based index-shift
-                    (total_pieces.get() / PIECES_IN_SEGMENT as u64).saturating_sub(1)
-                }
-            }),
-        )
-        .await?;
-
-        info!("Subspace networking initialized: Node ID is {}", node.id());
-
-        task_manager.spawn_essential_handle().spawn_essential(
-            "node-runner",
-            Some("subspace-networking"),
-            Box::pin(
-                async move {
-                    node_runner.run().await;
-                }
-                .in_current_span(),
-            ),
-        );
-
-        let dsn_archiving_fut = start_dsn_archiver(
-            subspace_link
-                .archived_segment_notification_stream()
-                .subscribe(),
-            node.clone(),
-            task_manager.spawn_handle(),
-        );
-
-        task_manager.spawn_essential_handle().spawn_essential(
-            "archiver",
-            Some("subspace-networking"),
-            Box::pin(
-                async move {
-                    dsn_archiving_fut.await;
-                }
-                .in_current_span(),
-            ),
-        );
-
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
         // connect to
-        if config.dsn_config.bootstrap_nodes.is_empty() {
+        if bootstrap_nodes.is_empty() {
             let (node_address_sender, node_address_receiver) = oneshot::channel();
             let _handler = node.on_new_listener(Arc::new({
                 let node_address_sender = Mutex::new(Some(node_address_sender));
@@ -516,7 +551,7 @@ where
 
             node_listeners
         } else {
-            config.dsn_config.bootstrap_nodes.clone()
+            bootstrap_nodes.clone()
         }
     };
 
