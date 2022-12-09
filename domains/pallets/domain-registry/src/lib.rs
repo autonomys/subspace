@@ -820,16 +820,17 @@ impl<T: Config> Pallet<T> {
         let core_block_number = T::BlockNumber::from(*core_block_number);
 
         // Considering this senario, a core domain stalls at block 1 for a long time and then
-        // resumes at block 1000, assuming `MaximumReceiptDrift` is 128, the range of receipts
-        // in the new bundle created at block 1000 would be [1, 1+128], thus the state root
-        // corresponding to block 1000, i.e., `core_state_root`, can not be verified, in which
-        // case the `core_state_root` verification will be skipped.
+        // resumes at block 1000, assuming `MaximumReceiptDrift` is 128 and the receipt of
+        // block 1 had been submitted, the range of receipts in the new bundle created at
+        // block 1000 would be (1, 1+128] , thus the state root corresponding to block 1000,i.e.,
+        // `core_state_root`, can not be verified, in which case the `core_state_root`
+        // verification will be skipped.
         //
         // We can not simply remove the `MaximumReceiptDrift` constraint as it's unwise to
-        // fill in an indefinite number of missing receipts in one single bundle when the
+        // fill in an unlimited number of missing receipts in one single bundle when the
         // domain resumes because the computation resource per block is limited anyway.
         //
-        // This edge case does not impact the security due to the fraud-proof mecahnism.
+        // This edge case does not impact the security due to the fraud-proof mechanism.
         let state_root_verifiable = core_block_number <= new_best_number;
 
         if !core_block_number.is_zero() && state_root_verifiable {

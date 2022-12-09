@@ -24,7 +24,6 @@ use system_runtime_primitives::SystemDomainApi;
 /// System domain executor.
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
-    Block: BlockT,
     PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
@@ -39,7 +38,6 @@ where
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
     for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
-    Block: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
@@ -144,9 +142,7 @@ where
             params.primary_chain_client.clone(),
             params.client.clone(),
             params.backend.clone(),
-            params.is_authority,
             params.keystore,
-            params.spawner.clone(),
             domain_block_processor,
         );
 

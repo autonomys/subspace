@@ -12,7 +12,6 @@ use sp_domains::{BundleSolution, DomainId, ExecutorApi, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
@@ -30,7 +29,6 @@ where
     keystore: SyncCryptoStorePtr,
     bundle_election_solver: BundleElectionSolver<Block, PBlock, Client>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, TransactionPool>,
-    _phantom_data: PhantomData<PBlock>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool> Clone
@@ -49,7 +47,6 @@ where
             keystore: self.keystore.clone(),
             bundle_election_solver: self.bundle_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
-            _phantom_data: self._phantom_data,
         }
     }
 }
@@ -90,8 +87,8 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>,
     Client::Api: DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
-        + BlockBuilder<Block>,
+        + BlockBuilder<Block>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
@@ -116,7 +113,6 @@ where
             keystore,
             bundle_election_solver,
             domain_bundle_proposer,
-            _phantom_data: PhantomData::default(),
         }
     }
 
@@ -132,6 +128,10 @@ where
     where
         R: ReceiptInterface<PBlock::Hash>,
     {
+        if !self.is_authority {
+            return Ok(None);
+        }
+
         let ExecutorSlotInfo {
             slot,
             global_challenge,

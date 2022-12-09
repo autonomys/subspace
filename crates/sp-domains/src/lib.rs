@@ -159,7 +159,7 @@ pub struct DomainConfig<Hash, Balance, Weight> {
     pub min_operator_stake: Balance,
 }
 
-/// Header of transaction bundle.
+/// Header of bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Hash> {
     /// The hash of primary block at which the bundle was created.
@@ -245,7 +245,7 @@ impl<DomainHash> BundleSolution<DomainHash> {
     }
 }
 
-/// Transaction bundle
+/// Domain bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.

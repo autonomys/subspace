@@ -19,7 +19,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
 use sp_runtime::Digest;
 use std::borrow::Cow;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 
@@ -36,7 +35,6 @@ where
 /// A common component shared between the system and core domain bundle processor.
 pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
-    Block: BlockT,
     PBlock: BlockT,
 {
     domain_id: DomainId,
@@ -45,13 +43,11 @@ where
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
-    Block: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
@@ -62,7 +58,6 @@ where
             primary_network: self.primary_network.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
-            _phantom_data: self._phantom_data,
         }
     }
 }
@@ -103,7 +98,6 @@ where
             primary_network,
             backend,
             fraud_proof_generator,
-            _phantom_data: PhantomData::default(),
         }
     }
 
@@ -138,9 +132,7 @@ where
         mut extrinsics: Vec<Block::Extrinsic>,
         shuffling_seed: Randomness,
     ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        // TODO: or just Vec::new()?
-        // Ideally there should be only a few duplicated transactions.
-        let mut seen = Vec::with_capacity(extrinsics.len());
+        let mut seen = Vec::new();
         extrinsics.retain(|uxt| match seen.contains(uxt) {
             true => {
                 tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
@@ -369,12 +361,10 @@ where
             .block_body(primary_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
-                    "Primary block body for {:?} not found",
-                    primary_hash
+                    "Primary block body for {primary_hash:?} not found",
                 ))
             })?;
 
-        // TODO: extract the receipts specific to this domain.
         let receipts = self.primary_chain_client.runtime_api().extract_receipts(
             &BlockId::Hash(primary_hash),
             extrinsics.clone(),
