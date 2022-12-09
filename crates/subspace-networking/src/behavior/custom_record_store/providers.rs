@@ -11,12 +11,14 @@ use std::collections::{hash_set, BTreeMap};
 use std::iter;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
 use tracing::{debug, error, trace};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
 const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
 
-const PARITY_DB_COLUMN_NAME: u8 = 1;
+const PARITY_DB_ALL_PROVIDERS_COLUMN_NAME: u8 = 0;
+const PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME: u8 = 1;
 
 /// Memory based provider records storage.
 pub struct MemoryProviderStorage {
@@ -110,11 +112,24 @@ struct ParityDbProviderRecord {
     key: Vec<u8>,
     // Provider peer ID.
     provider: Vec<u8>,
-
-    // TODO: consider adding expiration field and convert Instant to serializable time-type
-    // // The expiration time as measured by a local, monotonic clock.
-    // expires: Option<Instant>,
+    // The expiration time as measured by a local, monotonic clock.
+    expires: Option<u64>,
+    // Provider addresses.
     addresses: Vec<Vec<u8>>,
+}
+
+impl From<ParityDbProviderRecord> for Vec<u8> {
+    fn from(rec: ParityDbProviderRecord) -> Self {
+        rec.encode()
+    }
+}
+
+impl TryFrom<Vec<u8>> for ParityDbProviderRecord {
+    type Error = parity_scale_codec::Error;
+
+    fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
+        ParityDbProviderRecord::decode(&mut data.as_slice()).map(Into::into)
+    }
 }
 
 impl From<ProviderRecord> for ParityDbProviderRecord {
@@ -123,6 +138,7 @@ impl From<ProviderRecord> for ParityDbProviderRecord {
             key: rec.key.to_vec(),
             provider: rec.provider.to_bytes(),
             addresses: rec.addresses.iter().map(|a| a.to_vec()).collect(),
+            expires: rec.expires.map(instant_to_ms),
         }
     }
 }
@@ -147,7 +163,7 @@ impl From<ParityDbProviderRecord> for ProviderRecord {
                         .expect("Multiaddr should be valid in bytes representation.")
                 })
                 .collect::<Vec<_>>(),
-            expires: None,
+            expires: rec.expires.map(ms_to_instant),
         }
     }
 }
@@ -157,21 +173,33 @@ impl From<ParityDbProviderRecord> for ProviderRecord {
 pub struct ParityDbProviderStorage {
     // Parity DB instance
     db: Arc<Db>,
+
+    // Local provider PeerID
+    local_peer_id: PeerId,
 }
 
 impl ParityDbProviderStorage {
-    pub fn new(path: &Path) -> Result<Self, parity_db::Error> {
-        let mut options = Options::with_columns(path, 1);
-        options.columns = vec![ColumnOptions {
-            btree_index: true,
-            ..Default::default()
-        }];
+    pub fn new(path: &Path, local_peer_id: PeerId) -> Result<Self, parity_db::Error> {
+        let mut options = Options::with_columns(path, 2);
+        options.columns = vec![
+            ColumnOptions {
+                btree_index: true,
+                ..Default::default()
+            },
+            ColumnOptions {
+                btree_index: true,
+                ..Default::default()
+            },
+        ];
         // We don't use stats
         options.stats = false;
 
         let db = Db::open_or_create(&options)?;
 
-        Ok(Self { db: Arc::new(db) })
+        Ok(Self {
+            db: Arc::new(db),
+            local_peer_id,
+        })
     }
 
     fn add_provider_to_db(&mut self, key: &Key, rec: ParityDbProviderRecord) {
@@ -190,10 +218,36 @@ impl ParityDbProviderStorage {
         self.save_providers(key, providers);
     }
 
+    fn add_local_provider_to_db(&mut self, key: &Key, rec: ParityDbProviderRecord) {
+        let key: &[u8] = key.borrow();
+
+        let tx = [(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME, key, Some(rec.into()))];
+
+        let result = self.db.commit(tx);
+        if let Err(ref err) = result {
+            debug!(?key, ?err, "Local provider DB adding error.");
+        }
+    }
+
+    fn remove_local_provider_to_db(&mut self, key: &Key) {
+        let key: &[u8] = key.borrow();
+
+        let tx = [(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME, key, None)];
+
+        let result = self.db.commit(tx);
+        if let Err(ref err) = result {
+            debug!(?key, ?err, "Local provider DB removing error.");
+        }
+    }
+
     fn save_providers(&mut self, key: &Key, providers: ParityDbProviderCollection) -> bool {
         let key: &[u8] = key.borrow();
 
-        let tx = [(PARITY_DB_COLUMN_NAME, key, Some(providers.to_vec()))];
+        let tx = [(
+            PARITY_DB_ALL_PROVIDERS_COLUMN_NAME,
+            key,
+            Some(providers.to_vec()),
+        )];
 
         let result = self.db.commit(tx);
         if let Err(ref err) = result {
@@ -204,7 +258,9 @@ impl ParityDbProviderStorage {
     }
 
     fn load_providers(&self, key: &Key) -> Option<ParityDbProviderCollection> {
-        let result = self.db.get(PARITY_DB_COLUMN_NAME, key.borrow());
+        let result = self
+            .db
+            .get(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME, key.borrow());
 
         match result {
             Ok(Some(data)) => {
@@ -239,10 +295,6 @@ impl ParityDbProviderStorage {
             }
         }
     }
-
-    fn convert_to_record(data: Vec<u8>) -> Result<ProviderRecord, parity_scale_codec::Error> {
-        ParityDbProviderRecord::decode(&mut data.as_slice()).map(Into::into)
-    }
 }
 
 impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
@@ -250,10 +302,15 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         let key = record.key.clone();
+        let provider_peer_id = record.provider;
 
         debug!(?key, provider=%record.provider, "Saving a provider to DB");
 
         let db_rec = ParityDbProviderRecord::from(record);
+
+        if provider_peer_id == self.local_peer_id {
+            self.add_local_provider_to_db(&key, db_rec.clone());
+        }
 
         self.add_provider_to_db(&key, db_rec);
 
@@ -263,12 +320,16 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
     fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
         debug!(?key, %provider, "Removing a provider from DB");
 
+        if *provider == self.local_peer_id {
+            self.remove_local_provider_to_db(key);
+        }
+
         self.remove_provider_from_db(key, provider.to_bytes());
     }
 
     fn provided(&'a self) -> Self::ProvidedIter {
         let rec_iter_result: Result<ParityDbProviderRecordIterator, parity_db::Error> = try {
-            let btree_iter = self.db.iter(PARITY_DB_COLUMN_NAME)?;
+            let btree_iter = self.db.iter(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME)?;
             ParityDbProviderRecordIterator::new(btree_iter)?
         };
 
@@ -326,10 +387,10 @@ impl<'a> Iterator for ParityDbProviderRecordIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_entry().and_then(|(key, value)| {
-            let db_rec_result = ParityDbProviderStorage::convert_to_record(value);
+            let db_rec_result: Result<ParityDbProviderRecord, _> = value.try_into();
 
             match db_rec_result {
-                Ok(db_rec) => Some(Cow::Owned(db_rec)),
+                Ok(db_rec) => Some(Cow::Owned(db_rec.into())),
                 Err(err) => {
                     debug!(?key, ?err, "Parity DB record deserialization error");
 
@@ -411,4 +472,32 @@ where
             Either::Right(ref mut inner) => inner.next(),
         }
     }
+}
+
+// Instant to microseconds conversion function.
+pub(crate) fn instant_to_ms(instant: Instant) -> u64 {
+    let system_now = SystemTime::now();
+    let instant_now = Instant::now();
+
+    let system_time = system_now - (instant_now - instant);
+    let duration = system_time
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("Cannot be earlier than the beginning of unix time.");
+
+    duration.as_micros() as u64
+}
+
+// Microseconds to Instant conversion function.
+pub(crate) fn ms_to_instant(ms: u64) -> Instant {
+    let system_time = SystemTime::UNIX_EPOCH
+        .checked_add(Duration::from_micros(ms))
+        .expect("Cannot overflow here (system time).");
+
+    let system_now = SystemTime::now();
+    let instant_now = Instant::now();
+    let duration = system_now
+        .duration_since(system_time)
+        .expect("Cannot overflow here (duration).");
+
+    instant_now - duration
 }

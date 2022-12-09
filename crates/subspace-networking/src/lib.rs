@@ -42,7 +42,8 @@ pub use crate::node::{
 pub use crate::node_runner::NodeRunner;
 pub use behavior::custom_record_store::{
     CustomRecordStore, LimitedSizeRecordStorageWrapper, MemoryProviderStorage, MemoryRecordStorage,
-    NoRecordStorage, ParityDbProviderStorage, ParityDbRecordStorage, RecordStorage,
+    NoRecordStorage, ParityDbProviderStorage, ParityDbRecordStorage, ProviderStorage,
+    RecordStorage,
 };
 pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;

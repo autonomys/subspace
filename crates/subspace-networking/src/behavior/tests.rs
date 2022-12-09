@@ -1,9 +1,8 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::custom_record_store::{
-    CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+    instant_to_ms, ms_to_instant, CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
 };
 use crate::behavior::record_binary_heap::RecordBinaryHeap;
-use chrono::Duration;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::ProviderRecord;
@@ -13,6 +12,7 @@ use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::time::{Duration, Instant};
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -21,7 +21,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let addr1 = Multiaddr::empty().with(Protocol::Memory(0));
     let addr2 = Multiaddr::empty().with(Protocol::Memory(1));
     let addresses = vec![addr1.clone(), addr2.clone()];
-    let expiration = Duration::nanoseconds(1);
+    let expiration = chrono::Duration::nanoseconds(1);
 
     let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
     let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
@@ -69,10 +69,9 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 #[allow(clippy::mutable_key_type)] // we use hash set for sorting to compare collections
 #[test]
 fn check_custom_store_api() {
-    let mut store = CustomRecordStore::new(
-        NoRecordStorage,
-        MemoryProviderStorage::new(PeerId::random()),
-    );
+    let local_peer_id = PeerId::random();
+    let mut store =
+        CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::new(local_peer_id));
 
     let key1: Key = b"key1".to_vec().into();
     let provider1 = PeerId::random();
@@ -84,7 +83,7 @@ fn check_custom_store_api() {
     };
 
     let key2: Key = b"key2".to_vec().into();
-    let provider2 = PeerId::random();
+    let provider2 = local_peer_id;
     let rec2 = ProviderRecord {
         provider: provider2,
         key: key2.clone(),
@@ -101,16 +100,18 @@ fn check_custom_store_api() {
     };
 
     // Check adding
-    store.add_provider(rec1.clone()).unwrap();
+    store.add_provider(rec1).unwrap();
     store.add_provider(rec2.clone()).unwrap();
     store.add_provider(rec3.clone()).unwrap();
 
-    // Check providers retrieval
+    // Check local providers retrieval
     let provided_collection: HashSet<ProviderRecord> =
         HashSet::from_iter(store.provided().map(|i| i.into_owned()));
 
+    println!("{:?}", store.provided());
+
     assert_eq!(
-        HashSet::from_iter(vec![rec1, rec2.clone(), rec3.clone()].into_iter()),
+        HashSet::from_iter(vec![rec2.clone()].into_iter()),
         provided_collection
     );
 
@@ -216,4 +217,14 @@ fn binary_heap_eviction_works() {
     } else {
         assert_eq!(evicted, key2);
     }
+}
+
+#[test]
+fn instant_conversion() {
+    let inst1 = Instant::now();
+    let ms = instant_to_ms(inst1);
+    let inst2 = ms_to_instant(ms);
+
+    assert!(inst1.saturating_duration_since(inst2) < Duration::from_millis(1));
+    assert!(inst2.saturating_duration_since(inst1) < Duration::from_millis(1));
 }

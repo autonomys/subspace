@@ -74,18 +74,17 @@ async fn main() -> anyhow::Result<()> {
             db_path,
         } => {
             let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
+            let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
 
             let provider_storage = if let Some(path) = db_path {
                 let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
 
                 Either::Left(
-                    ParityDbProviderStorage::new(&db_path)
+                    ParityDbProviderStorage::new(&db_path, local_peer_id)
                         .expect("Provider storage DB path should be valid."),
                 )
             } else {
-                Either::Right(MemoryProviderStorage::new(peer_id(
-                    &libp2p::identity::Keypair::Ed25519(keypair.clone()),
-                )))
+                Either::Right(MemoryProviderStorage::new(local_peer_id))
             };
 
             let config = Config {
