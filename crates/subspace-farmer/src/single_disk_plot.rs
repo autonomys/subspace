@@ -271,10 +271,10 @@ pub struct SingleDiskPlotOptions<RC> {
     pub reward_address: PublicKey,
     /// Optional DSN Node.
     pub dsn_node: Node,
-    /// Defines size for the pieces batch of the piece receiving process.
-    pub piece_receiver_batch_size: usize,
-    /// Defines size for the pieces batch of the piece publishing process.
-    pub piece_publisher_batch_size: usize,
+    /// Semaphore to limit concurrency of piece receiving process.
+    pub piece_receiver_semaphore: Arc<tokio::sync::Semaphore>,
+    /// Semaphore to limit concurrency of piece publishing process.
+    pub piece_publisher_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -468,8 +468,8 @@ impl SingleDiskPlot {
             rpc_client,
             reward_address,
             dsn_node,
-            piece_receiver_batch_size,
-            piece_publisher_batch_size,
+            piece_publisher_semaphore,
+            piece_receiver_semaphore,
         } = options;
 
         // TODO: Account for plot overhead
@@ -647,10 +647,8 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher_semaphore = Arc::new(tokio::sync::Semaphore::new(piece_publisher_batch_size));
                 let piece_publisher =
                     PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone(), piece_publisher_semaphore);
-                let piece_receiver_semaphore = tokio::sync::Semaphore::new(piece_receiver_batch_size);
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
