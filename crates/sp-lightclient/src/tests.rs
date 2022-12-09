@@ -106,6 +106,7 @@ impl Farmer {
             sector_expiration: 100,
         };
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+        let piece_receiver_batch_size = 20usize;
 
         block_on(plot_sector(
             &public_key,
@@ -117,7 +118,7 @@ impl Farmer {
             &sector_codec,
             Cursor::new(sector.as_mut_slice()),
             Cursor::new(sector_metadata.as_mut_slice()),
-            &tokio::sync::Semaphore::new(usize::MAX),
+            &tokio::sync::Semaphore::new(piece_receiver_batch_size),
         ))
         .unwrap();
 

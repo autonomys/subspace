@@ -64,7 +64,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     };
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
-    let piece_receiver_semaphore = Semaphore::new(usize::MAX);
+    let piece_receiver_batch_size = 20usize;
+    let piece_receiver_semaphore = Semaphore::new(piece_receiver_batch_size);
 
     let plotted_sector = {
         let mut plotted_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];

@@ -54,7 +54,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         sector_expiration: 1,
     };
     let piece_receiver = BenchPieceReceiver::new(piece);
-    let piece_receiver_semaphore = Semaphore::new(usize::MAX);
+    let piece_receiver_batch_size = 20usize;
+    let piece_receiver_semaphore = Semaphore::new(piece_receiver_batch_size);
 
     let mut group = c.benchmark_group("sector-plotting");
     group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE));
