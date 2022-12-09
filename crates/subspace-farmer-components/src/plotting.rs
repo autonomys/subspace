@@ -6,7 +6,6 @@ use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
@@ -85,7 +84,7 @@ pub async fn plot_sector<PR, S, SM>(
     sector_codec: &SectorCodec,
     mut sector_output: S,
     mut sector_metadata_output: SM,
-    piece_receiver_batch_size: usize,
+    semaphore: &Semaphore,
 ) -> Result<PlottedSector, PlottingError>
 where
     PR: PieceReceiver,
@@ -121,7 +120,7 @@ where
         piece_receiver,
         &piece_indexes,
         cancelled,
-        piece_receiver_batch_size,
+        semaphore,
     )
     .await?;
 
@@ -184,10 +183,8 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     piece_receiver: &PR,
     piece_indexes: &[PieceIndex],
     cancelled: &AtomicBool,
-    piece_receiver_batch_size: usize,
+    semaphore: &Semaphore,
 ) -> Result<(), PlottingError> {
-    let semaphore = Arc::new(Semaphore::new(piece_receiver_batch_size));
-
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| {

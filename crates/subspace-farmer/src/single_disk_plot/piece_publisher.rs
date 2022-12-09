@@ -5,8 +5,6 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,13 +28,19 @@ const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) struct PieceSectorPublisher {
     dsn_node: Node,
     cancelled: Arc<AtomicBool>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl PieceSectorPublisher {
-    pub(crate) fn new(dsn_node: Node, cancelled: Arc<AtomicBool>) -> Self {
+    pub(crate) fn new(
+        dsn_node: Node,
+        cancelled: Arc<AtomicBool>,
+        semaphore: Arc<Semaphore>,
+    ) -> Self {
         Self {
             dsn_node,
             cancelled,
+            semaphore,
         }
     }
 
@@ -54,15 +58,13 @@ impl PieceSectorPublisher {
     pub(crate) async fn publish_pieces(
         &self,
         piece_indexes: Vec<PieceIndex>,
-        piece_publisher_batch_size: usize,
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        let semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
-
         let mut pieces_receiving_futures = piece_indexes
             .iter()
             .map(|piece_index| {
                 Box::pin(async {
-                    let _permit = semaphore
+                    let _permit = self
+                        .semaphore
                         .acquire()
                         .await
                         .expect("Should be valid on non-closed semaphore");
@@ -97,12 +99,8 @@ impl PieceSectorPublisher {
             self.check_cancellation()
                 .map_err(backoff::Error::Permanent)?;
 
-            let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
-                PUT_PIECE_TIMEOUT,
-                Box::pin(self.publish_single_piece(piece_index))
-                    as Pin<Box<dyn Future<Output = _> + Send>>,
-            )
-            .await;
+            let publish_timeout_result: Result<Result<(), _>, Elapsed> =
+                timeout(PUT_PIECE_TIMEOUT, self.publish_single_piece(piece_index)).await;
 
             if let Ok(publish_result) = publish_timeout_result {
                 if publish_result.is_ok() {

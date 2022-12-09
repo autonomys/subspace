@@ -297,7 +297,7 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     }
 
     fn put(&mut self, record: Record) -> store::Result<()> {
-        debug!("Detected an attempt to add a new record: {:?}", record);
+        debug!(key = ?record.key, "Detected an attempt to add a new record.", );
 
         Ok(())
     }
