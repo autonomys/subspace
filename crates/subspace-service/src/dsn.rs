@@ -8,8 +8,6 @@ use sc_consensus_subspace::ArchivedSegmentNotification;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -145,7 +143,7 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
 
                 async move {
                     publish_pieces(
-                        node,
+                        &node,
                         first_piece_index,
                         segment_index,
                         archived_segment,
@@ -163,7 +161,7 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
 
 // Publishes pieces-by-sector to DSN in bulk. Supports cancellation.
 pub(crate) async fn publish_pieces(
-    node: Node,
+    node: &Node,
     first_piece_index: PieceIndex,
     segment_index: u64,
     archived_segment: Arc<ArchivedSegment>,
@@ -174,10 +172,7 @@ pub(crate) async fn publish_pieces(
     let mut pieces_publishing_futures = pieces_indexes
         .zip(archived_segment.pieces.as_pieces())
         .map(|(piece_index, piece)| {
-            let piece_index = Arc::new(piece_index);
-            let node = node.clone();
-
-            Box::pin(async {
+            Box::pin(async move {
                 let _permit = semaphore
                     .acquire()
                     .await
@@ -196,8 +191,8 @@ pub(crate) async fn publish_pieces(
 }
 
 async fn publish_single_piece_with_backoff(
-    node: Node,
-    piece_index: Arc<PieceIndex>,
+    node: &Node,
+    piece_index: PieceIndex,
     piece: Vec<u8>,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let backoff = ExponentialBackoff {
@@ -209,12 +204,9 @@ async fn publish_single_piece_with_backoff(
     };
 
     retry(backoff, || async {
-        let node = node.clone();
-
         let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
             PUBLISH_PIECE_TIMEOUT,
-            Box::pin(publish_single_piece(node, *piece_index, piece.clone()))
-                as Pin<Box<dyn Future<Output = _> + Send>>,
+            publish_single_piece(node, piece_index, piece.clone()),
         )
         .await;
 
@@ -234,7 +226,7 @@ async fn publish_single_piece_with_backoff(
 }
 
 async fn publish_single_piece(
-    node: Node,
+    node: &Node,
     piece_index: PieceIndex,
     piece: Vec<u8>,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {

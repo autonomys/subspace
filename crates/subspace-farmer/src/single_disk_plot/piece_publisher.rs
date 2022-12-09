@@ -5,8 +5,6 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,12 +99,8 @@ impl PieceSectorPublisher {
             self.check_cancellation()
                 .map_err(backoff::Error::Permanent)?;
 
-            let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
-                PUT_PIECE_TIMEOUT,
-                Box::pin(self.publish_single_piece(piece_index))
-                    as Pin<Box<dyn Future<Output = _> + Send>>,
-            )
-            .await;
+            let publish_timeout_result: Result<Result<(), _>, Elapsed> =
+                timeout(PUT_PIECE_TIMEOUT, self.publish_single_piece(piece_index)).await;
 
             if let Ok(publish_result) = publish_timeout_result {
                 if publish_result.is_ok() {
