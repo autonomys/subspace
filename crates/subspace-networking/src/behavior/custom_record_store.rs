@@ -5,7 +5,7 @@ use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::PeerId;
-pub use providers::MemoryProviderStorage;
+pub use providers::{MemoryProviderStorage, ParityDbProviderStorage};
 pub use records::{
     LimitedSizeRecordStorageWrapper, MemoryRecordStorage, NoRecordStorage, ParityDbRecordStorage,
 };

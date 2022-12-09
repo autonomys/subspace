@@ -23,6 +23,7 @@ bytes = "1.2.1"
 chrono = {version = "0.4.21", features = ["clock", "serde", "std",]}
 clap = { version = "4.0.26", features = ["color", "derive"] }
 derive_more = "0.99.17"
+either = "1.8.0"
 event-listener-primitives = "2.0.1"
 futures = "0.3.25"
 hex = "0.4.3"

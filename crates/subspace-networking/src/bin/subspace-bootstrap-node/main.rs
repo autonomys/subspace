@@ -1,11 +1,18 @@
 //! Simple bootstrap node implementation
 
-use clap::Parser;
+#![feature(type_changing_struct_update)]
+
+use clap::{Parser, ValueHint};
+use either::Either;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::Multiaddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::{
+    peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore, MemoryProviderStorage,
+    NoRecordStorage, ParityDbProviderStorage,
+};
 use tracing::info;
 
 // The default maximum incoming connections number for the peer.
@@ -38,6 +45,10 @@ enum Command {
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
         disable_private_ips: bool,
+        /// Defines path for the provider record storage DB (optional).
+        /// No value will enable memory storage instead.
+        #[arg(long, value_hint = ValueHint::FilePath)]
+        db_path: Option<PathBuf>,
     },
     /// Generate a new keypair
     GenerateKeypair,
@@ -60,7 +71,23 @@ async fn main() -> anyhow::Result<()> {
             in_peers,
             out_peers,
             disable_private_ips,
+            db_path,
         } => {
+            let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
+
+            let provider_storage = if let Some(path) = db_path {
+                let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
+
+                Either::Left(
+                    ParityDbProviderStorage::new(&db_path)
+                        .expect("Provider storage DB path should be valid."),
+                )
+            } else {
+                Either::Right(MemoryProviderStorage::new(peer_id(
+                    &libp2p::identity::Keypair::Ed25519(keypair.clone()),
+                )))
+            };
+
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
                     bootstrap_nodes,
@@ -73,7 +100,8 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
                 max_established_outgoing_connections: out_peers
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
-                ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
+                record_store: CustomRecordStore::new(NoRecordStorage, provider_storage),
+                ..Config::with_keypair(keypair)
             };
             let (node, mut node_runner) = subspace_networking::create(config)
                 .await
