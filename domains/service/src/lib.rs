@@ -30,18 +30,9 @@ pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool
 >;
 
 /// Secondary chain configuration.
-pub struct Configuration {
-    service_config: ServiceConfiguration,
-    maybe_relayer_id: Option<RelayerId>,
-}
-
-impl Configuration {
-    pub fn new(service_config: ServiceConfiguration, maybe_relayer_id: Option<RelayerId>) -> Self {
-        Configuration {
-            service_config,
-            maybe_relayer_id,
-        }
-    }
+pub struct DomainConfiguration {
+    pub service_config: ServiceConfiguration,
+    pub maybe_relayer_id: Option<RelayerId>,
 }
 
 /// Starts a `ServiceBuilder` for a full service.

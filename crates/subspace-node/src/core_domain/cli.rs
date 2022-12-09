@@ -18,6 +18,7 @@ use crate::core_domain::core_payments_chain_spec;
 use crate::parser::parse_relayer_id;
 use clap::Parser;
 use domain_runtime_primitives::RelayerId;
+use domain_service::DomainConfiguration;
 use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -72,13 +73,17 @@ impl CoreDomainCli {
     /// Constructs a new instance of [`CoreDomainCli`].
     ///
     /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
-    pub fn new<'a>(
+    pub fn new(
         system_domain_base_path: Option<PathBuf>,
-        core_payments_domain_args: impl Iterator<Item = &'a String>,
+        core_payments_domain_args: impl Iterator<Item = String>,
     ) -> Self {
         let mut cli = Self {
             base_path: system_domain_base_path,
-            ..Self::parse_from(core_payments_domain_args)
+            ..Self::parse_from(
+                [Self::executable_name()]
+                    .into_iter()
+                    .chain(core_payments_domain_args),
+            )
         };
 
         cli.base_path
@@ -90,6 +95,25 @@ impl CoreDomainCli {
             .expect("Initialization must succeed as the cell has never been set; qed");
 
         cli
+    }
+
+    /// Creates domain configuration from Core domain cli.
+    pub fn create_domain_configuration(
+        &self,
+        tokio_handle: tokio::runtime::Handle,
+    ) -> sc_cli::Result<DomainConfiguration> {
+        // if is dev, use the known key ring to start relayer
+        let maybe_relayer_id = if self.shared_params().is_dev() && self.relayer_id.is_none() {
+            self.run.get_keyring().map(|kr| kr.to_account_id())
+        } else {
+            self.relayer_id.clone()
+        };
+
+        let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
+        Ok(DomainConfiguration {
+            service_config,
+            maybe_relayer_id,
+        })
     }
 }
 

@@ -17,7 +17,6 @@
 //! Subspace node implementation.
 
 use cross_domain_message_gossip::GossipWorker;
-use domain_service::Configuration;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -250,7 +249,7 @@ fn main() -> Result<(), Error> {
                     maybe_secondary_chain_spec.ok_or_else(|| {
                         "Primary chain spec must contain secondary chain spec".to_string()
                     })?,
-                    cli.secondary_chain_args.iter(),
+                    cli.secondary_chain_args.into_iter(),
                 );
 
                 let secondary_chain_config = SubstrateCli::create_configuration(
@@ -482,7 +481,7 @@ fn main() -> Result<(), Error> {
                         maybe_secondary_chain_spec.ok_or_else(|| {
                             "Primary chain spec must contain secondary chain spec".to_string()
                         })?,
-                        cli.secondary_chain_args.iter(),
+                        cli.secondary_chain_args.into_iter(),
                     );
 
                     // Increase default number of peers
@@ -490,19 +489,13 @@ fn main() -> Result<(), Error> {
                         secondary_chain_cli.run.run_system.network_params.out_peers = 50;
                     }
 
-                    let service_config = SubstrateCli::create_configuration(
-                        &secondary_chain_cli,
-                        &secondary_chain_cli,
-                        tokio_handle.clone(),
-                    )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to create secondary chain configuration: {error:?}"
-                        ))
-                    })?;
-
-                    let secondary_chain_config =
-                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id);
+                    let secondary_chain_config = secondary_chain_cli
+                        .create_domain_configuration(tokio_handle.clone())
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create secondary chain configuration: {error:?}"
+                            ))
+                        })?;
 
                     let imported_block_notification_stream = || {
                         primary_chain_node
@@ -572,21 +565,13 @@ fn main() -> Result<(), Error> {
                             core_domain_cli.run.network_params.out_peers = 50;
                         }
 
-                        let core_domain_service_config = SubstrateCli::create_configuration(
-                            &core_domain_cli,
-                            &core_domain_cli,
-                            tokio_handle,
-                        )
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to create core domain configuration: {error:?}"
-                            ))
-                        })?;
-
-                        let core_domain_config = Configuration::new(
-                            core_domain_service_config,
-                            core_domain_cli.relayer_id,
-                        );
+                        let core_domain_config = core_domain_cli
+                            .create_domain_configuration(tokio_handle)
+                            .map_err(|error| {
+                                sc_service::Error::Other(format!(
+                                    "Failed to create core domain configuration: {error:?}"
+                                ))
+                            })?;
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {

@@ -1,4 +1,4 @@
-use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
+use crate::{new_partial, DomainConfiguration, FullBackend, FullClient, FullPool};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
@@ -90,7 +90,7 @@ where
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[allow(clippy::too_many_arguments)]
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
-    mut secondary_chain_config: Configuration,
+    mut secondary_chain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     select_chain: &SC,
