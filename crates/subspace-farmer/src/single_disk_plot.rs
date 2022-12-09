@@ -647,8 +647,10 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
+                let piece_publisher_semaphore = Arc::new(tokio::sync::Semaphore::new(piece_publisher_batch_size));
                 let piece_publisher =
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone(), piece_publisher_semaphore);
+                let piece_receiver_semaphore = tokio::sync::Semaphore::new(piece_receiver_batch_size);
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -709,7 +711,7 @@ impl SingleDiskPlot {
                                 &sector_codec,
                                 sector,
                                 sector_metadata,
-                                piece_receiver_batch_size,
+                                &piece_receiver_semaphore,
                             )) {
                                 Ok(plotted_sector) => {
                                     debug!(%sector_index, "Sector plotted");
@@ -738,7 +740,7 @@ impl SingleDiskPlot {
 
                                 async move {
                                     if let Err(error) = piece_publisher
-                                        .publish_pieces(plotted_sector.piece_indexes, piece_publisher_batch_size)
+                                        .publish_pieces(plotted_sector.piece_indexes)
                                         .await
                                     {
                                         warn!(%sector_index, %error, "Failed to publish pieces to DSN");

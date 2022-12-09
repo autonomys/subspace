@@ -9186,6 +9186,7 @@ dependencies = [
  "subspace-farmer-components",
  "subspace-solving",
  "subspace-verification",
+ "tokio",
 ]
 
 [[package]]
@@ -10055,6 +10056,7 @@ dependencies = [
  "subspace-service",
  "subspace-solving",
  "subspace-test-runtime",
+ "tokio",
  "zeroize",
 ]
 

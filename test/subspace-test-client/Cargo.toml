@@ -34,4 +34,5 @@ subspace-farmer-components = { path = "../../crates/subspace-farmer-components" 
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-solving = { path = "../../crates/subspace-solving" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
+tokio = { version = "1.21.2", features = ["sync"] }
 zeroize = "1.5.7"

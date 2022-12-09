@@ -116,6 +116,8 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
 {
     trace!("Subspace DSN archiver started.");
 
+    let piece_publisher_semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
+
     let mut last_published_segment_index: Option<u64> = None;
     while let Some(ArchivedSegmentNotification {
         archived_segment, ..
@@ -138,13 +140,19 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
             "segment-publishing",
             Some("subspace-networking"),
             Box::pin({
-                publish_pieces(
-                    node.clone(),
-                    first_piece_index,
-                    segment_index,
-                    archived_segment,
-                    piece_publisher_batch_size,
-                )
+                let node = node.clone();
+                let piece_publisher_semaphore = Arc::clone(&piece_publisher_semaphore);
+
+                async move {
+                    publish_pieces(
+                        node,
+                        first_piece_index,
+                        segment_index,
+                        archived_segment,
+                        &piece_publisher_semaphore,
+                    )
+                    .await
+                }
                 .in_current_span()
             }),
         );
@@ -159,10 +167,8 @@ pub(crate) async fn publish_pieces(
     first_piece_index: PieceIndex,
     segment_index: u64,
     archived_segment: Arc<ArchivedSegment>,
-    piece_publisher_batch_size: usize,
+    semaphore: &Semaphore,
 ) {
-    let semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
-
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
 
     let mut pieces_publishing_futures = pieces_indexes
