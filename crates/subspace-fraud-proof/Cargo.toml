@@ -36,4 +36,4 @@ sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substr
 sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
 tempfile = "3.3.0"
-tokio = "1.21.2"
+tokio = "1.23.0"
