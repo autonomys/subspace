@@ -119,7 +119,7 @@ pub(crate) async fn farm_multi_disk(
         info!("Connecting to node RPC at {}", node_rpc_url);
         let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-        let single_disk_plot = SingleDiskPlot::new(SingleDiskPlotOptions {
+        let single_disk_plot_fut = SingleDiskPlot::new(SingleDiskPlotOptions {
             directory: disk_farm.directory,
             allocated_space: disk_farm.allocated_plotting_space,
             rpc_client,
@@ -127,7 +127,9 @@ pub(crate) async fn farm_multi_disk(
             dsn_node: node.clone(),
             piece_receiver_semaphore: Arc::clone(&piece_receiver_semaphore),
             piece_publisher_semaphore: Arc::clone(&piece_publisher_semaphore),
-        })?;
+        });
+
+        let single_disk_plot = single_disk_plot_fut.await?;
 
         single_disk_plots.push(single_disk_plot);
     }
