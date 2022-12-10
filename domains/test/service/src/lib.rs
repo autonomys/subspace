@@ -44,6 +44,7 @@ use sp_runtime::codec::Encode;
 use sp_runtime::{generic, OpaqueExtrinsic};
 use std::collections::BTreeMap;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block as PBlock;
@@ -138,6 +139,7 @@ async fn run_executor(
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
             },
+            segment_publish_concurrency: NonZeroUsize::new(10).unwrap(),
         };
 
         let partial_components = subspace_service::new_partial::<
