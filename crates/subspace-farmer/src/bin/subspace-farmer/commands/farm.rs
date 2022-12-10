@@ -66,6 +66,7 @@ pub(crate) async fn farm_multi_disk(
         mut dsn,
         piece_receiver_batch_size,
         piece_publisher_batch_size,
+        max_concurrent_plots,
     } = farming_args;
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
@@ -73,10 +74,13 @@ pub(crate) async fn farm_multi_disk(
     info!("Connecting to node RPC at {}", node_rpc_url);
     let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
     let piece_publisher_semaphore = Arc::new(tokio::sync::Semaphore::new(
-        farming_args.piece_receiver_batch_size,
+        farming_args.piece_receiver_batch_size.get(),
     ));
     let piece_receiver_semaphore = Arc::new(tokio::sync::Semaphore::new(
-        farming_args.piece_publisher_batch_size,
+        farming_args.piece_publisher_batch_size.get(),
+    ));
+    let concurrent_plotting_semaphore = Arc::new(tokio::sync::Semaphore::new(
+        farming_args.max_concurrent_plots.get(),
     ));
 
     let (node, mut node_runner) = {
@@ -127,6 +131,7 @@ pub(crate) async fn farm_multi_disk(
             dsn_node: node.clone(),
             piece_receiver_semaphore: Arc::clone(&piece_receiver_semaphore),
             piece_publisher_semaphore: Arc::clone(&piece_publisher_semaphore),
+            concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
         });
 
         let single_disk_plot = single_disk_plot_fut.await?;

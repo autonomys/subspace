@@ -275,6 +275,8 @@ pub struct SingleDiskPlotOptions<RC> {
     pub piece_receiver_semaphore: Arc<tokio::sync::Semaphore>,
     /// Semaphore to limit concurrency of piece publishing process.
     pub piece_publisher_semaphore: Arc<tokio::sync::Semaphore>,
+    /// Semaphore to limit concurrency of plotting process.
+    pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -286,8 +288,8 @@ pub enum SingleDiskPlotError {
     Io(#[from] io::Error),
     /// Can't resize plot after creation
     #[error(
-        "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot was \
-        created, resizing isn't supported yet"
+        "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot \
+        was created, resizing isn't supported yet"
     )]
     CantResize {
         /// Plot ID
@@ -472,6 +474,7 @@ impl SingleDiskPlot {
             dsn_node,
             piece_publisher_semaphore,
             piece_receiver_semaphore,
+            concurrent_plotting_semaphore,
         } = options;
 
         // TODO: Account for plot overhead
@@ -685,6 +688,21 @@ impl SingleDiskPlot {
 
                         // TODO: Concurrency
                         for (sector_index, sector, sector_metadata) in plot_initial_sector {
+                            trace!(%sector_index, "Preparing to plot sector");
+
+                            let plotting_permit =
+                                match concurrent_plotting_semaphore.clone().acquire_owned().await {
+                                    Ok(plotting_permit) => plotting_permit,
+                                    Err(error) => {
+                                        warn!(
+                                            %sector_index,
+                                            %error,
+                                            "Semaphore was closed, interrupting plotting"
+                                        );
+                                        return Ok(());
+                                    }
+                                };
+
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
@@ -753,6 +771,9 @@ impl SingleDiskPlot {
                                             "Failed to publish pieces to DSN"
                                         );
                                     }
+
+                                    // Release only after publishing is finished
+                                    drop(plotting_permit);
                                 }
                             });
                         }
