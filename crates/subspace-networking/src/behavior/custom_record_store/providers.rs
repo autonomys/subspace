@@ -1,4 +1,5 @@
 use super::ProviderStorage;
+use crate::behavior::record_binary_heap::RecordBinaryHeap;
 use either::Either;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{MemoryStoreConfig, RecordStore};
@@ -9,16 +10,25 @@ use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::{hash_set, BTreeMap};
 use std::iter;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
 const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
 
 const PARITY_DB_ALL_PROVIDERS_COLUMN_NAME: u8 = 0;
 const PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME: u8 = 1;
+
+/// Defines operations for all known providers.
+pub trait EnumerableProviderStorage<'a> {
+    type ProvidedIter: Iterator<Item = Cow<'a, ProviderRecord>>;
+
+    /// Gets an iterator over all provider records currently stored.
+    fn known_providers(&'a self) -> Self::ProvidedIter;
+}
 
 /// Memory based provider records storage.
 pub struct MemoryProviderStorage {
@@ -47,7 +57,7 @@ impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
         fn(&'a ProviderRecord) -> Cow<'a, ProviderRecord>,
     >;
 
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         trace!("New provider record added: {:?}", record);
 
         self.inner.add_provider(record)
@@ -61,7 +71,7 @@ impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
         self.inner.provided()
     }
 
-    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
         trace!(?key, ?provider, "Provider record removed.");
 
         self.inner.remove_provider(key, provider)
@@ -295,6 +305,24 @@ impl ParityDbProviderStorage {
             }
         }
     }
+
+    fn new_iterator(&self, column_name: u8) -> ParityDbProviderRecordIterator {
+        let rec_iter_result: Result<ParityDbProviderRecordIterator, parity_db::Error> = try {
+            let btree_iter = self.db.iter(column_name)?;
+            ParityDbProviderRecordIterator::new(btree_iter)?
+        };
+
+        match rec_iter_result {
+            Ok(rec_iter) => rec_iter,
+            Err(err) => {
+                error!(?err, "Can't create Parity DB record storage iterator.");
+
+                // TODO: The error handling can be changed:
+                // https://github.com/libp2p/rust-libp2p/issues/3035
+                ParityDbProviderRecordIterator::empty()
+            }
+        }
+    }
 }
 
 impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
@@ -317,7 +345,7 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
         Ok(())
     }
 
-    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
         debug!(?key, %provider, "Removing a provider from DB");
 
         if *provider == self.local_peer_id {
@@ -328,21 +356,7 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
     }
 
     fn provided(&'a self) -> Self::ProvidedIter {
-        let rec_iter_result: Result<ParityDbProviderRecordIterator, parity_db::Error> = try {
-            let btree_iter = self.db.iter(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME)?;
-            ParityDbProviderRecordIterator::new(btree_iter)?
-        };
-
-        match rec_iter_result {
-            Ok(rec_iter) => rec_iter,
-            Err(err) => {
-                error!(?err, "Can't create Parity DB record storage iterator.");
-
-                // TODO: The error handling can be changed:
-                // https://github.com/libp2p/rust-libp2p/issues/3035
-                ParityDbProviderRecordIterator::empty()
-            }
-        }
+        self.new_iterator(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME)
     }
 
     fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
@@ -401,6 +415,14 @@ impl<'a> Iterator for ParityDbProviderRecordIterator<'a> {
     }
 }
 
+impl<'a> EnumerableProviderStorage<'a> for ParityDbProviderStorage {
+    type ProvidedIter = ParityDbProviderRecordIterator<'a>;
+
+    fn known_providers(&'a self) -> Self::ProvidedIter {
+        self.new_iterator(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME)
+    }
+}
+
 impl<'a, L, R> ProviderStorage<'a> for Either<L, R>
 where
     L: ProviderStorage<'a>,
@@ -408,7 +430,7 @@ where
 {
     type ProvidedIter = impl Iterator<Item = Cow<'a, ProviderRecord>>;
 
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         match self {
             Either::Left(inner) => inner.add_provider(record),
             Either::Right(inner) => inner.add_provider(record),
@@ -431,7 +453,7 @@ where
         EitherProviderStorageIterator::new(iterator)
     }
 
-    fn remove_provider(&'a mut self, key: &Key, peer_id: &PeerId) {
+    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
         match self {
             Either::Left(inner) => inner.remove_provider(key, peer_id),
             Either::Right(inner) => inner.remove_provider(key, peer_id),
@@ -500,4 +522,73 @@ pub(crate) fn ms_to_instant(ms: u64) -> Instant {
         .expect("Cannot overflow here (duration).");
 
     instant_now - duration
+}
+
+/// Provider record storage decorator. It wraps the inner provider storage and monitors items number.
+pub struct LimitedSizeProviderStorageWrapper<RC = MemoryProviderStorage> {
+    // Wrapped provider storage implementation.
+    inner: RC,
+    // Maintains a heap to limit total item number.
+    heap: RecordBinaryHeap,
+    // Local PeerId
+    peer_id: PeerId,
+}
+
+impl<RC: for<'a> ProviderStorage<'a> + for<'a> EnumerableProviderStorage<'a>>
+    LimitedSizeProviderStorageWrapper<RC>
+{
+    pub fn new(record_store: RC, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
+        let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
+
+        // Initial cache loading.
+        for rec in record_store.known_providers() {
+            let _ = heap.insert(rec.key.clone());
+        }
+
+        if heap.size() > 0 {
+            info!(size = heap.size(), "Record cache loaded.");
+        } else {
+            info!("New record cache initialized.");
+        }
+
+        Self {
+            inner: record_store,
+            heap,
+            peer_id,
+        }
+    }
+}
+
+impl<'a, RC: ProviderStorage<'a>> ProviderStorage<'a> for LimitedSizeProviderStorageWrapper<RC> {
+    type ProvidedIter = impl Iterator<Item = Cow<'a, ProviderRecord>>;
+
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
+        let record_key = record.key.clone();
+
+        self.inner.add_provider(record)?;
+
+        let evicted_key = self.heap.insert(record_key);
+
+        if let Some(key) = evicted_key {
+            trace!(?key, "Record evicted from cache.");
+
+            self.inner.remove_provider(&key, &self.peer_id);
+        }
+
+        Ok(())
+    }
+
+    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+        self.inner.providers(key)
+    }
+
+    fn provided(&'a self) -> Self::ProvidedIter {
+        self.inner.provided()
+    }
+
+    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
+        self.inner.remove_provider(key, peer_id);
+
+        self.heap.remove(key);
+    }
 }

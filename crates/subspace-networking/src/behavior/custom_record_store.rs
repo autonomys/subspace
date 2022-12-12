@@ -36,7 +36,7 @@ pub trait ProviderStorage<'a> {
     /// A record store only needs to store a number of provider records
     /// for a key corresponding to the replication factor and should
     /// store those records whose providers are closest to the key.
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()>;
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()>;
 
     /// Gets a copy of the stored provider records for the given key.
     fn providers(&'a self, key: &Key) -> Vec<ProviderRecord>;
@@ -46,7 +46,7 @@ pub trait ProviderStorage<'a> {
     fn provided(&'a self) -> Self::ProvidedIter;
 
     /// Removes a provider record from the store.
-    fn remove_provider(&'a mut self, k: &Key, p: &PeerId);
+    fn remove_provider(&mut self, k: &Key, p: &PeerId);
 }
 
 #[derive(Clone)]
