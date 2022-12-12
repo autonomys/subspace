@@ -31,6 +31,7 @@ pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-
 pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../pallet-grandpa-finality-verifier" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../pallet-offences-subspace" }
+pallet-receipts = { version = "0.1.0", default-features = false, path = "../pallet-receipts" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
 pallet-subspace = { version = "0.1.0", default-features = false, path = "../pallet-subspace" }
@@ -85,6 +86,7 @@ std = [
 	"pallet-grandpa-finality-verifier/std",
 	"pallet-object-store/std",
 	"pallet-offences-subspace/std",
+	"pallet-receipts/std",
 	"pallet-rewards/std",
 	"pallet-runtime-configs/std",
 	"pallet-subspace/std",

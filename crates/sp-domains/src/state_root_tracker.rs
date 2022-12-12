@@ -15,8 +15,6 @@
 
 //! Primitives for system domain runtime.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use crate::DomainId;
 use parity_scale_codec::{Decode, Encode};
 use sp_core::sp_std;
