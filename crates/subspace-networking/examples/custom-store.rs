@@ -4,12 +4,15 @@ use libp2p::kad::ProviderRecord;
 use libp2p::PeerId;
 use std::collections::HashSet;
 use subspace_networking::{peer_id, ParityDbProviderStorage, ProviderStorage};
+use tempfile::TempDir;
 
 #[allow(clippy::mutable_key_type)] // we use hash set for sorting to compare collections
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let db_path = std::env::temp_dir()
+    let db_path = TempDir::new()
+        .expect("We should be able to crate temp directory.")
+        .path()
         .join("subspace_example_custom_provider_storage_db")
         .into_boxed_path();
 

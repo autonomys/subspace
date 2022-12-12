@@ -2,16 +2,19 @@
 
 #![feature(type_changing_struct_update)]
 
+use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::Multiaddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore, MemoryProviderStorage,
-    NoRecordStorage, ParityDbProviderStorage,
+    peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
+    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoRecordStorage,
+    ParityDbProviderStorage,
 };
 use tracing::info;
 
@@ -49,6 +52,9 @@ enum Command {
         /// No value will enable memory storage instead.
         #[arg(long, value_hint = ValueHint::FilePath)]
         db_path: Option<PathBuf>,
+        /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+        #[arg(long, default_value = "100MiB")]
+        piece_providers_cache_size: ByteSize,
     },
     /// Generate a new keypair
     GenerateKeypair,
@@ -72,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
             out_peers,
             disable_private_ips,
             db_path,
+            piece_providers_cache_size,
         } => {
             let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
             let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
@@ -79,10 +86,17 @@ async fn main() -> anyhow::Result<()> {
             let provider_storage = if let Some(path) = db_path {
                 let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
 
-                Either::Left(
-                    ParityDbProviderStorage::new(&db_path, local_peer_id)
-                        .expect("Provider storage DB path should be valid."),
-                )
+                println!("{:?}", db_path);
+                let db_provider_storage = ParityDbProviderStorage::new(&db_path, local_peer_id)
+                    .expect("Provider storage DB path should be valid.");
+
+                let limited_size_provider_storage = LimitedSizeProviderStorageWrapper::new(
+                    db_provider_storage,
+                    convert_bytesize_to_provider_records(piece_providers_cache_size),
+                    local_peer_id,
+                );
+
+                Either::Left(limited_size_provider_storage)
             } else {
                 Either::Right(MemoryProviderStorage::new(local_peer_id))
             };
@@ -126,4 +140,13 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+// Convert bytesize provider records
+fn convert_bytesize_to_provider_records(size: ByteSize) -> NonZeroUsize {
+    const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
+
+    let recs = size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
+
+    NonZeroUsize::new(recs as usize).expect("Incorrect cache size.")
 }

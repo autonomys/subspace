@@ -283,7 +283,7 @@ impl<'a> Iterator for ParityDbRecordIterator<'a> {
 }
 
 /// Record storage decorator. It wraps the inner record storage and monitors items number.
-pub struct LimitedSizeRecordStorageWrapper<RC = MemoryRecordStorage> {
+pub struct LimitedSizeRecordStorageWrapper<RC = NoRecordStorage> {
     // Wrapped record storage implementation.
     inner: RC,
     // Maintains a heap to limit total item number.

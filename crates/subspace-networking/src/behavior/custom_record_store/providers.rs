@@ -14,7 +14,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
 const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
@@ -305,24 +305,6 @@ impl ParityDbProviderStorage {
             }
         }
     }
-
-    fn new_iterator(&self, column_name: u8) -> ParityDbProviderRecordIterator {
-        let rec_iter_result: Result<ParityDbProviderRecordIterator, parity_db::Error> = try {
-            let btree_iter = self.db.iter(column_name)?;
-            ParityDbProviderRecordIterator::new(btree_iter)?
-        };
-
-        match rec_iter_result {
-            Ok(rec_iter) => rec_iter,
-            Err(err) => {
-                error!(?err, "Can't create Parity DB record storage iterator.");
-
-                // TODO: The error handling can be changed:
-                // https://github.com/libp2p/rust-libp2p/issues/3035
-                ParityDbProviderRecordIterator::empty()
-            }
-        }
-    }
 }
 
 impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
@@ -332,7 +314,7 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
         let key = record.key.clone();
         let provider_peer_id = record.provider;
 
-        debug!(?key, provider=%record.provider, "Saving a provider to DB");
+        trace!(?key, provider=%record.provider, "Saving a provider to DB");
 
         let db_rec = ParityDbProviderRecord::from(record);
 
@@ -356,7 +338,21 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
     }
 
     fn provided(&'a self) -> Self::ProvidedIter {
-        self.new_iterator(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME)
+        let rec_iter_result: Result<ParityDbProviderRecordIterator, parity_db::Error> = try {
+            let btree_iter = self.db.iter(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME)?;
+            ParityDbProviderRecordIterator::new(btree_iter)?
+        };
+
+        match rec_iter_result {
+            Ok(rec_iter) => rec_iter,
+            Err(err) => {
+                error!(?err, "Can't create Parity DB record storage iterator.");
+
+                // TODO: The error handling can be changed:
+                // https://github.com/libp2p/rust-libp2p/issues/3035
+                ParityDbProviderRecordIterator::empty()
+            }
+        }
     }
 
     fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
@@ -389,7 +385,18 @@ impl<'a> ParityDbProviderRecordIterator<'a> {
 
     fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
         if let Some(ref mut iter) = self.iter {
-            iter.next().ok().flatten()
+            match iter.next() {
+                Ok(value) => {
+                    trace!("Parity DB provider record iterator succeeded");
+
+                    value
+                }
+                Err(err) => {
+                    warn!(?err, "Parity DB provider record iterator error");
+
+                    None
+                }
+            }
         } else {
             None
         }
@@ -406,7 +413,11 @@ impl<'a> Iterator for ParityDbProviderRecordIterator<'a> {
             match db_rec_result {
                 Ok(db_rec) => Some(Cow::Owned(db_rec.into())),
                 Err(err) => {
-                    debug!(?key, ?err, "Parity DB record deserialization error");
+                    warn!(
+                        ?key,
+                        ?err,
+                        "Parity DB provider record deserialization error"
+                    );
 
                     None
                 }
@@ -416,10 +427,22 @@ impl<'a> Iterator for ParityDbProviderRecordIterator<'a> {
 }
 
 impl<'a> EnumerableProviderStorage<'a> for ParityDbProviderStorage {
-    type ProvidedIter = ParityDbProviderRecordIterator<'a>;
+    type ProvidedIter = ParityDbProviderRecordCollectionIterator<'a>;
 
     fn known_providers(&'a self) -> Self::ProvidedIter {
-        self.new_iterator(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME)
+        let rec_iter_result: Result<ParityDbProviderRecordCollectionIterator, parity_db::Error> = try {
+            let btree_iter = self.db.iter(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME)?;
+            ParityDbProviderRecordCollectionIterator::new(btree_iter)?
+        };
+
+        match rec_iter_result {
+            Ok(rec_iter) => rec_iter,
+            Err(err) => {
+                error!(?err, "Can't create Parity DB record storage iterator.");
+
+                ParityDbProviderRecordCollectionIterator::empty()
+            }
+        }
     }
 }
 
@@ -590,5 +613,95 @@ impl<'a, RC: ProviderStorage<'a>> ProviderStorage<'a> for LimitedSizeProviderSto
         self.inner.remove_provider(key, peer_id);
 
         self.heap.remove(key);
+    }
+}
+
+/// Parity DB BTree ProviderRecordCollection iterator wrapper.
+pub struct ParityDbProviderRecordCollectionIterator<'a> {
+    iter: Option<parity_db::BTreeIterator<'a>>,
+    current_collection: Option<Vec<ParityDbProviderRecord>>,
+}
+
+impl<'a> ParityDbProviderRecordCollectionIterator<'a> {
+    /// Defines empty iterator, a stub when new() fails.
+    pub fn empty() -> Self {
+        Self {
+            iter: None,
+            current_collection: None,
+        }
+    }
+
+    /// Fallible iterator constructor. It requires inner DB BTreeIterator as a parameter.
+    pub fn new(mut iter: parity_db::BTreeIterator<'a>) -> parity_db::Result<Self> {
+        iter.seek_to_first()?;
+
+        Ok(Self {
+            iter: Some(iter),
+            current_collection: None,
+        })
+    }
+
+    fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
+        if let Some(ref mut iter) = self.iter {
+            match iter.next() {
+                Ok(value) => {
+                    trace!("Parity DB provider iterator succeeded");
+
+                    value
+                }
+                Err(err) => {
+                    warn!(?err, "Parity DB provider iterator error");
+
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> Iterator for ParityDbProviderRecordCollectionIterator<'a> {
+    type Item = Cow<'a, ProviderRecord>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_collection.is_none() {
+            let loaded_collection = self.next_entry().and_then(|(key, value)| {
+                let db_rec_result: Result<ParityDbProviderCollection, _> = value.try_into();
+
+                match db_rec_result {
+                    Ok(collection) => Some(collection.providers()),
+                    Err(err) => {
+                        warn!(
+                            ?key,
+                            ?err,
+                            "Parity DB provider collection deserialization error"
+                        );
+
+                        None
+                    }
+                }
+            });
+
+            self.current_collection = loaded_collection;
+        }
+
+        let result = if let Some(ref mut collection) = self.current_collection {
+            collection.pop().map(Into::into).map(Cow::Owned)
+        } else {
+            None
+        };
+
+        // Remove empty collection from the local cache.
+        let is_empty_collection = self
+            .current_collection
+            .as_ref()
+            .map(|collection| collection.is_empty())
+            .unwrap_or(true);
+        if is_empty_collection {
+            self.current_collection = None;
+        }
+
+        result
     }
 }
