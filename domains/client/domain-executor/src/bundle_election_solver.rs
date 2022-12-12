@@ -23,11 +23,7 @@ pub(super) struct BundleElectionSolver<SBlock, PBlock, SClient> {
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
-impl<SBlock, PBlock, SClient> Clone for BundleElectionSolver<SBlock, PBlock, SClient>
-where
-    SBlock: BlockT,
-    PBlock: BlockT,
-{
+impl<SBlock, PBlock, SClient> Clone for BundleElectionSolver<SBlock, PBlock, SClient> {
     fn clone(&self) -> Self {
         Self {
             system_domain_client: self.system_domain_client.clone(),

@@ -373,6 +373,47 @@ fn pause_and_resume_execution_should_work() {
 }
 
 #[test]
+fn update_public_key_should_work() {
+    new_test_ext().execute_with(|| {
+        let new_public_key = ExecutorPair::from_seed(&U256::from(10u32).into()).public();
+        assert_noop!(
+            ExecutorRegistry::update_public_key(RuntimeOrigin::signed(10), new_public_key),
+            Error::<Test>::NotExecutor
+        );
+
+        let executor_config_1 = Executors::<Test>::get(1).unwrap();
+        assert_noop!(
+            ExecutorRegistry::update_public_key(
+                RuntimeOrigin::signed(1),
+                executor_config_1.public_key.clone()
+            ),
+            Error::<Test>::DuplicatedKey
+        );
+
+        let public_key = ExecutorPair::from_seed(&U256::from(2u32).into()).public();
+        let reward_address = 2 + 10_000;
+        let is_active = true;
+        let stake = 200;
+
+        assert_ok!(ExecutorRegistry::register(
+            RuntimeOrigin::signed(2),
+            public_key,
+            reward_address,
+            is_active,
+            stake,
+        ));
+
+        assert_noop!(
+            ExecutorRegistry::update_public_key(
+                RuntimeOrigin::signed(2),
+                executor_config_1.public_key
+            ),
+            Error::<Test>::DuplicatedKey
+        );
+    });
+}
+
+#[test]
 fn update_reward_address_should_work() {
     new_test_ext().execute_with(|| {
         let executor_config = Executors::<Test>::get(1).unwrap();

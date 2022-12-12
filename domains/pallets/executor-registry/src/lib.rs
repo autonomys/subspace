@@ -451,6 +451,8 @@ mod pallet {
                 Error::<T>::DuplicatedKey
             );
 
+            ensure!(Executors::<T>::contains_key(&who), Error::<T>::NotExecutor);
+
             NextKey::<T>::insert(&who, &next_key);
             KeyOwner::<T>::insert(&next_key, &who);
 

@@ -7,11 +7,11 @@ use parity_db::{ColumnOptions, Db, Options};
 use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
-use std::iter::IntoIterator;
+use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
-use std::vec;
+use std::{iter, vec};
 use tracing::{debug, error, info, trace};
 
 const PARITY_DB_COLUMN_NAME: u8 = 0;
@@ -23,8 +23,6 @@ pub struct MemoryRecordStorage {
 }
 
 impl<'a> RecordStorage<'a> for MemoryRecordStorage {
-    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
-
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         self.records.get(key).map(|rec| Cow::Owned(rec.clone()))
     }
@@ -46,14 +44,13 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
 
         self.records.remove(key);
     }
+}
 
-    fn records(&'a self) -> Self::RecordsIter {
-        self.records
-            .values()
-            .map(|rec| Cow::Owned(rec.clone()))
-            .collect::<Vec<_>>()
-            .into_iter()
-    }
+pub trait EnumerableRecordStorage<'a>: RecordStorage<'a> {
+    type RecordsIter: Iterator<Item = Cow<'a, Record>>;
+
+    /// Gets an iterator over all (value-) records currently stored.
+    fn records(&'a self) -> Self::RecordsIter;
 }
 
 /// Defines a stub for record storage with all operations defaulted.
@@ -61,8 +58,6 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
 pub struct NoRecordStorage;
 
 impl<'a> RecordStorage<'a> for NoRecordStorage {
-    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
-
     fn get(&'a self, _: &Key) -> Option<Cow<'_, Record>> {
         None
     }
@@ -76,9 +71,13 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     fn remove(&mut self, key: &Key) {
         debug!(?key, "Detected an attempt to remove a record.");
     }
+}
+
+impl<'a> EnumerableRecordStorage<'a> for NoRecordStorage {
+    type RecordsIter = Empty<Cow<'a, Record>>;
 
     fn records(&'a self) -> Self::RecordsIter {
-        Vec::new().into_iter()
+        iter::empty()
     }
 }
 
@@ -166,8 +165,6 @@ impl ParityDbRecordStorage {
 }
 
 impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
-    type RecordsIter = ParityDbRecordIterator<'a>;
-
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         let result = self.db.get(PARITY_DB_COLUMN_NAME, key.borrow());
 
@@ -216,6 +213,10 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     fn remove(&mut self, key: &Key) {
         self.save_data(key, None);
     }
+}
+
+impl<'a> EnumerableRecordStorage<'a> for ParityDbRecordStorage {
+    type RecordsIter = ParityDbRecordIterator<'a>;
 
     fn records(&'a self) -> Self::RecordsIter {
         let rec_iter_result: Result<ParityDbRecordIterator, parity_db::Error> = try {
@@ -289,7 +290,10 @@ pub struct LimitedSizeRecordStorageWrapper<RC = MemoryRecordStorage> {
     heap: RecordBinaryHeap,
 }
 
-impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC> {
+impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC>
+where
+    RC: for<'a> EnumerableRecordStorage<'a>,
+{
     pub fn new(record_store: RC, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
@@ -312,8 +316,6 @@ impl<RC: for<'a> RecordStorage<'a>> LimitedSizeRecordStorageWrapper<RC> {
 }
 
 impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWrapper<RC> {
-    type RecordsIter = RC::RecordsIter;
-
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         self.inner.get(key)
     }
@@ -339,6 +341,13 @@ impl<'a, RC: RecordStorage<'a>> RecordStorage<'a> for LimitedSizeRecordStorageWr
 
         self.heap.remove(key);
     }
+}
+
+impl<'a, RC> EnumerableRecordStorage<'a> for LimitedSizeRecordStorageWrapper<RC>
+where
+    RC: EnumerableRecordStorage<'a>,
+{
+    type RecordsIter = RC::RecordsIter;
 
     fn records(&'a self) -> Self::RecordsIter {
         self.inner.records()

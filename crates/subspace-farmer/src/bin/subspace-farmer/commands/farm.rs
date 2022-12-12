@@ -70,6 +70,15 @@ pub(crate) async fn farm_multi_disk(
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
+    info!("Connecting to node RPC at {}", node_rpc_url);
+    let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
+    let piece_publisher_semaphore = Arc::new(tokio::sync::Semaphore::new(
+        farming_args.piece_receiver_batch_size,
+    ));
+    let piece_receiver_semaphore = Arc::new(tokio::sync::Semaphore::new(
+        farming_args.piece_publisher_batch_size,
+    ));
+
     let (node, mut node_runner) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -83,9 +92,6 @@ pub(crate) async fn farm_multi_disk(
 
         if dsn.bootstrap_nodes.is_empty() {
             dsn.bootstrap_nodes = {
-                info!("Connecting to node RPC at {}", node_rpc_url);
-                let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
-
                 rpc_client
                     .farmer_app_info()
                     .await
@@ -119,8 +125,8 @@ pub(crate) async fn farm_multi_disk(
             rpc_client,
             reward_address,
             dsn_node: node.clone(),
-            piece_receiver_batch_size: farming_args.piece_receiver_batch_size,
-            piece_publisher_batch_size: farming_args.piece_publisher_batch_size,
+            piece_receiver_semaphore: Arc::clone(&piece_receiver_semaphore),
+            piece_publisher_semaphore: Arc::clone(&piece_publisher_semaphore),
         })?;
 
         single_disk_plots.push(single_disk_plot);

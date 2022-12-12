@@ -135,6 +135,10 @@ where
     where
         R: ReceiptInterface<SBlock::Hash>,
     {
+        if !self.is_authority {
+            return Ok(None);
+        }
+
         let ExecutorSlotInfo {
             slot,
             global_challenge,

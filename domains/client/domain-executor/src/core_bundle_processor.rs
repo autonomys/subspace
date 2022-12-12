@@ -6,7 +6,7 @@ use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutorApi};
@@ -31,9 +31,7 @@ where
     system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    is_authority: bool,
     keystore: SyncCryptoStorePtr,
-    spawner: Box<dyn SpawnNamed + Send + Sync>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
@@ -52,9 +50,7 @@ where
             system_domain_client: self.system_domain_client.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
-            is_authority: self.is_authority,
             keystore: self.keystore.clone(),
-            spawner: self.spawner.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -86,16 +82,13 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
         system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        is_authority: bool,
         keystore: SyncCryptoStorePtr,
-        spawner: Box<dyn SpawnNamed + Send + Sync>,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         Self {
@@ -104,9 +97,7 @@ where
             system_domain_client,
             client,
             backend,
-            is_authority,
             keystore,
-            spawner,
             domain_block_processor,
             _phantom_data: PhantomData::default(),
         }

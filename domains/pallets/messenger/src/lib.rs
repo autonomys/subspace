@@ -31,13 +31,12 @@ mod verification;
 
 use codec::{Decode, Encode};
 use frame_support::traits::Currency;
-use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::DomainId;
 use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce};
-use sp_runtime::traits::Hash;
+use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
 /// State of a channel.
@@ -131,7 +130,7 @@ mod pallet {
 
     /// Pallet messenger used to communicate between domains and other blockchains.
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -222,7 +221,7 @@ mod pallet {
 
     /// `pallet-messenger` events
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Emits when a channel between two domains in initiated.
         ChannelInitiated {
@@ -307,7 +306,41 @@ mod pallet {
         },
     }
 
+    #[pallet::genesis_config]
+    #[derive(Debug)]
+    pub struct GenesisConfig<T: Config> {
+        /// Genesis relayers that join the relayer pool.
+        pub relayers: Vec<(T::AccountId, RelayerId<T>)>,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
+                relayers: Default::default(),
+            }
+        }
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+        fn build(&self) {
+            for (owner, relayer_id) in self.relayers.iter() {
+                if let Err(err) =
+                    Pallet::<T>::do_join_relayer_set(owner.clone(), relayer_id.clone())
+                {
+                    log::error!(
+                        "Failed to add relayer: {:?} to the pool: {:?}",
+                        relayer_id,
+                        err
+                    )
+                }
+            }
+        }
+    }
+
     type Tag = (DomainId, ChannelId, Nonce);
+
     fn unsigned_validity<T: Config>(prefix: &'static str, provides: Tag) -> TransactionValidity {
         ValidTransaction::with_tag_prefix(prefix)
             .priority(TransactionPriority::MAX)
@@ -655,10 +688,20 @@ mod pallet {
                     // so nonce is 0
                     should_init_channel = true;
                     // TODO(ved): collect fees to open channel
+                    log::debug!(
+                        "Initiating new channel: {:?} to domain: {:?}",
+                        xdm.channel_id,
+                        xdm.src_domain_id
+                    );
                     Nonce::zero()
                 }
                 Some(channel) => {
                     // Ensure channel is ready to receive messages
+                    log::debug!(
+                        "Message to channel: {:?} from domain: {:?}",
+                        xdm.channel_id,
+                        xdm.src_domain_id
+                    );
                     ensure!(
                         channel.state == ChannelState::Open,
                         InvalidTransaction::Call
@@ -697,9 +740,17 @@ mod pallet {
                     ProtocolMessageRequest::ChannelOpen(params),
                 ))) = msg.payload
                 {
-                    Self::do_init_channel(msg.src_domain_id, params)
-                        .map_err(|_| InvalidTransaction::Call)?;
+                    Self::do_init_channel(msg.src_domain_id, params).map_err(|err| {
+                        log::error!(
+                            "Error initiating channel: {:?} with domain: {:?}: {:?}",
+                            msg.channel_id,
+                            msg.src_domain_id,
+                            err
+                        );
+                        InvalidTransaction::Call
+                    })?;
                 } else {
+                    log::error!("Unexpected call instead of channel open request: {:?}", msg,);
                     return Err(InvalidTransaction::Call.into());
                 }
             }
@@ -719,22 +770,14 @@ mod pallet {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
-                None => return Err(InvalidTransaction::Call.into()),
-                // verify if channel can receive messages
-                Some(channel) => {
-                    match channel.latest_response_received_message_nonce {
-                        None => {
-                            // this is the first message response.
-                            // ensure channel is in init state
-                            ensure!(
-                                channel.state == ChannelState::Initiated,
-                                InvalidTransaction::Call
-                            );
-                            Some(Nonce::zero())
-                        }
-                        Some(last_nonce) => last_nonce.checked_add(Nonce::one()),
-                    }
+                None => {
+                    log::error!("Unexpected inbox message response: {:?}", xdm,);
+                    return Err(InvalidTransaction::Call.into());
                 }
+                Some(channel) => match channel.latest_response_received_message_nonce {
+                    None => Some(Nonce::zero()),
+                    Some(last_nonce) => last_nonce.checked_add(Nonce::one()),
+                },
             }
             .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))?;
 
@@ -770,6 +813,12 @@ mod pallet {
             // fetch state roots from System domain tracker
             let state_roots = T::DomainTracker::system_domain_state_roots();
             if !state_roots.contains(&xdm.proof.state_root) {
+                log::error!(
+                    target: "runtime::messenger",
+                    "XDM state root: {:?} is not in the confirmed state roots: {:?}",
+                    xdm.proof,
+                    state_roots,
+                );
                 return Err(TransactionValidityError::Invalid(
                     InvalidTransaction::BadProof,
                 ));
@@ -796,7 +845,14 @@ mod pallet {
                         proof,
                         core_domain_state_root_key,
                     )
-                    .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))
+                    .map_err(|err| {
+                        log::error!(
+                            target: "runtime::messenger",
+                            "Failed to verify Core domain proof: {:?}",
+                            err
+                        );
+                        TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+                    })
                 } else {
                     Err(TransactionValidityError::Invalid(
                         InvalidTransaction::BadProof,
@@ -805,18 +861,25 @@ mod pallet {
             }?;
 
             // channel should be either already be created or match the next channelId for domain.
-            let next_channel_id = NextChannelId::<T>::get(xdm.dst_domain_id);
+            let next_channel_id = NextChannelId::<T>::get(xdm.src_domain_id);
             ensure!(xdm.channel_id <= next_channel_id, InvalidTransaction::Call);
 
             // verify nonce
             // nonce should be either be next or in future.
-            ensure!(xdm.nonce >= next_nonce, InvalidTransaction::BadProof);
+            ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
                 Message<BalanceOf<T>>,
             >(&state_root, xdm.proof.message_proof.clone(), storage_key)
-            .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::BadProof))?;
+            .map_err(|err| {
+                log::error!(
+                    target: "runtime::messenger",
+                    "Failed to verify storage proof: {:?}",
+                    err
+                );
+                TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+            })?;
 
             Ok(msg)
         }
@@ -827,36 +890,18 @@ impl<T> Pallet<T>
 where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
-    pub fn submit_outbox_message_unsigned(msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>) {
+    pub fn outbox_message_unsigned(
+        msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+    ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::messenger", "Submitted outbox message");
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Error submitting outbox message",
-                );
-            }
-        }
+        T::Extrinsic::new(call.into(), None)
     }
 
-    pub fn submit_inbox_response_message_unsigned(
+    pub fn inbox_response_message_unsigned(
         msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
-    ) {
+    ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::messenger", "Submitted inbox response message");
-            }
-            Err(()) => {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Error submitting inbox response message",
-                );
-            }
-        }
+        T::Extrinsic::new(call.into(), None)
     }
 
     /// Returns true if the outbox message has not received the response yet.

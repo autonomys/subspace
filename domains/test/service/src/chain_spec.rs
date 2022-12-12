@@ -113,5 +113,6 @@ fn testnet_genesis(
             slot_probability: (1, 1),
         },
         domain_registry: domain_test_runtime::DomainRegistryConfig { domains },
+        messenger: Default::default(),
     }
 }

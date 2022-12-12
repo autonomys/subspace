@@ -1,8 +1,10 @@
-use crate::{new_partial, Configuration, FullBackend, FullClient, FullPool};
+use crate::{new_partial, DomainConfiguration, FullBackend, FullClient, FullPool};
+use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
+use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
@@ -21,7 +23,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
@@ -79,19 +81,23 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    /// Transaction pool sink
+    pub tx_pool_sink: DomainTxPoolSink,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
+#[allow(clippy::too_many_arguments)]
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
-    mut secondary_chain_config: Configuration,
+    mut secondary_chain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     select_chain: &SC,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     block_import_throttling_buffer_size: u32,
+    gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -142,13 +148,11 @@ where
 
     let params = new_partial(&secondary_chain_config.service_config)?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor, import_block_notification_stream) =
-        params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
 
-    let validator = secondary_chain_config.service_config.role.is_authority();
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
@@ -183,6 +187,8 @@ where
         })
     };
 
+    let is_authority = secondary_chain_config.service_config.role.is_authority();
+
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
         client: client.clone(),
@@ -212,7 +218,7 @@ where
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
             code_executor: code_executor.clone(),
-            is_authority: validator,
+            is_authority,
             keystore: params.keystore_container.sync_keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
@@ -250,8 +256,8 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
             relayer_id,
             client.clone(),
-            import_block_notification_stream.subscribe(),
             network.clone(),
+            gossip_message_sink,
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -260,6 +266,22 @@ where
             Box::pin(relayer_worker),
         );
     }
+
+    let (msg_sender, msg_receiver) = tracing_unbounded("system_domain_message_channel");
+
+    // start cross domain message listener for system domain
+    let system_domain_listener = cross_domain_message_gossip::start_domain_message_listener(
+        DomainId::SYSTEM,
+        client.clone(),
+        params.transaction_pool.clone(),
+        msg_receiver,
+    );
+
+    spawn_essential.spawn_essential_blocking(
+        "system-domain-message-listener",
+        None,
+        Box::pin(system_domain_listener),
+    );
 
     let new_full = NewFull {
         task_manager,
@@ -270,6 +292,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        tx_pool_sink: msg_sender,
     };
 
     Ok(new_full)

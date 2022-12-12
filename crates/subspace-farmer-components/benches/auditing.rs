@@ -19,6 +19,7 @@ use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::plot_sector;
 use subspace_farmer_components::FarmerProtocolInfo;
+use tokio::sync::Semaphore;
 use utils::BenchPieceReceiver;
 
 mod utils;
@@ -64,6 +65,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
     let piece_receiver_batch_size = 20usize;
+    let piece_receiver_semaphore = Semaphore::new(piece_receiver_batch_size);
 
     let plotted_sector = {
         let mut plotted_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
@@ -78,7 +80,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &sector_codec,
             plotted_sector.as_mut_slice(),
             io::sink(),
-            piece_receiver_batch_size,
+            &piece_receiver_semaphore,
         ))
         .unwrap();
 

@@ -1,23 +1,34 @@
-mod piece_record_store;
-
-use crate::dsn::piece_record_store::{AuxRecordStorage, SegmentIndexGetter};
+use crate::piece_cache::PieceCache;
+use backoff::future::retry;
+use backoff::ExponentialBackoff;
+use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
-use sc_piece_cache::AuxPieceCache;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
+use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use std::time::Duration;
+use subspace_archiving::archiver::ArchivedSegment;
+use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, CustomRecordStore,
     MemoryProviderStorage, Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse,
     PieceKey, ToMultihash,
 };
+use tokio::sync::Semaphore;
+use tokio::time::error::Elapsed;
+use tokio::time::timeout;
 use tracing::{debug, error, info, trace, warn, Instrument};
 
-pub type PieceGetter = Arc<dyn (Fn(&PieceIndex) -> Option<Piece>) + Send + Sync + 'static>;
+/// Max time allocated for putting piece from DSN before attempt is considered to fail
+const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Defines initial duration between put_piece calls.
+const PUBLISH_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
+/// Defines max duration between put_piece calls.
+const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -36,17 +47,18 @@ pub struct DsnConfig {
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     pub allow_non_global_addresses_in_dht: bool,
+
+    /// Defines piece publishing batch size
+    pub piece_publisher_batch_size: usize,
 }
 
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
-    piece_cache: AuxPieceCache<AS>,
-    piece_getter: PieceGetter,
-    segment_index_getter: SegmentIndexGetter,
+    piece_cache: PieceCache<AS>,
 ) -> Result<
     (
         Node,
-        NodeRunner<CustomRecordStore<AuxRecordStorage<AS>, MemoryProviderStorage>>,
+        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
     ),
     CreationError,
 >
@@ -54,10 +66,12 @@ where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
-    // TODO: Combine `AuxPieceCache` with `AuxRecordStorage` and remove `PieceCache` abstraction
-    let record_storage = AuxRecordStorage::new(piece_cache, segment_index_getter);
-
     trace!("Subspace networking starting.");
+
+    let record_store = CustomRecordStore::new(
+        piece_cache.clone(),
+        MemoryProviderStorage::new(peer_id(&dsn_config.keypair)),
+    );
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
@@ -68,8 +82,14 @@ where
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::PieceIndex(idx) = req.key {
-                piece_getter(&idx)
+            let result = if let PieceKey::PieceIndex(piece_index) = req.key {
+                match piece_cache.get_piece(piece_index) {
+                    Ok(maybe_piece) => maybe_piece,
+                    Err(error) => {
+                        error!(key=?req.key, %error, "Failed to get piece from cache");
+                        None
+                    }
+                }
             } else {
                 debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
 
@@ -78,10 +98,7 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(
-            record_storage,
-            MemoryProviderStorage::new(peer_id(&dsn_config.keypair)),
-        ),
+        record_store,
         ..subspace_networking::Config::with_generated_keypair()
     };
 
@@ -94,10 +111,13 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
     mut archived_segment_notification_stream: impl Stream<Item = ArchivedSegmentNotification> + Unpin,
     node: Node,
     spawner: Spawner,
+    piece_publisher_batch_size: usize,
 ) where
     Spawner: SpawnNamed,
 {
     trace!("Subspace DSN archiver started.");
+
+    let piece_publisher_semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
 
     let mut last_published_segment_index: Option<u64> = None;
     while let Some(ArchivedSegmentNotification {
@@ -116,39 +136,118 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
                 continue;
             }
         }
-        let keys_iter = (first_piece_index..)
-            .take(archived_segment.pieces.count())
-            .map(|idx| (idx, PieceIndexHash::from_index(idx)))
-            .map(|(idx, hash)| (idx, hash.to_multihash()));
 
         spawner.spawn(
             "segment-publishing",
             Some("subspace-networking"),
             Box::pin({
                 let node = node.clone();
+                let piece_publisher_semaphore = Arc::clone(&piece_publisher_semaphore);
 
                 async move {
-                    for (idx, key) in keys_iter {
-                        match node.start_announcing(key).await {
-                            Ok(mut stream) => {
-                                if stream.next().await.is_some() {
-                                    trace!(%idx, ?key, "Piece announcing succeeded");
-                                } else {
-                                    warn!(%idx, ?key, "Piece announcing failed");
-                                }
-                            }
-                            Err(error) => {
-                                error!( %idx, ?key, "Piece announcing failed with an error: {}", error);
-                            }
-                        }
-                    }
-
-                    info!(%segment_index, "Segment processed.");
+                    publish_pieces(
+                        &node,
+                        first_piece_index,
+                        segment_index,
+                        archived_segment,
+                        &piece_publisher_semaphore,
+                    )
+                    .await
                 }
                 .in_current_span()
             }),
         );
 
         last_published_segment_index = Some(segment_index);
+    }
+}
+
+// Publishes pieces-by-sector to DSN in bulk. Supports cancellation.
+pub(crate) async fn publish_pieces(
+    node: &Node,
+    first_piece_index: PieceIndex,
+    segment_index: u64,
+    archived_segment: Arc<ArchivedSegment>,
+    semaphore: &Semaphore,
+) {
+    let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
+
+    let mut pieces_publishing_futures = pieces_indexes
+        .map(|piece_index| {
+            Box::pin(async move {
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("Should be valid on non-closed semaphore");
+
+                publish_single_piece_with_backoff(node, piece_index).await
+            })
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    while pieces_publishing_futures.next().await.is_some() {
+        // empty body
+    }
+
+    info!(%segment_index, "Piece publishing was successful.");
+}
+
+async fn publish_single_piece_with_backoff(
+    node: &Node,
+    piece_index: PieceIndex,
+) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    let backoff = ExponentialBackoff {
+        initial_interval: PUBLISH_PIECE_INITIAL_INTERVAL,
+        max_interval: PUBLISH_PIECE_MAX_INTERVAL,
+        // Try until we get a valid piece
+        max_elapsed_time: None,
+        ..ExponentialBackoff::default()
+    };
+
+    retry(backoff, || async {
+        let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
+            PUBLISH_PIECE_TIMEOUT,
+            publish_single_piece(node, piece_index),
+        )
+        .await;
+
+        if let Ok(publish_result) = publish_timeout_result {
+            if publish_result.is_ok() {
+                return Ok(());
+            }
+        }
+
+        debug!(%piece_index, "Couldn't publish a piece. Retrying...");
+
+        Err(backoff::Error::transient(
+            "Couldn't publish piece to DSN".into(),
+        ))
+    })
+    .await
+}
+
+async fn publish_single_piece(
+    node: &Node,
+    piece_index: PieceIndex,
+) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    let key = PieceIndexHash::from_index(piece_index).to_multihash();
+
+    match node.start_announcing(key).await {
+        Ok(mut stream) => {
+            if stream.next().await.is_some() {
+                trace!(%piece_index, ?key, "Piece announcing succeeded");
+
+                Ok(())
+            } else {
+                warn!(%piece_index, ?key, "Piece announcing failed");
+
+                Err("Piece publishing was unsuccessful".into())
+            }
+        }
+        Err(error) => {
+            error!( %piece_index, ?key, "Piece announcing failed with an error: {}", error);
+
+            Err("Piece publishing failed".into())
+        }
     }
 }

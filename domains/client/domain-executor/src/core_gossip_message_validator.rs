@@ -37,7 +37,7 @@ pub struct CoreGossipMessageValidator<
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
     gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>,
-    _phantom_data: PhantomData<(SBlock, SClient, Backend)>,
+    _phantom_data: PhantomData<(SBlock, SClient)>,
 }
 
 impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> Clone

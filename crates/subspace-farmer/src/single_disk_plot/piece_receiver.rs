@@ -20,7 +20,7 @@ const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 /// Delay for getting piece from cache before resorting to archival storage
-const GET_PIECE_ARCHIVAL_STORAGE_DELAY: Duration = Duration::from_secs(1);
+const GET_PIECE_ARCHIVAL_STORAGE_DELAY: Duration = Duration::from_secs(2);
 /// Max time allocated for getting piece from DSN before attempt is considered to fail
 const GET_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
 

@@ -16,7 +16,7 @@
 
 //! Subspace node implementation.
 
-use domain_service::Configuration;
+use cross_domain_message_gossip::GossipWorker;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -25,13 +25,19 @@ use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
 use sc_subspace_chain_specs::ExecutionChainSpec;
+use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
 use std::any::TypeId;
+use std::collections::BTreeMap;
 use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{DsnConfig, SubspaceConfiguration};
+use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
+
+// Defines a maximum constraint for the piece publisher batch.
+const MAX_PIECE_PUBLISHER_BATCH_SIZE: usize = 30;
 
 /// System domain executor instance.
 pub struct SystemDomainExecutorDispatch;
@@ -246,7 +252,7 @@ fn main() -> Result<(), Error> {
                     maybe_secondary_chain_spec.ok_or_else(|| {
                         "Primary chain spec must contain secondary chain spec".to_string()
                     })?,
-                    cli.secondary_chain_args.iter(),
+                    cli.secondary_chain_args.into_iter(),
                 );
 
                 let secondary_chain_config = SubstrateCli::create_configuration(
@@ -409,6 +415,16 @@ fn main() -> Result<(), Error> {
                             cli.dsn_bootstrap_nodes
                         };
 
+                        if cli.dsn_piece_publisher_batch_size == 0
+                            || cli.dsn_piece_publisher_batch_size > MAX_PIECE_PUBLISHER_BATCH_SIZE
+                        {
+                            return Err(sc_service::Error::Other(format!(
+                                "Incorrect piece publisher batch size: {}. Should be 1-{}",
+                                cli.dsn_piece_publisher_batch_size, MAX_PIECE_PUBLISHER_BATCH_SIZE
+                            ))
+                            .into());
+                        }
+
                         // TODO: Libp2p versions for Substrate and Subspace diverged.
                         // We get type compatibility by encoding and decoding the original keypair.
                         let encoded_keypair = network_keypair
@@ -426,6 +442,7 @@ fn main() -> Result<(), Error> {
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
                             allow_non_global_addresses_in_dht: !cli.dsn_disable_private_ips,
+                            piece_publisher_batch_size: cli.dsn_piece_publisher_batch_size,
                         }
                     };
 
@@ -433,12 +450,25 @@ fn main() -> Result<(), Error> {
                         base: primary_chain_config,
                         // Secondary node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
-                        dsn_config,
-                        piece_cache_size: cli.piece_cache_size.as_u64(),
+                        subspace_networking: SubspaceNetworking::Create {
+                            config: dsn_config,
+                            piece_cache_size: cli.piece_cache_size.as_u64(),
+                        },
                     };
 
-                    subspace_service::new_full::<RuntimeApi, ExecutorDispatch>(
+                    let partial_components = subspace_service::new_partial::<
+                        RuntimeApi,
+                        ExecutorDispatch,
+                    >(&primary_chain_config)
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node: {error:?}"
+                        ))
+                    })?;
+
+                    subspace_service::new_full(
                         primary_chain_config,
+                        partial_components,
                         true,
                         SlotProportion::new(2f32 / 3f32),
                     )
@@ -465,7 +495,7 @@ fn main() -> Result<(), Error> {
                         maybe_secondary_chain_spec.ok_or_else(|| {
                             "Primary chain spec must contain secondary chain spec".to_string()
                         })?,
-                        cli.secondary_chain_args.iter(),
+                        cli.secondary_chain_args.into_iter(),
                     );
 
                     // Increase default number of peers
@@ -473,19 +503,13 @@ fn main() -> Result<(), Error> {
                         secondary_chain_cli.run.run_system.network_params.out_peers = 50;
                     }
 
-                    let service_config = SubstrateCli::create_configuration(
-                        &secondary_chain_cli,
-                        &secondary_chain_cli,
-                        tokio_handle.clone(),
-                    )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to create secondary chain configuration: {error:?}"
-                        ))
-                    })?;
-
-                    let secondary_chain_config =
-                        Configuration::new(service_config, secondary_chain_cli.run.relayer_id);
+                    let secondary_chain_config = secondary_chain_cli
+                        .create_domain_configuration(tokio_handle.clone())
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create secondary chain configuration: {error:?}"
+                            ))
+                        })?;
 
                     let imported_block_notification_stream = || {
                         primary_chain_node
@@ -512,6 +536,9 @@ fn main() -> Result<(), Error> {
                             })
                     };
 
+                    let (gossip_msg_sink, gossip_msg_stream) =
+                        tracing_unbounded("Cross domain gossip messages");
+
                     let secondary_chain_node = domain_service::new_full::<
                         _,
                         _,
@@ -528,8 +555,13 @@ fn main() -> Result<(), Error> {
                         imported_block_notification_stream(),
                         new_slot_notification_stream(),
                         block_import_throttling_buffer_size,
+                        gossip_msg_sink.clone(),
                     )
                     .await?;
+
+                    let mut domain_tx_pool_sinks = BTreeMap::new();
+                    domain_tx_pool_sinks
+                        .insert(DomainId::SYSTEM, secondary_chain_node.tx_pool_sink);
 
                     primary_chain_node
                         .task_manager
@@ -547,21 +579,13 @@ fn main() -> Result<(), Error> {
                             core_domain_cli.run.network_params.out_peers = 50;
                         }
 
-                        let core_domain_service_config = SubstrateCli::create_configuration(
-                            &core_domain_cli,
-                            &core_domain_cli,
-                            tokio_handle,
-                        )
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to create core domain configuration: {error:?}"
-                            ))
-                        })?;
-
-                        let core_domain_config = Configuration::new(
-                            core_domain_service_config,
-                            core_domain_cli.relayer_id,
-                        );
+                        let core_domain_config = core_domain_cli
+                            .create_domain_configuration(tokio_handle)
+                            .map_err(|error| {
+                                sc_service::Error::Other(format!(
+                                    "Failed to create core domain configuration: {error:?}"
+                                ))
+                            })?;
 
                         let core_domain_node = match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
@@ -586,6 +610,7 @@ fn main() -> Result<(), Error> {
                                     imported_block_notification_stream(),
                                     new_slot_notification_stream(),
                                     block_import_throttling_buffer_size,
+                                    gossip_msg_sink,
                                 )
                                 .await?
                             }
@@ -598,12 +623,28 @@ fn main() -> Result<(), Error> {
                             }
                         };
 
+                        domain_tx_pool_sinks
+                            .insert(core_domain_cli.domain_id, core_domain_node.tx_pool_sink);
                         primary_chain_node
                             .task_manager
                             .add_child(core_domain_node.task_manager);
 
                         core_domain_node.network_starter.start_network();
                     }
+
+                    let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
+                        primary_chain_node.network.clone(),
+                        domain_tx_pool_sinks,
+                    );
+
+                    primary_chain_node
+                        .task_manager
+                        .spawn_essential_handle()
+                        .spawn_essential_blocking(
+                            "cross-domain-gossip-message-worker",
+                            None,
+                            Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
+                        );
 
                     secondary_chain_node.network_starter.start_network();
                 }

@@ -12,12 +12,12 @@ pub use records::{
     LimitedSizeRecordStorageWrapper, MemoryRecordStorage, NoRecordStorage, ParityDbRecordStorage,
 };
 use std::borrow::Cow;
+use std::iter;
+use std::iter::Empty;
 
 // TODO: Consider adding a generic lifetime when we upgrade the compiler to 1.65 (GAT feature)
 // fn records(&'_ self) -> Self::RecordsIter<'_>;
 pub trait RecordStorage<'a> {
-    type RecordsIter: Iterator<Item = Cow<'a, Record>>;
-
     /// Gets a record from the store, given its key.
     fn get(&'a self, k: &Key) -> Option<Cow<'_, Record>>;
 
@@ -26,9 +26,6 @@ pub trait RecordStorage<'a> {
 
     /// Removes the record with the given key from the store.
     fn remove(&mut self, k: &Key);
-
-    /// Gets an iterator over all (value-) records currently stored.
-    fn records(&'a self) -> Self::RecordsIter;
 }
 
 pub trait ProviderStorage<'a> {
@@ -73,7 +70,7 @@ impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderSt
 impl<'a, Rs: RecordStorage<'a>, Ps: ProviderStorage<'a>> RecordStore<'a>
     for CustomRecordStore<Rs, Ps>
 {
-    type RecordsIter = Rs::RecordsIter;
+    type RecordsIter = Empty<Cow<'a, Record>>;
     type ProvidedIter = Ps::ProvidedIter;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
@@ -89,7 +86,8 @@ impl<'a, Rs: RecordStorage<'a>, Ps: ProviderStorage<'a>> RecordStore<'a>
     }
 
     fn records(&'a self) -> Self::RecordsIter {
-        self.record_storage.records()
+        // We don't use Kademlia's periodic replication
+        iter::empty()
     }
 
     fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {

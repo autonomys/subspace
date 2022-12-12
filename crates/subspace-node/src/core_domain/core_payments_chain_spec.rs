@@ -18,8 +18,10 @@
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use core_payments_domain_runtime::{
-    AccountId, BalancesConfig, GenesisConfig, SystemConfig, WASM_BINARY,
+    AccountId, BalancesConfig, GenesisConfig, MessengerConfig, SudoConfig, SystemConfig,
+    WASM_BINARY,
 };
+use domain_runtime_primitives::RelayerId;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58Codec;
@@ -35,12 +37,19 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         "core_payments_domain_dev",
         ChainType::Development,
         move || {
-            testnet_genesis(vec![
-                get_account_id_from_seed("Alice"),
-                get_account_id_from_seed("Bob"),
-                get_account_id_from_seed("Alice//stash"),
-                get_account_id_from_seed("Bob//stash"),
-            ])
+            testnet_genesis(
+                vec![
+                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed("Bob"),
+                    get_account_id_from_seed("Alice//stash"),
+                    get_account_id_from_seed("Bob//stash"),
+                ],
+                Some(get_account_id_from_seed("Alice")),
+                vec![(
+                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed("Alice"),
+                )],
+            )
         },
         vec![],
         None,
@@ -59,20 +68,33 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         "core_payments_domain_local_testnet",
         ChainType::Local,
         move || {
-            testnet_genesis(vec![
-                get_account_id_from_seed("Alice"),
-                get_account_id_from_seed("Bob"),
-                get_account_id_from_seed("Charlie"),
-                get_account_id_from_seed("Dave"),
-                get_account_id_from_seed("Eve"),
-                get_account_id_from_seed("Ferdie"),
-                get_account_id_from_seed("Alice//stash"),
-                get_account_id_from_seed("Bob//stash"),
-                get_account_id_from_seed("Charlie//stash"),
-                get_account_id_from_seed("Dave//stash"),
-                get_account_id_from_seed("Eve//stash"),
-                get_account_id_from_seed("Ferdie//stash"),
-            ])
+            testnet_genesis(
+                vec![
+                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed("Bob"),
+                    get_account_id_from_seed("Charlie"),
+                    get_account_id_from_seed("Dave"),
+                    get_account_id_from_seed("Eve"),
+                    get_account_id_from_seed("Ferdie"),
+                    get_account_id_from_seed("Alice//stash"),
+                    get_account_id_from_seed("Bob//stash"),
+                    get_account_id_from_seed("Charlie//stash"),
+                    get_account_id_from_seed("Dave//stash"),
+                    get_account_id_from_seed("Eve//stash"),
+                    get_account_id_from_seed("Ferdie//stash"),
+                ],
+                Some(get_account_id_from_seed("Alice")),
+                vec![
+                    (
+                        get_account_id_from_seed("Alice"),
+                        get_account_id_from_seed("Alice"),
+                    ),
+                    (
+                        get_account_id_from_seed("Bob"),
+                        get_account_id_from_seed("Bob"),
+                    ),
+                ],
+            )
         },
         // Bootnodes
         vec![],
@@ -96,11 +118,15 @@ pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
         "subspace_gemini_3a_core_payments_domain",
         ChainType::Local,
         move || {
-            testnet_genesis(vec![
-                // Genesis executor
-                AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
-                    .expect("Wrong executor account address"),
-            ])
+            testnet_genesis(
+                vec![
+                    // Genesis executor
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                ],
+                None,
+                Default::default(),
+            )
         },
         // Bootnodes
         vec![],
@@ -116,12 +142,19 @@ pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> GenesisConfig {
+fn testnet_genesis(
+    endowed_accounts: Vec<AccountId>,
+    maybe_sudo_account: Option<AccountId>,
+    relayers: Vec<(AccountId, RelayerId)>,
+) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
             code: WASM_BINARY
                 .expect("WASM binary was not build, please build it!")
                 .to_vec(),
+        },
+        sudo: SudoConfig {
+            key: maybe_sudo_account,
         },
         transaction_payment: Default::default(),
         balances: BalancesConfig {
@@ -131,5 +164,6 @@ fn testnet_genesis(endowed_accounts: Vec<AccountId>) -> GenesisConfig {
                 .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
+        messenger: MessengerConfig { relayers },
     }
 }

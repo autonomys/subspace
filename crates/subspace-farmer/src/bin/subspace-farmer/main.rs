@@ -123,8 +123,8 @@ impl FromStr for DiskFarm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts = s.split(',').collect::<Vec<_>>();
-        if parts.len() != 3 {
-            return Err("Must contain 3 coma-separated components".to_string());
+        if parts.len() != 2 {
+            return Err("Must contain 2 coma-separated components".to_string());
         }
 
         let mut plot_directory = None;

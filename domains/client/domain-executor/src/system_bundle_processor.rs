@@ -7,7 +7,7 @@ use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
 use sp_domains::ExecutorApi;
@@ -16,30 +16,24 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use sp_runtime::Digest;
 use std::borrow::Cow;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
-    Block: BlockT,
     PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    is_authority: bool,
     keystore: SyncCryptoStorePtr,
-    spawner: Box<dyn SpawnNamed + Send + Sync>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    _phantom_data: PhantomData<PBlock>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
-    Block: BlockT,
     PBlock: BlockT,
 {
     fn clone(&self) -> Self {
@@ -47,11 +41,8 @@ where
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
-            is_authority: self.is_authority,
             keystore: self.keystore.clone(),
-            spawner: self.spawner.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
-            _phantom_data: self._phantom_data,
         }
     }
 }
@@ -64,9 +55,9 @@ where
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
     for<'b> &'b Client: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
@@ -82,20 +73,15 @@ where
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        is_authority: bool,
         keystore: SyncCryptoStorePtr,
-        spawner: Box<dyn SpawnNamed + Send + Sync>,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         Self {
             primary_chain_client,
             client,
             backend,
-            is_authority,
             keystore,
-            spawner,
             domain_block_processor,
-            _phantom_data: PhantomData::default(),
         }
     }
 

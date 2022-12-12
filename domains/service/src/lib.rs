@@ -6,7 +6,6 @@ mod system_domain;
 
 pub use self::core_domain::{new_full as new_full_core, NewFull as NewFullCore};
 pub use self::system_domain::{new_full, NewFull};
-use domain_client_consensus_relay_chain::notification::SubspaceNotificationStream;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::RelayerId;
 use sc_client_api::StateBackendFor;
@@ -15,7 +14,7 @@ use sc_service::{
     Configuration as ServiceConfiguration, PartialComponents, TFullBackend, TFullClient,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
-use sp_api::{ApiExt, ConstructRuntimeApi, NumberFor};
+use sp_api::{ApiExt, ConstructRuntimeApi};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 
@@ -31,18 +30,9 @@ pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool
 >;
 
 /// Secondary chain configuration.
-pub struct Configuration {
-    service_config: ServiceConfiguration,
-    maybe_relayer_id: Option<RelayerId>,
-}
-
-impl Configuration {
-    pub fn new(service_config: ServiceConfiguration, maybe_relayer_id: Option<RelayerId>) -> Self {
-        Configuration {
-            service_config,
-            maybe_relayer_id,
-        }
-    }
+pub struct DomainConfiguration {
+    pub service_config: ServiceConfiguration,
+    pub maybe_relayer_id: Option<RelayerId>,
 }
 
 /// Starts a `ServiceBuilder` for a full service.
@@ -63,7 +53,6 @@ fn new_partial<RuntimeApi, Executor>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<Executor>,
-            SubspaceNotificationStream<NumberFor<Block>>,
         ),
     >,
     sc_service::Error,
@@ -117,12 +106,11 @@ where
         client.clone(),
     );
 
-    let (import_queue, import_block_notification_stream) =
-        domain_client_consensus_relay_chain::import_queue(
-            client.clone(),
-            &task_manager.spawn_essential_handle(),
-            config.prometheus_registry(),
-        )?;
+    let import_queue = domain_client_consensus_relay_chain::import_queue(
+        client.clone(),
+        &task_manager.spawn_essential_handle(),
+        config.prometheus_registry(),
+    )?;
 
     let params = PartialComponents {
         backend,
@@ -132,12 +120,7 @@ where
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (
-            telemetry,
-            telemetry_worker_handle,
-            executor,
-            import_block_notification_stream,
-        ),
+        other: (telemetry, telemetry_worker_handle, executor),
     };
 
     Ok(params)

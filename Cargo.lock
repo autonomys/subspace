@@ -1423,6 +1423,7 @@ dependencies = [
  "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
+ "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -1635,6 +1636,24 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.3",
+]
+
+[[package]]
+name = "cross-domain-message-gossip"
+version = "0.1.0"
+dependencies = [
+ "futures 0.3.25",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-transaction-pool-api",
+ "sc-utils",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "tracing",
 ]
 
 [[package]]
@@ -2255,6 +2274,7 @@ dependencies = [
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
+ "cross-domain-message-gossip",
  "domain-runtime-primitives",
  "futures 0.3.25",
  "parity-scale-codec",
@@ -2312,6 +2332,7 @@ name = "domain-service"
 version = "0.1.0"
 dependencies = [
  "clap 4.0.26",
+ "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
@@ -2407,6 +2428,7 @@ name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-service",
@@ -2426,6 +2448,7 @@ dependencies = [
  "sc-service",
  "sc-tracing",
  "sc-transaction-pool",
+ "sc-utils",
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
@@ -7938,17 +7961,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-piece-cache"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sc-client-api",
- "subspace-core-primitives",
- "subspace-networking",
- "tracing",
-]
-
-[[package]]
 name = "sc-proposer-metrics"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=6d57dbc639bb3d9460dabeccb063cc6556452535#6d57dbc639bb3d9460dabeccb063cc6556452535"
@@ -8274,9 +8286,9 @@ dependencies = [
 
 [[package]]
 name = "scale-info"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88d8a765117b237ef233705cc2cc4c6a27fccd46eea6ef0c8c6dae5f3ef407f8"
+checksum = "001cf62ece89779fd16105b5f515ad0e5cedcd5440d3dd806bb067978e7c3608"
 dependencies = [
  "bitvec",
  "cfg-if",
@@ -8288,9 +8300,9 @@ dependencies = [
 
 [[package]]
 name = "scale-info-derive"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdcd47b380d8c4541044e341dcd9475f55ba37ddc50c908d945fc036a8642496"
+checksum = "303959cf613a6f6efd19ed4b4ad5bf79966a13352716299ad532cfb115f4205c"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -9174,6 +9186,7 @@ dependencies = [
  "subspace-farmer-components",
  "subspace-solving",
  "subspace-verification",
+ "tokio",
 ]
 
 [[package]]
@@ -9832,6 +9845,7 @@ dependencies = [
  "bytesize",
  "clap 4.0.26",
  "core-payments-domain-runtime",
+ "cross-domain-message-gossip",
  "dirs",
  "domain-runtime-primitives",
  "domain-service",
@@ -9853,6 +9867,7 @@ dependencies = [
  "sc-subspace-chain-specs",
  "sc-telemetry",
  "sc-tracing",
+ "sc-utils",
  "serde",
  "serde_json",
  "sp-consensus",
@@ -9869,6 +9884,7 @@ dependencies = [
  "substrate-build-script-utils",
  "system-domain-runtime",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -9951,6 +9967,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "backoff",
  "derive_more",
  "domain-runtime-primitives",
  "frame-support",
@@ -9971,7 +9988,6 @@ dependencies = [
  "sc-consensus-subspace-rpc",
  "sc-executor",
  "sc-network",
- "sc-piece-cache",
  "sc-rpc",
  "sc-rpc-api",
  "sc-rpc-spec-v2",
@@ -9996,6 +10012,7 @@ dependencies = [
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
+ "subspace-archiving",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-networking",
@@ -10003,6 +10020,7 @@ dependencies = [
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -10039,6 +10057,7 @@ dependencies = [
  "subspace-service",
  "subspace-solving",
  "subspace-test-runtime",
+ "tokio",
  "zeroize",
 ]
 
@@ -10414,6 +10433,7 @@ dependencies = [
  "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
+ "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",

@@ -16,6 +16,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::plotting::plot_sector;
 use subspace_farmer_components::FarmerProtocolInfo;
+use tokio::sync::Semaphore;
 use utils::BenchPieceReceiver;
 
 mod utils;
@@ -54,6 +55,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     };
     let piece_receiver = BenchPieceReceiver::new(piece);
     let piece_receiver_batch_size = 20usize;
+    let piece_receiver_semaphore = Semaphore::new(piece_receiver_batch_size);
 
     let mut group = c.benchmark_group("sector-plotting");
     group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE));
@@ -69,12 +71,12 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&sector_codec),
                 black_box(io::sink()),
                 black_box(io::sink()),
-                black_box(piece_receiver_batch_size),
+                black_box(&piece_receiver_semaphore),
             ))
             .unwrap();
         })
     });
-    let piece_receiver_batch_size = 20usize;
+
     let thread_count = current_num_threads() as u64;
     group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE * thread_count));
     group.bench_function("no-writes-multi-thread", |b| {
@@ -93,7 +95,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         black_box(&sector_codec),
                         black_box(io::sink()),
                         black_box(io::sink()),
-                        black_box(piece_receiver_batch_size),
+                        black_box(&piece_receiver_semaphore),
                     ))
                     .unwrap();
                 });

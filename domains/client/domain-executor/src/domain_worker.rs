@@ -44,7 +44,7 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
             on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
                 .await
         {
-            tracing::error!(?error, "Failed to submit transaction bundle");
+            tracing::error!(?error, "Failed to submit bundle");
             break;
         }
     }
@@ -239,10 +239,10 @@ where
     Ok(())
 }
 
-/// Apply the transaction bundles for given primary block as follows:
+/// Apply the domain bundles for given primary block as follows:
 ///
-/// 1. Extract the transaction bundles from the block.
-/// 2. Pass the bundles to secondary node and do the computation there.
+/// 1. Extract the bundles from the block given the `domain_id`.
+/// 2. Pass the bundles to the respective domain bundle processor and do the computation there.
 async fn process_primary_block<Block, PBlock, PClient, ProcessorFn>(
     domain_id: DomainId,
     primary_chain_client: &PClient,

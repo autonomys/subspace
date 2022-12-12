@@ -544,8 +544,8 @@ mod pallet {
         /// Invalid core domain bundle solution.
         BadBundleElectionSolution,
 
-        /// Cannot verify the core domain state root.
-        StateRootUnverifiable,
+        /// State root of a core domain block is missing.
+        StateRootNotFound,
 
         /// Invalid core domain state root.
         BadStateRoot,
@@ -555,6 +555,9 @@ mod pallet {
 
         /// A missing core domain parent receipt.
         MissingParentReceipt,
+
+        /// Core domain receipt is too far in the future.
+        ReceiptTooFarInFuture,
     }
 
     #[pallet::event]
@@ -777,17 +780,24 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
 
-        let mut best_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        let head_receipt_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
+
+        let mut new_best_number = head_receipt_number;
         for receipt in &signed_opaque_bundle.bundle.receipts {
             // Non-best receipt
-            if receipt.primary_number <= best_number {
+            if receipt.primary_number <= new_best_number {
                 continue;
             // New nest receipt.
-            } else if receipt.primary_number == best_number + One::one() {
-                best_number += One::one();
+            } else if receipt.primary_number == new_best_number + One::one() {
+                new_best_number += One::one();
             // Missing receipt.
             } else {
                 return Err(Error::<T>::MissingParentReceipt);
+            }
+
+            if receipt.primary_number > max_allowed {
+                return Err(Error::<T>::ReceiptTooFarInFuture);
             }
         }
 
@@ -809,7 +819,21 @@ impl<T: Config> Pallet<T> {
 
         let core_block_number = T::BlockNumber::from(*core_block_number);
 
-        if !core_block_number.is_zero() {
+        // Considering this senario, a core domain stalls at block 1 for a long time and then
+        // resumes at block 1000, assuming `MaximumReceiptDrift` is 128 and the receipt of
+        // block 1 had been submitted, the range of receipts in the new bundle created at
+        // block 1000 would be (1, 1+128] , thus the state root corresponding to block 1000,i.e.,
+        // `core_state_root`, can not be verified, in which case the `core_state_root`
+        // verification will be skipped.
+        //
+        // We can not simply remove the `MaximumReceiptDrift` constraint as it's unwise to
+        // fill in an unlimited number of missing receipts in one single bundle when the
+        // domain resumes because the computation resource per block is limited anyway.
+        //
+        // This edge case does not impact the security due to the fraud-proof mechanism.
+        let state_root_verifiable = core_block_number <= new_best_number;
+
+        if !core_block_number.is_zero() && state_root_verifiable {
             let maybe_state_root =
                 signed_opaque_bundle
                     .bundle
@@ -830,7 +854,7 @@ impl<T: Config> Pallet<T> {
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
                 None => StateRoots::<T>::get((domain_id, core_block_number, core_block_hash))
-                    .ok_or(Error::<T>::StateRootUnverifiable)?,
+                    .ok_or(Error::<T>::StateRootNotFound)?,
             };
 
             if expected_state_root != *core_state_root {
