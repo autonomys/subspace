@@ -302,6 +302,11 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+}
+
+impl pallet_receipts::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type CoreDomainTracker = DomainTracker;
@@ -369,6 +374,7 @@ construct_runtime!(
         // Must be after Balances pallet so that its genesis is built after the Balances genesis is
         // built.
         ExecutorRegistry: pallet_executor_registry,
+        Receipts: pallet_receipts,
         DomainRegistry: pallet_domain_registry,
         DomainTracker: pallet_domain_tracker,
         Messenger: pallet_messenger,
