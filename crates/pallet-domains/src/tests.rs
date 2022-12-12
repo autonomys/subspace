@@ -428,6 +428,7 @@ fn submit_fraud_proof_should_work() {
         .unzip();
 
     let dummy_proof = FraudProof {
+        domain_id: DomainId::SYSTEM,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: 99,
         parent_hash: block_hashes[98],

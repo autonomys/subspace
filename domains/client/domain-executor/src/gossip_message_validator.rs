@@ -8,7 +8,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{ExecutorApi, ExecutorPublicKey};
+use sp_domains::{DomainId, ExecutorApi, ExecutorPublicKey};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use std::sync::Arc;
@@ -155,6 +155,7 @@ where
         signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
+        domain_id: DomainId,
     ) -> Result<Option<FraudProof>, GossipMessageError> {
         let primary_number = to_number_primitive(execution_receipt.primary_number);
 
@@ -198,6 +199,7 @@ where
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
             let fraud_proof = self.fraud_proof_generator.generate_proof(
+                domain_id,
                 trace_mismatch_index,
                 &local_receipt,
                 signed_bundle_hash,

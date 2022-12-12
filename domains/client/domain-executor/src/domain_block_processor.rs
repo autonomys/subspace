@@ -489,7 +489,12 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
+                .generate_proof(
+                    self.domain_id,
+                    trace_mismatch_index,
+                    &local_receipt,
+                    bad_signed_bundle_hash,
+                )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to generate fraud proof: {err}"
