@@ -25,6 +25,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::pin::Pin;
+use std::sync::atomic::Ordering;
 use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
@@ -293,8 +294,17 @@ where
                 endpoint,
                 ..
             } => {
+                let shared = match self.shared_weak.upgrade() {
+                    Some(shared) => shared,
+                    None => {
+                        return;
+                    }
+                };
+
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
                 debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
+
+                shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
 
                 let (in_connections_number, out_connections_number) = {
                     let network_info = self.swarm.network_info();
@@ -346,7 +356,15 @@ where
                 num_established,
                 ..
             } => {
+                let shared = match self.shared_weak.upgrade() {
+                    Some(shared) => shared,
+                    None => {
+                        return;
+                    }
+                };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
+
+                shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
                 DialError::Transport(ref addresses) => {
