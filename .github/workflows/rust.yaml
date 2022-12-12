@@ -125,6 +125,11 @@ jobs:
           - ubuntu-22.04
           - macos-12
           - windows-2022
+        run-macos: 
+          - ${{ inputs.test-macos == true || github.ref == 'refs/heads/main' }}
+        exclude: # excludes macos-12 from the matrices if `run-macos` is false
+          - run-macos: false
+            os: macos-12
 
     runs-on: ${{ matrix.os }}
 
@@ -154,4 +159,3 @@ jobs:
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: test
-        if: runner.os != 'macOS' || inputs.test-macos == true || github.ref == 'refs/heads/main'
