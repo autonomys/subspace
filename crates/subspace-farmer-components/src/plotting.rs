@@ -13,7 +13,6 @@ use subspace_core_primitives::{
     Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
-use tokio::sync::Semaphore;
 use tracing::{debug, info};
 
 #[async_trait]
@@ -84,7 +83,6 @@ pub async fn plot_sector<PR, S, SM>(
     sector_codec: &SectorCodec,
     mut sector_output: S,
     mut sector_metadata_output: SM,
-    semaphore: &Semaphore,
 ) -> Result<PlottedSector, PlottingError>
 where
     PR: PieceReceiver,
@@ -120,7 +118,6 @@ where
         piece_receiver,
         &piece_indexes,
         cancelled,
-        semaphore,
     )
     .await?;
 
@@ -183,17 +180,11 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     piece_receiver: &PR,
     piece_indexes: &[PieceIndex],
     cancelled: &AtomicBool,
-    semaphore: &Semaphore,
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| {
             Box::pin(async {
-                let _permit = semaphore
-                    .acquire()
-                    .await
-                    .expect("Should be valid on non-closed semaphore");
-
                 let piece_result = match check_cancellation(cancelled, sector_index) {
                     Ok(()) => piece_receiver.get_piece(*piece_index).await,
                     Err(error) => Err(error.into()),

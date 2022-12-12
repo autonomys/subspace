@@ -262,7 +262,6 @@ where
         sector_codec,
         Cursor::new(sector.as_mut_slice()),
         Cursor::new(sector_metadata.as_mut_slice()),
-        &tokio::sync::Semaphore::new(tokio::sync::Semaphore::MAX_PERMITS),
     )
     .await
     .expect("Plotting one sector in memory must not fail");

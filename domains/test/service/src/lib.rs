@@ -135,7 +135,6 @@ async fn run_executor(
                     reserved_peers: vec![],
                     keypair: identity::Keypair::generate_ed25519(),
                     allow_non_global_addresses_in_dht: true,
-                    piece_publisher_batch_size: 10,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
             },
