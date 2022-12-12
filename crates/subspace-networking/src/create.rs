@@ -26,7 +26,7 @@ use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
-use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
+use libp2p::yamux::YamuxConfig;
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -149,9 +149,6 @@ impl Config {
             .set_replication_interval(None);
 
         let mut yamux_config = YamuxConfig::default();
-        // Enable proper flow-control: window updates are only sent when buffered data has been
-        // consumed.
-        yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
 
         let gossipsub = GossipsubConfigBuilder::default()
             .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
