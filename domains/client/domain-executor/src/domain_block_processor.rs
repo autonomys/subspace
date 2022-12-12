@@ -420,7 +420,7 @@ where
         let fraud_proofs = self
             .primary_chain_client
             .runtime_api()
-            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
+            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics, self.domain_id)?;
 
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()

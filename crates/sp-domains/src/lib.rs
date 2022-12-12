@@ -398,7 +398,7 @@ sp_api::decl_runtime_apis! {
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
+        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>, domain_id: DomainId,) -> Vec<FraudProof>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;

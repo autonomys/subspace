@@ -20,7 +20,7 @@ use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::{CacheKeyId, Error as ConsensusError};
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::collections::HashMap;
@@ -93,7 +93,7 @@ where
                 let fraud_proofs = self
                     .client
                     .runtime_api()
-                    .extract_fraud_proofs(&parent_block_id, extrinsics.clone())
+                    .extract_fraud_proofs(&parent_block_id, extrinsics.clone(), DomainId::SYSTEM)
                     .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
                 for fraud_proof in fraud_proofs {
