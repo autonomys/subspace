@@ -54,7 +54,7 @@ impl PieceSectorPublisher {
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         let mut pieces_receiving_futures = piece_indexes
             .iter()
-            .map(|piece_index| Box::pin(self.publish_single_piece_with_backoff(*piece_index)))
+            .map(|piece_index| self.publish_single_piece_with_backoff(*piece_index))
             .collect::<FuturesUnordered<_>>();
 
         while pieces_receiving_futures.next().await.is_some() {

@@ -183,14 +183,12 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
-        .map(|piece_index| {
-            Box::pin(async {
-                let piece_result = match check_cancellation(cancelled, sector_index) {
-                    Ok(()) => piece_receiver.get_piece(*piece_index).await,
-                    Err(error) => Err(error.into()),
-                };
-                (*piece_index, piece_result)
-            })
+        .map(|piece_index| async {
+            let piece_result = match check_cancellation(cancelled, sector_index) {
+                Ok(()) => piece_receiver.get_piece(*piece_index).await,
+                Err(error) => Err(error.into()),
+            };
+            (*piece_index, piece_result)
         })
         .collect::<FuturesOrdered<_>>();
 

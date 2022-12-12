@@ -229,9 +229,7 @@ pub(crate) async fn farm_multi_disk(
 
     futures::select!(
         // Signal future
-        _ = Box::pin(async move {
-            signal.await;
-        }).fuse() => {},
+        _ = signal.fuse() => {},
 
         // Plotting future
         result = Box::pin(async move {
@@ -246,11 +244,9 @@ pub(crate) async fn farm_multi_disk(
         },
 
         // Node runner future
-        _ = Box::pin(async move {
-            node_runner.run().await;
-
+        _ = node_runner.run().fuse() => {
             info!("Node runner exited.")
-        }).fuse() => {},
+        },
     );
 
     anyhow::Ok(())

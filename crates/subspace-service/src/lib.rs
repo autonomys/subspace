@@ -506,12 +506,7 @@ where
     task_manager.spawn_essential_handle().spawn_essential(
         "archiver",
         Some("subspace-networking"),
-        Box::pin(
-            async move {
-                dsn_archiving_fut.await;
-            }
-            .in_current_span(),
-        ),
+        Box::pin(dsn_archiving_fut.in_current_span()),
     );
 
     let dsn_bootstrap_nodes = {
