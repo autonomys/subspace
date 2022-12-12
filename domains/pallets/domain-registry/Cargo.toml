@@ -21,7 +21,6 @@ serde = { version = "1.0.147", optional = true }
 sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-domain-digests = { version = "0.1.0", path = "../../primitives/digests", default-features = false }
-sp-domain-tracker = { version = "0.1.0", path = "../../primitives/domain-tracker", default-features = false }
 sp-executor-registry = { version = "0.1.0", path = "../../primitives/executor-registry", default-features = false }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
 sp-std = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
@@ -45,7 +44,6 @@ std = [
 	"sp-core/std",
 	"sp-domains/std",
 	"sp-domain-digests/std",
-	"sp-domain-tracker/std",
 	"sp-executor-registry/std",
 	"sp-runtime/std",
 	"sp-std/std",

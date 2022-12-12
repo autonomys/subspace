@@ -582,7 +582,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domain_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
+    impl sp_domains::state_root_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
         fn storage_key_for_core_domain_state_root(
             domain_id: DomainId,
             block_number: BlockNumber,

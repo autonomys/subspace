@@ -11,7 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
-use sp_domain_tracker::StateRootUpdate;
+use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;

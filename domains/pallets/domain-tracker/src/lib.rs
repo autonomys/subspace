@@ -36,7 +36,7 @@ mod pallet {
     use frame_system::pallet_prelude::BlockNumberFor;
     use sp_core::storage::StorageKey;
     use sp_domain_digests::AsPredigest;
-    use sp_domain_tracker::CoreDomainTracker;
+    use sp_domains::state_root_tracker::CoreDomainTracker;
     use sp_domains::DomainId;
     use sp_messenger::DomainTracker;
     use sp_runtime::traits::{CheckedAdd, CheckedSub, One};

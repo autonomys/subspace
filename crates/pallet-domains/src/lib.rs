@@ -198,33 +198,7 @@ mod pallet {
 
             // Only process the system domain receipts.
             if domain_id.is_system() {
-                let oldest_receipt_number = OldestReceiptNumber::<T>::get();
-                let (_, mut best_number) = <ReceiptHead<T>>::get();
-
-                for receipt in &signed_opaque_bundle.bundle.receipts {
-                    let primary_number = receipt.primary_number;
-
-                    // Ignore the receipt if it has already been pruned.
-                    if primary_number < oldest_receipt_number {
-                        continue;
-                    }
-
-                    if primary_number <= best_number {
-                        // Either increase the vote for a known receipt or add a fork receipt at this height.
-                        Self::apply_non_new_best_receipt(domain_id, receipt);
-                    } else if primary_number == best_number + One::one() {
-                        Self::apply_new_best_receipt(domain_id, receipt);
-                        best_number += One::one();
-                    } else {
-                        // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
-                        //
-                        // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                        return Err(Error::<T>::Bundle(BundleError::Receipt(
-                            ExecutionReceiptError::MissingParent,
-                        ))
-                        .into());
-                    }
-                }
+                Self::track_receipts(domain_id, &signed_opaque_bundle.bundle.receipts)?;
             }
 
             Self::deposit_event(Event::BundleStored {
@@ -249,21 +223,7 @@ mod pallet {
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id.is_system() {
-                // Revert the execution chain.
-                let (_, mut to_remove) = ReceiptHead::<T>::get();
-
-                let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
-                let new_best_hash = BlockHash::<T>::get(new_best_number);
-
-                ReceiptHead::<T>::put((new_best_hash, new_best_number));
-
-                while to_remove > new_best_number {
-                    let block_hash = BlockHash::<T>::get(to_remove);
-                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                        Receipts::<T>::remove(receipt_hash);
-                    }
-                    to_remove -= One::one();
-                }
+                Self::process_fraud_proof(fraud_proof);
             }
 
             // TODO: slash the executor accordingly.
@@ -792,6 +752,74 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    /// Remove the expired receipts once the receipts cache is full.
+    fn remove_expired_receipts(primary_number: T::BlockNumber) {
+        if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
+            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
+                if let Some(block_hash) = maybe_block_hash.take() {
+                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                        Receipts::<T>::remove(receipt_hash);
+                    }
+                }
+            });
+            OldestReceiptNumber::<T>::put(to_prune + One::one());
+            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
+        }
+    }
+
+    /// Track the execution receipts for the domain
+    pub fn track_receipts(
+        domain_id: DomainId,
+        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+    ) -> Result<(), Error<T>> {
+        let oldest_receipt_number = OldestReceiptNumber::<T>::get();
+        let (_, mut best_number) = <ReceiptHead<T>>::get();
+
+        for receipt in receipts {
+            let primary_number = receipt.primary_number;
+
+            // Ignore the receipt if it has already been pruned.
+            if primary_number < oldest_receipt_number {
+                continue;
+            }
+
+            if primary_number <= best_number {
+                // Either increase the vote for a known receipt or add a fork receipt at this height.
+                Self::apply_non_new_best_receipt(domain_id, receipt);
+            } else if primary_number == best_number + One::one() {
+                Self::apply_new_best_receipt(domain_id, receipt);
+                Self::remove_expired_receipts(primary_number);
+                best_number += One::one();
+            } else {
+                // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
+                //
+                // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
+                return Err(Error::<T>::Bundle(BundleError::Receipt(
+                    ExecutionReceiptError::MissingParent,
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn process_fraud_proof(fraud_proof: FraudProof) {
+        // Revert the execution chain.
+        let (_, mut to_remove) = ReceiptHead::<T>::get();
+
+        let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
+        let new_best_hash = BlockHash::<T>::get(new_best_number);
+
+        ReceiptHead::<T>::put((new_best_hash, new_best_number));
+
+        while to_remove > new_best_number {
+            let block_hash = BlockHash::<T>::get(to_remove);
+            for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                Receipts::<T>::remove(receipt_hash);
+            }
+            to_remove -= One::one();
+        }
+    }
+
     fn apply_new_best_receipt(
         domain_id: DomainId,
         execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -814,19 +842,6 @@ impl<T: Config> Pallet<T> {
                 .expect("There are at least 2 elements in trace after the genesis block; qed");
 
             <StateRoots<T>>::insert(primary_number, execution_receipt.domain_hash, state_root);
-        }
-
-        // Remove the expired receipts once the receipts cache is full.
-        if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
-                if let Some(block_hash) = maybe_block_hash.take() {
-                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                        Receipts::<T>::remove(receipt_hash);
-                    }
-                }
-            });
-            OldestReceiptNumber::<T>::put(to_prune + One::one());
-            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
         }
 
         Self::deposit_event(Event::NewSystemDomainReceipt {

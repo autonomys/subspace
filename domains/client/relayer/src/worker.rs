@@ -4,7 +4,7 @@ use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
-use sp_domain_tracker::DomainTrackerApi;
+use sp_domains::state_root_tracker::DomainTrackerApi;
 use sp_messenger::RelayerApi;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
