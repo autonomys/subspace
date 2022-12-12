@@ -33,6 +33,7 @@ use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::{fs, io};
 use subspace_networking::libp2p::Multiaddr;
 
@@ -203,6 +204,11 @@ pub struct Cli {
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,
+
+    /// Max number of segments that can be published concurrently, impacts RAM usage and network
+    /// bandwidth.
+    #[arg(long, default_value = "10")]
+    pub segment_publish_concurrency: NonZeroUsize,
 
     /// Secondary chain arguments
     ///

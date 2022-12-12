@@ -10,7 +10,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueEnum, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroUsize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::{PublicKey, PLOT_SECTOR_SIZE};
@@ -60,11 +60,14 @@ struct FarmingArgs {
     #[clap(flatten)]
     dsn: DsnArgs,
     /// Defines size for the pieces batch of the piece receiving process.
-    #[arg(long, default_value_t = 12)]
-    piece_receiver_batch_size: usize,
+    #[arg(long, default_value = "12")]
+    piece_receiver_batch_size: NonZeroUsize,
     /// Defines size for the pieces batch of the piece publishing process.
-    #[arg(long, default_value_t = 12)]
-    piece_publisher_batch_size: usize,
+    #[arg(long, default_value = "12")]
+    piece_publisher_batch_size: NonZeroUsize,
+    /// Number of plots that can be plotted concurrently, impacts RAM usage.
+    #[arg(long, default_value = "10")]
+    max_concurrent_plots: NonZeroUsize,
 }
 
 /// Arguments for DSN
@@ -296,9 +299,7 @@ async fn main() -> Result<()> {
                 command.farm
             };
 
-            if farming_args.piece_publisher_batch_size == 0
-                || farming_args.piece_publisher_batch_size > MAX_PIECE_PUBLISHER_BATCH_SIZE
-            {
+            if farming_args.piece_publisher_batch_size.get() > MAX_PIECE_PUBLISHER_BATCH_SIZE {
                 return Err(anyhow::anyhow!(
                     "Incorrect piece publisher batch size: {}. Should be 1-{}",
                     farming_args.piece_publisher_batch_size,
@@ -306,9 +307,7 @@ async fn main() -> Result<()> {
                 ));
             }
 
-            if farming_args.piece_receiver_batch_size == 0
-                || farming_args.piece_receiver_batch_size > MAX_PIECE_RECEIVER_BATCH_SIZE
-            {
+            if farming_args.piece_receiver_batch_size.get() > MAX_PIECE_RECEIVER_BATCH_SIZE {
                 return Err(anyhow::anyhow!(
                     "Incorrect piece receiver batch size: {}. Should be 1-{}",
                     farming_args.piece_receiver_batch_size,

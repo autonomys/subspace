@@ -49,5 +49,5 @@ subspace-test-client = { version = "0.1.0", path = "../../../test/subspace-test-
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-test-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
-tokio = { version = "1.21.2", features = ["macros"] }
+tokio = { version = "1.23.0", features = ["macros"] }
 tracing = "0.1.37"

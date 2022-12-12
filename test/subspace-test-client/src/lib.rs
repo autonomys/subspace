@@ -251,7 +251,6 @@ where
         // TODO: This constant should come from the chain itself
         sector_expiration: 100,
     };
-    let piece_receiver_batch_size = 20usize;
 
     plot_sector(
         &public_key,
@@ -263,7 +262,7 @@ where
         sector_codec,
         Cursor::new(sector.as_mut_slice()),
         Cursor::new(sector_metadata.as_mut_slice()),
-        &tokio::sync::Semaphore::new(piece_receiver_batch_size),
+        &tokio::sync::Semaphore::new(tokio::sync::Semaphore::MAX_PERMITS),
     )
     .await
     .expect("Plotting one sector in memory must not fail");

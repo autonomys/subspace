@@ -37,6 +37,7 @@ use sp_keyring::Sr25519Keyring;
 use sp_runtime::codec::Encode;
 use sp_runtime::traits::IdentifyAccount;
 use sp_runtime::{generic, MultiSigner};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block;
@@ -202,6 +203,7 @@ pub async fn run_validator_node(
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
             },
+            segment_publish_concurrency: NonZeroUsize::new(10).unwrap(),
         };
 
         let partial_components = subspace_service::new_partial::<RuntimeApi, TestExecutorDispatch>(
