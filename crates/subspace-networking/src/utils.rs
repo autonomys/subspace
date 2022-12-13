@@ -98,32 +98,38 @@ pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddre
         .collect()
 }
 
-/// Semaphore like implementation that allows both shrinking and expanding
-/// the max permits.
+// Semaphore like implementation that allows both shrinking and expanding
+// the max permits.
 #[derive(Clone)]
-pub(crate) struct ResizableSemaphore {
-    state: Arc<SemState>,
-}
+pub(crate) struct ResizableSemaphore(Arc<SemShared>);
 
-/// The semaphore permit.
+// The permit.
 #[derive(Clone)]
-pub(crate) struct ResizableSemaphorePermit {
-    state: Arc<SemState>,
-}
+pub(crate) struct ResizableSemaphorePermit(Arc<SemShared>);
 
-/// The state shared between the semaphore and the outstanding permits.
-struct SemState {
-    /// The tuple holds (current usage, current max capacity)
-    current: Mutex<(usize, usize)>,
+// The state shared between the semaphore and the outstanding permits.
+struct SemShared {
+    // The tuple holds (current usage, current max capacity)
+    current: Mutex<SemState>,
 
-    /// To signal waiters for permits to be available.
+    // To signal waiters for permits to be available
     notify: Notify,
 }
 
-impl SemState {
+// Current state.
+#[derive(Debug)]
+struct SemState {
+    // The current capacity
+    capacity: usize,
+
+    // The current outstanding permits
+    usage: usize,
+}
+
+impl SemShared {
     fn new(capacity: usize) -> Self {
         Self {
-            current: Mutex::new((0, capacity)),
+            current: Mutex::new(SemState { capacity, usage: 0 }),
             notify: Notify::new(),
         }
     }
@@ -131,27 +137,33 @@ impl SemState {
     // Allocates a permit if available.
     // Returns true if a permit was allocated, false otherwise
     async fn alloc_one(&self) -> bool {
-        let mut current = self.current.lock().await; // (usage, capacity)
-        if current.0 < current.1 {
-            current.0 += 1;
+        let mut current = self.current.lock().await;
+        if current.usage < current.capacity {
+            current.usage += 1;
             true
         } else {
             false
         }
     }
 
-    // Returns a permit to the free pool, notifies waiters if needed.
+    // Returns a permit back to the free pool, notifies waiters if needed.
     async fn free_one(&self) {
         let should_notify = {
-            let mut current = self.current.lock().await; // (usage, capacity)
-            assert!(current.0 > 0);
-            current.0 -= 1;
+            let mut current = self.current.lock().await;
+            if current.usage > 0 {
+                current.usage -= 1;
+            } else {
+                panic!(
+                    "SemShared::free_one(): invalid free, current = {:?}",
+                    current
+                );
+            }
 
             // Notify only if usage fell below the current capacity.
             // For example: if the previous capacity was 100, and current capacity
             // is 50, this will wait for usage to fall below 50 before any waiters
             // are notified.
-            current.0 < current.1
+            current.usage < current.capacity
         };
         if should_notify {
             self.notify.notify_waiters();
@@ -162,54 +174,57 @@ impl SemState {
     // free permits.
     async fn expand(&self, delta: usize) {
         {
-            let mut current = self.current.lock().await; // (usage, capacity)
-            current.1 += delta;
+            let mut current = self.current.lock().await;
+            current.capacity += delta;
         }
         self.notify.notify_waiters();
     }
 
     // Shrinks the max capacity by delta
-    async fn shrink(&self, delta: usize) {
-        let mut current = self.current.lock().await; // (usage, capacity)
-        assert!(current.1 > delta);
-        current.1 -= delta;
+    async fn shrink(&self, delta: usize) -> Result<(), String> {
+        let mut current = self.current.lock().await;
+        if current.capacity > delta {
+            current.capacity -= delta;
+            Ok(())
+        } else {
+            Err(format!(
+                "SemShared::::shrink(): invalid delta = {}, current = {:?}",
+                delta, current
+            ))
+        }
     }
 }
 
 impl ResizableSemaphore {
     pub(crate) fn new(capacity: usize) -> Self {
-        Self {
-            state: Arc::new(SemState::new(capacity)),
-        }
+        Self(Arc::new(SemShared::new(capacity)))
     }
 
-    /// Acquires a permit.
+    // Acquires a permit.
     pub(crate) async fn acquire(&self) -> ResizableSemaphorePermit {
         loop {
-            if self.state.alloc_one().await {
+            if self.0.alloc_one().await {
                 break;
             }
-            self.state.notify.notified().await;
+            self.0.notify.notified().await;
         }
-        ResizableSemaphorePermit {
-            state: self.state.clone(),
-        }
+        ResizableSemaphorePermit(self.0.clone())
     }
 
-    /// Expands the capacity by specified amount.
+    // Expands the capacity by the specified amount.
     pub(crate) async fn expand(&self, delta: usize) {
-        self.state.expand(delta).await;
+        self.0.expand(delta).await;
     }
 
-    /// Shrinks the capacity by specified amount.
-    pub(crate) async fn shrink(&self, delta: usize) {
-        self.state.shrink(delta).await;
+    // Shrinks the capacity by the specified amount.
+    pub(crate) async fn shrink(&self, delta: usize) -> Result<(), String> {
+        self.0.shrink(delta).await
     }
 }
 
 impl Drop for ResizableSemaphorePermit {
     fn drop(&mut self) {
-        let state = self.state.clone();
+        let state = self.0.clone();
         tokio::spawn({
             async move {
                 state.free_one().await;
