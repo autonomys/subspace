@@ -145,8 +145,7 @@ impl ProviderStorage for MemoryProviderStorage {
         entry.and_modify(|e| e.retain(|rec| rec.provider != *provider));
     }
 }
-// TODO: Consider adding a generic lifetime when we upgrade the compiler to 1.65 (GAT feature)
-// fn records(&'_ self) -> Self::RecordsIter<'_>;
+
 pub trait RecordStorage {
     /// Gets a record from the store, given its key.
     fn get(&'_ self, k: &Key) -> Option<Cow<'_, Record>>;
