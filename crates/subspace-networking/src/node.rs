@@ -1,6 +1,7 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_responses;
 use crate::shared::{Command, CreatedSubscription, Shared};
+use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
@@ -16,7 +17,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::sleep;
 use tracing::{error, trace};
 
@@ -25,11 +25,11 @@ struct WrapperWithPermits<T> {
     #[pin]
     inner: T,
     // Just holding onto permit while data structure is not dropped
-    _permit: OwnedSemaphorePermit,
+    _permit: ResizableSemaphorePermit,
 }
 
 impl<T> WrapperWithPermits<T> {
-    fn new(inner: T, permit: OwnedSemaphorePermit) -> Self {
+    fn new(inner: T, permit: ResizableSemaphorePermit) -> Self {
         Self {
             inner,
             _permit: permit,
@@ -57,7 +57,7 @@ pub struct TopicSubscription {
     command_sender: Option<mpsc::Sender<Command>>,
     #[pin]
     receiver: mpsc::UnboundedReceiver<Bytes>,
-    _permit: OwnedSemaphorePermit,
+    _permit: ResizableSemaphorePermit,
 }
 
 impl Stream for TopicSubscription {
@@ -285,15 +285,15 @@ impl From<oneshot::Canceled> for CircuitRelayClientError {
 #[must_use = "Node doesn't do anything if dropped"]
 pub struct Node {
     shared: Arc<Shared>,
-    kademlia_tasks_semaphore: Arc<Semaphore>,
-    regular_tasks_semaphore: Arc<Semaphore>,
+    kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
+    regular_tasks_semaphore: Arc<ResizableSemaphore>,
 }
 
 impl Node {
     pub(crate) fn new(
         shared: Arc<Shared>,
-        kademlia_tasks_semaphore: Arc<Semaphore>,
-        regular_tasks_semaphore: Arc<Semaphore>,
+        kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
+        regular_tasks_semaphore: Arc<ResizableSemaphore>,
     ) -> Self {
         Self {
             shared,
@@ -311,12 +311,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = Vec<u8>>, GetValueError> {
-        let permit = self
-            .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let permit = self.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -334,12 +329,7 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        let permit = self
-            .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let permit = self.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -357,12 +347,7 @@ impl Node {
     }
 
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        let permit = self
-            .regular_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let permit = self.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -389,12 +374,7 @@ impl Node {
     }
 
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        let _permit = self
-            .regular_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let _permit = self.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -419,12 +399,7 @@ impl Node {
     where
         Request: GenericRequest,
     {
-        let _permit = self
-            .regular_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let _permit = self.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,
@@ -445,12 +420,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
-        let permit = self
-            .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let permit = self.kademlia_tasks_semaphore.acquire().await;
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
         let (result_sender, result_receiver) = mpsc::unbounded();
@@ -499,12 +469,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = ()>, AnnounceError> {
-        let permit = self
-            .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let permit = self.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'start_announcing' request.");
@@ -542,12 +507,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        let permit = self
-            .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
+        let permit = self.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'get_providers' request.");

@@ -1,6 +1,9 @@
 use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
+use crate::create::{
+    KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER, REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
+};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
@@ -305,6 +308,14 @@ where
                 debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
                 shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
+                shared
+                    .kademlia_tasks_semaphore
+                    .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    .await;
+                shared
+                    .regular_tasks_semaphore
+                    .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    .await;
 
                 let (in_connections_number, out_connections_number) = {
                     let network_info = self.swarm.network_info();
@@ -365,6 +376,16 @@ where
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
                 shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
+                shared
+                    .kademlia_tasks_semaphore
+                    .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    .await
+                    .expect("Failed to shrink kademlia_tasks_semaphore");
+                shared
+                    .regular_tasks_semaphore
+                    .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    .await
+                    .expect("Failed to shrink regular_tasks_semaphore");
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
                 DialError::Transport(ref addresses) => {

@@ -2,6 +2,7 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::request_responses::RequestFailure;
+use crate::utils::ResizableSemaphore;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -87,16 +88,25 @@ pub(crate) struct Shared {
     pub(crate) connected_peers_count: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
+    pub(crate) kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
+    pub(crate) regular_tasks_semaphore: Arc<ResizableSemaphore>,
 }
 
 impl Shared {
-    pub(crate) fn new(id: PeerId, command_sender: mpsc::Sender<Command>) -> Self {
+    pub(crate) fn new(
+        id: PeerId,
+        command_sender: mpsc::Sender<Command>,
+        kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
+        regular_tasks_semaphore: Arc<ResizableSemaphore>,
+    ) -> Self {
         Self {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
             connected_peers_count: Arc::new(AtomicUsize::new(0)),
             command_sender,
+            kademlia_tasks_semaphore,
+            regular_tasks_semaphore,
         }
     }
 }
