@@ -38,11 +38,11 @@ impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderSt
 
 impl<'a, RS, PS> RecordStore<'a> for CustomRecordStore<RS, PS>
 where
-    RS: RecordStorage<'a>,
-    PS: ProviderStorage<'a>,
+    RS: RecordStorage + 'a,
+    PS: ProviderStorage + 'a,
 {
     type RecordsIter = Empty<Cow<'a, Record>>;
-    type ProvidedIter = PS::ProvidedIter;
+    type ProvidedIter = PS::ProvidedIter<'a>;
 
     fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
         self.record_storage.get(key)
@@ -78,25 +78,27 @@ where
     }
 }
 
-pub trait ProviderStorage<'a> {
-    type ProvidedIter: Iterator<Item = Cow<'a, ProviderRecord>>;
+pub trait ProviderStorage {
+    type ProvidedIter<'a>: Iterator<Item = Cow<'a, ProviderRecord>>
+    where
+        Self: 'a;
 
     /// Adds a provider record to the store.
     ///
     /// A record store only needs to store a number of provider records
     /// for a key corresponding to the replication factor and should
     /// store those records whose providers are closest to the key.
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()>;
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()>;
 
     /// Gets a copy of the stored provider records for the given key.
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord>;
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord>;
 
     /// Gets an iterator over all stored provider records for which the
     /// node owning the store is itself the provider.
-    fn provided(&'a self) -> Self::ProvidedIter;
+    fn provided(&'_ self) -> Self::ProvidedIter<'_>;
 
     /// Removes a provider record from the store.
-    fn remove_provider(&'a mut self, k: &Key, p: &PeerId);
+    fn remove_provider(&mut self, k: &Key, p: &PeerId);
 }
 
 /// Memory based provider records storage.
@@ -106,10 +108,10 @@ pub struct MemoryProviderStorage {
     providers: HashMap<Key, Vec<ProviderRecord>>,
 }
 
-impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
-    type ProvidedIter = vec::IntoIter<Cow<'a, ProviderRecord>>;
+impl ProviderStorage for MemoryProviderStorage {
+    type ProvidedIter<'a> = vec::IntoIter<Cow<'a, ProviderRecord>>;
 
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         trace!("New provider record added: {:?}", record);
 
         let records = self
@@ -122,11 +124,11 @@ impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
         Ok(())
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         self.providers.get(key).unwrap_or(&Vec::default()).clone()
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&'_ self) -> Self::ProvidedIter<'_> {
         self.providers
             .iter()
             .flat_map(|(_, v)| v)
@@ -135,7 +137,7 @@ impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
             .into_iter()
     }
 
-    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
         trace!(?key, ?provider, "Provider record removed.");
 
         let entry = self.providers.entry(key.clone());
@@ -145,9 +147,9 @@ impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
 }
 // TODO: Consider adding a generic lifetime when we upgrade the compiler to 1.65 (GAT feature)
 // fn records(&'_ self) -> Self::RecordsIter<'_>;
-pub trait RecordStorage<'a> {
+pub trait RecordStorage {
     /// Gets a record from the store, given its key.
-    fn get(&'a self, k: &Key) -> Option<Cow<'_, Record>>;
+    fn get(&'_ self, k: &Key) -> Option<Cow<'_, Record>>;
 
     /// Puts a record into the store.
     fn put(&mut self, r: Record) -> store::Result<()>;
@@ -156,11 +158,13 @@ pub trait RecordStorage<'a> {
     fn remove(&mut self, k: &Key);
 }
 
-pub trait EnumerableRecordStorage<'a>: RecordStorage<'a> {
-    type RecordsIter: Iterator<Item = Cow<'a, Record>>;
+pub trait EnumerableRecordStorage: RecordStorage {
+    type RecordsIter<'a>: Iterator<Item = Cow<'a, Record>>
+    where
+        Self: 'a;
 
     /// Gets an iterator over all (value-) records currently stored.
-    fn records(&'a self) -> Self::RecordsIter;
+    fn records(&'_ self) -> Self::RecordsIter<'_>;
 }
 
 pub type ValueGetter = Arc<dyn (Fn(&Multihash) -> Option<Vec<u8>>) + Send + Sync + 'static>;
@@ -178,8 +182,8 @@ impl GetOnlyRecordStorage {
     }
 }
 
-impl<'a> RecordStorage<'a> for GetOnlyRecordStorage {
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+impl RecordStorage for GetOnlyRecordStorage {
+    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
         let multihash_key = Multihash::from_bytes(key.as_ref()).ok()?;
         (self.value_getter)(&multihash_key)
             .map(|value| Record {
@@ -207,8 +211,8 @@ pub struct MemoryRecordStorage {
     records: HashMap<Key, Record>,
 }
 
-impl<'a> RecordStorage<'a> for MemoryRecordStorage {
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+impl RecordStorage for MemoryRecordStorage {
+    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
         self.records.get(key).map(|rec| Cow::Owned(rec.clone()))
     }
 
@@ -231,10 +235,10 @@ impl<'a> RecordStorage<'a> for MemoryRecordStorage {
     }
 }
 
-impl<'a> EnumerableRecordStorage<'a> for MemoryRecordStorage {
-    type RecordsIter = vec::IntoIter<Cow<'a, Record>>;
+impl EnumerableRecordStorage for MemoryRecordStorage {
+    type RecordsIter<'a> = vec::IntoIter<Cow<'a, Record>>;
 
-    fn records(&'a self) -> Self::RecordsIter {
+    fn records(&'_ self) -> Self::RecordsIter<'_> {
         self.records
             .values()
             .map(|rec| Cow::Owned(rec.clone()))
@@ -291,8 +295,8 @@ fn merge_records_in_case_of_sector_multihash(
 #[derive(Clone, Default)]
 pub struct NoRecordStorage;
 
-impl<'a> RecordStorage<'a> for NoRecordStorage {
-    fn get(&'a self, _: &Key) -> Option<Cow<'_, Record>> {
+impl RecordStorage for NoRecordStorage {
+    fn get(&'_ self, _: &Key) -> Option<Cow<'_, Record>> {
         None
     }
 
@@ -307,10 +311,10 @@ impl<'a> RecordStorage<'a> for NoRecordStorage {
     }
 }
 
-impl<'a> EnumerableRecordStorage<'a> for NoRecordStorage {
-    type RecordsIter = Empty<Cow<'a, Record>>;
+impl EnumerableRecordStorage for NoRecordStorage {
+    type RecordsIter<'a> = Empty<Cow<'a, Record>>;
 
-    fn records(&'a self) -> Self::RecordsIter {
+    fn records(&'_ self) -> Self::RecordsIter<'_> {
         iter::empty()
     }
 }
@@ -398,8 +402,8 @@ impl ParityDbRecordStorage {
     }
 }
 
-impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+impl RecordStorage for ParityDbRecordStorage {
+    fn get(&'_ self, key: &Key) -> Option<Cow<'_, Record>> {
         let result = self.db.get(PARITY_DB_COLUMN_NAME, key.borrow());
 
         match result {
@@ -452,10 +456,10 @@ impl<'a> RecordStorage<'a> for ParityDbRecordStorage {
     }
 }
 
-impl<'a> EnumerableRecordStorage<'a> for ParityDbRecordStorage {
-    type RecordsIter = ParityDbRecordIterator<'a>;
+impl EnumerableRecordStorage for ParityDbRecordStorage {
+    type RecordsIter<'a> = ParityDbRecordIterator<'a>;
 
-    fn records(&'a self) -> Self::RecordsIter {
+    fn records(&'_ self) -> Self::RecordsIter<'_> {
         let rec_iter_result: Result<ParityDbRecordIterator, parity_db::Error> = try {
             let btree_iter = self.db.iter(PARITY_DB_COLUMN_NAME)?;
             ParityDbRecordIterator::new(btree_iter)?
@@ -527,10 +531,7 @@ pub struct LimitedSizeRecordStorageWrapper<RC = MemoryRecordStorage> {
     heap: RecordBinaryHeap,
 }
 
-impl<RC> LimitedSizeRecordStorageWrapper<RC>
-where
-    RC: for<'a> EnumerableRecordStorage<'a>,
-{
+impl<RC: EnumerableRecordStorage> LimitedSizeRecordStorageWrapper<RC> {
     pub fn new(record_store: RC, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
@@ -552,11 +553,8 @@ where
     }
 }
 
-impl<'a, RC> RecordStorage<'a> for LimitedSizeRecordStorageWrapper<RC>
-where
-    RC: RecordStorage<'a>,
-{
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+impl<RC: RecordStorage> RecordStorage for LimitedSizeRecordStorageWrapper<RC> {
+    fn get(&'_ self, key: &Key) -> Option<Cow<'_, Record>> {
         self.inner.get(key)
     }
 
@@ -583,13 +581,11 @@ where
     }
 }
 
-impl<'a, RC> EnumerableRecordStorage<'a> for LimitedSizeRecordStorageWrapper<RC>
-where
-    RC: EnumerableRecordStorage<'a>,
-{
-    type RecordsIter = RC::RecordsIter;
+impl<RC: EnumerableRecordStorage> EnumerableRecordStorage for LimitedSizeRecordStorageWrapper<RC> {
+    type RecordsIter<'a> = RC::RecordsIter<'a>
+    where RC: 'a;
 
-    fn records(&'a self) -> Self::RecordsIter {
+    fn records(&'_ self) -> Self::RecordsIter<'_> {
         self.inner.records()
     }
 }
