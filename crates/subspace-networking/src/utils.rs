@@ -200,7 +200,7 @@ impl ResizableSemaphore {
         Self(Arc::new(SemShared::new(capacity)))
     }
 
-    // Acquires a permit.
+    // Acquires a permit. Waits until a permit is available.
     pub(crate) async fn acquire(&self) -> ResizableSemaphorePermit {
         loop {
             if self.0.alloc_one().await {
@@ -209,6 +209,16 @@ impl ResizableSemaphore {
             self.0.notify.notified().await;
         }
         ResizableSemaphorePermit(self.0.clone())
+    }
+
+    // Acquires a permit, does not wait if no permits are available.
+    // Currently used only for testing.
+    pub(crate) async fn try_acquire(&self) -> Option<ResizableSemaphorePermit> {
+        if self.0.alloc_one().await {
+            Some(ResizableSemaphorePermit(self.0.clone()))
+        } else {
+            None
+        }
     }
 
     // Expands the capacity by the specified amount.

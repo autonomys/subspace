@@ -1,4 +1,4 @@
-use super::CollectionBatcher;
+use super::{CollectionBatcher, ResizableSemaphore, ResizableSemaphorePermit};
 use std::num::NonZeroUsize;
 
 #[test]
@@ -59,4 +59,75 @@ fn test_batching() {
     assert_eq!(batcher.next_batch(collection.clone()), vec![6, 7, 1, 2]);
     assert_eq!(batcher.next_batch(collection.clone()), vec![3, 4, 5, 6]);
     assert_eq!(batcher.next_batch(collection), vec![7, 1, 2, 3]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_resizable_semaphore_alloc() {
+    // Capacity = 3. We should be able to alloc only three permits.
+    let sem = ResizableSemaphore::new(3);
+    let (_permit_1, _permit_2, _permit_3) = (
+        sem.try_acquire().await.unwrap(),
+        sem.try_acquire().await.unwrap(),
+        sem.try_acquire().await.unwrap(),
+    );
+    assert!(sem.try_acquire().await.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_resizable_semaphore_expand() {
+    // Initial capacity = 3.
+    let sem = ResizableSemaphore::new(3);
+    let (_permit_1, _permit_2, _permit_3) = (
+        sem.try_acquire().await.unwrap(),
+        sem.try_acquire().await.unwrap(),
+        sem.try_acquire().await.unwrap(),
+    );
+    assert!(sem.try_acquire().await.is_none());
+
+    // Increase capacity of semaphore by 2, we should be able to alloc two more permits.
+    sem.expand(2).await;
+    let (_permit_4, _permit_5) = (
+        sem.try_acquire().await.unwrap(),
+        sem.try_acquire().await.unwrap(),
+    );
+    assert!(sem.try_acquire().await.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_resizable_semaphore_shrink() {
+    async fn free_permit(permit: ResizableSemaphorePermit) {
+        tokio::spawn({
+            async move {
+                std::mem::drop(permit);
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    // Initial capacity = 4, alloc 4 outstanding permits.
+    let sem = ResizableSemaphore::new(4);
+    let permit_1 = sem.try_acquire().await.unwrap();
+    let permit_2 = sem.try_acquire().await.unwrap();
+    let permit_3 = sem.try_acquire().await.unwrap();
+    let _permit_4 = sem.try_acquire().await.unwrap();
+    assert!(sem.try_acquire().await.is_none());
+
+    // Shrink the capacity by 2, new capacity = 2.
+    assert!(sem.shrink(2).await.is_ok());
+
+    // Alloc should fail as outstanding permits(4) >= capacity(2).
+    assert!(sem.try_acquire().await.is_none());
+
+    // Free a permit, alloc should fail as outstanding permits(3) >= capacity(2).
+    free_permit(permit_2).await;
+    assert!(sem.try_acquire().await.is_none());
+
+    // Free another permit, alloc should fail as outstanding permits(2) >= capacity(2).
+    free_permit(permit_3).await;
+    assert!(sem.try_acquire().await.is_none());
+
+    // Free another permit, alloc should succeed as outstanding permits(1) < capacity(2).
+    free_permit(permit_1).await;
+    assert!(sem.try_acquire().await.is_some());
 }
