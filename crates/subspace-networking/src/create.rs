@@ -18,7 +18,7 @@ use libp2p::gossipsub::{
 };
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::identity::Keypair;
-use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
+use libp2p::kad::{KademliaBucketInserts, KademliaConfig, KademliaStoreInserts};
 use libp2p::metrics::Metrics;
 use libp2p::mplex::MplexConfig;
 use libp2p::multiaddr::Protocol;
@@ -29,7 +29,6 @@ use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -50,13 +49,7 @@ const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
 const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
-    Some(Duration::from_secs(3600)); /* 1 hour */
-// Object replication factor. It must consider different peer types with no record stores.
-const KADEMLIA_RECORD_REPLICATION_FACTOR: NonZeroUsize =
-    NonZeroUsize::new(10).expect("Manually set value should be > 0");
-// Defines a replication factor for Kademlia on get_record operation.
-// "Good citizen" supports the network health.
-const KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS: u16 = 3;
+    Some(Duration::from_secs(4 * 3600)); /* 4 hour */
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
@@ -137,12 +130,6 @@ impl Config {
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
             .set_max_packet_size(2 * PIECE_SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
-            .set_replication_factor(KADEMLIA_RECORD_REPLICATION_FACTOR)
-            .set_caching(KademliaCaching::Enabled {
-                max_peers: KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS,
-            })
-            // Ignore any puts
-            // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
             .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Providers' settings
             .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
