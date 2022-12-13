@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE};
+use subspace_networking::libp2p::PeerId;
 use subspace_networking::{RecordStorage, ToMultihash};
 
 #[derive(Default)]
@@ -43,9 +44,10 @@ impl AuxStore for TestAuxStore {
 
 #[test]
 fn basic() {
-    let store = PieceCache::new(
+    let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
         u64::from(PIECES_IN_SEGMENT) * PIECE_SIZE as u64,
+        PeerId::random(),
     );
 
     store
@@ -72,7 +74,7 @@ fn basic() {
 
 #[test]
 fn cache_nothing() {
-    let store = PieceCache::new(Arc::new(TestAuxStore::default()), 0);
+    let mut store = PieceCache::new(Arc::new(TestAuxStore::default()), 0, PeerId::random());
 
     store
         .add_pieces(0, &FlatPieces::new(PIECES_IN_SEGMENT as usize))
@@ -85,7 +87,11 @@ fn cache_nothing() {
 
 #[test]
 fn auto_cleanup() {
-    let store = PieceCache::new(Arc::new(TestAuxStore::default()), PIECE_SIZE as u64);
+    let mut store = PieceCache::new(
+        Arc::new(TestAuxStore::default()),
+        PIECE_SIZE as u64,
+        PeerId::random(),
+    );
 
     // Store the first piece
     store.add_pieces(0, &FlatPieces::new(1)).unwrap();
