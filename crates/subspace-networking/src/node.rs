@@ -21,23 +21,23 @@ use tokio::time::sleep;
 use tracing::{error, trace};
 
 #[pin_project::pin_project]
-struct WrapperWithPermits<T, P> {
+struct WrapperWithPermits<T> {
     #[pin]
     inner: T,
-    // Just holding onto permits while data structure is not dropped
-    _permits: Vec<P>,
+    // Just holding onto permit while data structure is not dropped
+    _permit: OwnedSemaphorePermit,
 }
 
-impl<T, P> WrapperWithPermits<T, P> {
-    fn new(inner: T, permits: Vec<P>) -> Self {
+impl<T> WrapperWithPermits<T> {
+    fn new(inner: T, permit: OwnedSemaphorePermit) -> Self {
         Self {
             inner,
-            _permits: permits,
+            _permit: permit,
         }
     }
 }
 
-impl<T, P> Stream for WrapperWithPermits<T, P>
+impl<T> Stream for WrapperWithPermits<T>
 where
     T: Stream,
 {
@@ -286,19 +286,19 @@ impl From<oneshot::Canceled> for CircuitRelayClientError {
 pub struct Node {
     shared: Arc<Shared>,
     kademlia_tasks_semaphore: Arc<Semaphore>,
-    global_tasks_semaphore: Arc<Semaphore>,
+    regular_tasks_semaphore: Arc<Semaphore>,
 }
 
 impl Node {
     pub(crate) fn new(
         shared: Arc<Shared>,
         kademlia_tasks_semaphore: Arc<Semaphore>,
-        global_tasks_semaphore: Arc<Semaphore>,
+        regular_tasks_semaphore: Arc<Semaphore>,
     ) -> Self {
         Self {
             shared,
             kademlia_tasks_semaphore,
-            global_tasks_semaphore,
+            regular_tasks_semaphore,
         }
     }
 
@@ -311,14 +311,8 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = Vec<u8>>, GetValueError> {
-        let kademlia_permit = self
+        let permit = self
             .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
-        let global_permit = self
-            .global_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -332,10 +326,7 @@ impl Node {
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(
-            result_receiver,
-            vec![kademlia_permit, global_permit],
-        ))
+        Ok(WrapperWithPermits::new(result_receiver, permit))
     }
 
     pub async fn put_value(
@@ -343,14 +334,8 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        let kademlia_permit = self
+        let permit = self
             .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
-        let global_permit = self
-            .global_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -368,15 +353,12 @@ impl Node {
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(
-            result_receiver,
-            vec![kademlia_permit, global_permit],
-        ))
+        Ok(WrapperWithPermits::new(result_receiver, permit))
     }
 
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
         let permit = self
-            .global_tasks_semaphore
+            .regular_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -408,7 +390,7 @@ impl Node {
 
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
         let _permit = self
-            .global_tasks_semaphore
+            .regular_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -438,7 +420,7 @@ impl Node {
         Request: GenericRequest,
     {
         let _permit = self
-            .global_tasks_semaphore
+            .regular_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -463,14 +445,8 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
-        let kademlia_permit = self
+        let permit = self
             .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
-        let global_permit = self
-            .global_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -486,10 +462,7 @@ impl Node {
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(
-            result_receiver,
-            vec![kademlia_permit, global_permit],
-        ))
+        Ok(WrapperWithPermits::new(result_receiver, permit))
     }
 
     // TODO: add timeout
@@ -526,14 +499,8 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = ()>, AnnounceError> {
-        let kademlia_permit = self
+        let permit = self
             .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
-        let global_permit = self
-            .global_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -549,10 +516,7 @@ impl Node {
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(
-            result_receiver,
-            vec![kademlia_permit, global_permit],
-        ))
+        Ok(WrapperWithPermits::new(result_receiver, permit))
     }
 
     /// Stop announcing item by its key. Initiate 'stop_providing' Kademlia operation.
@@ -578,14 +542,8 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        let kademlia_permit = self
+        let permit = self
             .kademlia_tasks_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("We never close a semaphore; qed");
-        let global_permit = self
-            .global_tasks_semaphore
             .clone()
             .acquire_owned()
             .await
@@ -601,10 +559,7 @@ impl Node {
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(
-            result_receiver,
-            vec![kademlia_permit, global_permit],
-        ))
+        Ok(WrapperWithPermits::new(result_receiver, permit))
     }
 
     /// Node's own addresses where it listens for incoming requests.

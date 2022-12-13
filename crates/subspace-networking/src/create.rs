@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::custom_record_store::{
     CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
@@ -72,22 +75,23 @@ const KADEMLIA_BASE_CONCURRENT_TASKS: usize = 30;
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
 const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
-/// Base limit for number of any concurrent tasks.
+/// Base limit for number of any concurrent tasks except Kademlia.
 ///
 /// We configure total number of streams per connection to 256. Here we assume half of them might be
 /// incoming and half outgoing, we also leave a small buffer of streams just in case.
 ///
 /// We restrict this so we don't exceed number of streams for single peer, but this value will be
 /// boosted depending on number of connected peers.
-const GLOBAL_BASE_CONCURRENT_TASKS: usize = 120;
+const REGULAR_BASE_CONCURRENT_TASKS: usize = 120 - KADEMLIA_BASE_CONCURRENT_TASKS;
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-const GLOBAL_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
+const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
 const SEMAPHORE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(5);
 
 async fn maintain_semaphore_permits_capacity(
     semaphore: &Semaphore,
+    interval: Duration,
     connected_peers_count_weak: Weak<AtomicUsize>,
     boost_per_peer: usize,
 ) {
@@ -99,13 +103,13 @@ async fn maintain_semaphore_permits_capacity(
     let mut reserved_permits = Vec::new();
     loop {
         let connected_peers_count = match connected_peers_count_weak.upgrade() {
-            Some(connected_peers_count) => connected_peers_count,
+            Some(connected_peers_count) => connected_peers_count.load(Ordering::Relaxed),
             None => {
                 return;
             }
         };
         let expected_total_permits =
-            base_permits + connected_peers_count.load(Ordering::Relaxed) * boost_per_peer;
+            base_permits + connected_peers_count.saturating_sub(1) * boost_per_peer;
 
         // Release reserves to match expected number of permits if necessary
         while total_permits < expected_total_permits && !reserved_permits.is_empty() {
@@ -133,7 +137,7 @@ async fn maintain_semaphore_permits_capacity(
             total_permits = expected_total_permits;
         }
 
-        tokio::time::sleep(SEMAPHORE_MAINTENANCE_INTERVAL).await;
+        tokio::time::sleep(interval).await;
     }
 }
 
@@ -362,7 +366,7 @@ where
         let shared_weak = Arc::downgrade(&shared);
 
         let kademlia_tasks_semaphore = Arc::new(Semaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS));
-        let global_tasks_semaphore = Arc::new(Semaphore::new(GLOBAL_BASE_CONCURRENT_TASKS));
+        let regular_tasks_semaphore = Arc::new(Semaphore::new(REGULAR_BASE_CONCURRENT_TASKS));
 
         tokio::spawn({
             let kademlia_tasks_semaphore = Arc::clone(&kademlia_tasks_semaphore);
@@ -371,6 +375,7 @@ where
             async move {
                 maintain_semaphore_permits_capacity(
                     &kademlia_tasks_semaphore,
+                    SEMAPHORE_MAINTENANCE_INTERVAL,
                     connected_peers_count_weak,
                     KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
                 )
@@ -378,20 +383,21 @@ where
             }
         });
         tokio::spawn({
-            let global_tasks_semaphore = Arc::clone(&global_tasks_semaphore);
+            let regular_tasks_semaphore = Arc::clone(&regular_tasks_semaphore);
             let connected_peers_count_weak = Arc::downgrade(&shared.connected_peers_count);
 
             async move {
                 maintain_semaphore_permits_capacity(
-                    &global_tasks_semaphore,
+                    &regular_tasks_semaphore,
+                    SEMAPHORE_MAINTENANCE_INTERVAL,
                     connected_peers_count_weak,
-                    GLOBAL_CONCURRENT_TASKS_BOOST_PER_PEER,
+                    REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
                 )
                 .await;
             }
         });
 
-        let node = Node::new(shared, kademlia_tasks_semaphore, global_tasks_semaphore);
+        let node = Node::new(shared, kademlia_tasks_semaphore, regular_tasks_semaphore);
         let node_runner = NodeRunner::<RecordStore>::new(NodeRunnerConfig::<RecordStore> {
             allow_non_global_addresses_in_dht,
             command_receiver,
