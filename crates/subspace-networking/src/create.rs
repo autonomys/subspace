@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::custom_record_store::{
     CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
@@ -88,6 +91,7 @@ const SEMAPHORE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(5);
 
 async fn maintain_semaphore_permits_capacity(
     semaphore: &Semaphore,
+    interval: Duration,
     connected_peers_count_weak: Weak<AtomicUsize>,
     boost_per_peer: usize,
 ) {
@@ -99,13 +103,13 @@ async fn maintain_semaphore_permits_capacity(
     let mut reserved_permits = Vec::new();
     loop {
         let connected_peers_count = match connected_peers_count_weak.upgrade() {
-            Some(connected_peers_count) => connected_peers_count,
+            Some(connected_peers_count) => connected_peers_count.load(Ordering::Relaxed),
             None => {
                 return;
             }
         };
         let expected_total_permits =
-            base_permits + connected_peers_count.load(Ordering::Relaxed) * boost_per_peer;
+            base_permits + connected_peers_count.saturating_sub(1) * boost_per_peer;
 
         // Release reserves to match expected number of permits if necessary
         while total_permits < expected_total_permits && !reserved_permits.is_empty() {
@@ -133,7 +137,7 @@ async fn maintain_semaphore_permits_capacity(
             total_permits = expected_total_permits;
         }
 
-        tokio::time::sleep(SEMAPHORE_MAINTENANCE_INTERVAL).await;
+        tokio::time::sleep(interval).await;
     }
 }
 
@@ -371,6 +375,7 @@ where
             async move {
                 maintain_semaphore_permits_capacity(
                     &kademlia_tasks_semaphore,
+                    SEMAPHORE_MAINTENANCE_INTERVAL,
                     connected_peers_count_weak,
                     KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
                 )
@@ -384,6 +389,7 @@ where
             async move {
                 maintain_semaphore_permits_capacity(
                     &regular_tasks_semaphore,
+                    SEMAPHORE_MAINTENANCE_INTERVAL,
                     connected_peers_count_weak,
                     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
                 )
