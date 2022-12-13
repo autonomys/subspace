@@ -11,7 +11,6 @@ use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::Sha256Topic;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -85,7 +84,6 @@ pub(crate) struct Shared {
     pub(crate) id: PeerId,
     /// Addresses on which node is listening for incoming requests.
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
-    pub(crate) connected_peers_count: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
     pub(crate) kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
@@ -103,7 +101,6 @@ impl Shared {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
-            connected_peers_count: Arc::new(AtomicUsize::new(0)),
             command_sender,
             kademlia_tasks_semaphore,
             regular_tasks_semaphore,
