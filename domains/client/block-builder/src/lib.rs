@@ -214,18 +214,8 @@ where
                 }
             });
 
-            match res {
-                Err(Error::ApplyExtrinsicFailed(ApplyExtrinsicFailed::Validity(e)))
-                    if e.exhausted_resources() =>
-                {
-                    tracing::debug!(
-                        "Reached block weight limit, skipping the remaining extrinsics at index {index}, total: {}",
-                        self.extrinsics.len()
-                    );
-                    return Ok(());
-                }
-                Err(e) => tracing::debug!("Apply extrinsic failed: {e}"),
-                Ok(()) => {}
+            if let Err(e) = res {
+                tracing::debug!("Apply extrinsic at index {index} failed: {e}");
             }
         }
 
