@@ -41,7 +41,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
-use subspace_networking::Node;
+use subspace_networking::{FixedProviderRecordStorage, Node};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -260,7 +260,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single dis plot
-pub struct SingleDiskPlotOptions<RC> {
+pub struct SingleDiskPlotOptions<RC, FixedStorageProvider> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
     /// How much space in bytes can plot use for plot
@@ -275,6 +275,8 @@ pub struct SingleDiskPlotOptions<RC> {
     pub piece_receiver_semaphore: Arc<tokio::sync::Semaphore>,
     /// Semaphore to limit concurrency of piece publishing process.
     pub piece_publisher_semaphore: Arc<tokio::sync::Semaphore>,
+    /// Provides an access to fixed provider record storage,
+    pub fixed_provider_storage: FixedStorageProvider,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -456,7 +458,9 @@ impl SingleDiskPlot {
     const METADATA_FILE: &'static str = "metadata.bin";
 
     /// Create new single disk plot instance
-    pub fn new<RC>(options: SingleDiskPlotOptions<RC>) -> Result<Self, SingleDiskPlotError>
+    pub fn new<RC, FPRS: FixedProviderRecordStorage + Send + Sync + 'static>(
+        options: SingleDiskPlotOptions<RC, FPRS>,
+    ) -> Result<Self, SingleDiskPlotError>
     where
         RC: RpcClient,
     {
@@ -470,6 +474,7 @@ impl SingleDiskPlot {
             dsn_node,
             piece_publisher_semaphore,
             piece_receiver_semaphore,
+            fixed_provider_storage,
         } = options;
 
         // TODO: Account for plot overhead
@@ -648,7 +653,7 @@ impl SingleDiskPlot {
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
                 let piece_publisher =
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone(), piece_publisher_semaphore);
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone(), piece_publisher_semaphore, fixed_provider_storage);
 
                 move || {
                     let _tokio_handle_guard = handle.enter();

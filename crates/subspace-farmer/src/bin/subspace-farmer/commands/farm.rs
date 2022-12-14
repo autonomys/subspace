@@ -15,8 +15,9 @@ use subspace_farmer::{Identity, NodeRpcClient, RpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
-    ParityDbRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
+    FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, LimitedSizeRecordStorageWrapper,
+    Node, NodeRunner, ParityDbProviderStorage, ParityDbRecordStorage, PieceByHashRequestHandler,
+    PieceByHashResponse, PieceKey,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, trace};
@@ -26,7 +27,7 @@ const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 // Type alias for currently configured Kademlia's custom record store.
 type ConfiguredRecordStore = CustomRecordStore<
     LimitedSizeRecordStorageWrapper<ParityDbRecordStorage>,
-    MemoryProviderStorage,
+    LimitedSizeProviderStorageWrapper<ParityDbProviderStorage>,
 >;
 
 #[derive(Debug, Copy, Clone)]
@@ -79,7 +80,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.piece_publisher_batch_size,
     ));
 
-    let (node, mut node_runner) = {
+    let (node, mut node_runner, fixed_provider_storage) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -127,6 +128,7 @@ pub(crate) async fn farm_multi_disk(
             dsn_node: node.clone(),
             piece_receiver_semaphore: Arc::clone(&piece_receiver_semaphore),
             piece_publisher_semaphore: Arc::clone(&piece_publisher_semaphore),
+            fixed_provider_storage: fixed_provider_storage.clone(),
         })?;
 
         single_disk_plots.push(single_disk_plot);
@@ -270,7 +272,14 @@ async fn configure_dsn(
         reserved_peers,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
-) -> Result<(Node, NodeRunner<ConfiguredRecordStore>), anyhow::Error> {
+) -> Result<
+    (
+        Node,
+        NodeRunner<ConfiguredRecordStore>,
+        impl FixedProviderRecordStorage,
+    ),
+    anyhow::Error,
+> {
     let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
         NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
             .expect("We don't expect an error on manually set value."),
@@ -278,16 +287,24 @@ async fn configure_dsn(
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
     let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
+    let provider_cache_db_path = base_path.join("provider_cache_db").into_boxed_path();
+    let provider_cache_size =
+        record_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
 
     info!(
         ?record_cache_db_path,
         ?record_cache_size,
+        ?provider_cache_db_path,
+        ?provider_cache_size,
         "Record cache DB configured."
     );
 
     let handle = Handle::current();
     let default_config = Config::with_generated_keypair();
     let peer_id = peer_id(&keypair);
+
+    let provider_storage = ParityDbProviderStorage::new(&provider_cache_db_path, peer_id)
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
     let config = Config::<ConfiguredRecordStore> {
         reserved_peers,
@@ -357,13 +374,18 @@ async fn configure_dsn(
                 record_cache_size,
                 peer_id,
             ),
-            MemoryProviderStorage::new(peer_id),
+            LimitedSizeProviderStorageWrapper::new(
+                provider_storage.clone(),
+                provider_cache_size,
+                peer_id,
+            ),
         ),
         ..default_config
     };
 
     create::<ConfiguredRecordStore>(config)
         .await
+        .map(|(node, node_runner)| (node, node_runner, provider_storage))
         .map_err(Into::into)
 }
 

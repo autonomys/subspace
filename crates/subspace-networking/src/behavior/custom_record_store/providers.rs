@@ -21,6 +21,7 @@ const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
 
 const PARITY_DB_ALL_PROVIDERS_COLUMN_NAME: u8 = 0;
 const PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME: u8 = 1;
+const PARITY_DB_FIXED_LOCAL_PROVIDER_COLUMN_NAME: u8 = 2;
 
 /// Defines operations for all known providers.
 pub trait EnumerableProviderStorage<'a> {
@@ -28,6 +29,15 @@ pub trait EnumerableProviderStorage<'a> {
 
     /// Gets an iterator over all provider records currently stored.
     fn known_providers(&'a self) -> Self::ProvidedIter;
+}
+
+/// Defines operation for a storage provider with fixed records.
+pub trait FixedProviderRecordStorage: Clone {
+    /// Returns true if the storage contains a records with given key.
+    fn has_fixed_provider_record(&self, key: &Key) -> bool;
+
+    /// Register key as local fixed provider record.
+    fn register_fixed_local_provider(&self, key: &Key);
 }
 
 /// Memory based provider records storage.
@@ -193,14 +203,22 @@ impl ParityDbProviderStorage {
         let mut options = Options::with_columns(path, 2);
         options.columns = vec![
             ColumnOptions {
+                // all providers
                 btree_index: true,
                 ..Default::default()
             },
             ColumnOptions {
+                // local providers
+                btree_index: true,
+                ..Default::default()
+            },
+            ColumnOptions {
+                // fixed local providers
                 btree_index: true,
                 ..Default::default()
             },
         ];
+
         // We don't use stats
         options.stats = false;
 
@@ -212,7 +230,46 @@ impl ParityDbProviderStorage {
         })
     }
 
-    fn add_provider_to_db(&mut self, key: &Key, rec: ParityDbProviderRecord) {
+    fn load_fixed_provider(&self, key: &Key) -> Option<ProviderRecord> {
+        let result = self
+            .db
+            .get(PARITY_DB_FIXED_LOCAL_PROVIDER_COLUMN_NAME, key.borrow());
+
+        match result {
+            Ok(Some(data)) => {
+                let db_rec_result: Result<ParityDbProviderRecord, _> = data.try_into();
+
+                match db_rec_result {
+                    Ok(db_rec) => {
+                        trace!(?key, "Fixed provider record loaded successfully from DB");
+
+                        Some(db_rec.into())
+                    }
+                    Err(err) => {
+                        debug!(
+                            ?key,
+                            ?err,
+                            "Parity DB fixed provider record deserialization error"
+                        );
+
+                        None
+                    }
+                }
+            }
+            Ok(None) => {
+                trace!(?key, "No Parity DB record for given key");
+
+                None
+            }
+            Err(err) => {
+                debug!(?key, ?err, "Parity DB record storage error");
+
+                None
+            }
+        }
+    }
+
+    fn add_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
         let mut providers = self.load_providers(key).unwrap_or_default();
 
         providers.add_provider(rec);
@@ -220,7 +277,7 @@ impl ParityDbProviderStorage {
         self.save_providers(key, providers);
     }
 
-    fn remove_provider_from_db(&mut self, key: &Key, provider: Vec<u8>) {
+    fn remove_provider_from_db(&self, key: &Key, provider: Vec<u8>) {
         let mut providers = self.load_providers(key).unwrap_or_default();
 
         providers.remove_provider(provider);
@@ -228,7 +285,7 @@ impl ParityDbProviderStorage {
         self.save_providers(key, providers);
     }
 
-    fn add_local_provider_to_db(&mut self, key: &Key, rec: ParityDbProviderRecord) {
+    fn add_local_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
         let key: &[u8] = key.borrow();
 
         let tx = [(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME, key, Some(rec.into()))];
@@ -239,7 +296,7 @@ impl ParityDbProviderStorage {
         }
     }
 
-    fn remove_local_provider_to_db(&mut self, key: &Key) {
+    fn remove_local_provider_to_db(&self, key: &Key) {
         let key: &[u8] = key.borrow();
 
         let tx = [(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME, key, None)];
@@ -250,7 +307,7 @@ impl ParityDbProviderStorage {
         }
     }
 
-    fn save_providers(&mut self, key: &Key, providers: ParityDbProviderCollection) -> bool {
+    fn save_providers(&self, key: &Key, providers: ParityDbProviderCollection) -> bool {
         let key: &[u8] = key.borrow();
 
         let tx = [(
@@ -303,6 +360,38 @@ impl ParityDbProviderStorage {
 
                 None
             }
+        }
+    }
+}
+
+impl FixedProviderRecordStorage for ParityDbProviderStorage {
+    fn has_fixed_provider_record(&self, key: &Key) -> bool {
+        self.load_fixed_provider(key).is_some()
+    }
+
+    fn register_fixed_local_provider(&self, key: &Key) {
+        debug!(?key, "Adding fixed provider record storage (parity db).");
+
+        let provider_record = ProviderRecord {
+            key: key.clone(),
+            provider: self.local_peer_id,
+            expires: None,
+            addresses: Vec::new(),
+        };
+
+        let db_provider: ParityDbProviderRecord = provider_record.into();
+
+        let key: &[u8] = key.borrow();
+
+        let tx = [(
+            PARITY_DB_FIXED_LOCAL_PROVIDER_COLUMN_NAME,
+            key,
+            Some(db_provider.into()),
+        )];
+
+        let result = self.db.commit(tx);
+        if let Err(ref err) = result {
+            debug!(?key, ?err, "Local fixed provider adding error (parity db).");
         }
     }
 }
@@ -582,7 +671,9 @@ impl<RC: for<'a> ProviderStorage<'a> + for<'a> EnumerableProviderStorage<'a>>
     }
 }
 
-impl<'a, RC: ProviderStorage<'a>> ProviderStorage<'a> for LimitedSizeProviderStorageWrapper<RC> {
+impl<'a, RC: ProviderStorage<'a> + FixedProviderRecordStorage> ProviderStorage<'a>
+    for LimitedSizeProviderStorageWrapper<RC>
+{
     type ProvidedIter = impl Iterator<Item = Cow<'a, ProviderRecord>>;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
@@ -590,12 +681,15 @@ impl<'a, RC: ProviderStorage<'a>> ProviderStorage<'a> for LimitedSizeProviderSto
 
         self.inner.add_provider(record)?;
 
-        let evicted_key = self.heap.insert(record_key);
+        // bypass limit check for fixed providers
+        if !self.inner.has_fixed_provider_record(&record_key) {
+            let evicted_key = self.heap.insert(record_key);
 
-        if let Some(key) = evicted_key {
-            trace!(?key, "Record evicted from cache.");
+            if let Some(key) = evicted_key {
+                trace!(?key, "Record evicted from cache.");
 
-            self.inner.remove_provider(&key, &self.peer_id);
+                self.inner.remove_provider(&key, &self.peer_id);
+            }
         }
 
         Ok(())
@@ -612,7 +706,10 @@ impl<'a, RC: ProviderStorage<'a>> ProviderStorage<'a> for LimitedSizeProviderSto
     fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
         self.inner.remove_provider(key, peer_id);
 
-        self.heap.remove(key);
+        // bypass limit check for fixed providers
+        if !self.inner.has_fixed_provider_record(key) {
+            self.heap.remove(key);
+        }
     }
 }
 

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{Node, ToMultihash};
+use subspace_networking::{FixedProviderRecordStorage, Node, ToMultihash};
 use tokio::sync::Semaphore;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -23,22 +23,25 @@ const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 
 // Piece-by-sector DSN publishing helper.
 #[derive(Clone)]
-pub(crate) struct PieceSectorPublisher {
+pub(crate) struct PieceSectorPublisher<FPRS: FixedProviderRecordStorage> {
     dsn_node: Node,
     cancelled: Arc<AtomicBool>,
     semaphore: Arc<Semaphore>,
+    fixed_provider_storage: FPRS,
 }
 
-impl PieceSectorPublisher {
+impl<FPRS: FixedProviderRecordStorage> PieceSectorPublisher<FPRS> {
     pub(crate) fn new(
         dsn_node: Node,
         cancelled: Arc<AtomicBool>,
         semaphore: Arc<Semaphore>,
+        fixed_provider_storage: FPRS,
     ) -> Self {
         Self {
             dsn_node,
             cancelled,
             semaphore,
+            fixed_provider_storage,
         }
     }
 
@@ -57,7 +60,7 @@ impl PieceSectorPublisher {
         &self,
         piece_indexes: Vec<PieceIndex>,
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        let mut pieces_receiving_futures = piece_indexes
+        let mut pieces_publishing_futures = piece_indexes
             .iter()
             .map(|piece_index| {
                 Box::pin(async {
@@ -72,7 +75,7 @@ impl PieceSectorPublisher {
             })
             .collect::<FuturesUnordered<_>>();
 
-        while pieces_receiving_futures.next().await.is_some() {
+        while pieces_publishing_futures.next().await.is_some() {
             self.check_cancellation()?;
         }
 
@@ -123,6 +126,9 @@ impl PieceSectorPublisher {
 
         let key =
             PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
+
+        self.fixed_provider_storage
+            .register_fixed_local_provider(&key.into());
 
         let result = self.dsn_node.start_announcing(key).await;
 
