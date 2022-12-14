@@ -87,6 +87,11 @@ const REGULAR_BASE_CONCURRENT_TASKS: usize = 120 - KADEMLIA_BASE_CONCURRENT_TASK
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
 const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
+/// How many peers should node be connected to before boosting turns on.
+///
+/// 1 means boosting starts with second peer.
+const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
+    NonZeroUsize::new(5).expect("Not zero; qed");
 const SEMAPHORE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(5);
 
 async fn maintain_semaphore_permits_capacity(
@@ -94,6 +99,7 @@ async fn maintain_semaphore_permits_capacity(
     interval: Duration,
     connected_peers_count_weak: Weak<AtomicUsize>,
     boost_per_peer: usize,
+    boost_peers_threshold: NonZeroUsize,
 ) {
     let base_permits = semaphore.available_permits();
     // Total permits technically supported by semaphore
@@ -108,8 +114,8 @@ async fn maintain_semaphore_permits_capacity(
                 return;
             }
         };
-        let expected_total_permits =
-            base_permits + connected_peers_count.saturating_sub(1) * boost_per_peer;
+        let expected_total_permits = base_permits
+            + connected_peers_count.saturating_sub(boost_peers_threshold.get()) * boost_per_peer;
 
         // Release reserves to match expected number of permits if necessary
         while total_permits < expected_total_permits && !reserved_permits.is_empty() {
@@ -378,6 +384,7 @@ where
                     SEMAPHORE_MAINTENANCE_INTERVAL,
                     connected_peers_count_weak,
                     KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
+                    CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD,
                 )
                 .await;
             }
@@ -392,6 +399,7 @@ where
                     SEMAPHORE_MAINTENANCE_INTERVAL,
                     connected_peers_count_weak,
                     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
+                    CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD,
                 )
                 .await;
             }

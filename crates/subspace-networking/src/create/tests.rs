@@ -1,4 +1,5 @@
 use futures::future::{select, Either};
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use tokio::time::sleep;
 async fn maintain_semaphore_permits_capacity() {
     let base_tasks = 2;
     let boost_per_peer = 1;
+    let boost_peers_threshold = NonZeroUsize::new(1).unwrap();
     let interval = Duration::from_micros(1);
     let connected_peers_count = Arc::new(AtomicUsize::new(0));
     let tasks_semaphore = Arc::new(Semaphore::new(base_tasks));
@@ -23,6 +25,7 @@ async fn maintain_semaphore_permits_capacity() {
                 interval,
                 connected_peers_count_weak,
                 boost_per_peer,
+                boost_peers_threshold,
             )
             .await;
         }
