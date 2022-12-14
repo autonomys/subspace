@@ -16,7 +16,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -175,12 +175,6 @@ where
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number = to_number_primitive(primary_number);
-
-        assert_eq!(
-            Into::<NumberFor<Block>>::into(primary_number),
-            parent_number + One::one(),
-            "New secondary best number must be equal to the primary number"
-        );
 
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(
