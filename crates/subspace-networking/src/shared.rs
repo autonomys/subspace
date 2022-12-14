@@ -12,6 +12,7 @@ use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use tokio::sync::OwnedSemaphorePermit;
 
 #[derive(Debug)]
 pub(crate) struct CreatedSubscription {
@@ -26,11 +27,13 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<Vec<u8>>,
+        permit: OwnedSemaphorePermit,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
         result_sender: mpsc::UnboundedSender<()>,
+        permit: OwnedSemaphorePermit,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -48,6 +51,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
+        permit: OwnedSemaphorePermit,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -61,6 +65,7 @@ pub(crate) enum Command {
     StartAnnouncing {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<()>,
+        permit: OwnedSemaphorePermit,
     },
     StopAnnouncing {
         key: Multihash,
@@ -69,6 +74,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
+        permit: OwnedSemaphorePermit,
     },
 }
 

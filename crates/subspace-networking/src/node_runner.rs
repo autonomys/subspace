@@ -28,24 +28,35 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Weak;
 use std::time::Duration;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
 
 enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<Vec<u8>>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: OwnedSemaphorePermit,
     },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: OwnedSemaphorePermit,
     },
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: OwnedSemaphorePermit,
     },
     Announce {
         sender: mpsc::UnboundedSender<()>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: OwnedSemaphorePermit,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: OwnedSemaphorePermit,
     },
 }
 
@@ -448,7 +459,7 @@ where
                 trace!(
                     %local_peer_id,
                     %peer_id,
-                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Adding to the DTH skipped.",
+                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Adding to the DHT skipped.",
                     kademlia
                         .protocol_names()
                         .iter()
@@ -486,7 +497,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::ClosestPeers { sender }) =
+                if let Some(QueryResultSender::ClosestPeers { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -546,7 +557,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::Value { sender }) =
+                if let Some(QueryResultSender::Value { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -600,7 +611,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::Providers { sender }) =
+                if let Some(QueryResultSender::Providers { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -649,7 +660,7 @@ where
                 let mut cancelled = false;
                 trace!("Start providing stats: {:?}", stats);
 
-                if let Some(QueryResultSender::Announce { sender }) =
+                if let Some(QueryResultSender::Announce { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -684,7 +695,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::PutValue { sender }) =
+                if let Some(QueryResultSender::PutValue { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -755,7 +766,11 @@ where
 
     async fn handle_command(&mut self, command: Command) {
         match command {
-            Command::GetValue { key, result_sender } => {
+            Command::GetValue {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let query_id = self
                     .swarm
                     .behaviour_mut()
@@ -766,6 +781,7 @@ where
                     query_id,
                     QueryResultSender::Value {
                         sender: result_sender,
+                        _permit: permit,
                     },
                 );
             }
@@ -773,6 +789,7 @@ where
                 key,
                 value,
                 result_sender,
+                permit,
             } => {
                 let local_peer_id = *self.swarm.local_peer_id();
 
@@ -794,6 +811,7 @@ where
                             query_id,
                             QueryResultSender::PutValue {
                                 sender: result_sender,
+                                _permit: permit,
                             },
                         );
                     }
@@ -886,13 +904,18 @@ where
                         .map(|_message_id| ()),
                 );
             }
-            Command::GetClosestPeers { key, result_sender } => {
+            Command::GetClosestPeers {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let query_id = self.swarm.behaviour_mut().kademlia.get_closest_peers(key);
 
                 self.query_id_receivers.insert(
                     query_id,
                     QueryResultSender::ClosestPeers {
                         sender: result_sender,
+                        _permit: permit,
                     },
                 );
             }
@@ -921,7 +944,11 @@ where
 
                 let _ = result_sender.send(kademlia_connection_initiated);
             }
-            Command::StartAnnouncing { key, result_sender } => {
+            Command::StartAnnouncing {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let res = self
                     .swarm
                     .behaviour_mut()
@@ -934,6 +961,7 @@ where
                             query_id,
                             QueryResultSender::Announce {
                                 sender: result_sender,
+                                _permit: permit,
                             },
                         );
                     }
@@ -950,7 +978,11 @@ where
 
                 let _ = result_sender.send(true);
             }
-            Command::GetProviders { key, result_sender } => {
+            Command::GetProviders {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let query_id = self
                     .swarm
                     .behaviour_mut()
@@ -961,6 +993,7 @@ where
                     query_id,
                     QueryResultSender::Providers {
                         sender: result_sender,
+                        _permit: permit,
                     },
                 );
             }
