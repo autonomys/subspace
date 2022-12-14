@@ -14,7 +14,7 @@ use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent,
-    ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -28,7 +28,10 @@ use std::pin::Pin;
 use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
+
+// Channel size for provider records received from Kademlia.
+const PROVIDER_RECORD_BUFFER_SIZE: usize = 20000;
 
 enum QueryResultSender {
     Value {
@@ -48,11 +51,32 @@ enum QueryResultSender {
     },
 }
 
+/// Perform arbitrary execution for ProviderRecord.
+pub trait ProviderRecordProcessor {
+    fn process_provider_record(&self, record: ProviderRecord);
+}
+
+impl<T: ProviderRecordProcessor> ProviderRecordProcessor for Option<T> {
+    fn process_provider_record(&self, record: ProviderRecord) {
+        if let Some(processor) = self {
+            processor.process_provider_record(record);
+        }
+    }
+}
+
+pub struct DummyRecordProcessor;
+impl ProviderRecordProcessor for DummyRecordProcessor {
+    fn process_provider_record(&self, rec: ProviderRecord) {
+        debug!(key = ?rec.key, "Provider record processor handles.",);
+    }
+}
+
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<RecordStore = CustomRecordStore>
+pub struct NodeRunner<RecordStore = CustomRecordStore, PRP = DummyRecordProcessor>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    PRP: ProviderRecordProcessor,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
@@ -81,12 +105,19 @@ where
     max_established_outgoing_connections: u32,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
+    /// ProviderRecord chanel receiver.
+    provider_records_receiver: mpsc::Receiver<ProviderRecord>,
+    /// ProviderRecord chanel sender.
+    provider_records_sender: mpsc::Sender<ProviderRecord>,
+    /// ProviderRecord processor for records from Kademlia DHT
+    provider_record_processor: Option<PRP>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
+pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore, PRP = DummyRecordProcessor>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    PRP: ProviderRecordProcessor,
 {
     pub allow_non_global_addresses_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
@@ -98,14 +129,16 @@ where
     pub max_established_incoming_connections: u32,
     pub max_established_outgoing_connections: u32,
     pub metrics: Option<Metrics>,
+    pub provider_record_processor: Option<PRP>,
 }
 
-impl<RecordStore> NodeRunner<RecordStore>
+impl<RecordStore, PRP> NodeRunner<RecordStore, PRP>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    PRP: ProviderRecordProcessor + Send + Sync + 'static,
 {
     pub(crate) fn new(
-        NodeRunnerConfig::<RecordStore> {
+        NodeRunnerConfig::<RecordStore, PRP> {
             allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
@@ -116,8 +149,12 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
-        }: NodeRunnerConfig<RecordStore>,
+            provider_record_processor,
+        }: NodeRunnerConfig<RecordStore, PRP>,
     ) -> Self {
+        let (provider_records_sender, provider_records_receiver) =
+            mpsc::channel(PROVIDER_RECORD_BUFFER_SIZE);
+
         Self {
             allow_non_global_addresses_in_dht,
             command_receiver,
@@ -136,6 +173,9 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
+            provider_records_receiver,
+            provider_records_sender,
+            provider_record_processor,
         }
     }
 
@@ -175,6 +215,13 @@ where
 
                     self.peer_dialing_timeout =
                         Box::pin(tokio::time::sleep(Duration::from_secs(3)).fuse());
+                },
+                provider_record = self.provider_records_receiver.next() => {
+                    if let Some(provider_record) = provider_record {
+                        self.provider_record_processor.process_provider_record(provider_record);
+                    } else {
+                        break;
+                    }
                 },
             }
         }
@@ -458,6 +505,11 @@ where
                         .add_provider(record.clone())
                     {
                         error!(?err, "Failed to add provider record: {:?}", record);
+                    }
+
+                    let key = record.key.clone();
+                    if let Err(err) = self.provider_records_sender.try_send(record) {
+                        warn!(?err, ?key, "Failed to add provider record to the channel.");
                     }
                 }
             }

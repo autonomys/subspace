@@ -200,7 +200,7 @@ pub struct ParityDbProviderStorage {
 
 impl ParityDbProviderStorage {
     pub fn new(path: &Path, local_peer_id: PeerId) -> Result<Self, parity_db::Error> {
-        let mut options = Options::with_columns(path, 2);
+        let mut options = Options::with_columns(path, 3);
         options.columns = vec![
             ColumnOptions {
                 // all providers
