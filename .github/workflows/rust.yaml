@@ -125,13 +125,14 @@ jobs:
           - ubuntu-22.04
           - macos-12
           - windows-2022
-        run-macos: 
+        run-macos:
           - ${{ inputs.test-macos == true || github.ref == 'refs/heads/main' }}
         exclude: # excludes macos-12 from the matrices if `run-macos` is false
           - run-macos: false
             os: macos-12
 
     runs-on: ${{ matrix.os }}
+    name: cargo-test (${{ matrix.os }})
 
     steps:
       - name: Checkout
