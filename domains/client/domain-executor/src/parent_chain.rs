@@ -1,5 +1,6 @@
 use crate::utils::to_number_primitive;
 use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
@@ -16,6 +17,11 @@ use system_runtime_primitives::SystemDomainApi;
 pub(crate) trait ParentChainInterface<Hash> {
     fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
+    fn submit_fraud_proof_unsigned(
+        &self,
+        at: Hash,
+        fraud_proof: FraudProof,
+    ) -> Result<(), sp_api::ApiError>;
 }
 
 /// The parent chain of the core domain
@@ -60,6 +66,17 @@ where
             .maximum_receipt_drift(&BlockId::Hash(at))?;
         Ok(to_number_primitive(max_drift))
     }
+
+    fn submit_fraud_proof_unsigned(
+        &self,
+        at: SBlock::Hash,
+        fraud_proof: FraudProof,
+    ) -> Result<(), sp_api::ApiError> {
+        self.client
+            .runtime_api()
+            .submit_fraud_proof_unsigned(&BlockId::Hash(at), fraud_proof)?;
+        Ok(())
+    }
 }
 
 /// The parent chain of the system domain
@@ -100,5 +117,16 @@ where
             .runtime_api()
             .maximum_receipt_drift(&BlockId::Hash(at))?;
         Ok(to_number_primitive(max_drift))
+    }
+
+    fn submit_fraud_proof_unsigned(
+        &self,
+        at: PBlock::Hash,
+        fraud_proof: FraudProof,
+    ) -> Result<(), sp_api::ApiError> {
+        self.client
+            .runtime_api()
+            .submit_fraud_proof_unsigned(&BlockId::Hash(at), fraud_proof)?;
+        Ok(())
     }
 }
