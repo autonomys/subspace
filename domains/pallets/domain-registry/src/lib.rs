@@ -60,6 +60,7 @@ mod pallet {
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domain_digests::AsPredigest;
     use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
@@ -230,9 +231,6 @@ mod pallet {
     >;
 
     /// Map of primary block number to primary block hash for tracking bounded receipts per domain.
-    ///
-    /// NOTE: This storage item is extended on adding a new non-system receipt since each receipt
-    /// is validated to point to a valid primary block on the primary chain.
     ///
     /// The oldest block hash will be pruned once the oldest receipt is pruned. However, if a
     /// core domain stalls, i.e., no receipts are included in the system domain for a long time,
@@ -447,6 +445,25 @@ mod pallet {
         }
     }
 
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            let (primary_number, primary_hash) = <frame_system::Pallet<T>>::digest()
+                .logs
+                .iter()
+                .find_map(|s| s.as_primary_block_info::<T::BlockNumber, T::Hash>())
+                .expect("Primary block info must exist otherwise the receipt verification can not work; qed");
+
+            let mut consumed_weight = Weight::zero();
+            for domain_id in Domains::<T>::iter_keys() {
+                BlockHash::<T>::insert(domain_id, primary_number, primary_hash);
+                consumed_weight += T::DbWeight::get().reads_writes(1, 1);
+            }
+
+            consumed_weight
+        }
+    }
+
     #[cfg(feature = "std")]
     type GenesisDomainInfo<T> = (
         <T as frame_system::Config>::AccountId,
@@ -515,6 +532,8 @@ mod pallet {
         MissingParent,
         /// Core domain receipt is too far in the future.
         TooFarInFuture,
+        /// Core domain receipt points to an unknown primary block.
+        UnknownBlock,
     }
 
     #[pallet::error]
@@ -786,7 +805,13 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
 
-        let head_receipt_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        let domain_id = signed_opaque_bundle.domain_id();
+
+        if !domain_id.is_core() {
+            return Err(Error::<T>::NotCoreDomainBundle);
+        }
+
+        let head_receipt_number = Self::head_receipt_number(domain_id);
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
         let mut new_best_number = head_receipt_number;
@@ -802,6 +827,10 @@ impl<T: Config> Pallet<T> {
                 return Err(Error::<T>::Receipt(ReceiptError::MissingParent));
             }
 
+            if BlockHash::<T>::get(domain_id, receipt.primary_number) != receipt.primary_hash {
+                return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
+            }
+
             if receipt.primary_number > max_allowed {
                 return Err(Error::<T>::Receipt(ReceiptError::TooFarInFuture));
             }
@@ -810,7 +839,6 @@ impl<T: Config> Pallet<T> {
         // The validity of vrf proof itself has been verified on the primary chain, thus only the
         // proof_of_election is necessary to be checked here.
         let ProofOfElection {
-            domain_id,
             vrf_output,
             storage_proof,
             state_root,
@@ -818,10 +846,6 @@ impl<T: Config> Pallet<T> {
             global_challenge,
             ..
         } = &proof_of_election;
-
-        if !domain_id.is_core() {
-            return Err(Error::<T>::NotCoreDomainBundle);
-        }
 
         let core_block_number = T::BlockNumber::from(*core_block_number);
 
@@ -911,7 +935,7 @@ impl<T: Config> Pallet<T> {
         let slot_probability = domain_config.bundle_slot_probability;
 
         verify_bundle_solution_threshold(
-            *domain_id,
+            domain_id,
             *vrf_output,
             stake_weight,
             total_stake_weight,
@@ -1045,10 +1069,6 @@ impl<T: Config> Pallet<T> {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
         let receipt_hash = execution_receipt.hash();
-
-        // (primary_number, primary_hash) has been verified on the primary chain, thus it
-        // can be used directly.
-        <BlockHash<T>>::insert(domain_id, primary_number, primary_hash);
 
         // Apply the new best receipt.
         <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);

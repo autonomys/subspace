@@ -555,14 +555,6 @@ impl<T: Config> Pallet<T> {
                     ));
                 }
             }
-        } else {
-            for receipt in execution_receipts {
-                if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
-                    return Err(TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into(),
-                    ));
-                }
-            }
         }
 
         Ok(())
@@ -642,22 +634,6 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Unsorted);
         }
 
-        for execution_receipt in execution_receipts {
-            // Due to `initialize_block` is skipped while calling the runtime api, the block
-            // hash mapping for last block is unknown to the transaction pool, but this info
-            // is already available in System.
-            let point_to_parent_block = execution_receipt.primary_number
-                == current_block_number - One::one()
-                && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
-
-            if !point_to_parent_block
-                && BlockHash::<T>::get(execution_receipt.primary_number)
-                    != execution_receipt.primary_hash
-            {
-                return Err(ExecutionReceiptError::UnknownBlock);
-            }
-        }
-
         Ok(())
     }
 
@@ -697,6 +673,18 @@ impl<T: Config> Pallet<T> {
 
             for execution_receipt in &bundle.receipts {
                 let primary_number = execution_receipt.primary_number;
+
+                // Due to `initialize_block` is skipped while calling the runtime api, the block
+                // hash mapping for last block is unknown to the transaction pool, but this info
+                // is already available in System.
+                let point_to_parent_block = primary_number == current_block_number - One::one()
+                    && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
+
+                if !point_to_parent_block
+                    && BlockHash::<T>::get(primary_number) != execution_receipt.primary_hash
+                {
+                    return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
+                }
 
                 // Ensure the receipt is not too new.
                 if primary_number == current_block_number || primary_number > max_allowed {

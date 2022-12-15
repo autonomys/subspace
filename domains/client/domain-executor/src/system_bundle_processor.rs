@@ -106,12 +106,18 @@ where
             .client
             .header(BlockId::Hash(parent_hash))?
             .map(|header| {
-                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
-                    number: parent_number,
-                    state_root: *header.state_root(),
-                });
+                let system_domain_state_root =
+                    AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                        number: parent_number,
+                        state_root: *header.state_root(),
+                    });
 
-                Digest { logs: vec![item] }
+                let primary_block_info: sp_runtime::DigestItem =
+                    AsPredigest::primary_block_info((primary_number, primary_hash));
+
+                Digest {
+                    logs: vec![system_domain_state_root, primary_block_info],
+                }
             })
             .unwrap_or_default();
 
