@@ -2,7 +2,7 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::{to_number_primitive, ExecutorSlotInfo};
+use crate::utils::ExecutorSlotInfo;
 use crate::BundleSender;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -11,10 +11,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{BundleSolution, DomainId, ExecutorApi, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
@@ -23,7 +21,7 @@ where
     PBlock: BlockT,
 {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    pub(crate) primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
@@ -49,31 +47,6 @@ where
             bundle_election_solver: self.bundle_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
         }
-    }
-}
-
-impl<Block, PBlock, Client, PClient, TransactionPool> ParentChainInterface<PBlock::Hash>
-    for SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-    PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-{
-    fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let head_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(head_receipt_number))
-    }
-
-    fn maximum_receipt_drift(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let max_drift = self
-            .primary_chain_client
-            .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(max_drift))
     }
 }
 

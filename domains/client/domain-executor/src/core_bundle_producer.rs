@@ -16,7 +16,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
@@ -25,8 +24,8 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
 {
-    domain_id: DomainId,
-    system_domain_client: Arc<SClient>,
+    pub(crate) domain_id: DomainId,
+    pub(crate) system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
@@ -55,32 +54,6 @@ where
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
             _phantom_data: self._phantom_data,
         }
-    }
-}
-
-impl<Block, SBlock, PBlock, Client, SClient, TransactionPool> ParentChainInterface<SBlock::Hash>
-    for CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
-where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
-    SClient: ProvideRuntimeApi<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-{
-    fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let head_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(at), self.domain_id)?;
-        Ok(to_number_primitive(head_receipt_number))
-    }
-
-    fn maximum_receipt_drift(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let max_drift = self
-            .system_domain_client
-            .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(max_drift))
     }
 }
 

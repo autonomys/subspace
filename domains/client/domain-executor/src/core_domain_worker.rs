@@ -17,6 +17,7 @@
 use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
+use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -133,10 +134,13 @@ pub(super) async fn start_worker<
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
         move |primary_info, slot_info| {
-            let receipt_interface = bundle_producer.clone();
+            let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
+                bundle_producer.system_domain_client.clone(),
+                bundle_producer.domain_id,
+            );
             bundle_producer
                 .clone()
-                .produce_bundle(primary_info, slot_info, receipt_interface)
+                .produce_bundle(primary_info, slot_info, parent_chain)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
                     tracing::error!(?primary_info, ?error, "Error at producing bundle.");
