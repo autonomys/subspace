@@ -244,6 +244,7 @@ pub mod module {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+		#[pallet::call_index(0)]
 		#[pallet::weight(T::WeightInfo::claim(<T as Config>::MaxVestingSchedules::get() / 2))]
 		pub fn claim(origin: OriginFor<T>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
@@ -256,6 +257,7 @@ pub mod module {
 			Ok(())
 		}
 
+		#[pallet::call_index(1)]
 		#[pallet::weight(T::WeightInfo::vested_transfer())]
 		pub fn vested_transfer(
 			origin: OriginFor<T>,
@@ -274,6 +276,7 @@ pub mod module {
 			Ok(())
 		}
 
+		#[pallet::call_index(2)]
 		#[pallet::weight(T::WeightInfo::update_vesting_schedules(vesting_schedules.len() as u32))]
 		pub fn update_vesting_schedules(
 			origin: OriginFor<T>,
@@ -289,6 +292,7 @@ pub mod module {
 			Ok(())
 		}
 
+		#[pallet::call_index(3)]
 		#[pallet::weight(T::WeightInfo::claim(<T as Config>::MaxVestingSchedules::get() / 2))]
 		pub fn claim_for(origin: OriginFor<T>, dest: <T::Lookup as StaticLookup>::Source) -> DispatchResult {
 			let _ = ensure_signed(origin)?;

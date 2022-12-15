@@ -79,6 +79,7 @@ where
                 execution_phase.proving_method(),
                 execution_phase.call_data(),
                 &runtime_code,
+                Default::default(),
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
@@ -91,6 +92,7 @@ where
                 execution_phase.proving_method(),
                 execution_phase.call_data(),
                 &runtime_code,
+                Default::default(),
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)

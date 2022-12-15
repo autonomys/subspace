@@ -245,7 +245,7 @@ where
             let hash = header.hash();
 
             // import queue handles verification and importing it into the client.
-            import_queue.import_blocks(
+            import_queue.service_ref().import_blocks(
                 BlockOrigin::NetworkInitialSync,
                 vec![IncomingBlock::<B> {
                     hash,

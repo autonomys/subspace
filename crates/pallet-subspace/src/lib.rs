@@ -466,6 +466,7 @@ mod pallet {
         /// This extrinsic must be called unsigned and it is expected that only block authors will
         /// call it (validated in `ValidateUnsigned`), as such if the block author is defined it
         /// will be defined as the equivocation reporter.
+        #[pallet::call_index(0)]
         #[pallet::weight((<T as Config>::WeightInfo::report_equivocation(), DispatchClass::Operational))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
@@ -481,6 +482,7 @@ mod pallet {
 
         /// Submit new root block to the blockchain. This is an inherent extrinsic and part of the
         /// Subspace consensus logic.
+        #[pallet::call_index(1)]
         #[pallet::weight((<T as Config>::WeightInfo::store_root_blocks(root_blocks.len()), DispatchClass::Mandatory, Pays::No))]
         pub fn store_root_blocks(
             origin: OriginFor<T>,
@@ -492,6 +494,7 @@ mod pallet {
 
         /// Enable solution range adjustment after every era.
         /// Note: No effect on the solution range for the current era
+        #[pallet::call_index(2)]
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_solution_range_adjustment(
             origin: OriginFor<T>,
@@ -514,6 +517,7 @@ mod pallet {
 
         /// Farmer vote, currently only used for extra rewards to farmers.
         // TODO: Proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight((<T as Config>::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
         // boxed value.
@@ -528,6 +532,7 @@ mod pallet {
         }
 
         /// Enable rewards for blocks and votes at specified block height.
+        #[pallet::call_index(4)]
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_rewards(
             origin: OriginFor<T>,
@@ -539,6 +544,7 @@ mod pallet {
         }
 
         /// Enable storage access for all users.
+        #[pallet::call_index(5)]
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_storage_access(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
@@ -549,6 +555,7 @@ mod pallet {
         }
 
         /// Enable storage access for all users.
+        #[pallet::call_index(6)]
         #[pallet::weight(T::DbWeight::get().writes(1))]
         pub fn enable_authoring_by_anyone(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
