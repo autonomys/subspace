@@ -1,4 +1,4 @@
-use crate::domain_bundle_producer::ParentChainInterface;
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::Encode;

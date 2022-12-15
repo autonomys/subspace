@@ -1,6 +1,7 @@
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::domain_bundle_producer::{sign_new_bundle, ParentChainInterface};
+use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
