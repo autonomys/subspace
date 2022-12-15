@@ -62,12 +62,12 @@ pub fn create_runtime_bundle_inclusion_file(
 
         let link_section_decl = format!(
             r#"
-        const _: () = {{
-            #[cfg(not(feature = "std"))]
-            #[link_section = "{link_section_name}"]
-            static SECTION_CONTENTS: [u8; {wasm_bundle_size}] = {wasm_bundle_content:?};
-        }};
-        "#,
+                const _: () = {{
+                    #[cfg(not(feature = "std"))]
+                    #[link_section = "{link_section_name}"]
+                    static SECTION_CONTENTS: [u8; {wasm_bundle_size}] = {wasm_bundle_content:?};
+                }};
+            "#,
         );
 
         execution_wasm_bundle_rs_contents.push_str(&link_section_decl);
