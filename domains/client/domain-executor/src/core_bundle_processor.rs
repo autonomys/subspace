@@ -1,4 +1,5 @@
 use crate::domain_block_processor::DomainBlockProcessor;
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -20,15 +21,26 @@ use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
-where
+pub(crate) struct CoreBundleProcessor<
+    Block,
+    SBlock,
+    PBlock,
+    Client,
+    SClient,
+    PClient,
+    ParentChain,
+    Backend,
+    E,
+> where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
+    ParentChain: ParentChainInterface<SBlock::Hash>,
 {
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
+    parent_chain: ParentChain,
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
@@ -36,18 +48,30 @@ where
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E> Clone
-    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, ParentChain, Backend, E> Clone
+    for CoreBundleProcessor<
+        Block,
+        SBlock,
+        PBlock,
+        SClient,
+        Client,
+        PClient,
+        ParentChain,
+        Backend,
+        E,
+    >
 where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
+    ParentChain: ParentChainInterface<SBlock::Hash> + Clone,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             system_domain_client: self.system_domain_client.clone(),
+            parent_chain: self.parent_chain.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
@@ -57,8 +81,8 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
-    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, ParentChain, Backend, E>
+    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, ParentChain, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -78,14 +102,17 @@ where
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
+    ParentChain: ParentChainInterface<SBlock::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
         system_domain_client: Arc<SClient>,
+        parent_chain: ParentChain,
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: SyncCryptoStorePtr,
@@ -95,6 +122,7 @@ where
             domain_id,
             primary_chain_client,
             system_domain_client,
+            parent_chain,
             client,
             backend,
             keystore,
@@ -175,13 +203,7 @@ where
             head_receipt_number,
             oldest_receipt_number,
         )? {
-            // TODO: self.system_domain_client.runtime_api().submit_fraud_proof_unsigned()
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    fraud_proof,
-                )?;
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 
         Ok(())

@@ -17,7 +17,7 @@
 use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
-use crate::parent_chain::CoreDomainParentChain;
+use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -46,6 +46,7 @@ pub(super) async fn start_worker<
     SClient,
     PClient,
     TransactionPool,
+    ParentChain,
     Backend,
     IBNS,
     NSNS,
@@ -62,6 +63,7 @@ pub(super) async fn start_worker<
         Client,
         SClient,
         PClient,
+        ParentChain,
         Backend,
         E,
     >,
@@ -92,6 +94,7 @@ pub(super) async fn start_worker<
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    ParentChain: ParentChainInterface<SBlock::Hash> + Clone + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,

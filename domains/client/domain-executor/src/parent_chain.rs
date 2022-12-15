@@ -1,5 +1,6 @@
 use crate::utils::to_number_primitive;
 use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
@@ -14,14 +15,10 @@ use system_runtime_primitives::SystemDomainApi;
 ///
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
-pub(crate) trait ParentChainInterface<Hash> {
+pub(crate) trait ParentChainInterface<Hash>: Sync + Send {
     fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
-    fn submit_fraud_proof_unsigned(
-        &self,
-        at: Hash,
-        fraud_proof: FraudProof,
-    ) -> Result<(), sp_api::ApiError>;
+    fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError>;
 }
 
 /// The parent chain of the core domain
@@ -31,6 +28,16 @@ pub struct CoreDomainParentChain<SClient, SBlock, PBlock> {
     // The id of the core domain
     domain_id: DomainId,
     _phantom: PhantomData<(SBlock, PBlock)>,
+}
+
+impl<SClient, SBlock, PBlock> Clone for CoreDomainParentChain<SClient, SBlock, PBlock> {
+    fn clone(&self) -> Self {
+        CoreDomainParentChain {
+            client: self.client.clone(),
+            domain_id: self.domain_id,
+            _phantom: self._phantom,
+        }
+    }
 }
 
 impl<SBlock, PBlock, SClient> CoreDomainParentChain<SClient, SBlock, PBlock> {
@@ -48,7 +55,7 @@ impl<SBlock, PBlock, SClient> ParentChainInterface<SBlock::Hash>
 where
     SBlock: BlockT,
     PBlock: BlockT,
-    SClient: ProvideRuntimeApi<SBlock>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + Sync + Send,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
@@ -67,11 +74,8 @@ where
         Ok(to_number_primitive(max_drift))
     }
 
-    fn submit_fraud_proof_unsigned(
-        &self,
-        at: SBlock::Hash,
-        fraud_proof: FraudProof,
-    ) -> Result<(), sp_api::ApiError> {
+    fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError> {
+        let at = self.client.info().best_hash;
         self.client
             .runtime_api()
             .submit_fraud_proof_unsigned(&BlockId::Hash(at), fraud_proof)?;
@@ -84,6 +88,15 @@ pub struct SystemDomainParentChain<PClient, Block, PBlock> {
     // The primary chain client
     client: Arc<PClient>,
     _phantom: PhantomData<(Block, PBlock)>,
+}
+
+impl<PClient, Block, PBlock> Clone for SystemDomainParentChain<PClient, Block, PBlock> {
+    fn clone(&self) -> Self {
+        SystemDomainParentChain {
+            client: self.client.clone(),
+            _phantom: self._phantom,
+        }
+    }
 }
 
 impl<PClient, Block, PBlock> SystemDomainParentChain<PClient, Block, PBlock> {
@@ -100,7 +113,7 @@ impl<Block, PBlock, PClient> ParentChainInterface<PBlock::Hash>
 where
     Block: BlockT,
     PBlock: BlockT,
-    PClient: ProvideRuntimeApi<PBlock>,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Sync + Send,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
@@ -119,11 +132,8 @@ where
         Ok(to_number_primitive(max_drift))
     }
 
-    fn submit_fraud_proof_unsigned(
-        &self,
-        at: PBlock::Hash,
-        fraud_proof: FraudProof,
-    ) -> Result<(), sp_api::ApiError> {
+    fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError> {
+        let at = self.client.info().best_hash;
         self.client
             .runtime_api()
             .submit_fraud_proof_unsigned(&BlockId::Hash(at), fraud_proof)?;
