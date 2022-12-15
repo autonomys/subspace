@@ -18,6 +18,7 @@ fn main() {
     subspace_wasm_tools::create_runtime_bundle_inclusion_file(
         "domain-test-runtime",
         "EXECUTION_WASM_BUNDLE",
+        None,
         "execution_wasm_bundle.rs",
     );
 
