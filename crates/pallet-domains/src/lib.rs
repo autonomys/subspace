@@ -184,6 +184,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
@@ -238,6 +239,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
@@ -268,6 +270,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -285,6 +288,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,
