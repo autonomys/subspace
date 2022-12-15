@@ -57,6 +57,7 @@ mod pallet {
     use codec::Codec;
     use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
     use frame_support::traits::LockableCurrency;
+    use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domain_tracker::CoreDomainTracker;
@@ -393,7 +394,7 @@ mod pallet {
                     // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
                     //
                     // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                    return Err(Error::<T>::MissingParentReceipt.into());
+                    return Err(Error::<T>::Receipt(ReceiptError::MissingParent).into());
                 }
             }
 
@@ -508,6 +509,14 @@ mod pallet {
         }
     }
 
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    pub enum ReceiptError {
+        /// A missing core domain parent receipt.
+        MissingParent,
+        /// Core domain receipt is too far in the future.
+        TooFarInFuture,
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// The amount of deposit is smaller than the `T::MinDomainDeposit` bound.
@@ -553,11 +562,8 @@ mod pallet {
         /// Not a core domain bundle.
         NotCoreDomainBundle,
 
-        /// A missing core domain parent receipt.
-        MissingParentReceipt,
-
-        /// Core domain receipt is too far in the future.
-        ReceiptTooFarInFuture,
+        /// Receipt error.
+        Receipt(ReceiptError),
     }
 
     #[pallet::event]
@@ -793,11 +799,11 @@ impl<T: Config> Pallet<T> {
                 new_best_number += One::one();
             // Missing receipt.
             } else {
-                return Err(Error::<T>::MissingParentReceipt);
+                return Err(Error::<T>::Receipt(ReceiptError::MissingParent));
             }
 
             if receipt.primary_number > max_allowed {
-                return Err(Error::<T>::ReceiptTooFarInFuture);
+                return Err(Error::<T>::Receipt(ReceiptError::TooFarInFuture));
             }
         }
 
