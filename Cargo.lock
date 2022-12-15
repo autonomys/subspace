@@ -5785,6 +5785,7 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-core",
+ "sp-domain-digests",
  "sp-domain-tracker",
  "sp-domains",
  "sp-executor-registry",
