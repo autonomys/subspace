@@ -235,6 +235,9 @@ mod pallet {
     /// The oldest block hash will be pruned once the oldest receipt is pruned. However, if a
     /// core domain stalls, i.e., no receipts are included in the system domain for a long time,
     /// the corresponding entry will grow indefinitely.
+    ///
+    /// TODO: there is a pitfall that any stalled domain can lead to an ubounded runtime storage
+    /// growth.
     #[pallet::storage]
     pub(super) type BlockHash<T: Config> = StorageDoubleMap<
         _,

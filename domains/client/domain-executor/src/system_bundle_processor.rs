@@ -14,7 +14,7 @@ use sp_domains::ExecutorApi;
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
-use sp_runtime::Digest;
+use sp_runtime::{Digest, DigestItem};
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -107,13 +107,13 @@ where
             .header(BlockId::Hash(parent_hash))?
             .map(|header| {
                 let system_domain_state_root =
-                    AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                    DigestItem::system_domain_state_root_update(StateRootUpdate {
                         number: parent_number,
                         state_root: *header.state_root(),
                     });
 
-                let primary_block_info: sp_runtime::DigestItem =
-                    AsPredigest::primary_block_info((primary_number, primary_hash));
+                let primary_block_info =
+                    DigestItem::primary_block_info((primary_number, primary_hash));
 
                 Digest {
                     logs: vec![system_domain_state_root, primary_block_info],
