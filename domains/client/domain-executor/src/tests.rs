@@ -1,3 +1,4 @@
+use crate::utils::read_core_domain_runtime_blob;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
@@ -5,6 +6,7 @@ use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_consensus::ForkChoiceStrategy;
+use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
@@ -13,7 +15,8 @@ use sp_core::Pair;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    Bundle, BundleHeader, BundleSolution, DomainId, ExecutorPair, ProofOfElection, SignedBundle,
+    Bundle, BundleHeader, BundleSolution, DomainId, ExecutorApi, ExecutorPair, ProofOfElection,
+    SignedBundle,
 };
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
@@ -315,6 +318,44 @@ async fn set_new_code_should_work() {
         panic!("`set_code` not executed, extrinsics in the block: {extrinsics:?}")
     }
     assert_eq!(runtime_code, new_runtime_wasm_blob);
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn extract_core_domain_wasm_bundle_in_system_domain_runtime_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let (ferdie, _ferdie_network_starter) = run_primary_chain_validator_node(
+        tokio_handle.clone(),
+        Ferdie,
+        vec![],
+        BasePath::new(directory.path().join("ferdie")),
+    )
+    .await;
+
+    let system_domain_bundle = ferdie
+        .client
+        .runtime_api()
+        .execution_wasm_bundle(&BlockId::Hash(ferdie.client.info().best_hash))
+        .unwrap();
+
+    let core_payments_runtime_blob =
+        read_core_domain_runtime_blob(system_domain_bundle.as_ref(), DomainId::CORE_PAYMENTS)
+            .unwrap();
+
+    let core_payments_blob = RuntimeBlob::new(&core_payments_runtime_blob).unwrap();
+
+    let core_payments_version = sc_executor::read_embedded_version(&core_payments_blob)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(core_payments_version, core_payments_domain_runtime::VERSION);
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]

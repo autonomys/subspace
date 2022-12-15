@@ -3,8 +3,10 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use sc_consensus::ForkChoiceStrategy;
+use sc_executor_common::error::WasmError;
+use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_consensus_slots::Slot;
-use sp_domains::{OpaqueBundles, SignedOpaqueBundles};
+use sp_domains::{DomainId, OpaqueBundles, SignedOpaqueBundles};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::collections::{BTreeMap, VecDeque};
 use std::convert::TryInto;
@@ -117,6 +119,22 @@ pub(crate) fn shuffle_extrinsics<Extrinsic: Debug>(
     tracing::trace!(?shuffled_extrinsics, "Shuffled extrinsics");
 
     shuffled_extrinsics
+}
+
+pub(crate) fn read_core_domain_runtime_blob(
+    system_domain_bundle: &[u8],
+    core_domain_id: DomainId,
+) -> Result<Vec<u8>, WasmError> {
+    let system_runtime_blob = RuntimeBlob::new(system_domain_bundle)?;
+
+    let section_contents_name = core_domain_id.link_section_name();
+    let embedded_runtime_blob = system_runtime_blob
+        .custom_section_contents(&section_contents_name)
+        .ok_or_else(|| {
+            WasmError::Other(format!("Custom section {section_contents_name} not found"))
+        })?;
+
+    Ok(embedded_runtime_blob.to_vec())
 }
 
 #[cfg(test)]
