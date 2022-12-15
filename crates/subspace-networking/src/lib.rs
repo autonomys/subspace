@@ -39,7 +39,7 @@ pub use crate::node::{
     CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
     TopicSubscription,
 };
-pub use crate::node_runner::NodeRunner;
+pub use crate::node_runner::{NodeRunner, ProviderRecordProcessor};
 pub use behavior::custom_record_store::{
     CustomRecordStore, FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper,
     LimitedSizeRecordStorageWrapper, MemoryProviderStorage, NoRecordStorage,
@@ -62,3 +62,4 @@ pub use request_handlers::pieces_by_range::{
 };
 pub use utils::multihash::ToMultihash;
 pub use utils::prometheus::start_prometheus_metrics_server;
+pub use utils::record_binary_heap::RecordBinaryHeap;

@@ -2,7 +2,7 @@ use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::custom_record_store::{
     instant_to_ms, ms_to_instant, CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
 };
-use crate::behavior::record_binary_heap::RecordBinaryHeap;
+use crate::utils::record_binary_heap::RecordBinaryHeap;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::ProviderRecord;
@@ -203,6 +203,7 @@ fn binary_heap_eviction_works() {
     let key2 = Key::from(vec![2]);
 
     heap.insert(key1.clone());
+    let should_be_evicted = heap.should_include_key(&key2);
     let evicted = heap.insert(key2.clone());
     assert!(evicted.is_some());
 
@@ -213,8 +214,10 @@ fn binary_heap_eviction_works() {
     if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
         > bucket_key2.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
     {
+        assert!(should_be_evicted);
         assert_eq!(evicted, key1);
     } else {
+        assert!(!should_be_evicted);
         assert_eq!(evicted, key2);
     }
 }

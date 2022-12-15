@@ -1,5 +1,5 @@
 use super::RecordStorage;
-use crate::behavior::record_binary_heap::RecordBinaryHeap;
+use crate::utils::record_binary_heap::RecordBinaryHeap;
 use libp2p::kad::record::Key;
 use libp2p::kad::{store, Record};
 use libp2p::PeerId;

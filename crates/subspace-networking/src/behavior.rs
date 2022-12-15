@@ -1,6 +1,5 @@
 pub(crate) mod custom_record_store;
 pub(crate) mod persistent_parameters;
-pub(crate) mod record_binary_heap;
 #[cfg(test)]
 mod tests;
 

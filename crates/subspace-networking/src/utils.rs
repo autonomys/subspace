@@ -1,5 +1,6 @@
 pub mod multihash;
 pub(crate) mod prometheus;
+pub(crate) mod record_binary_heap;
 #[cfg(test)]
 mod tests;
 

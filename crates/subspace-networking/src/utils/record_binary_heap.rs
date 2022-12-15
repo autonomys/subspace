@@ -89,6 +89,23 @@ impl RecordBinaryHeap {
         });
     }
 
+    /// Checks whether we include the key
+    pub fn should_include_key(&self, key: &Key) -> bool {
+        if !self.is_limit_exceeded() {
+            return true;
+        }
+
+        let new_key =
+            RecordHeapKey::new(self.peer_key.clone(), KademliaBucketKey::new(key.clone()));
+        let top_key = self.max_heap.peek().cloned();
+
+        if let Some(top_key) = top_key {
+            top_key >= new_key
+        } else {
+            false // zero-sized heap
+        }
+    }
+
     fn is_limit_exceeded(&self) -> bool {
         self.size() > self.limit
     }

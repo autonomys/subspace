@@ -1,5 +1,5 @@
 use super::ProviderStorage;
-use crate::behavior::record_binary_heap::RecordBinaryHeap;
+use crate::utils::record_binary_heap::RecordBinaryHeap;
 use either::Either;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{MemoryStoreConfig, RecordStore};

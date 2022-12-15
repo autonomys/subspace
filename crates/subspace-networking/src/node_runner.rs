@@ -4,6 +4,7 @@ use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
+use async_trait::async_trait;
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -28,7 +29,7 @@ use std::pin::Pin;
 use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 // Channel size for provider records received from Kademlia.
 const PROVIDER_RECORD_BUFFER_SIZE: usize = 20000;
@@ -51,32 +52,17 @@ enum QueryResultSender {
     },
 }
 
-/// Perform arbitrary execution for ProviderRecord.
-pub trait ProviderRecordProcessor {
-    fn process_provider_record(&self, record: ProviderRecord);
-}
-
-impl<T: ProviderRecordProcessor> ProviderRecordProcessor for Option<T> {
-    fn process_provider_record(&self, record: ProviderRecord) {
-        if let Some(processor) = self {
-            processor.process_provider_record(record);
-        }
-    }
-}
-
-pub struct DummyRecordProcessor;
-impl ProviderRecordProcessor for DummyRecordProcessor {
-    fn process_provider_record(&self, rec: ProviderRecord) {
-        debug!(key = ?rec.key, "Provider record processor handles.",);
-    }
+/// Inbound ProviderRecord handling.
+#[async_trait]
+pub trait ProviderRecordProcessor: Send + Sync + 'static {
+    async fn process_provider_record(&mut self, record: ProviderRecord);
 }
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<RecordStore = CustomRecordStore, PRP = DummyRecordProcessor>
+pub struct NodeRunner<RecordStore = CustomRecordStore>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
-    PRP: ProviderRecordProcessor,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
@@ -110,14 +96,13 @@ where
     /// ProviderRecord chanel sender.
     provider_records_sender: mpsc::Sender<ProviderRecord>,
     /// ProviderRecord processor for records from Kademlia DHT
-    provider_record_processor: Option<PRP>,
+    provider_record_processor: Option<Box<dyn ProviderRecordProcessor>>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore, PRP = DummyRecordProcessor>
+pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
-    PRP: ProviderRecordProcessor,
 {
     pub allow_non_global_addresses_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
@@ -129,16 +114,15 @@ where
     pub max_established_incoming_connections: u32,
     pub max_established_outgoing_connections: u32,
     pub metrics: Option<Metrics>,
-    pub provider_record_processor: Option<PRP>,
+    pub provider_record_processor: Option<Box<dyn ProviderRecordProcessor>>,
 }
 
-impl<RecordStore, PRP> NodeRunner<RecordStore, PRP>
+impl<RecordStore> NodeRunner<RecordStore>
 where
     RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
-    PRP: ProviderRecordProcessor + Send + Sync + 'static,
 {
     pub(crate) fn new(
-        NodeRunnerConfig::<RecordStore, PRP> {
+        NodeRunnerConfig::<RecordStore> {
             allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
@@ -150,7 +134,7 @@ where
             max_established_outgoing_connections,
             metrics,
             provider_record_processor,
-        }: NodeRunnerConfig<RecordStore, PRP>,
+        }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         let (provider_records_sender, provider_records_receiver) =
             mpsc::channel(PROVIDER_RECORD_BUFFER_SIZE);
@@ -177,6 +161,14 @@ where
             provider_records_sender,
             provider_record_processor,
         }
+    }
+
+    pub fn replace_provider_record_provider(
+        &mut self,
+        provider_record_processor: Box<dyn ProviderRecordProcessor>,
+    ) {
+        self.provider_record_processor
+            .replace(provider_record_processor);
     }
 
     pub async fn run(&mut self) {
@@ -218,7 +210,9 @@ where
                 },
                 provider_record = self.provider_records_receiver.next() => {
                     if let Some(provider_record) = provider_record {
-                        self.provider_record_processor.process_provider_record(provider_record);
+                        if let Some(ref mut provider_record_processor) = self.provider_record_processor {
+                            provider_record_processor.process_provider_record(provider_record).await;
+                        }
                     } else {
                         break;
                     }
