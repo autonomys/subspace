@@ -19,6 +19,7 @@
 
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_std::vec::Vec;
@@ -44,5 +45,9 @@ sp_api::decl_runtime_apis! {
         fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
 
         fn maximum_receipt_drift() -> NumberFor<Block>;
+
+        fn submit_fraud_proof_unsigned(
+            fraud_proof: FraudProof,
+        );
     }
 }

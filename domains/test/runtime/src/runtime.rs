@@ -14,6 +14,7 @@ use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
@@ -543,6 +544,12 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn submit_fraud_proof_unsigned(
+            fraud_proof: FraudProof,
+        ) {
+            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 
