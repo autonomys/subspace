@@ -1,4 +1,4 @@
-use crate::domain_bundle_producer::ReceiptInterface;
+use crate::domain_bundle_producer::ParentChainInterface;
 use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::Encode;
@@ -52,12 +52,12 @@ where
         &self,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
-        receipt_interface: R,
-        receipt_interface_block_hash: RHash,
+        parent_chain: R,
+        parent_chain_block_hash: RHash,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
         PBlock: BlockT,
-        R: ReceiptInterface<RHash>,
+        R: ParentChainInterface<RHash>,
         RHash: Copy,
     {
         let parent_number = self.client.info().best_number;
@@ -109,8 +109,8 @@ where
         } else {
             self.collect_bundle_receipts::<PBlock, _, _>(
                 parent_number,
-                receipt_interface,
-                receipt_interface_block_hash,
+                parent_chain,
+                parent_chain_block_hash,
             )?
         };
 
@@ -131,17 +131,16 @@ where
     fn collect_bundle_receipts<PBlock, R, RHash>(
         &self,
         header_number: NumberFor<Block>,
-        receipt_interface: R,
-        receipt_interface_block_hash: RHash,
+        parent_chain: R,
+        parent_chain_block_hash: RHash,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
         PBlock: BlockT,
-        R: ReceiptInterface<RHash>,
+        R: ParentChainInterface<RHash>,
         RHash: Copy,
     {
-        let head_receipt_number =
-            receipt_interface.head_receipt_number(receipt_interface_block_hash)?;
-        let max_drift = receipt_interface.maximum_receipt_drift(receipt_interface_block_hash)?;
+        let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
+        let max_drift = parent_chain.maximum_receipt_drift(parent_chain_block_hash)?;
 
         let load_receipt = |block_hash| {
             crate::aux_schema::load_execution_receipt::<

@@ -1,5 +1,5 @@
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::domain_bundle_producer::{sign_new_bundle, ReceiptInterface};
+use crate::domain_bundle_producer::{sign_new_bundle, ParentChainInterface};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool> ReceiptInterface<PBlock::Hash>
+impl<Block, PBlock, Client, PClient, TransactionPool> ParentChainInterface<PBlock::Hash>
     for SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
 where
     Block: BlockT,
@@ -120,13 +120,13 @@ where
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-        receipt_interface: R,
+        parent_chain: R,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
     >
     where
-        R: ReceiptInterface<PBlock::Hash>,
+        R: ParentChainInterface<PBlock::Hash>,
     {
         if !self.is_authority {
             return Ok(None);
@@ -153,12 +153,7 @@ where
 
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(
-                    slot,
-                    primary_info,
-                    receipt_interface,
-                    primary_info.0,
-                )
+                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, parent_chain, primary_info.0)
                 .await?;
 
             Ok(Some(sign_new_bundle::<Block, PBlock>(

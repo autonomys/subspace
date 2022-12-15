@@ -5,12 +5,12 @@ use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use subspace_core_primitives::BlockNumber;
 
-// TODO: this may be extended into ParentChainInterface due to the relative relation between the
-// chains regarding the settlement aspect.
-// - Primary Chain => System Domain
-// - System Domain => Core Domain
-/// Trait for retrieving the necessary info for collecting the receipts in a new domain bundle.
-pub(crate) trait ReceiptInterface<Hash> {
+/// Trait for interacting between the domain and its corresponding parent chain, i.e. retrieving
+/// the necessary info from the parent chain or submit extrinsics to the parent chain.
+///
+/// - System Domain's parent chain => Primary Chain
+/// - Core Domain's parent chain => System Domain
+pub(crate) trait ParentChainInterface<Hash> {
     fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
 }
