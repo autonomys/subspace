@@ -45,9 +45,7 @@ mod pallet {
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
-    use sp_runtime::traits::{
-        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
-    };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, One, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -68,7 +66,6 @@ mod pallet {
             + sp_std::hash::Hash
             + AsRef<[u8]>
             + AsMut<[u8]>
-            + MaybeMallocSizeOf
             + MaxEncodedLen;
 
         /// Number of execution receipts kept in the state.

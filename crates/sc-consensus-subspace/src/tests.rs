@@ -42,7 +42,7 @@ use sc_consensus::{
 use sc_consensus_slots::{BackoffAuthoringOnFinalizedHeadLagging, SlotProportion};
 use sc_network_test::{
     BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
-    TestClientBuilderExt, TestNetFactory,
+    TestClientBuilderExt, TestNetFactory, WithRuntime,
 };
 use sc_service::TaskManager;
 use schnorrkel::Keypair;
@@ -78,6 +78,7 @@ use subspace_core_primitives::{
 };
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
+use tokio::runtime::{Handle, Runtime};
 
 type TestClient = substrate_test_runtime_client::client::Client<
     substrate_test_runtime_client::Backend,
@@ -268,9 +269,21 @@ where
 
 type SubspacePeer = Peer<Option<PeerData>, SubspaceBlockImport>;
 
-#[derive(Default)]
 pub struct SubspaceTestNet {
+    rt_handle: Handle,
     peers: Vec<SubspacePeer>,
+}
+
+impl WithRuntime for SubspaceTestNet {
+    fn with_runtime(rt_handle: Handle) -> Self {
+        SubspaceTestNet {
+            rt_handle,
+            peers: Vec::new(),
+        }
+    }
+    fn rt_handle(&self) -> &Handle {
+        &self.rt_handle
+    }
 }
 
 type TestHeader = <TestBlock as BlockT>::Header;
@@ -417,7 +430,8 @@ impl TestNetFactory for SubspaceTestNet {
 #[should_panic]
 fn rejects_empty_block() {
     sp_tracing::try_init_simple();
-    let mut net = SubspaceTestNet::new(3);
+    let runtime = Runtime::new().unwrap();
+    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 3);
     let block_builder = |builder: BlockBuilder<_, _, _>| builder.build().unwrap().block;
     net.mut_peers(|peer| {
         peer[0].generate_blocks(1, BlockOrigin::NetworkInitialSync, block_builder);
@@ -444,7 +458,8 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
     let mutator = Arc::new(mutator) as Mutator;
 
     MUTATOR.with(|m| *m.borrow_mut() = mutator.clone());
-    let net = SubspaceTestNet::new(3);
+    let runtime = Runtime::new().unwrap();
+    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 3);
 
     let net = Arc::new(Mutex::new(net));
     let mut import_notifications = Vec::new();
@@ -790,7 +805,8 @@ fn propose_and_import_block<Transaction: Send + 'static>(
 #[test]
 #[should_panic]
 fn verify_slots_are_strictly_increasing() {
-    let mut net = SubspaceTestNet::new(1);
+    let runtime = Runtime::new().unwrap();
+    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 1);
 
     let peer = net.peer(0);
     let data = peer
@@ -837,7 +853,8 @@ fn verify_slots_are_strictly_increasing() {
 // // Check that block import results in archiving working.
 // #[test]
 // fn archiving_works() {
-//     let mut net = SubspaceTestNet::new(1);
+//    let runtime = Runtime::new().unwrap();
+//    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 1);
 //
 //     let peer = net.peer(0);
 //     let data = peer

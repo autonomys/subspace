@@ -1,6 +1,6 @@
 // This file is part of Substrate.
 
-// Copyright (C) 2017-2021 Parity Technologies (UK) Ltd.
+// Copyright (C) 2017-2022 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 
 // This program is free software: you can redistribute it and/or modify
@@ -79,7 +79,7 @@ fn import_single_good_block_works() {
 		&mut PassThroughVerifier::new(true),
 	)) {
 		Ok(BlockImportStatus::ImportedUnknown(ref num, ref aux, ref org))
-			if *num == number && *aux == expected_aux && *org == Some(peer_id) => {},
+		if *num == number && *aux == expected_aux && *org == Some(peer_id) => {},
 		r => panic!("{:?}", r),
 	}
 }

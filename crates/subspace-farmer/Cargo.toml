@@ -25,7 +25,7 @@ event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
 futures = "0.3.25"
 hex = { version = "0.4.3", features = ["serde"] }
-jsonrpsee = { version = "0.15.1", features = ["client", "macros", "server"] }
+jsonrpsee = { version = "0.16.2", features = ["client", "macros", "server"] }
 memmap2 = "0.5.8"
 num-traits = "0.2.15"
 parity-db = "0.4.2"

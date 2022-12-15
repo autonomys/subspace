@@ -107,6 +107,15 @@ pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 successful_calls,
             );
         }
+        pallet_utility::Call::with_weight { call, .. } => {
+            extract_call_block_object_mapping(
+                base_offset,
+                objects,
+                call.as_ref(),
+                recursion_depth_left,
+                successful_calls,
+            );
+        }
         pallet_utility::Call::__Ignore(_, _) => {
             // Ignore.
         }
