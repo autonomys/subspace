@@ -27,19 +27,16 @@
 #![warn(missing_docs)]
 
 use codec::Encode;
-
+use sc_client_api::backend;
 use sp_api::{
     ApiExt, ApiRef, Core, ProvideRuntimeApi, StorageChanges, StorageProof, TransactionOutcome,
 };
+pub use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{ApplyExtrinsicFailed, Error};
 use sp_core::ExecutionContext;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Hash, HashFor, Header as HeaderT, NumberFor, One};
 use sp_runtime::Digest;
-
-pub use sp_block_builder::BlockBuilder as BlockBuilderApi;
-
-use sc_client_api::backend;
 
 /// Used as parameter to [`BlockBuilderProvider`] to express if proof recording should be enabled.
 ///
@@ -202,9 +199,8 @@ where
     fn execute_extrinsics(&self) -> Result<(), Error> {
         let block_id = &self.block_id;
 
-        for xt in &self.extrinsics {
-            // TODO: rethink what to do if an error occurs when executing the transaction.
-            self.api.execute_in_transaction(|api| {
+        for (index, xt) in self.extrinsics.iter().enumerate() {
+            let res = self.api.execute_in_transaction(|api| {
                 match api.apply_extrinsic_with_context(
                     block_id,
                     ExecutionContext::BlockConstruction,
@@ -216,7 +212,11 @@ where
                     )),
                     Err(e) => TransactionOutcome::Rollback(Err(Error::from(e))),
                 }
-            })?;
+            });
+
+            if let Err(e) = res {
+                tracing::debug!("Apply extrinsic at index {index} failed: {e}");
+            }
         }
 
         Ok(())

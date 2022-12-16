@@ -5,7 +5,7 @@ use frame_support::Parameter;
 use num_traits::AsPrimitive;
 use sp_runtime::generic;
 use sp_runtime::traits::{
-    AtLeast32BitUnsigned, Hash as HashT, Header as HeaderT, MaybeDisplay, MaybeMallocSizeOf,
+    AtLeast32BitUnsigned, Hash as HashT, Header as HeaderT, MaybeDisplay,
     MaybeSerializeDeserialize, Member, Saturating, SimpleBitOps,
 };
 use sp_std::hash::Hash;
@@ -33,7 +33,6 @@ pub trait Chain {
         + MaybeDisplay
         + AtLeast32BitUnsigned
         + FromStr
-        + MaybeMallocSizeOf
         + AsPrimitive<usize>
         + Default
         + Saturating;
@@ -52,8 +51,7 @@ pub trait Chain {
         + Default
         + SimpleBitOps
         + AsRef<[u8]>
-        + AsMut<[u8]>
-        + MaybeMallocSizeOf;
+        + AsMut<[u8]>;
 
     /// A type that fulfills the abstract idea of what a Substrate header is.
     // See here for more info:

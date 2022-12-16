@@ -167,6 +167,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Initiates transfer of funds from account on src_domain to account on dst_domain.
         /// Funds are burned on src_domain first and are minted on dst_domain using Messenger.
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn transfer(
             origin: OriginFor<T>,

@@ -45,9 +45,7 @@ mod pallet {
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
-    use sp_runtime::traits::{
-        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
-    };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, One, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -68,7 +66,6 @@ mod pallet {
             + sp_std::hash::Hash
             + AsRef<[u8]>
             + AsMut<[u8]>
-            + MaybeMallocSizeOf
             + MaxEncodedLen;
 
         /// Number of execution receipts kept in the state.
@@ -187,6 +184,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
@@ -241,6 +239,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
@@ -273,6 +272,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -290,6 +290,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,
@@ -557,14 +558,6 @@ impl<T: Config> Pallet<T> {
                     ));
                 }
             }
-        } else {
-            for receipt in execution_receipts {
-                if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
-                    return Err(TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into(),
-                    ));
-                }
-            }
         }
 
         Ok(())
@@ -644,22 +637,6 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Unsorted);
         }
 
-        for execution_receipt in execution_receipts {
-            // Due to `initialize_block` is skipped while calling the runtime api, the block
-            // hash mapping for last block is unknown to the transaction pool, but this info
-            // is already available in System.
-            let point_to_parent_block = execution_receipt.primary_number
-                == current_block_number - One::one()
-                && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
-
-            if !point_to_parent_block
-                && BlockHash::<T>::get(execution_receipt.primary_number)
-                    != execution_receipt.primary_hash
-            {
-                return Err(ExecutionReceiptError::UnknownBlock);
-            }
-        }
-
         Ok(())
     }
 
@@ -699,6 +676,18 @@ impl<T: Config> Pallet<T> {
 
             for execution_receipt in &bundle.receipts {
                 let primary_number = execution_receipt.primary_number;
+
+                // Due to `initialize_block` is skipped while calling the runtime api, the block
+                // hash mapping for last block is unknown to the transaction pool, but this info
+                // is already available in System.
+                let point_to_parent_block = primary_number == current_block_number - One::one()
+                    && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
+
+                if !point_to_parent_block
+                    && BlockHash::<T>::get(primary_number) != execution_receipt.primary_hash
+                {
+                    return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
+                }
 
                 // Ensure the receipt is not too new.
                 if primary_number == current_block_number || primary_number > max_allowed {

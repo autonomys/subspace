@@ -73,6 +73,7 @@ mod pallet {
         // TODO: this call may be moved to other places if this pallet is no longer necessary.
         /// Unsigned version of `frame_sudo::sudo_unchecked_weight`.
         #[allow(clippy::boxed_local)]
+        #[pallet::call_index(0)]
         #[pallet::weight((*_weight, call.get_dispatch_info().class, Pays::No))]
         pub fn sudo_unchecked_weight_unsigned(
             origin: OriginFor<T>,

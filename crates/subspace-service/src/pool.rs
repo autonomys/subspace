@@ -447,16 +447,6 @@ where
     }
 }
 
-impl<Block, PoolApi> parity_util_mem::MallocSizeOf for BasicPoolWrapper<Block, PoolApi>
-where
-    Block: BlockT,
-    PoolApi: ChainApi<Block = Block>,
-{
-    fn size_of(&self, ops: &mut parity_util_mem::MallocSizeOfOps) -> usize {
-        self.inner.size_of(ops)
-    }
-}
-
 pub(super) fn new_full<Block, Client, Verifier>(
     config: &Configuration,
     task_manager: &TaskManager,

@@ -45,8 +45,8 @@ use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::num::NonZeroU64;
 use core::time::Duration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
-use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
-use frame_support::weights::{ConstantMultiplier, IdentityFee};
+use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
+use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
@@ -161,7 +161,7 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
     /// We allow for 2 seconds of compute with a 6 second average block time.
-    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(WEIGHT_PER_SECOND.saturating_mul(2).set_proof_size(u64::MAX), NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX), NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
 }

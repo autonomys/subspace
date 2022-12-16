@@ -960,6 +960,7 @@ where
 
                 let inherent_data = create_inherent_data_providers
                     .create_inherent_data()
+                    .await
                     .map_err(Error::CreateInherents)?;
 
                 let inherent_res = self.client.runtime_api().check_inherents_with_context(
