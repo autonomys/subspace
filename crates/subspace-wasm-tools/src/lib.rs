@@ -55,19 +55,21 @@ pub fn create_runtime_bundle_inclusion_file(
     );
 
     if let Some(link_section_name) = maybe_link_section_name {
-        let wasm_bundle_content = std::fs::read(&execution_wasm_bundle_path).unwrap_or_else(|e| {
+        let wasm_bundle_content = fs::read(&execution_wasm_bundle_path).unwrap_or_else(|e| {
             panic!("Failed to read wasm bundle from {execution_wasm_bundle_path:?}: {e}",)
         });
         let wasm_bundle_size = wasm_bundle_content.len();
+        drop(wasm_bundle_content);
 
         let link_section_decl = format!(
             r#"
                 const _: () = {{
                     #[cfg(not(feature = "std"))]
                     #[link_section = "{link_section_name}"]
-                    static SECTION_CONTENTS: [u8; {wasm_bundle_size}] = {wasm_bundle_content:?};
+                    static SECTION_CONTENTS: [u8; {wasm_bundle_size}] = *include_bytes!("{}");
                 }};
             "#,
+            execution_wasm_bundle_path.escape_default()
         );
 
         execution_wasm_bundle_rs_contents.push_str(&link_section_decl);
