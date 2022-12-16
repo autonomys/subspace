@@ -15,7 +15,6 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
-use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
@@ -119,12 +118,9 @@ pub(super) async fn start_worker<
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
         move |primary_info, slot_info| {
-            let parent_chain = SystemDomainParentChain::<PClient, Block, PBlock>::new(
-                bundle_producer.primary_chain_client.clone(),
-            );
             bundle_producer
                 .clone()
-                .produce_bundle(primary_info, slot_info, parent_chain)
+                .produce_bundle(primary_info, slot_info)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
                     tracing::error!(?primary_info, ?error, "Error at producing bundle.");

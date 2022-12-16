@@ -1,7 +1,7 @@
 use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::parent_chain::ParentChainInterface;
+use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::{Decode, Encode};
@@ -24,9 +24,10 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
 {
-    pub(crate) domain_id: DomainId,
-    pub(crate) system_domain_client: Arc<SClient>,
+    domain_id: DomainId,
+    system_domain_client: Arc<SClient>,
     client: Arc<Client>,
+    parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
@@ -47,6 +48,7 @@ where
             domain_id: self.domain_id,
             system_domain_client: self.system_domain_client.clone(),
             client: self.client.clone(),
+            parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
@@ -84,10 +86,15 @@ where
             keystore.clone(),
         );
         let domain_bundle_proposer = DomainBundleProposer::new(client.clone(), transaction_pool);
+        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
+            system_domain_client.clone(),
+            domain_id,
+        );
         Self {
             domain_id,
             system_domain_client,
             client,
+            parent_chain,
             bundle_sender,
             is_authority,
             keystore,
@@ -97,18 +104,14 @@ where
         }
     }
 
-    pub(super) async fn produce_bundle<R>(
+    pub(super) async fn produce_bundle(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-        parent_chain: R,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
-    >
-    where
-        R: ParentChainInterface<SBlock::Hash>,
-    {
+    > {
         if !self.is_authority {
             return Ok(None);
         }
@@ -134,7 +137,12 @@ where
 
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, parent_chain, best_hash)
+                .propose_bundle_at::<PBlock, _, _>(
+                    slot,
+                    primary_info,
+                    self.parent_chain.clone(),
+                    best_hash,
+                )
                 .await?;
 
             let core_block_number = to_number_primitive(self.client.info().best_number);

@@ -1,7 +1,7 @@
 use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::parent_chain::ParentChainInterface;
+use crate::parent_chain::SystemDomainParentChain;
 use crate::utils::ExecutorSlotInfo;
 use crate::BundleSender;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -21,8 +21,9 @@ where
     PBlock: BlockT,
 {
     domain_id: DomainId,
-    pub(crate) primary_chain_client: Arc<PClient>,
+    primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
+    parent_chain: SystemDomainParentChain<PClient, Block, PBlock>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
@@ -41,6 +42,7 @@ where
             domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
+            parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
@@ -78,10 +80,13 @@ where
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::new(client.clone(), keystore.clone());
         let domain_bundle_proposer = DomainBundleProposer::new(client.clone(), transaction_pool);
+        let parent_chain =
+            SystemDomainParentChain::<PClient, Block, PBlock>::new(primary_chain_client.clone());
         Self {
             domain_id,
             primary_chain_client,
             client,
+            parent_chain,
             bundle_sender,
             is_authority,
             keystore,
@@ -90,18 +95,14 @@ where
         }
     }
 
-    pub(super) async fn produce_bundle<R>(
+    pub(super) async fn produce_bundle(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-        parent_chain: R,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
-    >
-    where
-        R: ParentChainInterface<PBlock::Hash>,
-    {
+    > {
         if !self.is_authority {
             return Ok(None);
         }
@@ -127,7 +128,12 @@ where
 
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, parent_chain, primary_info.0)
+                .propose_bundle_at::<PBlock, _, _>(
+                    slot,
+                    primary_info,
+                    self.parent_chain.clone(),
+                    primary_info.0,
+                )
                 .await?;
 
             Ok(Some(sign_new_bundle::<Block, PBlock>(

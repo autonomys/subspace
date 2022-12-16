@@ -2,7 +2,6 @@ use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
-use crate::parent_chain::CoreDomainParentChain;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
@@ -138,16 +137,10 @@ where
             fraud_proof_generator.clone(),
         );
 
-        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
-            system_domain_client.clone(),
-            domain_id,
-        );
-
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
             params.primary_chain_client.clone(),
             system_domain_client,
-            parent_chain,
             params.client.clone(),
             params.backend.clone(),
             params.keystore,

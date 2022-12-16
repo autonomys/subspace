@@ -1,5 +1,5 @@
 use crate::domain_block_processor::DomainBlockProcessor;
-use crate::parent_chain::ParentChainInterface;
+use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -21,26 +21,16 @@ use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct CoreBundleProcessor<
-    Block,
-    SBlock,
-    PBlock,
-    Client,
-    SClient,
-    PClient,
-    ParentChain,
-    Backend,
-    E,
-> where
+pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
+where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
-    ParentChain: ParentChainInterface<SBlock::Hash>,
 {
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
-    parent_chain: ParentChain,
+    parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
@@ -48,23 +38,12 @@ pub(crate) struct CoreBundleProcessor<
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, ParentChain, Backend, E> Clone
-    for CoreBundleProcessor<
-        Block,
-        SBlock,
-        PBlock,
-        SClient,
-        Client,
-        PClient,
-        ParentChain,
-        Backend,
-        E,
-    >
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E> Clone
+    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
-    ParentChain: ParentChainInterface<SBlock::Hash> + Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -81,8 +60,8 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, ParentChain, Backend, E>
-    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, ParentChain, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
+    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -102,22 +81,23 @@ where
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
-    ParentChain: ParentChainInterface<SBlock::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
         system_domain_client: Arc<SClient>,
-        parent_chain: ParentChain,
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: SyncCryptoStorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
+        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
+            system_domain_client.clone(),
+            domain_id,
+        );
         Self {
             domain_id,
             primary_chain_client,
