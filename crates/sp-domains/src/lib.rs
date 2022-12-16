@@ -135,6 +135,13 @@ impl DomainId {
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
     }
+
+    /// Returns the section name when a core domain wasm blob is embedded into the system domain
+    /// runtime via the `link_section` attribute.
+    #[cfg(feature = "std")]
+    pub fn link_section_name(&self) -> String {
+        format!("runtime_blob_{}", self.0)
+    }
 }
 
 /// Domain configuration.

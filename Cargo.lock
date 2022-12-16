@@ -2134,6 +2134,7 @@ name = "domain-client-executor"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "core-payments-domain-runtime",
  "crossbeam",
  "domain-block-builder",
  "domain-client-executor-gossip",
@@ -2151,6 +2152,8 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
+ "sc-executor",
+ "sc-executor-common",
  "sc-network",
  "sc-service",
  "sc-transaction-pool",
@@ -2317,6 +2320,7 @@ dependencies = [
 name = "domain-test-runtime"
 version = "0.1.0"
 dependencies = [
+ "core-payments-domain-runtime",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
