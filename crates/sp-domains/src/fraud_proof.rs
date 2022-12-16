@@ -1,4 +1,4 @@
-use crate::BundleHeader;
+use crate::{BundleHeader, DomainId};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -124,6 +124,8 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof {
+    /// The id of the domain this fraud proof targetted
+    pub domain_id: DomainId,
     /// Hash of the signed bundle in which an invalid state transition occurred.
     pub bad_signed_bundle_hash: H256,
     /// Parent number.

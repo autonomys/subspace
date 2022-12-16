@@ -887,17 +887,19 @@ fn extract_receipts(
         .collect()
 }
 
-fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> {
+fn extract_fraud_proofs(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    domain_id: DomainId,
+) -> Vec<FraudProof> {
     extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
-                uxt.function
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
+                if fraud_proof.domain_id == domain_id =>
             {
                 Some(fraud_proof)
-            } else {
-                None
             }
+            _ => None,
         })
         .collect()
 }
@@ -1158,8 +1160,8 @@ impl_runtime_apis! {
             extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
-            extract_fraud_proofs(extrinsics)
+        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof> {
+            extract_fraud_proofs(extrinsics, domain_id)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {

@@ -744,8 +744,8 @@ impl_runtime_apis! {
             crate::domains::extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
-            crate::domains::extract_fraud_proofs(extrinsics)
+        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId,) -> Vec<FraudProof> {
+            crate::domains::extract_fraud_proofs(extrinsics, domain_id)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
