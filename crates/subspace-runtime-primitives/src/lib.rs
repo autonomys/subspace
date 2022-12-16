@@ -83,10 +83,7 @@ pub mod opaque {
 
     /// Abstraction over a substrate block.
     #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
-    #[cfg_attr(
-        feature = "std",
-        derive(Serialize, Deserialize, parity_util_mem::MallocSizeOf)
-    )]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
     #[cfg_attr(feature = "std", serde(deny_unknown_fields))]
     pub struct Block {

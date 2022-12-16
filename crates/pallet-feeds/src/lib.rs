@@ -198,6 +198,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         // TODO: add proper weights
         /// Create a new feed
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn create(
             origin: OriginFor<T>,
@@ -238,6 +239,7 @@ mod pallet {
         }
 
         /// Updates the feed with init data provided.
+        #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn update(
             origin: OriginFor<T>,
@@ -271,6 +273,7 @@ mod pallet {
         // TODO: add proper weights
         // TODO: For now we don't have fees, but we will have them in the future
         /// Put a new object into a feed
+        #[pallet::call_index(2)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn put(origin: OriginFor<T>, feed_id: T::FeedId, object: Object) -> DispatchResult {
             let (owner, feed_config) = ensure_owner!(origin, feed_id);
@@ -306,6 +309,7 @@ mod pallet {
         }
 
         /// Closes the feed and stops accepting new feed.
+        #[pallet::call_index(3)]
         #[pallet::weight((T::DbWeight::get().reads_writes(1, 1), Pays::No))]
         pub fn close(origin: OriginFor<T>, feed_id: T::FeedId) -> DispatchResult {
             let (owner, mut feed_config) = ensure_owner!(origin, feed_id);
@@ -319,6 +323,7 @@ mod pallet {
         }
 
         /// Transfers feed from current owner to new owner
+        #[pallet::call_index(4)]
         #[pallet::weight((T::DbWeight::get().reads_writes(3, 3), Pays::No))]
         pub fn transfer(
             origin: OriginFor<T>,

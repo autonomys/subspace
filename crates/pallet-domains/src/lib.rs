@@ -45,9 +45,7 @@ mod pallet {
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
-    use sp_runtime::traits::{
-        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
-    };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, One, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -68,7 +66,6 @@ mod pallet {
             + sp_std::hash::Hash
             + AsRef<[u8]>
             + AsMut<[u8]>
-            + MaybeMallocSizeOf
             + MaxEncodedLen;
 
         /// Number of execution receipts kept in the state.
@@ -187,6 +184,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
@@ -241,6 +239,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
@@ -271,6 +270,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -288,6 +288,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,

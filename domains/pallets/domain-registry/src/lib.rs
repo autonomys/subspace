@@ -253,6 +253,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
         pub fn create_domain(
             origin: OriginFor<T>,
@@ -278,6 +279,7 @@ mod pallet {
         // TODO: support destroy_domain in the future.
 
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight(10_000)]
         pub fn update_domain_config(
             origin: OriginFor<T>,
@@ -300,6 +302,7 @@ mod pallet {
 
         /// Register a new domain operator.
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight(10_000)]
         pub fn register_domain_operator(
             origin: OriginFor<T>,
@@ -319,6 +322,7 @@ mod pallet {
 
         /// Update the domain stake.
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight(10_000)]
         pub fn update_domain_stake(
             origin: OriginFor<T>,
@@ -338,6 +342,7 @@ mod pallet {
 
         /// Deregister a domain operator.
         // TODO: proper weight
+        #[pallet::call_index(4)]
         #[pallet::weight(10_000)]
         pub fn deregister_domain_operator(
             origin: OriginFor<T>,
@@ -367,6 +372,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(5)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_core_bundle(
             origin: OriginFor<T>,
@@ -403,6 +409,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(6)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
@@ -418,6 +425,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(7)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -433,6 +441,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(8)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,

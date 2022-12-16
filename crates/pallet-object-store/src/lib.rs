@@ -63,6 +63,7 @@ mod pallet {
         // TODO: add proper weights
         // TODO: For now we don't have fees, but we will have them in the future
         /// Put a new object into a feed
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn put(origin: OriginFor<T>, object: Vec<u8>) -> DispatchResult {
             let who = ensure_signed(origin)?;

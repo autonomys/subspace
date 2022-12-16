@@ -13,22 +13,22 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
-frame-executive = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
-frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
-frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
+frame-executive = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
+frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
+frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
-sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
-sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
-sp-std = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
-sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535", default-features = false }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
+sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
+sp-std = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
+sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false }
 
 [dev-dependencies]
 hex-literal = "0.3.4"
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
-pallet-transaction-payment = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
-sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
-sp-version = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "6d57dbc639bb3d9460dabeccb063cc6556452535" }
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+pallet-transaction-payment = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+sp-version = { version = "5.0.0", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
 
 [features]
 default = ["std"]
