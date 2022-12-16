@@ -52,7 +52,7 @@ impl ParityDbPieceStorage {
         result.is_ok()
     }
 
-    fn get(&self, key: &Key) -> Option<Piece> {
+    pub(crate) fn get(&self, key: &Key) -> Option<Piece> {
         let result = self.db.get(PARITY_DB_COLUMN_NAME, key.borrow());
 
         match result {

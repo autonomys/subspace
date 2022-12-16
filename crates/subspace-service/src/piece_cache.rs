@@ -97,12 +97,11 @@ where
     }
 
     /// Get piece from storage
-    pub fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Box<dyn Error>> {
-        self.get_piece_by_index_multihash(
-            &PieceIndexHash::from_index(piece_index)
-                .to_multihash()
-                .to_bytes(),
-        )
+    pub fn get_piece(
+        &self,
+        piece_index_hash: PieceIndexHash,
+    ) -> Result<Option<Piece>, Box<dyn Error>> {
+        self.get_piece_by_index_multihash(&piece_index_hash.to_multihash().to_bytes())
     }
 
     /// Add pieces to cache (likely as the result of archiving)
@@ -331,10 +330,11 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
         let peer_id = self.piece_cache.local_peer_id;
 
         self.piece_index_iter.next().and_then(|piece_index| {
-            let key = Key::from(PieceIndexHash::from_index(*piece_index).to_multihash());
+            let piece_index_hash = PieceIndexHash::from_index(*piece_index);
+            let key = Key::from(piece_index_hash.to_multihash());
 
             self.piece_cache
-                .get_piece(*piece_index)
+                .get_piece(piece_index_hash)
                 .ok()
                 .flatten()
                 .map(move |_| ProviderRecord {

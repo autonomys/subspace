@@ -72,12 +72,11 @@ impl<'a> MultiChannelPieceReceiver<'a> {
         piece_index: PieceIndex,
         storage_type: StorageType,
     ) -> Option<Piece> {
-        let key = PieceIndexHash::from_index(piece_index).to_multihash_by_code(storage_type.into());
+        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let key = piece_index_hash.to_multihash_by_code(storage_type.into());
         let piece_key = match storage_type {
-            StorageType::Cache => PieceKey::PieceIndex(piece_index),
-            StorageType::ArchivalStorage => {
-                PieceKey::Sector(PieceIndexHash::from_index(piece_index))
-            }
+            StorageType::Cache => PieceKey::Cache(piece_index_hash),
+            StorageType::ArchivalStorage => PieceKey::ArchivalStorage(piece_index_hash),
         };
 
         let get_providers_result = self.dsn_node.get_providers(key).await;

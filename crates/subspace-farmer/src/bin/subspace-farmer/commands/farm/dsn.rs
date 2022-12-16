@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
@@ -15,9 +15,9 @@ use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, LimitedSizeRecordStorageWrapper,
-    Node, NodeRunner, ParityDbProviderStorage, ParityDbRecordStorage, PieceByHashRequest,
-    PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ProviderRecordProcessor,
+    FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, NoRecordStorage, Node,
+    NodeRunner, ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler,
+    PieceByHashResponse, PieceKey, ProviderRecordProcessor, ToMultihash,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
@@ -25,10 +25,8 @@ use tracing::{debug, info, trace, warn};
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
 // Type alias for currently configured Kademlia's custom record store.
-type ConfiguredRecordStore = CustomRecordStore<
-    LimitedSizeRecordStorageWrapper<ParityDbRecordStorage>,
-    LimitedSizeProviderStorageWrapper<ParityDbProviderStorage>,
->;
+type ConfiguredRecordStore =
+    CustomRecordStore<NoRecordStorage, LimitedSizeProviderStorageWrapper<ParityDbProviderStorage>>;
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -79,7 +77,7 @@ pub(super) async fn configure_dsn(
     let piece_storage = ParityDbPieceStorage::new(&record_cache_db_path)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let wrapped_piece_storage =
-        LimitedSizePieceStorageWrapper::new(piece_storage, record_cache_size, peer_id);
+        LimitedSizePieceStorageWrapper::new(piece_storage.clone(), record_cache_size, peer_id);
 
     let config = Config::<ConfiguredRecordStore> {
         reserved_peers,
@@ -89,66 +87,67 @@ pub(super) async fn configure_dsn(
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::Sector(piece_index_hash) = req.key {
-                let (mut reader, piece_details) = {
-                    let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                        Some(readers_and_pieces) => readers_and_pieces,
-                        None => {
-                            debug!("A readers and pieces are already dropped");
-                            return None;
-                        }
-                    };
-                    let readers_and_pieces = readers_and_pieces.lock();
-                    let readers_and_pieces = match readers_and_pieces.as_ref() {
-                        Some(readers_and_pieces) => readers_and_pieces,
-                        None => {
-                            debug!(
-                                ?piece_index_hash,
-                                "Readers and pieces are not initialized yet"
-                            );
-                            return None;
-                        }
-                    };
-                    let piece_details =
-                        match readers_and_pieces.pieces.get(&piece_index_hash).copied() {
-                            Some(piece_details) => piece_details,
+            let result = match req.key {
+                PieceKey::ArchivalStorage(piece_index_hash) => {
+                    debug!(key=?req.key, "Archival storage piece request received.");
+
+                    let (mut reader, piece_details) = {
+                        let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
+                            Some(readers_and_pieces) => readers_and_pieces,
                             None => {
-                                trace!(
+                                debug!("A readers and pieces are already dropped");
+                                return None;
+                            }
+                        };
+                        let readers_and_pieces = readers_and_pieces.lock();
+                        let readers_and_pieces = match readers_and_pieces.as_ref() {
+                            Some(readers_and_pieces) => readers_and_pieces,
+                            None => {
+                                debug!(
                                     ?piece_index_hash,
-                                    "Piece is not stored in any of the local plots"
+                                    "Readers and pieces are not initialized yet"
                                 );
                                 return None;
                             }
                         };
-                    let reader = readers_and_pieces
-                        .readers
-                        .get(piece_details.plot_offset)
-                        .cloned()
-                        .expect("Offsets strictly correspond to existing plots; qed");
-                    (reader, piece_details)
-                };
+                        let piece_details =
+                            match readers_and_pieces.pieces.get(&piece_index_hash).copied() {
+                                Some(piece_details) => piece_details,
+                                None => {
+                                    trace!(
+                                        ?piece_index_hash,
+                                        "Piece is not stored in any of the local plots"
+                                    );
+                                    return None;
+                                }
+                            };
+                        let reader = readers_and_pieces
+                            .readers
+                            .get(piece_details.plot_offset)
+                            .cloned()
+                            .expect("Offsets strictly correspond to existing plots; qed");
+                        (reader, piece_details)
+                    };
 
-                let handle = handle.clone();
-                tokio::task::block_in_place(move || {
-                    handle.block_on(
-                        reader.read_piece(piece_details.sector_index, piece_details.piece_offset),
-                    )
-                })
-            } else {
-                debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
+                    let handle = handle.clone();
+                    tokio::task::block_in_place(move || {
+                        handle.block_on(
+                            reader
+                                .read_piece(piece_details.sector_index, piece_details.piece_offset),
+                        )
+                    })
+                }
+                PieceKey::Cache(piece_index_hash) => {
+                    debug!(key=?req.key, "Cache piece request received.");
 
-                None
+                    piece_storage.get(&piece_index_hash.to_multihash().into())
+                }
             };
 
             Some(PieceByHashResponse { piece: result })
         })],
         record_store: CustomRecordStore::new(
-            LimitedSizeRecordStorageWrapper::new(
-                ParityDbRecordStorage::new(&record_cache_db_path)
-                    .map_err(|err| anyhow::anyhow!(err.to_string()))?,
-                record_cache_size,
-                peer_id,
-            ),
+            NoRecordStorage,
             LimitedSizeProviderStorageWrapper::new(
                 provider_storage.clone(),
                 provider_cache_size,
@@ -188,16 +187,16 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
     }
 
     //TODO: consider introducing get-piece helper
-    async fn get_piece(&self, multihash_key: &Multihash) -> Option<Piece> {
-        let todo_key = PieceIndexHash::from_index(1); //TODO: make correct conversion!!!
-        let piece_key = PieceKey::PieceIndexHash(todo_key);
+    async fn get_piece(&self, piece_index_hash: PieceIndexHash) -> Option<Piece> {
+        let multihash = piece_index_hash.to_multihash();
+        let piece_key = PieceKey::Cache(piece_index_hash);
 
-        let get_providers_result = self.node.get_providers(*multihash_key).await;
+        let get_providers_result = self.node.get_providers(multihash).await;
 
         match get_providers_result {
             Ok(mut get_providers_stream) => {
                 while let Some(provider_id) = get_providers_stream.next().await {
-                    trace!(?multihash_key, %provider_id, "get_providers returned an item");
+                    trace!(?multihash, %provider_id, "get_providers returned an item");
 
                     let request_result = self
                         .node
@@ -206,21 +205,21 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
 
                     match request_result {
                         Ok(PieceByHashResponse { piece: Some(piece) }) => {
-                            trace!(%provider_id, ?multihash_key, ?piece_key, "Piece request succeeded.");
+                            trace!(%provider_id, ?multihash, ?piece_key, "Piece request succeeded.");
                             return Some(piece);
                         }
                         Ok(PieceByHashResponse { piece: None }) => {
-                            debug!(%provider_id, ?multihash_key, ?piece_key, "Piece request returned empty piece.");
+                            debug!(%provider_id, ?multihash, ?piece_key, "Piece request returned empty piece.");
                         }
                         Err(error) => {
-                            warn!(%provider_id, ?multihash_key, ?piece_key, ?error, "Piece request failed.");
+                            warn!(%provider_id, ?multihash, ?piece_key, ?error, "Piece request failed.");
                         }
                     }
                 }
             }
             Err(err) => {
                 warn!(
-                    ?multihash_key,
+                    ?multihash,
                     ?piece_key,
                     ?err,
                     "get_providers returned an error"
@@ -240,14 +239,14 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
                 debug!(
                     ?error,
                     ?key,
-                    "Piece publishing for a sector returned an error"
+                    "Piece publishing for the cache returned an error"
                 );
             }
             Ok(mut stream) => {
                 if stream.next().await.is_some() {
-                    trace!(?key, "Piece publishing for a sector succeeded");
+                    trace!(?key, "Piece publishing for the cache succeeded");
                 } else {
-                    debug!(?key, "Piece publishing for a sector failed");
+                    debug!(?key, "Piece publishing for the cache failed");
                 }
             }
         };
@@ -262,17 +261,26 @@ impl<PS: PieceStorage> ProviderRecordProcessor for FarmerProviderRecordProcessor
             .expect("Key should represent a valid multihash");
 
         if multihash.code() == u64::from(MultihashCode::PieceIndex) {
-            trace!(key=?rec.key, "Starting processing provider record...");
+            info!(key=?rec.key, "Starting processing provider record...");
 
             if self.piece_storage.should_include_in_storage(&rec.key) {
-                if let Some(piece) = self.get_piece(&multihash).await {
-                    self.piece_storage.add_piece(rec.key, piece);
+                info!(key=?rec.key, "should_include_in_storage");
+                let piece_index_hash: [u8; BLAKE2B_256_HASH_SIZE] = multihash.digest()
+                    [..BLAKE2B_256_HASH_SIZE]
+                    .try_into()
+                    .expect("Multihash should be known 32 bytes size.");
+
+                if let Some(piece) = self.get_piece(piece_index_hash.into()).await {
+                    info!(key=?rec.key, "get_piece");
+                    self.piece_storage.add_piece(rec.key.clone(), piece);
                     self.announce_piece(multihash).await;
                 }
             }
         } else {
-            trace!(key=?rec.key, "Processing of the provider record cancelled.");
+            info!(key=?rec.key, "Processing of the provider record cancelled.");
         }
+
+        info!(key=?rec.key, "Finished processing provider record...");
     }
 }
 

@@ -66,7 +66,9 @@ fn basic() {
         .value
         .clone();
 
-    let piece_res = store.get_piece(piece_index).unwrap();
+    let piece_res = store
+        .get_piece(PieceIndexHash::from_index(piece_index))
+        .unwrap();
     let piece = piece_res.unwrap();
 
     assert_eq!(piece_by_kad_key.as_slice(), piece.as_ref());
@@ -82,7 +84,10 @@ fn cache_nothing() {
 
     let piece_index = 0u64;
 
-    assert!(store.get_piece(piece_index).unwrap().is_none());
+    assert!(store
+        .get_piece(PieceIndexHash::from_index(piece_index))
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -96,12 +101,21 @@ fn auto_cleanup() {
     // Store the first piece
     store.add_pieces(0, &FlatPieces::new(1)).unwrap();
     // It must be stored
-    store.get_piece(0).unwrap().unwrap();
+    store
+        .get_piece(PieceIndexHash::from_index(0))
+        .unwrap()
+        .unwrap();
 
     // Store second piece
     store.add_pieces(1, &FlatPieces::new(1)).unwrap();
     // It must be stored
-    store.get_piece(1).unwrap().unwrap();
+    store
+        .get_piece(PieceIndexHash::from_index(1))
+        .unwrap()
+        .unwrap();
     // But the first piece is evicted because it exceeds cache size
-    assert!(store.get_piece(0).unwrap().is_none());
+    assert!(store
+        .get_piece(PieceIndexHash::from_index(0))
+        .unwrap()
+        .is_none());
 }

@@ -82,8 +82,8 @@ where
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::PieceIndex(piece_index) = req.key {
-                match piece_cache.get_piece(piece_index) {
+            let result = if let PieceKey::Cache(piece_index_hash) = req.key {
+                match piece_cache.get_piece(piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
                     Err(error) => {
                         error!(key=?req.key, %error, "Failed to get piece from cache");
