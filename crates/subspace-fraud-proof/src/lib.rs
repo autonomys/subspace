@@ -244,7 +244,7 @@ where
         let wasm_bundle = self
             .client
             .runtime_api()
-            .execution_wasm_bundle(&BlockId::Hash(at))
+            .system_domain_wasm_bundle(&BlockId::Hash(at))
             .map_err(VerificationError::RuntimeApi)?;
 
         let code_fetcher = RuntimCodeFetcher {

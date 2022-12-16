@@ -19,8 +19,8 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-// Make execution WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
+// Make `domain-test-runtime` WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/test_domain_wasm_bundle.rs"));
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -1111,13 +1111,17 @@ impl_runtime_apis! {
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic)-> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+        fn extract_pre_validation_object(
+            extrinsic: <Block as BlockT>::Extrinsic,
+        )-> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
             extract_pre_validation_object(extrinsic)
         }
     }
 
     impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>) {
+        fn submit_bundle_unsigned(
+            opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+        ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
@@ -1168,8 +1172,8 @@ impl_runtime_apis! {
             extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn execution_wasm_bundle() -> Cow<'static, [u8]> {
-            EXECUTION_WASM_BUNDLE.into()
+        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
+            TEST_DOMAIN_WASM_BUNDLE.into()
         }
 
         fn head_receipt_number() -> NumberFor<Block> {

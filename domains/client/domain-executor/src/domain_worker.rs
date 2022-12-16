@@ -298,7 +298,7 @@ where
     {
         let system_domain_runtime = primary_chain_client
             .runtime_api()
-            .execution_wasm_bundle(&block_id)?;
+            .system_domain_wasm_bundle(&block_id)?;
 
         let new_runtime = match domain_id {
             DomainId::SYSTEM => system_domain_runtime,
