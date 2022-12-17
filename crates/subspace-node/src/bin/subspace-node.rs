@@ -122,7 +122,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 }
 
 fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
+    let cli = Cli::from_args();
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
@@ -360,10 +360,6 @@ fn main() -> Result<(), Error> {
             unimplemented!("Executor subcommand");
         }
         None => {
-            // Increase default number of peers
-            if cli.run.network_params.out_peers == 25 {
-                cli.run.network_params.out_peers = 50;
-            }
             let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|primary_chain_config| async move {
@@ -489,7 +485,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let (mut secondary_chain_cli, maybe_core_domain_cli) = SecondaryChainCli::new(
+                    let (secondary_chain_cli, maybe_core_domain_cli) = SecondaryChainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -498,11 +494,6 @@ fn main() -> Result<(), Error> {
                         })?,
                         cli.secondary_chain_args.into_iter(),
                     );
-
-                    // Increase default number of peers
-                    if secondary_chain_cli.run.run_system.network_params.out_peers == 25 {
-                        secondary_chain_cli.run.run_system.network_params.out_peers = 50;
-                    }
 
                     let secondary_chain_config = secondary_chain_cli
                         .create_domain_configuration(tokio_handle.clone())
@@ -568,17 +559,12 @@ fn main() -> Result<(), Error> {
                         .task_manager
                         .add_child(secondary_chain_node.task_manager);
 
-                    if let Some(mut core_domain_cli) = maybe_core_domain_cli {
+                    if let Some(core_domain_cli) = maybe_core_domain_cli {
                         let span = sc_tracing::tracing::info_span!(
                             sc_tracing::logging::PREFIX_LOG_SPAN,
                             name = "CoreDomain"
                         );
                         let _enter = span.enter();
-
-                        // Increase default number of peers
-                        if core_domain_cli.run.network_params.out_peers == 25 {
-                            core_domain_cli.run.network_params.out_peers = 50;
-                        }
 
                         let core_domain_config = core_domain_cli
                             .create_domain_configuration(tokio_handle)
