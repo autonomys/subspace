@@ -7,9 +7,9 @@ use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::futures::Notified;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 use tracing::warn;
 
 /// This test is successful only for global IP addresses and DNS names.
@@ -140,8 +140,8 @@ impl SemShared {
     // Returns Ok(()) if a permit was allocated, Err(Notified) otherwise. The caller
     // is responsible for waiting for the notification to be signalled when a permit
     // becomes available eventually.
-    async fn alloc_one(&self) -> Result<(), Notified> {
-        let mut current = self.current.lock().await;
+    fn alloc_one(&self) -> Result<(), Notified> {
+        let mut current = self.current.lock().unwrap();
         if current.usage < current.capacity {
             current.usage += 1;
             Ok(())
@@ -150,10 +150,23 @@ impl SemShared {
         }
     }
 
+    // Allocates a permit if available.
+    // Returns bool if permit was available, false otherwise
+    #[cfg(test)]
+    fn try_alloc_one(&self) -> bool {
+        let mut current = self.current.lock().unwrap();
+        if current.usage < current.capacity {
+            current.usage += 1;
+            true
+        } else {
+            false
+        }
+    }
+
     // Returns a permit back to the free pool, notifies waiters if needed.
-    async fn free_one(&self) {
+    fn free_one(&self) {
         let should_notify = {
-            let mut current = self.current.lock().await;
+            let mut current = self.current.lock().unwrap();
             if current.usage > 0 {
                 current.usage -= 1;
             } else {
@@ -176,17 +189,17 @@ impl SemShared {
 
     // Expands the max capacity by delta, and notifies any waiters of the newly available
     // free permits.
-    async fn expand(&self, delta: usize) {
+    fn expand(&self, delta: usize) {
         {
-            let mut current = self.current.lock().await;
+            let mut current = self.current.lock().unwrap();
             current.capacity += delta;
         }
         self.notify.notify_waiters();
     }
 
     // Shrinks the max capacity by delta
-    async fn shrink(&self, delta: usize) -> Result<(), String> {
-        let mut current = self.current.lock().await;
+    fn shrink(&self, delta: usize) -> Result<(), String> {
+        let mut current = self.current.lock().unwrap();
         if current.capacity > delta {
             current.capacity -= delta;
             Ok(())
@@ -207,7 +220,7 @@ impl ResizableSemaphore {
     // Acquires a permit. Waits until a permit is available.
     pub(crate) async fn acquire(&self) -> ResizableSemaphorePermit {
         loop {
-            match self.0.alloc_one().await {
+            match self.0.alloc_one() {
                 Ok(()) => break,
                 Err(notified) => notified.await,
             }
@@ -218,8 +231,8 @@ impl ResizableSemaphore {
     // Acquires a permit, does not wait if no permits are available.
     // Currently used only for testing.
     #[cfg(test)]
-    pub(crate) async fn try_acquire(&self) -> Option<ResizableSemaphorePermit> {
-        if self.0.alloc_one().await {
+    pub(crate) fn try_acquire(&self) -> Option<ResizableSemaphorePermit> {
+        if self.0.try_alloc_one() {
             Some(ResizableSemaphorePermit(self.0.clone()))
         } else {
             None
@@ -227,23 +240,18 @@ impl ResizableSemaphore {
     }
 
     // Expands the capacity by the specified amount.
-    pub(crate) async fn expand(&self, delta: usize) {
-        self.0.expand(delta).await;
+    pub(crate) fn expand(&self, delta: usize) {
+        self.0.expand(delta);
     }
 
     // Shrinks the capacity by the specified amount.
-    pub(crate) async fn shrink(&self, delta: usize) -> Result<(), String> {
-        self.0.shrink(delta).await
+    pub(crate) fn shrink(&self, delta: usize) -> Result<(), String> {
+        self.0.shrink(delta)
     }
 }
 
 impl Drop for ResizableSemaphorePermit {
     fn drop(&mut self) {
-        let state = self.0.clone();
-        tokio::spawn({
-            async move {
-                state.free_one().await;
-            }
-        });
+        self.0.free_one()
     }
 }

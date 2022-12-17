@@ -308,12 +308,10 @@ where
 
                 shared
                     .kademlia_tasks_semaphore
-                    .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    .await;
+                    .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
                 shared
                     .regular_tasks_semaphore
-                    .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    .await;
+                    .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
 
                 let (in_connections_number, out_connections_number) = {
                     let network_info = self.swarm.network_info();
@@ -376,12 +374,10 @@ where
                 shared
                     .kademlia_tasks_semaphore
                     .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    .await
                     .expect("Failed to shrink kademlia_tasks_semaphore");
                 shared
                     .regular_tasks_semaphore
                     .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    .await
                     .expect("Failed to shrink regular_tasks_semaphore");
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
