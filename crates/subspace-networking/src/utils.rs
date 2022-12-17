@@ -8,6 +8,7 @@ use libp2p::{Multiaddr, PeerId};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tokio::sync::futures::Notified;
 use tokio::sync::{Mutex, Notify};
 use tracing::warn;
 
@@ -136,14 +137,16 @@ impl SemShared {
     }
 
     // Allocates a permit if available.
-    // Returns true if a permit was allocated, false otherwise
-    async fn alloc_one(&self) -> bool {
+    // Returns Ok(()) if a permit was allocated, Err(Notified) otherwise. The caller
+    // is responsible for waiting for the notification to be signalled when a permit
+    // becomes available eventually.
+    async fn alloc_one(&self) -> Result<(), Notified> {
         let mut current = self.current.lock().await;
         if current.usage < current.capacity {
             current.usage += 1;
-            true
+            Ok(())
         } else {
-            false
+            Err(self.notify.notified())
         }
     }
 
@@ -204,10 +207,10 @@ impl ResizableSemaphore {
     // Acquires a permit. Waits until a permit is available.
     pub(crate) async fn acquire(&self) -> ResizableSemaphorePermit {
         loop {
-            if self.0.alloc_one().await {
-                break;
+            match self.0.alloc_one().await {
+                Ok(()) => break,
+                Err(notified) => notified.await,
             }
-            self.0.notify.notified().await;
         }
         ResizableSemaphorePermit(self.0.clone())
     }
