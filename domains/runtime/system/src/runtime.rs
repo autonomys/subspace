@@ -86,7 +86,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-system-domain"),
     impl_name: create_runtime_str!("subspace-system-domain"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,

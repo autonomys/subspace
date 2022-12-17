@@ -162,12 +162,12 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3a System Domain",
+        "Subspace Gemini 3b System Domain",
         // ID
-        "subspace_gemini_3a_system_domain",
+        "subspace_gemini_3b_system_domain",
         ChainType::Local,
         move || {
             testnet_genesis(
@@ -214,7 +214,7 @@ pub fn gemini_3a_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3a-system-domain"),
+        Some("subspace-gemini-3b-system-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
