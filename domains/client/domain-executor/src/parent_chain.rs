@@ -15,7 +15,7 @@ use system_runtime_primitives::SystemDomainApi;
 ///
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
-pub(crate) trait ParentChainInterface<Hash>: Sync + Send {
+pub(crate) trait ParentChainInterface<Hash> {
     fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError>;
@@ -23,9 +23,8 @@ pub(crate) trait ParentChainInterface<Hash>: Sync + Send {
 
 /// The parent chain of the core domain
 pub struct CoreDomainParentChain<SClient, SBlock, PBlock> {
-    // The system domain client
     system_domain_client: Arc<SClient>,
-    // The id of the core domain
+    // Core domain id
     domain_id: DomainId,
     _phantom: PhantomData<(SBlock, PBlock)>,
 }
@@ -55,7 +54,7 @@ impl<SBlock, PBlock, SClient> ParentChainInterface<SBlock::Hash>
 where
     SBlock: BlockT,
     PBlock: BlockT,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + Sync + Send,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock>,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
@@ -85,7 +84,6 @@ where
 
 /// The parent chain of the system domain
 pub struct SystemDomainParentChain<PClient, Block, PBlock> {
-    // The primary chain client
     primary_chain_client: Arc<PClient>,
     _phantom: PhantomData<(Block, PBlock)>,
 }
@@ -113,7 +111,7 @@ impl<Block, PBlock, PClient> ParentChainInterface<PBlock::Hash>
 where
     Block: BlockT,
     PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Sync + Send,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {

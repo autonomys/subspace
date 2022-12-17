@@ -131,7 +131,7 @@ where
                 .propose_bundle_at::<PBlock, _, _>(
                     slot,
                     primary_info,
-                    self.parent_chain.clone(),
+                    self.parent_chain,
                     primary_info.0,
                 )
                 .await?;

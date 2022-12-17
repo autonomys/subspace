@@ -137,12 +137,7 @@ where
 
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(
-                    slot,
-                    primary_info,
-                    self.parent_chain.clone(),
-                    best_hash,
-                )
+                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, self.parent_chain, best_hash)
                 .await?;
 
             let core_block_number = to_number_primitive(self.client.info().best_number);
