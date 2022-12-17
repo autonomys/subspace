@@ -405,13 +405,13 @@ sp_api::decl_runtime_apis! {
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>, domain_id: DomainId,) -> Vec<FraudProof>;
+        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
-        /// WASM bundle for execution runtime.
-        fn execution_wasm_bundle() -> Cow<'static, [u8]>;
+        /// WASM bundle for system domain runtime.
+        fn system_domain_wasm_bundle() -> Cow<'static, [u8]>;
 
         /// Returns the best execution chain number.
         fn head_receipt_number() -> NumberFor<Block>;
