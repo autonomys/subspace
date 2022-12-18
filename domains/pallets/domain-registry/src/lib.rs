@@ -23,6 +23,7 @@ mod tests;
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
+use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_domain_tracker::CoreDomainTracker;
 use sp_domains::bundle_election::{
@@ -756,6 +757,25 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
 
         for (domain_id, total_stake_weight) in total_stake_weights {
             DomainTotalStakeWeight::<T>::insert(domain_id, total_stake_weight);
+        }
+    }
+}
+
+impl<T: Config> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
+    /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        let call = Call::submit_fraud_proof { fraud_proof };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(target: "runtime::domain-registry", "Submitted fraud proof");
+            }
+            Err(()) => {
+                log::error!(target: "runtime::domain-registry", "Error submitting fraud proof");
+            }
         }
     }
 }

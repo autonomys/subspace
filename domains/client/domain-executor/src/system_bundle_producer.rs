@@ -1,7 +1,8 @@
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::domain_bundle_producer::{sign_new_bundle, ReceiptInterface};
+use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::utils::{to_number_primitive, ExecutorSlotInfo};
+use crate::parent_chain::SystemDomainParentChain;
+use crate::utils::ExecutorSlotInfo;
 use crate::BundleSender;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -10,10 +11,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{BundleSolution, DomainId, ExecutorApi, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
@@ -24,6 +23,7 @@ where
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
+    parent_chain: SystemDomainParentChain<PClient, Block, PBlock>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
@@ -42,37 +42,13 @@ where
             domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
+            parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
             bundle_election_solver: self.bundle_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
         }
-    }
-}
-
-impl<Block, PBlock, Client, PClient, TransactionPool> ReceiptInterface<PBlock::Hash>
-    for SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-    PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-{
-    fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let head_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(head_receipt_number))
-    }
-
-    fn maximum_receipt_drift(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let max_drift = self
-            .primary_chain_client
-            .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(max_drift))
     }
 }
 
@@ -104,10 +80,13 @@ where
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::new(client.clone(), keystore.clone());
         let domain_bundle_proposer = DomainBundleProposer::new(client.clone(), transaction_pool);
+        let parent_chain =
+            SystemDomainParentChain::<PClient, Block, PBlock>::new(primary_chain_client.clone());
         Self {
             domain_id,
             primary_chain_client,
             client,
+            parent_chain,
             bundle_sender,
             is_authority,
             keystore,
@@ -116,18 +95,14 @@ where
         }
     }
 
-    pub(super) async fn produce_bundle<R>(
+    pub(super) async fn produce_bundle(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-        receipt_interface: R,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
-    >
-    where
-        R: ReceiptInterface<PBlock::Hash>,
-    {
+    > {
         if !self.is_authority {
             return Ok(None);
         }
@@ -156,7 +131,7 @@ where
                 .propose_bundle_at::<PBlock, _, _>(
                     slot,
                     primary_info,
-                    receipt_interface,
+                    self.parent_chain,
                     primary_info.0,
                 )
                 .await?;
