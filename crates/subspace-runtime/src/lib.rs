@@ -26,8 +26,8 @@ mod object_mapping;
 mod signed_extensions;
 mod weights;
 
-// Make execution WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
+// Make system domain WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/system_domain_wasm_bundle.rs"));
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -695,13 +695,17 @@ impl_runtime_apis! {
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic) -> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+        fn extract_pre_validation_object(
+            extrinsic: <Block as BlockT>::Extrinsic,
+        ) -> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
             crate::domains::extract_pre_validation_object(extrinsic)
         }
     }
 
     impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>) {
+        fn submit_bundle_unsigned(
+            opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+        ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
@@ -744,16 +748,16 @@ impl_runtime_apis! {
             crate::domains::extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
-            crate::domains::extract_fraud_proofs(extrinsics)
+        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof> {
+            crate::domains::extract_fraud_proofs(extrinsics, domain_id)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             crate::domains::extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn execution_wasm_bundle() -> Cow<'static, [u8]> {
-            EXECUTION_WASM_BUNDLE.into()
+        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
+            SYSTEM_DOMAIN_WASM_BUNDLE.into()
         }
 
         fn head_receipt_number() -> NumberFor<Block> {

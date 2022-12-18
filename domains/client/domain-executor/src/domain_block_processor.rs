@@ -420,7 +420,7 @@ where
         let fraud_proofs = self
             .primary_chain_client
             .runtime_api()
-            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
+            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics, self.domain_id)?;
 
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()
@@ -489,7 +489,12 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
+                .generate_proof(
+                    self.domain_id,
+                    trace_mismatch_index,
+                    &local_receipt,
+                    bad_signed_bundle_hash,
+                )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to generate fraud proof: {err}"

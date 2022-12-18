@@ -246,20 +246,22 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            // Revert the execution chain.
-            let (_, mut to_remove) = ReceiptHead::<T>::get();
+            if fraud_proof.domain_id.is_system() {
+                // Revert the execution chain.
+                let (_, mut to_remove) = ReceiptHead::<T>::get();
 
-            let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
-            let new_best_hash = BlockHash::<T>::get(new_best_number);
+                let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
+                let new_best_hash = BlockHash::<T>::get(new_best_number);
 
-            ReceiptHead::<T>::put((new_best_hash, new_best_number));
+                ReceiptHead::<T>::put((new_best_hash, new_best_number));
 
-            while to_remove > new_best_number {
-                let block_hash = BlockHash::<T>::get(to_remove);
-                for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                    Receipts::<T>::remove(receipt_hash);
+                while to_remove > new_best_number {
+                    let block_hash = BlockHash::<T>::get(to_remove);
+                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                        Receipts::<T>::remove(receipt_hash);
+                    }
+                    to_remove -= One::one();
                 }
-                to_remove -= One::one();
             }
 
             // TODO: slash the executor accordingly.

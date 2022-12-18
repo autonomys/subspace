@@ -8,7 +8,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
-use sp_domains::ExecutionReceipt;
+use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_trie::StorageProof;
@@ -81,6 +81,7 @@ where
 
     pub(crate) fn generate_proof(
         &self,
+        domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         bad_signed_bundle_hash: H256,
@@ -136,6 +137,7 @@ where
             )?;
 
             FraudProof {
+                domain_id,
                 bad_signed_bundle_hash,
                 parent_number,
                 parent_hash: as_h256(&parent_header.hash())?,
@@ -171,6 +173,7 @@ where
             )?;
 
             FraudProof {
+                domain_id,
                 bad_signed_bundle_hash,
                 parent_number,
                 parent_hash: as_h256(&parent_header.hash())?,
@@ -193,6 +196,7 @@ where
 
             // TODO: proof should be a CompactProof.
             FraudProof {
+                domain_id,
                 bad_signed_bundle_hash,
                 parent_number,
                 parent_hash: as_h256(&parent_header.hash())?,

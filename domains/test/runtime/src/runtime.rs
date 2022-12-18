@@ -31,6 +31,9 @@ use subspace_runtime_primitives::{SHANNON, SSC};
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 
+// Make core-payments WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
+
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 
@@ -105,12 +108,12 @@ impl_opaque_keys! {
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-executor"),
     impl_name: create_runtime_str!("subspace-executor"),
-    authoring_version: 1,
-    spec_version: 1,
+    authoring_version: 0,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
-    state_version: 1,
+    transaction_version: 0,
+    state_version: 0,
 };
 
 /// The existential deposit. Same with the one on primary chain.
@@ -515,12 +518,28 @@ impl_runtime_apis! {
                 .collect()
         }
 
-        fn bundle_elections_params(_domain_id: DomainId) -> BundleElectionParams {
-            // TODO: support all kinds of domains.
-            BundleElectionParams {
-                authorities: ExecutorRegistry::authorities().into(),
-                total_stake_weight: ExecutorRegistry::total_stake_weight(),
-                slot_probability: ExecutorRegistry::slot_probability(),
+        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
+            if domain_id.is_system() {
+                BundleElectionParams {
+                    authorities: ExecutorRegistry::authorities().into(),
+                    total_stake_weight: ExecutorRegistry::total_stake_weight(),
+                    slot_probability: ExecutorRegistry::slot_probability(),
+                }
+            } else {
+                match (
+                    DomainRegistry::domain_authorities(domain_id),
+                    DomainRegistry::domain_total_stake_weight(domain_id),
+                    DomainRegistry::domain_slot_probability(domain_id),
+                ) {
+                    (authorities, Some(total_stake_weight), Some(slot_probability)) => {
+                        BundleElectionParams {
+                            authorities,
+                            total_stake_weight,
+                            slot_probability,
+                        }
+                    }
+                    _ => BundleElectionParams::empty(),
+                }
             }
         }
 

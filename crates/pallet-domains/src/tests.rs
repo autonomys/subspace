@@ -427,7 +427,8 @@ fn submit_fraud_proof_should_work() {
         })
         .unzip();
 
-    let dummy_proof = FraudProof {
+    let dummy_proof = |domain_id| FraudProof {
+        domain_id,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: 99,
         parent_hash: block_hashes[98],
@@ -454,9 +455,18 @@ fn submit_fraud_proof_should_work() {
             assert_eq!(votes.next(), None);
         });
 
+        // non-system domain fraud proof should be ignored
         assert_ok!(Domains::submit_fraud_proof(
             RuntimeOrigin::none(),
-            dummy_proof
+            dummy_proof(DomainId::new(100))
+        ));
+        assert_eq!(Domains::head_receipt_number(), 256);
+        let receipt_hash = dummy_bundles[255].clone().bundle.receipts[0].hash();
+        assert!(Receipts::<Test>::get(receipt_hash).is_some());
+
+        assert_ok!(Domains::submit_fraud_proof(
+            RuntimeOrigin::none(),
+            dummy_proof(DomainId::SYSTEM)
         ));
         assert_eq!(Domains::head_receipt_number(), 99);
         let receipt_hash = dummy_bundles[98].clone().bundle.receipts[0].hash();

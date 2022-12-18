@@ -31,6 +31,7 @@ pub fn export_wasm_bundle_path() {
 pub fn create_runtime_bundle_inclusion_file(
     runtime_crate_name: &str,
     bundle_const_name: &str,
+    maybe_link_section_name: Option<&str>,
     target_file_name: &str,
 ) {
     // Create a file that will include execution runtime into consensus runtime
@@ -46,12 +47,33 @@ pub fn create_runtime_bundle_inclusion_file(
 
     let execution_wasm_bundle_rs_path =
         env::var("OUT_DIR").expect("Set by cargo; qed") + "/" + target_file_name;
-    let execution_wasm_bundle_rs_contents = format!(
+    let mut execution_wasm_bundle_rs_contents = format!(
         r#"
             pub const {bundle_const_name}: &[u8] = include_bytes!("{}");
         "#,
         execution_wasm_bundle_path.escape_default()
     );
+
+    if let Some(link_section_name) = maybe_link_section_name {
+        let wasm_bundle_content = fs::read(&execution_wasm_bundle_path).unwrap_or_else(|e| {
+            panic!("Failed to read wasm bundle from {execution_wasm_bundle_path:?}: {e}",)
+        });
+        let wasm_bundle_size = wasm_bundle_content.len();
+        drop(wasm_bundle_content);
+
+        let link_section_decl = format!(
+            r#"
+                const _: () = {{
+                    #[cfg(not(feature = "std"))]
+                    #[link_section = "{link_section_name}"]
+                    static SECTION_CONTENTS: [u8; {wasm_bundle_size}] = *include_bytes!("{}");
+                }};
+            "#,
+            execution_wasm_bundle_path.escape_default()
+        );
+
+        execution_wasm_bundle_rs_contents.push_str(&link_section_decl);
+    }
 
     fs::write(
         execution_wasm_bundle_rs_path,
