@@ -9,7 +9,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
-use sp_domains::{Bundle, ExecutorApi, SignedBundle};
+use sp_domains::{Bundle, DomainId, ExecutorApi, SignedBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
@@ -84,6 +84,7 @@ where
         &self,
         signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
+        domain_id: DomainId,
     ) -> Result<(), GossipMessageError> {
         let head_receipt_number = self
             .primary_chain_client
@@ -95,6 +96,7 @@ where
             signed_bundle_hash,
             execution_receipt,
             head_receipt_number,
+            domain_id,
         )? {
             self.primary_chain_client
                 .runtime_api()
@@ -185,8 +187,9 @@ where
             // TODO: validate the bundle election.
 
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
+            let domain_id = bundle_solution.proof_of_election().domain_id;
             for receipt in &bundle.receipts {
-                self.validate_gossiped_execution_receipt(signed_bundle_hash, receipt)?;
+                self.validate_gossiped_execution_receipt(signed_bundle_hash, receipt, domain_id)?;
             }
 
             for extrinsic in bundle.extrinsics.iter() {

@@ -25,7 +25,7 @@ event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
 futures = "0.3.25"
 hex = { version = "0.4.3", features = ["serde"] }
-jsonrpsee = { version = "0.15.1", features = ["client", "macros", "server"] }
+jsonrpsee = { version = "0.16.2", features = ["client", "macros", "server"] }
 memmap2 = "0.5.8"
 num-traits = "0.2.15"
 parity-db = "0.4.2"
@@ -47,7 +47,7 @@ subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitive
 substrate-bip39 = "0.4.4"
 tempfile = "3.3.0"
 thiserror = "1.0.32"
-tokio = { version = "1.21.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
+tokio = { version = "1.23.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }

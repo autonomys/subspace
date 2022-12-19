@@ -4,9 +4,7 @@ pub use domain_runtime_primitives::{
 };
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
-use frame_support::weights::constants::{
-    BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND,
-};
+use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -15,6 +13,7 @@ use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
@@ -87,7 +86,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-system-domain"),
     impl_name: create_runtime_str!("subspace-system-domain"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -105,8 +104,8 @@ const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 /// `Operational` extrinsics.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
-/// We allow for 0.5 of a second of compute with a 12 second average block time.
-const MAXIMUM_BLOCK_WEIGHT: Weight = WEIGHT_PER_SECOND.div(2).set_proof_size(u64::MAX);
+/// TODO: Proper max block weight
+const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::MAX;
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -575,6 +574,10 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 

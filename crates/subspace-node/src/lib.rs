@@ -33,6 +33,7 @@ use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::{fs, io};
 use subspace_networking::libp2p::Multiaddr;
 
@@ -204,6 +205,11 @@ pub struct Cli {
     #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,
 
+    /// Max number of segments that can be published concurrently, impacts RAM usage and network
+    /// bandwidth.
+    #[arg(long, default_value = "10")]
+    pub segment_publish_concurrency: NonZeroUsize,
+
     /// Secondary chain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
@@ -250,8 +256,8 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
-            "gemini-3a" => chain_spec::gemini_3a()?,
-            "gemini-3a-compiled" => chain_spec::gemini_3a_compiled()?,
+            "gemini-3b" => chain_spec::gemini_3b()?,
+            "gemini-3b-compiled" => chain_spec::gemini_3b_compiled()?,
             "x-net-2" => chain_spec::x_net_2_config()?,
             "x-net-2-compiled" => chain_spec::x_net_2_config_compiled()?,
             "dev" => chain_spec::dev_config()?,

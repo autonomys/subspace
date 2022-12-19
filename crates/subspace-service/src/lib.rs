@@ -65,6 +65,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -162,6 +163,8 @@ pub struct SubspaceConfiguration {
     pub force_new_slot_notifications: bool,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
+    /// Max number of segments that can be published concurrently.
+    pub segment_publish_concurrency: NonZeroUsize,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -507,6 +510,7 @@ where
         node.clone(),
         task_manager.spawn_handle(),
         piece_publisher_batch_size,
+        config.segment_publish_concurrency,
     );
 
     task_manager.spawn_essential_handle().spawn_essential(

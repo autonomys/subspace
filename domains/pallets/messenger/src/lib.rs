@@ -459,6 +459,7 @@ mod pallet {
         /// Next Channel ID is used to assign the new channel.
         /// Channel is set to initiated and do not accept or receive any messages.
         /// Only a root user can create the channel.
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn initiate_channel(
             origin: OriginFor<T>,
@@ -487,6 +488,7 @@ mod pallet {
         /// An open channel is closed with a foreign domain.
         /// Channel is set to Closed and do not accept or receive any messages.
         /// Only a root user can close an open channel.
+        #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn close_channel(
             origin: OriginFor<T>,
@@ -508,6 +510,7 @@ mod pallet {
         }
 
         /// Receives an Inbox message that needs to be validated and processed.
+        #[pallet::call_index(2)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
@@ -519,6 +522,7 @@ mod pallet {
         }
 
         /// Receives a response from the dst_domain for a message in Outbox.
+        #[pallet::call_index(3)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
@@ -530,6 +534,7 @@ mod pallet {
         }
 
         /// Declare the desire to become a relayer for this domain by reserving the relayer deposit.
+        #[pallet::call_index(4)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -538,6 +543,7 @@ mod pallet {
         }
 
         /// Declare the desire to exit relaying for this domain.
+        #[pallet::call_index(5)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;

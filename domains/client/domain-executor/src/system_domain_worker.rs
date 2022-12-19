@@ -118,10 +118,9 @@ pub(super) async fn start_worker<
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),
         move |primary_info, slot_info| {
-            let receipt_interface = bundle_producer.clone();
             bundle_producer
                 .clone()
-                .produce_bundle(primary_info, slot_info, receipt_interface)
+                .produce_bundle(primary_info, slot_info)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
                     tracing::error!(?primary_info, ?error, "Error at producing bundle.");

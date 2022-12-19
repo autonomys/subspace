@@ -1,6 +1,7 @@
 use crate::bundle_election_solver::BundleElectionSolver;
-use crate::domain_bundle_producer::{sign_new_bundle, ReceiptInterface};
+use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
+use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::{Decode, Encode};
@@ -15,7 +16,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
@@ -27,6 +27,7 @@ where
     domain_id: DomainId,
     system_domain_client: Arc<SClient>,
     client: Arc<Client>,
+    parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     is_authority: bool,
     keystore: SyncCryptoStorePtr,
@@ -47,6 +48,7 @@ where
             domain_id: self.domain_id,
             system_domain_client: self.system_domain_client.clone(),
             client: self.client.clone(),
+            parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             is_authority: self.is_authority,
             keystore: self.keystore.clone(),
@@ -54,32 +56,6 @@ where
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
             _phantom_data: self._phantom_data,
         }
-    }
-}
-
-impl<Block, SBlock, PBlock, Client, SClient, TransactionPool> ReceiptInterface<SBlock::Hash>
-    for CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>
-where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
-    SClient: ProvideRuntimeApi<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-{
-    fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let head_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(at), self.domain_id)?;
-        Ok(to_number_primitive(head_receipt_number))
-    }
-
-    fn maximum_receipt_drift(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
-        let max_drift = self
-            .system_domain_client
-            .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(max_drift))
     }
 }
 
@@ -110,10 +86,15 @@ where
             keystore.clone(),
         );
         let domain_bundle_proposer = DomainBundleProposer::new(client.clone(), transaction_pool);
+        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
+            system_domain_client.clone(),
+            domain_id,
+        );
         Self {
             domain_id,
             system_domain_client,
             client,
+            parent_chain,
             bundle_sender,
             is_authority,
             keystore,
@@ -123,18 +104,14 @@ where
         }
     }
 
-    pub(super) async fn produce_bundle<R>(
+    pub(super) async fn produce_bundle(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-        receipt_interface: R,
     ) -> Result<
         Option<SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
         sp_blockchain::Error,
-    >
-    where
-        R: ReceiptInterface<SBlock::Hash>,
-    {
+    > {
         if !self.is_authority {
             return Ok(None);
         }
@@ -160,7 +137,7 @@ where
 
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, receipt_interface, best_hash)
+                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, self.parent_chain, best_hash)
                 .await?;
 
             let core_block_number = to_number_primitive(self.client.info().best_number);

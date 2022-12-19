@@ -23,6 +23,7 @@ mod tests;
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
+use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_domain_tracker::CoreDomainTracker;
 use sp_domains::bundle_election::{
@@ -57,8 +58,10 @@ mod pallet {
     use codec::Codec;
     use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
     use frame_support::traits::LockableCurrency;
+    use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domain_digests::AsPredigest;
     use sp_domain_tracker::CoreDomainTracker;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
@@ -230,12 +233,12 @@ mod pallet {
 
     /// Map of primary block number to primary block hash for tracking bounded receipts per domain.
     ///
-    /// NOTE: This storage item is extended on adding a new non-system receipt since each receipt
-    /// is validated to point to a valid primary block on the primary chain.
-    ///
     /// The oldest block hash will be pruned once the oldest receipt is pruned. However, if a
     /// core domain stalls, i.e., no receipts are included in the system domain for a long time,
     /// the corresponding entry will grow indefinitely.
+    ///
+    /// TODO: there is a pitfall that any stalled domain can lead to an ubounded runtime storage
+    /// growth.
     #[pallet::storage]
     pub(super) type BlockHash<T: Config> = StorageDoubleMap<
         _,
@@ -251,6 +254,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
         pub fn create_domain(
             origin: OriginFor<T>,
@@ -276,6 +280,7 @@ mod pallet {
         // TODO: support destroy_domain in the future.
 
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight(10_000)]
         pub fn update_domain_config(
             origin: OriginFor<T>,
@@ -298,6 +303,7 @@ mod pallet {
 
         /// Register a new domain operator.
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight(10_000)]
         pub fn register_domain_operator(
             origin: OriginFor<T>,
@@ -317,6 +323,7 @@ mod pallet {
 
         /// Update the domain stake.
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight(10_000)]
         pub fn update_domain_stake(
             origin: OriginFor<T>,
@@ -336,6 +343,7 @@ mod pallet {
 
         /// Deregister a domain operator.
         // TODO: proper weight
+        #[pallet::call_index(4)]
         #[pallet::weight(10_000)]
         pub fn deregister_domain_operator(
             origin: OriginFor<T>,
@@ -365,6 +373,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(5)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_core_bundle(
             origin: OriginFor<T>,
@@ -393,7 +402,7 @@ mod pallet {
                     // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
                     //
                     // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                    return Err(Error::<T>::MissingParentReceipt.into());
+                    return Err(Error::<T>::Receipt(ReceiptError::MissingParent).into());
                 }
             }
 
@@ -401,6 +410,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(6)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
@@ -416,6 +426,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(7)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -431,6 +442,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(8)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,
@@ -443,6 +455,25 @@ mod pallet {
             Self::deposit_event(Event::InvalidTransactionProofProcessed);
 
             Ok(())
+        }
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            let (primary_number, primary_hash) = <frame_system::Pallet<T>>::digest()
+                .logs
+                .iter()
+                .find_map(|s| s.as_primary_block_info::<T::BlockNumber, T::Hash>())
+                .expect("Primary block info must exist otherwise the receipt verification can not work; qed");
+
+            let mut consumed_weight = Weight::zero();
+            for domain_id in Domains::<T>::iter_keys() {
+                BlockHash::<T>::insert(domain_id, primary_number, primary_hash);
+                consumed_weight += T::DbWeight::get().reads_writes(1, 1);
+            }
+
+            consumed_weight
         }
     }
 
@@ -508,6 +539,16 @@ mod pallet {
         }
     }
 
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    pub enum ReceiptError {
+        /// A missing core domain parent receipt.
+        MissingParent,
+        /// Core domain receipt is too far in the future.
+        TooFarInFuture,
+        /// Core domain receipt points to an unknown primary block.
+        UnknownBlock,
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// The amount of deposit is smaller than the `T::MinDomainDeposit` bound.
@@ -553,11 +594,8 @@ mod pallet {
         /// Not a core domain bundle.
         NotCoreDomainBundle,
 
-        /// A missing core domain parent receipt.
-        MissingParentReceipt,
-
-        /// Core domain receipt is too far in the future.
-        ReceiptTooFarInFuture,
+        /// Receipt error.
+        Receipt(ReceiptError),
     }
 
     #[pallet::event]
@@ -723,6 +761,25 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
     }
 }
 
+impl<T: Config> Pallet<T>
+where
+    T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
+{
+    /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        let call = Call::submit_fraud_proof { fraud_proof };
+
+        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
+            Ok(()) => {
+                log::info!(target: "runtime::domain-registry", "Submitted fraud proof");
+            }
+            Err(()) => {
+                log::error!(target: "runtime::domain-registry", "Error submitting fraud proof");
+            }
+        }
+    }
+}
+
 impl<T: Config> Pallet<T> {
     pub fn head_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         let (_, best_number) = <ReceiptHead<T>>::get(domain_id);
@@ -780,7 +837,13 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
 
-        let head_receipt_number = Self::head_receipt_number(signed_opaque_bundle.domain_id());
+        let domain_id = signed_opaque_bundle.domain_id();
+
+        if !domain_id.is_core() {
+            return Err(Error::<T>::NotCoreDomainBundle);
+        }
+
+        let head_receipt_number = Self::head_receipt_number(domain_id);
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
         let mut new_best_number = head_receipt_number;
@@ -793,18 +856,21 @@ impl<T: Config> Pallet<T> {
                 new_best_number += One::one();
             // Missing receipt.
             } else {
-                return Err(Error::<T>::MissingParentReceipt);
+                return Err(Error::<T>::Receipt(ReceiptError::MissingParent));
+            }
+
+            if BlockHash::<T>::get(domain_id, receipt.primary_number) != receipt.primary_hash {
+                return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
             }
 
             if receipt.primary_number > max_allowed {
-                return Err(Error::<T>::ReceiptTooFarInFuture);
+                return Err(Error::<T>::Receipt(ReceiptError::TooFarInFuture));
             }
         }
 
         // The validity of vrf proof itself has been verified on the primary chain, thus only the
         // proof_of_election is necessary to be checked here.
         let ProofOfElection {
-            domain_id,
             vrf_output,
             storage_proof,
             state_root,
@@ -812,10 +878,6 @@ impl<T: Config> Pallet<T> {
             global_challenge,
             ..
         } = &proof_of_election;
-
-        if !domain_id.is_core() {
-            return Err(Error::<T>::NotCoreDomainBundle);
-        }
 
         let core_block_number = T::BlockNumber::from(*core_block_number);
 
@@ -905,7 +967,7 @@ impl<T: Config> Pallet<T> {
         let slot_probability = domain_config.bundle_slot_probability;
 
         verify_bundle_solution_threshold(
-            *domain_id,
+            domain_id,
             *vrf_output,
             stake_weight,
             total_stake_weight,
@@ -1039,10 +1101,6 @@ impl<T: Config> Pallet<T> {
         let primary_hash = execution_receipt.primary_hash;
         let primary_number = execution_receipt.primary_number;
         let receipt_hash = execution_receipt.hash();
-
-        // (primary_number, primary_hash) has been verified on the primary chain, thus it
-        // can be used directly.
-        <BlockHash<T>>::insert(domain_id, primary_number, primary_hash);
 
         // Apply the new best receipt.
         <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);

@@ -277,6 +277,8 @@ pub struct SingleDiskPlotOptions<RC, FixedStorageProvider> {
     pub piece_publisher_semaphore: Arc<tokio::sync::Semaphore>,
     /// Provides an access to fixed provider record storage,
     pub fixed_provider_storage: FixedStorageProvider,
+    /// Semaphore to limit concurrency of plotting process.
+    pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -288,8 +290,8 @@ pub enum SingleDiskPlotError {
     Io(#[from] io::Error),
     /// Can't resize plot after creation
     #[error(
-        "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot was \
-        created, resizing isn't supported yet"
+        "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot \
+        was created, resizing isn't supported yet"
     )]
     CantResize {
         /// Plot ID
@@ -458,7 +460,7 @@ impl SingleDiskPlot {
     const METADATA_FILE: &'static str = "metadata.bin";
 
     /// Create new single disk plot instance
-    pub fn new<RC, FPRS: FixedProviderRecordStorage + Send + Sync + 'static>(
+    pub async fn new<RC, FPRS: FixedProviderRecordStorage + Send + Sync + 'static>(
         options: SingleDiskPlotOptions<RC, FPRS>,
     ) -> Result<Self, SingleDiskPlotError>
     where
@@ -475,6 +477,7 @@ impl SingleDiskPlot {
             piece_publisher_semaphore,
             piece_receiver_semaphore,
             fixed_provider_storage,
+            concurrent_plotting_semaphore,
         } = options;
 
         // TODO: Account for plot overhead
@@ -497,11 +500,10 @@ impl SingleDiskPlot {
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
 
-        let farmer_app_info = tokio::task::block_in_place(|| {
-            Handle::current()
-                .block_on(rpc_client.farmer_app_info())
-                .map_err(SingleDiskPlotError::NodeRpcError)
-        })?;
+        let farmer_app_info = rpc_client
+            .farmer_app_info()
+            .await
+            .map_err(SingleDiskPlotError::NodeRpcError)?;
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
             Some(single_disk_plot_info) => {
@@ -652,21 +654,25 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher =
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone(), piece_publisher_semaphore, fixed_provider_storage);
+                let piece_publisher = PieceSectorPublisher::new(
+                    dsn_node.clone(),
+                    shutting_down.clone(),
+                    piece_publisher_semaphore,
+                    fixed_provider_storage,
+                );
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
-                    if handle.block_on(start_receiver.recv()).is_err() {
-                        // Dropped before starting
-                        return;
-                    }
-
                     // Initial plotting
-                    let initial_plotting_result = try {
+                    let initial_plotting_fut = async move {
+                        if start_receiver.recv().await.is_err() {
+                            // Dropped before starting
+                            return Ok(());
+                        }
+
                         let chunked_sectors = plot_mmap_mut
                             .as_mut()
                             .chunks_exact_mut(PLOT_SECTOR_SIZE as usize);
@@ -686,25 +692,41 @@ impl SingleDiskPlot {
 
                         // TODO: Concurrency
                         for (sector_index, sector, sector_metadata) in plot_initial_sector {
+                            trace!(%sector_index, "Preparing to plot sector");
+
+                            let plotting_permit =
+                                match concurrent_plotting_semaphore.clone().acquire_owned().await {
+                                    Ok(plotting_permit) => plotting_permit,
+                                    Err(error) => {
+                                        warn!(
+                                            %sector_index,
+                                            %error,
+                                            "Semaphore was closed, interrupting plotting"
+                                        );
+                                        return Ok(());
+                                    }
+                                };
+
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!(
                                     %sector_index,
                                     "Instance is shutting down, interrupting plotting"
                                 );
-                                return;
+                                return Ok(());
                             }
 
                             debug!(%sector_index, "Plotting sector");
 
-                            let farmer_app_info = handle
-                                .block_on(rpc_client.farmer_app_info())
+                            let farmer_app_info = rpc_client
+                                .farmer_app_info()
+                                .await
                                 .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
 
                             // TODO: Remove RPC version and keep DSN version only.
                             let piece_receiver =
                                 MultiChannelPieceReceiver::new(dsn_node.clone(), &shutting_down);
 
-                            let plotted_sector = match handle.block_on(plot_sector(
+                            let plot_sector_fut = plot_sector(
                                 &public_key,
                                 sector_index,
                                 &piece_receiver,
@@ -715,14 +737,15 @@ impl SingleDiskPlot {
                                 sector,
                                 sector_metadata,
                                 &piece_receiver_semaphore,
-                            )) {
+                            );
+                            let plotted_sector = match plot_sector_fut.await {
                                 Ok(plotted_sector) => {
                                     debug!(%sector_index, "Sector plotted");
 
                                     plotted_sector
                                 }
                                 Err(plotting::PlottingError::Cancelled) => {
-                                    return;
+                                    return Ok(());
                                 }
                                 Err(error) => Err(PlottingError::LowLevel(error))?,
                             };
@@ -746,12 +769,24 @@ impl SingleDiskPlot {
                                         .publish_pieces(plotted_sector.piece_indexes)
                                         .await
                                     {
-                                        warn!(%sector_index, %error, "Failed to publish pieces to DSN");
+                                        warn!(
+                                            %sector_index,
+                                            %error,
+                                            "Failed to publish pieces to DSN"
+                                        );
                                     }
+
+                                    // Release only after publishing is finished
+                                    drop(plotting_permit);
                                 }
                             });
                         }
+
+                        Ok(())
                     };
+
+                    // TODO: Race this with shutdown signal
+                    let initial_plotting_result = handle.block_on(initial_plotting_fut);
 
                     if let Err(error) = initial_plotting_result {
                         if let Some(error_sender) = error_sender.lock().take() {
@@ -831,18 +866,16 @@ impl SingleDiskPlot {
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
-                    if handle.block_on(start_receiver.recv()).is_err() {
-                        // Dropped before starting
-                        return;
-                    }
+                    let farming_fut = async move {
+                        if start_receiver.recv().await.is_err() {
+                            // Dropped before starting
+                            return Ok(());
+                        }
 
-                    let farming_result = try {
-                        while let Some(slot_info) =
-                            handle.block_on(slot_info_forwarder_receiver.next())
-                        {
+                        while let Some(slot_info) = slot_info_forwarder_receiver.next().await {
                             if shutting_down.load(Ordering::Acquire) {
                                 debug!("Instance is shutting down, interrupting farming");
-                                return;
+                                return Ok(());
                             }
 
                             let slot = slot_info.slot_number;
@@ -892,7 +925,7 @@ impl SingleDiskPlot {
                                         %sector_index,
                                         "Instance is shutting down, interrupting plotting"
                                     );
-                                    return;
+                                    return Ok(());
                                 }
 
                                 trace!(%slot, %sector_index, "Auditing sector");
@@ -947,13 +980,19 @@ impl SingleDiskPlot {
                                 solutions,
                             };
                             handlers.solution.call_simple(&response);
-                            handle
-                                .block_on(rpc_client.submit_solution_response(response))
+                            rpc_client
+                                .submit_solution_response(response)
+                                .await
                                 .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
                                     error,
                                 })?;
                         }
+
+                        Ok(())
                     };
+
+                    // TODO: Race this with shutdown signal
+                    let farming_result = handle.block_on(farming_fut);
 
                     if let Err(error) = farming_result {
                         if let Some(error_sender) = error_sender.lock().take() {
@@ -978,39 +1017,43 @@ impl SingleDiskPlot {
                     let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
-                    while let Some(read_piece_request) = handle.block_on(read_piece_receiver.next())
-                    {
-                        let ReadPieceRequest {
-                            sector_index,
-                            piece_offset,
-                            response_sender,
-                        } = read_piece_request;
+                    let reading_fut = async move {
+                        while let Some(read_piece_request) = read_piece_receiver.next().await {
+                            let ReadPieceRequest {
+                                sector_index,
+                                piece_offset,
+                                response_sender,
+                            } = read_piece_request;
 
-                        if shutting_down.load(Ordering::Acquire) {
-                            debug!(
-                                %sector_index,
-                                %piece_offset,
-                                "Instance is shutting down, interrupting piece reading"
+                            if shutting_down.load(Ordering::Acquire) {
+                                debug!(
+                                    %sector_index,
+                                    %piece_offset,
+                                    "Instance is shutting down, interrupting piece reading"
+                                );
+                                return;
+                            }
+
+                            if response_sender.is_canceled() {
+                                continue;
+                            }
+
+                            let maybe_piece = read_piece(
+                                sector_index,
+                                piece_offset,
+                                metadata_header.lock().sector_count,
+                                first_sector_index,
+                                &sector_codec,
+                                &global_plot_mmap,
                             );
-                            return;
+
+                            // Doesn't matter if receiver still cares about it
+                            let _ = response_sender.send(maybe_piece);
                         }
+                    };
 
-                        if response_sender.is_canceled() {
-                            continue;
-                        }
-
-                        let maybe_piece = read_piece(
-                            sector_index,
-                            piece_offset,
-                            metadata_header.lock().sector_count,
-                            first_sector_index,
-                            &sector_codec,
-                            &global_plot_mmap,
-                        );
-
-                        // Doesn't matter if receiver still cares about it
-                        let _ = response_sender.send(maybe_piece);
-                    }
+                    // TODO: Race this with shutdown signal
+                    handle.block_on(reading_fut);
                 }
             })?;
 

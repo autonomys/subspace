@@ -8,6 +8,7 @@ use sc_consensus_subspace::ArchivedSegmentNotification;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::error::Error;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -112,12 +113,14 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
     node: Node,
     spawner: Spawner,
     piece_publisher_batch_size: usize,
+    segment_publish_concurrency: NonZeroUsize,
 ) where
     Spawner: SpawnNamed,
 {
     trace!("Subspace DSN archiver started.");
 
     let piece_publisher_semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
+    let segment_publish_semaphore = Arc::new(Semaphore::new(segment_publish_concurrency.get()));
 
     let mut last_published_segment_index: Option<u64> = None;
     while let Some(ArchivedSegmentNotification {
@@ -137,6 +140,18 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
             }
         }
 
+        let publishing_permit = match segment_publish_semaphore.clone().acquire_owned().await {
+            Ok(publishing_permit) => publishing_permit,
+            Err(error) => {
+                warn!(
+                    %segment_index,
+                    %error,
+                    "Semaphore was closed, interrupting publishing"
+                );
+                return;
+            }
+        };
+
         spawner.spawn(
             "segment-publishing",
             Some("subspace-networking"),
@@ -152,7 +167,10 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
                         archived_segment,
                         &piece_publisher_semaphore,
                     )
-                    .await
+                    .await;
+
+                    // Release only after publishing is finished
+                    drop(publishing_permit);
                 }
                 .in_current_span()
             }),

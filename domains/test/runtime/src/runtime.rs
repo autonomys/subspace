@@ -5,7 +5,7 @@ pub use domain_runtime_primitives::{
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
 use frame_support::weights::constants::{
-    BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND,
+    BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND,
 };
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -14,6 +14,7 @@ use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
@@ -29,6 +30,9 @@ use subspace_runtime_primitives::{SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
+
+// Make core-payments WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -104,12 +108,12 @@ impl_opaque_keys! {
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-executor"),
     impl_name: create_runtime_str!("subspace-executor"),
-    authoring_version: 1,
-    spec_version: 1,
+    authoring_version: 0,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
-    state_version: 1,
+    transaction_version: 0,
+    state_version: 0,
 };
 
 /// The existential deposit. Same with the one on primary chain.
@@ -124,7 +128,8 @@ const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 /// We allow for 0.5 of a second of compute with a 12 second average block time.
-const MAXIMUM_BLOCK_WEIGHT: Weight = WEIGHT_PER_SECOND.div(2).set_proof_size(u64::MAX);
+const MAXIMUM_BLOCK_WEIGHT: Weight =
+    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_div(2), u64::MAX);
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -513,12 +518,28 @@ impl_runtime_apis! {
                 .collect()
         }
 
-        fn bundle_elections_params(_domain_id: DomainId) -> BundleElectionParams {
-            // TODO: support all kinds of domains.
-            BundleElectionParams {
-                authorities: ExecutorRegistry::authorities().into(),
-                total_stake_weight: ExecutorRegistry::total_stake_weight(),
-                slot_probability: ExecutorRegistry::slot_probability(),
+        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
+            if domain_id.is_system() {
+                BundleElectionParams {
+                    authorities: ExecutorRegistry::authorities().into(),
+                    total_stake_weight: ExecutorRegistry::total_stake_weight(),
+                    slot_probability: ExecutorRegistry::slot_probability(),
+                }
+            } else {
+                match (
+                    DomainRegistry::domain_authorities(domain_id),
+                    DomainRegistry::domain_total_stake_weight(domain_id),
+                    DomainRegistry::domain_slot_probability(domain_id),
+                ) {
+                    (authorities, Some(total_stake_weight), Some(slot_probability)) => {
+                        BundleElectionParams {
+                            authorities,
+                            total_stake_weight,
+                            slot_probability,
+                        }
+                    }
+                    _ => BundleElectionParams::empty(),
+                }
             }
         }
 
@@ -542,6 +563,10 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 

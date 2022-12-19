@@ -153,7 +153,7 @@ impl SubstrateCli for CoreDomainCli {
         let chain_spec = match self.domain_id {
             DomainId::CORE_PAYMENTS => match id {
                 "dev" => core_payments_chain_spec::development_config(),
-                "gemini-3a" => core_payments_chain_spec::gemini_3a_config(),
+                "gemini-3b" => core_payments_chain_spec::gemini_3b_config(),
                 "" | "local" => core_payments_chain_spec::local_testnet_config(),
                 path => core_payments_chain_spec::ChainSpec::from_json_file(
                     std::path::PathBuf::from(path),

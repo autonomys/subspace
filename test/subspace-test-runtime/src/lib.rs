@@ -19,8 +19,8 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-// Make execution WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/execution_wasm_bundle.rs"));
+// Make `domain-test-runtime` WASM runtime available.
+include!(concat!(env!("OUT_DIR"), "/test_domain_wasm_bundle.rs"));
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -33,8 +33,8 @@ use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
 };
-use frame_support::weights::constants::{RocksDbWeight, WEIGHT_PER_SECOND};
-use frame_support::weights::{ConstantMultiplier, IdentityFee};
+use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
+use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
@@ -168,7 +168,7 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
     /// We allow for 2 seconds of compute with a 6 second average block time.
-    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(WEIGHT_PER_SECOND.saturating_mul(2).set_proof_size(u64::MAX), NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX), NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
 }
@@ -744,6 +744,15 @@ fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
                 successful_calls,
             );
         }
+        pallet_utility::Call::with_weight { call, .. } => {
+            extract_call_block_object_mapping(
+                base_offset,
+                objects,
+                call.as_ref(),
+                recursion_depth_left,
+                successful_calls,
+            );
+        }
         pallet_utility::Call::__Ignore(_, _) => {
             // Ignore.
         }
@@ -878,17 +887,19 @@ fn extract_receipts(
         .collect()
 }
 
-fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> {
+fn extract_fraud_proofs(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    domain_id: DomainId,
+) -> Vec<FraudProof> {
     extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
-                uxt.function
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
+                if fraud_proof.domain_id == domain_id =>
             {
                 Some(fraud_proof)
-            } else {
-                None
             }
+            _ => None,
         })
         .collect()
 }
@@ -1100,13 +1111,17 @@ impl_runtime_apis! {
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn extract_pre_validation_object(extrinsic: <Block as BlockT>::Extrinsic)-> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+        fn extract_pre_validation_object(
+            extrinsic: <Block as BlockT>::Extrinsic,
+        )-> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
             extract_pre_validation_object(extrinsic)
         }
     }
 
     impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>) {
+        fn submit_bundle_unsigned(
+            opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+        ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
@@ -1149,16 +1164,16 @@ impl_runtime_apis! {
             extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>) -> Vec<FraudProof> {
-            extract_fraud_proofs(extrinsics)
+        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof> {
+            extract_fraud_proofs(extrinsics, domain_id)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn execution_wasm_bundle() -> Cow<'static, [u8]> {
-            EXECUTION_WASM_BUNDLE.into()
+        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
+            TEST_DOMAIN_WASM_BUNDLE.into()
         }
 
         fn head_receipt_number() -> NumberFor<Block> {

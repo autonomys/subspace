@@ -3,17 +3,6 @@ use sp_domains::{Bundle, BundleSolution, ExecutorPublicKey, ExecutorSignature, S
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::RuntimeAppPublic;
-use subspace_core_primitives::BlockNumber;
-
-// TODO: this may be extended into ParentChainInterface due to the relative relation between the
-// chains regarding the settlement aspect.
-// - Primary Chain => System Domain
-// - System Domain => Core Domain
-/// Trait for retrieving the necessary info for collecting the receipts in a new domain bundle.
-pub(crate) trait ReceiptInterface<Hash> {
-    fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
-    fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
-}
 
 type SignedOpaqueBundle<Block, PBlock> = sp_domains::SignedOpaqueBundle<
     NumberFor<PBlock>,

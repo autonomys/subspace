@@ -10,11 +10,14 @@ use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
-use sp_domains::{BundleHeader, ExecutionReceipt, OpaqueBundle};
+use sp_domains::{BundleHeader, DomainId, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use tempfile::TempDir;
+
+// Use the system domain id for testing
+const TEST_DOMAIN_ID: DomainId = DomainId::SYSTEM;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
@@ -250,6 +253,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let parent_number_alice = ferdie.client.info().best_number;
 
     let fraud_proof = FraudProof {
+        domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
@@ -307,6 +311,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         );
 
         let fraud_proof = FraudProof {
+            domain_id: TEST_DOMAIN_ID,
             bad_signed_bundle_hash: Hash::random(),
             parent_number: parent_number_alice,
             parent_hash: parent_hash_alice,
@@ -353,6 +358,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     assert_eq!(post_execution_root, *header.state_root());
 
     let fraud_proof = FraudProof {
+        domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
@@ -531,6 +537,7 @@ async fn invalid_execution_proof_should_not_work() {
     let parent_number_alice = ferdie.client.info().best_number;
 
     let fraud_proof = FraudProof {
+        domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
@@ -542,6 +549,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let fraud_proof = FraudProof {
+        domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
@@ -553,6 +561,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let fraud_proof = FraudProof {
+        domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
