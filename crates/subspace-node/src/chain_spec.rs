@@ -31,8 +31,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-// TODO: gemini-3b raw spec.
-// const GEMINI_3B_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3a.json");
+const GEMINI_3B_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3b.json");
 const X_NET_2_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-2.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
@@ -71,7 +70,7 @@ struct GenesisParams {
 }
 
 pub fn gemini_3b() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    unimplemented!("gemini_3b raw chain spec")
+    ConsensusChainSpec::from_json_bytes(GEMINI_3B_CHAIN_SPEC)
 }
 
 pub fn gemini_3b_compiled(
