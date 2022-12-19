@@ -4,7 +4,6 @@ use crate::behavior::{Behavior, Event};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils;
-use async_trait::async_trait;
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -52,12 +51,6 @@ enum QueryResultSender {
     },
 }
 
-/// Inbound ProviderRecord handling.
-#[async_trait]
-pub trait ProviderRecordProcessor: Send + Sync + 'static {
-    async fn process_provider_record(&mut self, record: ProviderRecord);
-}
-
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner<RecordStore = CustomRecordStore>
@@ -92,11 +85,9 @@ where
     /// Prometheus metrics.
     metrics: Option<Metrics>,
     /// ProviderRecord chanel receiver.
-    provider_records_receiver: mpsc::Receiver<ProviderRecord>,
+    provider_records_receiver: Option<mpsc::Receiver<ProviderRecord>>,
     /// ProviderRecord chanel sender.
     provider_records_sender: mpsc::Sender<ProviderRecord>,
-    /// ProviderRecord processor for records from Kademlia DHT
-    provider_record_processor: Option<Box<dyn ProviderRecordProcessor>>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -114,7 +105,6 @@ where
     pub max_established_incoming_connections: u32,
     pub max_established_outgoing_connections: u32,
     pub metrics: Option<Metrics>,
-    pub provider_record_processor: Option<Box<dyn ProviderRecordProcessor>>,
 }
 
 impl<RecordStore> NodeRunner<RecordStore>
@@ -133,7 +123,6 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
-            provider_record_processor,
         }: NodeRunnerConfig<RecordStore>,
     ) -> Self {
         let (provider_records_sender, provider_records_receiver) =
@@ -157,18 +146,13 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
-            provider_records_receiver,
+            provider_records_receiver: Some(provider_records_receiver),
             provider_records_sender,
-            provider_record_processor,
         }
     }
 
-    pub fn replace_provider_record_provider(
-        &mut self,
-        provider_record_processor: Box<dyn ProviderRecordProcessor>,
-    ) {
-        self.provider_record_processor
-            .replace(provider_record_processor);
+    pub fn take_provider_records_receiver(&mut self) -> Option<mpsc::Receiver<ProviderRecord>> {
+        self.provider_records_receiver.take()
     }
 
     pub async fn run(&mut self) {
@@ -207,15 +191,6 @@ where
 
                     self.peer_dialing_timeout =
                         Box::pin(tokio::time::sleep(Duration::from_secs(3)).fuse());
-                },
-                provider_record = self.provider_records_receiver.next() => {
-                    if let Some(provider_record) = provider_record {
-                        if let Some(ref mut provider_record_processor) = self.provider_record_processor {
-                            provider_record_processor.process_provider_record(provider_record).await;
-                        }
-                    } else {
-                        break;
-                    }
                 },
             }
         }

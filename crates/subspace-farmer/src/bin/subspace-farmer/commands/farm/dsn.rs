@@ -1,13 +1,12 @@
 use crate::commands::farm::piece_storage::{LimitedSizePieceStorageWrapper, ParityDbPieceStorage};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
-use async_trait::async_trait;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
+use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
@@ -17,7 +16,7 @@ use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
     FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, NoRecordStorage, Node,
     NodeRunner, ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler,
-    PieceByHashResponse, PieceKey, ProviderRecordProcessor, ToMultihash,
+    PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
@@ -44,6 +43,7 @@ pub(super) async fn configure_dsn(
         Node,
         NodeRunner<ConfiguredRecordStore>,
         impl FixedProviderRecordStorage,
+        LimitedSizePieceStorageWrapper,
     ),
     anyhow::Error,
 > {
@@ -159,31 +159,21 @@ pub(super) async fn configure_dsn(
 
     create::<ConfiguredRecordStore>(config)
         .await
-        .map(|(node, mut node_runner)| {
-            let provider_record_processor =
-                FarmerProviderRecordProcessor::new(node.clone(), wrapped_piece_storage);
-            node_runner.replace_provider_record_provider(provider_record_processor.boxed());
-
-            (node, node_runner, provider_storage)
-        })
+        .map(|(node, node_runner)| (node, node_runner, provider_storage, wrapped_piece_storage))
         .map_err(Into::into)
 }
 
-struct FarmerProviderRecordProcessor<PS: PieceStorage> {
+pub(crate) struct FarmerProviderRecordProcessor<PS: PieceStorage> {
     node: Node,
     piece_storage: PS,
 }
 
 impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
-    fn new(node: Node, piece_storage: PS) -> Self {
+    pub fn new(node: Node, piece_storage: PS) -> Self {
         Self {
             node,
             piece_storage,
         }
-    }
-
-    pub fn boxed(self) -> Box<Self> {
-        Box::new(self)
     }
 
     //TODO: consider introducing get-piece helper
@@ -251,36 +241,28 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
             }
         };
     }
-}
 
-#[async_trait]
-impl<PS: PieceStorage> ProviderRecordProcessor for FarmerProviderRecordProcessor<PS> {
-    async fn process_provider_record(&mut self, rec: ProviderRecord) {
+    pub async fn process_provider_record(&mut self, rec: ProviderRecord) {
         let multihash_bytes = rec.key.to_vec();
         let multihash = Multihash::from_bytes(multihash_bytes.as_slice())
             .expect("Key should represent a valid multihash");
 
         if multihash.code() == u64::from(MultihashCode::PieceIndex) {
-            info!(key=?rec.key, "Starting processing provider record...");
+            trace!(key=?rec.key, "Starting processing provider record...");
 
             if self.piece_storage.should_include_in_storage(&rec.key) {
-                info!(key=?rec.key, "should_include_in_storage");
-                let piece_index_hash: [u8; BLAKE2B_256_HASH_SIZE] = multihash.digest()
-                    [..BLAKE2B_256_HASH_SIZE]
+                let piece_index_hash: Blake2b256Hash = multihash.digest()[..BLAKE2B_256_HASH_SIZE]
                     .try_into()
                     .expect("Multihash should be known 32 bytes size.");
 
                 if let Some(piece) = self.get_piece(piece_index_hash.into()).await {
-                    info!(key=?rec.key, "get_piece");
                     self.piece_storage.add_piece(rec.key.clone(), piece);
                     self.announce_piece(multihash).await;
                 }
             }
         } else {
-            info!(key=?rec.key, "Processing of the provider record cancelled.");
+            trace!(key=?rec.key, "Processing of the provider record cancelled.");
         }
-
-        info!(key=?rec.key, "Finished processing provider record...");
     }
 }
 

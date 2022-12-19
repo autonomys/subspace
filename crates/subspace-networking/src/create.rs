@@ -8,7 +8,7 @@ use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::utils::convert_multiaddresses;
-use crate::{BootstrappedNetworkingParameters, ProviderRecordProcessor};
+use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::Boxed;
@@ -107,8 +107,6 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub max_established_outgoing_connections: u32,
     /// Optional external prometheus metrics. None will disable metrics gathering.
     pub metrics: Option<Metrics>,
-    /// ProviderRecord processor for records from Kademlia DHT
-    pub provider_record_processor: Option<Box<dyn ProviderRecordProcessor>>,
 }
 
 impl fmt::Debug for Config {
@@ -177,7 +175,6 @@ impl Config {
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
             metrics: None,
-            provider_record_processor: None,
         }
     }
 }
@@ -230,7 +227,6 @@ where
         max_established_incoming_connections,
         max_established_outgoing_connections,
         metrics,
-        provider_record_processor,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -288,7 +284,6 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
-            provider_record_processor,
         });
 
         Ok((node, node_runner))

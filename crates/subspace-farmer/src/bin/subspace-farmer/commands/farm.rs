@@ -1,7 +1,7 @@
 mod dsn;
 mod piece_storage;
 
-use crate::commands::farm::dsn::configure_dsn;
+use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
@@ -72,7 +72,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let (node, mut node_runner, fixed_provider_storage) = {
+    let (node, mut node_runner, fixed_provider_storage, wrapped_piece_storage) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -94,6 +94,7 @@ pub(crate) async fn farm_multi_disk(
         }
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
+
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -227,6 +228,12 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
+    let mut provider_records_receiver = node_runner
+        .take_provider_records_receiver()
+        .expect("Provider record receiver should exist on initiatialization.");
+    let mut provider_record_processor =
+        FarmerProviderRecordProcessor::new(node.clone(), wrapped_piece_storage);
+
     futures::select!(
         // Signal future
         _ = Box::pin(async move {
@@ -250,6 +257,13 @@ pub(crate) async fn farm_multi_disk(
             node_runner.run().await;
 
             info!("Node runner exited.")
+        }).fuse() => {},
+
+        // Provider record processing future
+        _ = Box::pin(async move {
+            while let Some(provider_record) = provider_records_receiver.next().await {
+                provider_record_processor.process_provider_record(provider_record).await;
+            }
         }).fuse() => {},
     );
 

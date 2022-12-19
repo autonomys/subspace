@@ -39,7 +39,7 @@ pub use crate::node::{
     CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
     TopicSubscription,
 };
-pub use crate::node_runner::{NodeRunner, ProviderRecordProcessor};
+pub use crate::node_runner::NodeRunner;
 pub use behavior::custom_record_store::{
     CustomRecordStore, FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper,
     LimitedSizeRecordStorageWrapper, MemoryProviderStorage, NoRecordStorage,

@@ -100,13 +100,13 @@ impl RecordBinaryHeap {
         let top_key = self.max_heap.peek().cloned();
 
         if let Some(top_key) = top_key {
-            top_key >= new_key
+            top_key > new_key
         } else {
-            false // zero-sized heap
+            false // TODO: consider adding error here
         }
     }
 
     fn is_limit_exceeded(&self) -> bool {
-        self.size() > self.limit
+        self.size() >= self.limit
     }
 }
