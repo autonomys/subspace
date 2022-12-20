@@ -1,4 +1,3 @@
-use crate::utils::read_core_domain_runtime_blob;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
@@ -22,6 +21,7 @@ use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
+use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
@@ -341,9 +341,11 @@ async fn extract_core_domain_wasm_bundle_in_system_domain_runtime_should_work() 
         .system_domain_wasm_bundle(&BlockId::Hash(ferdie.client.info().best_hash))
         .unwrap();
 
-    let core_payments_runtime_blob =
-        read_core_domain_runtime_blob(system_domain_bundle.as_ref(), DomainId::CORE_PAYMENTS)
-            .unwrap();
+    let core_payments_runtime_blob = read_core_domain_runtime_blob(
+        system_domain_bundle.as_ref(),
+        DomainId::CORE_PAYMENTS.link_section_name(),
+    )
+    .unwrap();
 
     let core_payments_blob = RuntimeBlob::new(&core_payments_runtime_blob).unwrap();
     let core_payments_version = sc_executor::read_embedded_version(&core_payments_blob)
