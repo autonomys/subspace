@@ -1,4 +1,4 @@
-use crate::{new_partial, DomainConfiguration, FullBackend, FullClient, FullPool};
+use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
@@ -13,7 +13,11 @@ use sc_client_api::{BlockBackend, ProofProvider, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_service::{BuildNetworkParams, NetworkStarter, SpawnTasksParams, TFullBackend, TaskManager};
+use sc_service::{
+    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
+    SpawnTasksParams, TFullBackend, TaskManager,
+};
+use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -85,6 +89,102 @@ where
         CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
+}
+
+pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool<
+    sc_transaction_pool::FullChainApi<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    Block,
+>;
+
+/// Starts a `ServiceBuilder` for a full service.
+///
+/// Use this macro if you don't actually need the full service, but just the builder in order to
+/// be able to perform chain operations.
+#[allow(clippy::type_complexity)]
+fn new_partial<RuntimeApi, Executor>(
+    config: &ServiceConfiguration,
+) -> Result<
+    PartialComponents<
+        FullClient<RuntimeApi, Executor>,
+        TFullBackend<Block>,
+        (),
+        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
+        sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, Executor>>,
+        (
+            Option<Telemetry>,
+            Option<TelemetryWorkerHandle>,
+            NativeElseWasmExecutor<Executor>,
+        ),
+    >,
+    sc_service::Error,
+>
+where
+    RuntimeApi:
+        ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
+    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
+        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
+    Executor: NativeExecutionDispatch + 'static,
+{
+    let telemetry = config
+        .telemetry_endpoints
+        .clone()
+        .filter(|x| !x.is_empty())
+        .map(|endpoints| -> Result<_, sc_telemetry::Error> {
+            let worker = TelemetryWorker::new(16)?;
+            let telemetry = worker.handle().new_telemetry(endpoints);
+            Ok((worker, telemetry))
+        })
+        .transpose()?;
+
+    let executor = NativeElseWasmExecutor::new(
+        config.wasm_method,
+        config.default_heap_pages,
+        config.max_runtime_instances,
+        config.runtime_cache_size,
+    );
+
+    let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
+        config,
+        telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+        executor.clone(),
+    )?;
+    let client = Arc::new(client);
+
+    let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
+
+    let telemetry = telemetry.map(|(worker, telemetry)| {
+        task_manager
+            .spawn_handle()
+            .spawn("telemetry", None, worker.run());
+        telemetry
+    });
+
+    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+        config.transaction_pool.clone(),
+        config.role.is_authority().into(),
+        config.prometheus_registry(),
+        task_manager.spawn_essential_handle(),
+        client.clone(),
+    );
+
+    let import_queue = domain_client_consensus_relay_chain::import_queue(
+        client.clone(),
+        &task_manager.spawn_essential_handle(),
+        config.prometheus_registry(),
+    )?;
+
+    let params = PartialComponents {
+        backend,
+        client,
+        import_queue,
+        keystore_container,
+        task_manager,
+        transaction_pool,
+        select_chain: (),
+        other: (telemetry, telemetry_worker_handle, executor),
+    };
+
+    Ok(params)
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
