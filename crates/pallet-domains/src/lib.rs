@@ -16,7 +16,6 @@
 //! Pallet Domains
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(is_sorted)]
 
 #[cfg(test)]
 mod tests;
@@ -125,8 +124,8 @@ mod pallet {
         UnknownBlock,
         /// The execution receipt is too far in the future.
         TooFarInFuture,
-        /// Receipts are not in ascending order.
-        Unsorted,
+        /// Receipts are not consecutive.
+        Inconsecutive,
         /// Receipts in a bundle can not be empty.
         Empty,
     }
@@ -516,16 +515,19 @@ impl<T: Config> Pallet<T> {
         OldestReceiptNumber::<T>::put::<T::BlockNumber>(Zero::zero());
     }
 
+    fn receipts_are_consecutive(
+        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+    ) -> bool {
+        (0..receipts.len() - 1)
+            .all(|i| receipts[i].primary_number + One::one() == receipts[i + 1].primary_number)
+    }
+
     fn pre_dispatch_submit_bundle(
         signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
         let execution_receipts = &signed_opaque_bundle.bundle.receipts;
 
-        if !execution_receipts
-            .iter()
-            .map(|r| r.primary_number)
-            .is_sorted()
-        {
+        if !Self::receipts_are_consecutive(execution_receipts) {
             return Err(TransactionValidityError::Invalid(
                 InvalidTransactionCode::ExecutionReceipt.into(),
             ));
@@ -629,12 +631,8 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Empty);
         }
 
-        if !execution_receipts
-            .iter()
-            .map(|r| r.primary_number)
-            .is_sorted()
-        {
-            return Err(ExecutionReceiptError::Unsorted);
+        if !Self::receipts_are_consecutive(execution_receipts) {
+            return Err(ExecutionReceiptError::Inconsecutive);
         }
 
         Ok(())
