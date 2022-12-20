@@ -91,16 +91,16 @@ pub(crate) struct Shared {
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
-    pub(crate) kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
-    pub(crate) regular_tasks_semaphore: Arc<ResizableSemaphore>,
+    pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
+    pub(crate) regular_tasks_semaphore: ResizableSemaphore,
 }
 
 impl Shared {
     pub(crate) fn new(
         id: PeerId,
         command_sender: mpsc::Sender<Command>,
-        kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
-        regular_tasks_semaphore: Arc<ResizableSemaphore>,
+        kademlia_tasks_semaphore: ResizableSemaphore,
+        regular_tasks_semaphore: ResizableSemaphore,
     ) -> Self {
         Self {
             handlers: Handlers::default(),

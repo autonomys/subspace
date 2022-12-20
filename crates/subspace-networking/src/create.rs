@@ -304,10 +304,8 @@ where
         // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
-        let kademlia_tasks_semaphore =
-            Arc::new(ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS));
-        let regular_tasks_semaphore =
-            Arc::new(ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS));
+        let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
+        let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
 
         let shared = Arc::new(Shared::new(
             local_peer_id,
@@ -328,7 +326,6 @@ where
             reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
             max_established_incoming_connections,
             max_established_outgoing_connections,
-
             metrics,
         });
 

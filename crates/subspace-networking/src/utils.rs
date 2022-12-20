@@ -98,32 +98,32 @@ pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddre
         .collect()
 }
 
-// Semaphore like implementation that allows both shrinking and expanding
-// the max permits.
+/// Semaphore like implementation that allows both shrinking and expanding
+/// the max permits.
 #[derive(Clone, Debug)]
 pub(crate) struct ResizableSemaphore(Arc<SemShared>);
 
-// The permit.
+/// The permit.
 #[derive(Clone, Debug)]
 pub(crate) struct ResizableSemaphorePermit(Arc<SemShared>);
 
-// The state shared between the semaphore and the outstanding permits.
+/// The state shared between the semaphore and the outstanding permits.
 #[derive(Debug)]
 struct SemShared {
-    // The tuple holds (current usage, current max capacity)
+    /// The tuple holds (current usage, current max capacity)
     state: Mutex<SemState>,
 
-    // To signal waiters for permits to be available
+    /// To signal waiters for permits to be available
     notify: Notify,
 }
 
-// Current state.
+/// The semaphore state.
 #[derive(Debug)]
 struct SemState {
-    // The current capacity
+    /// The current capacity
     capacity: usize,
 
-    // The current outstanding permits
+    /// The current outstanding permits
     usage: usize,
 }
 

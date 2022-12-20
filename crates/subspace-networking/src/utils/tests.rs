@@ -65,11 +65,9 @@ fn test_batching() {
 fn test_resizable_semaphore_alloc() {
     // Capacity = 3. We should be able to alloc only three permits.
     let sem = ResizableSemaphore::new(3);
-    let (_permit_1, _permit_2, _permit_3) = (
-        sem.try_acquire().unwrap(),
-        sem.try_acquire().unwrap(),
-        sem.try_acquire().unwrap(),
-    );
+    let _permit_1 = sem.try_acquire().unwrap();
+    let _permit_2 = sem.try_acquire().unwrap();
+    let _permit_3 = sem.try_acquire().unwrap();
     assert!(sem.try_acquire().is_none());
 }
 
@@ -77,16 +75,15 @@ fn test_resizable_semaphore_alloc() {
 fn test_resizable_semaphore_expand() {
     // Initial capacity = 3.
     let sem = ResizableSemaphore::new(3);
-    let (_permit_1, _permit_2, _permit_3) = (
-        sem.try_acquire().unwrap(),
-        sem.try_acquire().unwrap(),
-        sem.try_acquire().unwrap(),
-    );
+    let _permit_1 = sem.try_acquire().unwrap();
+    let _permit_2 = sem.try_acquire().unwrap();
+    let _permit_3 = sem.try_acquire().unwrap();
     assert!(sem.try_acquire().is_none());
 
     // Increase capacity of semaphore by 2, we should be able to alloc two more permits.
     sem.expand(2);
-    let (_permit_4, _permit_5) = (sem.try_acquire().unwrap(), sem.try_acquire().unwrap());
+    let _permit_4 = sem.try_acquire().unwrap();
+    let _permit_5 = sem.try_acquire().unwrap();
     assert!(sem.try_acquire().is_none());
 }
 

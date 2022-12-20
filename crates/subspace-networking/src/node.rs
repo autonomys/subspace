@@ -257,15 +257,15 @@ impl From<oneshot::Canceled> for CircuitRelayClientError {
 #[must_use = "Node doesn't do anything if dropped"]
 pub struct Node {
     shared: Arc<Shared>,
-    kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
-    regular_tasks_semaphore: Arc<ResizableSemaphore>,
+    kademlia_tasks_semaphore: ResizableSemaphore,
+    regular_tasks_semaphore: ResizableSemaphore,
 }
 
 impl Node {
     pub(crate) fn new(
         shared: Arc<Shared>,
-        kademlia_tasks_semaphore: Arc<ResizableSemaphore>,
-        regular_tasks_semaphore: Arc<ResizableSemaphore>,
+        kademlia_tasks_semaphore: ResizableSemaphore,
+        regular_tasks_semaphore: ResizableSemaphore,
     ) -> Self {
         Self {
             shared,
