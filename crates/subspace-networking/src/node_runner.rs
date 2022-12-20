@@ -383,12 +383,10 @@ where
 
                 shared
                     .kademlia_tasks_semaphore
-                    .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    .expect("Failed to shrink kademlia_tasks_semaphore");
+                    .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
                 shared
                     .regular_tasks_semaphore
-                    .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    .expect("Failed to shrink regular_tasks_semaphore");
+                    .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
                 DialError::Transport(ref addresses) => {

@@ -8,7 +8,6 @@ use libp2p::{Multiaddr, PeerId};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use tokio::sync::futures::Notified;
 use tokio::sync::Notify;
 use tracing::warn;
 
@@ -112,7 +111,7 @@ pub(crate) struct ResizableSemaphorePermit(Arc<SemShared>);
 #[derive(Debug)]
 struct SemShared {
     // The tuple holds (current usage, current max capacity)
-    current: Mutex<SemState>,
+    state: Mutex<SemState>,
 
     // To signal waiters for permits to be available
     notify: Notify,
@@ -128,111 +127,93 @@ struct SemState {
     usage: usize,
 }
 
-impl SemShared {
-    fn new(capacity: usize) -> Self {
-        Self {
-            current: Mutex::new(SemState { capacity, usage: 0 }),
-            notify: Notify::new(),
-        }
-    }
-
+impl SemState {
     // Allocates a permit if available.
-    // Returns Ok(()) if a permit was allocated, Err(Notified) otherwise. The caller
-    // is responsible for waiting for the notification to be signalled when a permit
-    // becomes available eventually.
-    fn alloc_one(&self) -> Result<(), Notified> {
-        let mut current = self.current.lock().unwrap();
-        if current.usage < current.capacity {
-            current.usage += 1;
-            Ok(())
-        } else {
-            Err(self.notify.notified())
-        }
-    }
-
-    // Allocates a permit if available.
-    // Returns bool if permit was available, false otherwise
-    #[cfg(test)]
-    fn try_alloc_one(&self) -> bool {
-        let mut current = self.current.lock().unwrap();
-        if current.usage < current.capacity {
-            current.usage += 1;
+    // Returns true if allocated, false otherwise.
+    fn alloc_one(&mut self) -> bool {
+        if self.usage < self.capacity {
+            self.usage += 1;
             true
         } else {
             false
         }
     }
 
-    // Returns a permit back to the free pool, notifies waiters if needed.
-    fn free_one(&self) {
-        let should_notify = {
-            let mut current = self.current.lock().unwrap();
-            if current.usage > 0 {
-                current.usage -= 1;
-            } else {
-                panic!(
-                    "SemShared::free_one(): invalid free, current = {:?}",
-                    current
-                );
-            }
-
-            // Notify only if usage fell below the current capacity.
-            // For example: if the previous capacity was 100, and current capacity
-            // is 50, this will wait for usage to fall below 50 before any waiters
-            // are notified.
-            current.usage < current.capacity
-        };
-        if should_notify {
-            self.notify.notify_waiters();
-        }
-    }
-
-    // Expands the max capacity by delta, and notifies any waiters of the newly available
-    // free permits.
-    fn expand(&self, delta: usize) {
-        {
-            let mut current = self.current.lock().unwrap();
-            current.capacity += delta;
-        }
-        self.notify.notify_waiters();
-    }
-
-    // Shrinks the max capacity by delta
-    fn shrink(&self, delta: usize) -> Result<(), String> {
-        let mut current = self.current.lock().unwrap();
-        if current.capacity > delta {
-            current.capacity -= delta;
-            Ok(())
+    // Returns a free permit to the free pool.
+    // Returns true if any waiters need to be notified.
+    fn free_one(&mut self) -> bool {
+        let prev_is_full = self.is_full();
+        if let Some(dec) = self.usage.checked_sub(1) {
+            self.usage = dec;
         } else {
-            Err(format!(
-                "SemShared::::shrink(): invalid delta = {}, current = {:?}",
-                delta, current
-            ))
+            panic!("SemState::free_one(): invalid free, state = {:?}", self);
         }
+
+        // Notify if we did a full -> available transition.
+        prev_is_full && !self.is_full()
+    }
+
+    // Expands the max capacity by delta.
+    // Returns true if any waiters need to be notified.
+    fn expand(&mut self, delta: usize) -> bool {
+        let prev_is_full = self.is_full();
+        self.capacity += delta;
+
+        // Notify if we did a full -> available transition.
+        prev_is_full && !self.is_full()
+    }
+
+    // Shrinks the max capacity by delta.
+    fn shrink(&mut self, delta: usize) {
+        if let Some(dec) = self.capacity.checked_sub(delta) {
+            self.capacity = dec;
+        } else {
+            panic!("SemState::shrink(): invalid shrink, state = {:?}", self);
+        }
+    }
+
+    // Returns true if current usage exceeds capacity
+    fn is_full(&self) -> bool {
+        self.usage >= self.capacity
     }
 }
 
 impl ResizableSemaphore {
     pub(crate) fn new(capacity: usize) -> Self {
-        Self(Arc::new(SemShared::new(capacity)))
+        let shared = SemShared {
+            state: Mutex::new(SemState { capacity, usage: 0 }),
+            notify: Notify::new(),
+        };
+        Self(Arc::new(shared))
     }
 
     // Acquires a permit. Waits until a permit is available.
     pub(crate) async fn acquire(&self) -> ResizableSemaphorePermit {
         loop {
-            match self.0.alloc_one() {
-                Ok(()) => break,
-                Err(notified) => notified.await,
+            let wait = {
+                let mut state = self.0.state.lock().unwrap();
+                if state.alloc_one() {
+                    None
+                } else {
+                    // This needs to be done under the lock to avoid race.
+                    Some(self.0.notify.notified())
+                }
+            };
+
+            match wait {
+                Some(notified) => notified.await,
+                None => break,
             }
         }
         ResizableSemaphorePermit(self.0.clone())
     }
 
-    // Acquires a permit, does not wait if no permits are available.
-    // Currently used only for testing.
+    // Acquires a permit, doesn't wait for permits to be available.
+    // Currently used only for tests.
     #[cfg(test)]
     pub(crate) fn try_acquire(&self) -> Option<ResizableSemaphorePermit> {
-        if self.0.try_alloc_one() {
+        let mut state = self.0.state.lock().unwrap();
+        if state.alloc_one() {
             Some(ResizableSemaphorePermit(self.0.clone()))
         } else {
             None
@@ -241,17 +222,23 @@ impl ResizableSemaphore {
 
     // Expands the capacity by the specified amount.
     pub(crate) fn expand(&self, delta: usize) {
-        self.0.expand(delta);
+        let notify_waiters = self.0.state.lock().unwrap().expand(delta);
+        if notify_waiters {
+            self.0.notify.notify_waiters();
+        }
     }
 
     // Shrinks the capacity by the specified amount.
-    pub(crate) fn shrink(&self, delta: usize) -> Result<(), String> {
-        self.0.shrink(delta)
+    pub(crate) fn shrink(&self, delta: usize) {
+        self.0.state.lock().unwrap().shrink(delta)
     }
 }
 
 impl Drop for ResizableSemaphorePermit {
     fn drop(&mut self) {
-        self.0.free_one()
+        let notify_waiters = self.0.state.lock().unwrap().free_one();
+        if notify_waiters {
+            self.0.notify.notify_waiters();
+        }
     }
 }

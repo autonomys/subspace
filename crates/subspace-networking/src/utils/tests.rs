@@ -101,7 +101,7 @@ fn test_resizable_semaphore_shrink() {
     assert!(sem.try_acquire().is_none());
 
     // Shrink the capacity by 2, new capacity = 2.
-    assert!(sem.shrink(2).is_ok());
+    sem.shrink(2);
 
     // Alloc should fail as outstanding permits(4) >= capacity(2).
     assert!(sem.try_acquire().is_none());
