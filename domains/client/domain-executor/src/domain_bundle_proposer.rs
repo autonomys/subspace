@@ -10,7 +10,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{Bundle, BundleHeader};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -114,6 +114,8 @@ where
             )?
         };
 
+        receipts_sanity_check::<Block, PBlock>(&receipts)?;
+
         let bundle = Bundle {
             header: BundleHeader {
                 primary_hash,
@@ -182,5 +184,74 @@ where
         };
 
         Ok(receipts)
+    }
+}
+
+fn receipts_sanity_check<Block, PBlock>(
+    receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
+) -> sp_blockchain::Result<()>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+{
+    let maybe_inconsecutive = (0..receipts.len() - 1)
+        .find(|i| receipts[*i].primary_number + One::one() != receipts[i + 1].primary_number);
+
+    if let Some(i) = maybe_inconsecutive {
+        let last_cons = &receipts[i];
+        let got = &receipts[i + 1];
+        return Err(sp_blockchain::Error::Application(Box::from(format!(
+            "Found inconsecutive receipt at index {}, receipts[{i}]: {:?}, receipts[{}]: {:?}",
+            i + 1,
+            (last_cons.primary_number, last_cons.primary_hash),
+            i + 1,
+            (got.primary_number, got.primary_hash),
+        ))));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::receipts_sanity_check;
+    use domain_test_service::runtime::Block;
+    use sp_core::H256;
+    use sp_domains::ExecutionReceipt;
+    use subspace_core_primitives::BlockNumber;
+    use subspace_runtime_primitives::Hash;
+    use subspace_test_runtime::Block as PBlock;
+
+    fn create_dummy_receipt_for(
+        primary_number: BlockNumber,
+    ) -> ExecutionReceipt<BlockNumber, Hash, H256> {
+        ExecutionReceipt {
+            primary_number,
+            primary_hash: H256::random(),
+            domain_hash: H256::random(),
+            trace: if primary_number == 0 {
+                Vec::new()
+            } else {
+                vec![H256::random(), H256::random()]
+            },
+            trace_root: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_receipts_sanity_check() {
+        let receipts = vec![
+            create_dummy_receipt_for(1),
+            create_dummy_receipt_for(2),
+            create_dummy_receipt_for(4),
+        ];
+        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_err());
+
+        let receipts = vec![
+            create_dummy_receipt_for(1),
+            create_dummy_receipt_for(2),
+            create_dummy_receipt_for(3),
+        ];
+        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
     }
 }
