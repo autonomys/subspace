@@ -6,7 +6,7 @@ use crate::create::{
 };
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
-use crate::utils;
+use crate::utils::{is_global_address_or_dns, ResizableSemaphorePermit};
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -36,18 +36,28 @@ use tracing::{debug, error, trace, warn};
 enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<Vec<u8>>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: ResizableSemaphorePermit,
     },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: ResizableSemaphorePermit,
     },
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: ResizableSemaphorePermit,
     },
     Announce {
         sender: mpsc::UnboundedSender<()>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: ResizableSemaphorePermit,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,
+        // Just holding onto permit while data structure is not dropped
+        _permit: ResizableSemaphorePermit,
     },
 }
 
@@ -434,7 +444,7 @@ where
             if kademlia_enabled {
                 for address in info.listen_addrs {
                     if !self.allow_non_global_addresses_in_dht
-                        && !utils::is_global_address_or_dns(&address)
+                        && !is_global_address_or_dns(&address)
                     {
                         trace!(
                             %local_peer_id,
@@ -462,7 +472,7 @@ where
                 trace!(
                     %local_peer_id,
                     %peer_id,
-                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Adding to the DTH skipped.",
+                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Adding to the DHT skipped.",
                     kademlia
                         .protocol_names()
                         .iter()
@@ -500,7 +510,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::ClosestPeers { sender }) =
+                if let Some(QueryResultSender::ClosestPeers { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -560,7 +570,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::Value { sender }) =
+                if let Some(QueryResultSender::Value { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -614,7 +624,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::Providers { sender }) =
+                if let Some(QueryResultSender::Providers { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -663,7 +673,7 @@ where
                 let mut cancelled = false;
                 trace!("Start providing stats: {:?}", stats);
 
-                if let Some(QueryResultSender::Announce { sender }) =
+                if let Some(QueryResultSender::Announce { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -698,7 +708,7 @@ where
                 ..
             } => {
                 let mut cancelled = false;
-                if let Some(QueryResultSender::PutValue { sender }) =
+                if let Some(QueryResultSender::PutValue { sender, .. }) =
                     self.query_id_receivers.get_mut(&id)
                 {
                     match result {
@@ -769,7 +779,11 @@ where
 
     async fn handle_command(&mut self, command: Command) {
         match command {
-            Command::GetValue { key, result_sender } => {
+            Command::GetValue {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let query_id = self
                     .swarm
                     .behaviour_mut()
@@ -780,6 +794,7 @@ where
                     query_id,
                     QueryResultSender::Value {
                         sender: result_sender,
+                        _permit: permit,
                     },
                 );
             }
@@ -787,6 +802,7 @@ where
                 key,
                 value,
                 result_sender,
+                permit,
             } => {
                 let local_peer_id = *self.swarm.local_peer_id();
 
@@ -808,6 +824,7 @@ where
                             query_id,
                             QueryResultSender::PutValue {
                                 sender: result_sender,
+                                _permit: permit,
                             },
                         );
                     }
@@ -900,13 +917,18 @@ where
                         .map(|_message_id| ()),
                 );
             }
-            Command::GetClosestPeers { key, result_sender } => {
+            Command::GetClosestPeers {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let query_id = self.swarm.behaviour_mut().kademlia.get_closest_peers(key);
 
                 self.query_id_receivers.insert(
                     query_id,
                     QueryResultSender::ClosestPeers {
                         sender: result_sender,
+                        _permit: permit,
                     },
                 );
             }
@@ -935,7 +957,11 @@ where
 
                 let _ = result_sender.send(kademlia_connection_initiated);
             }
-            Command::StartAnnouncing { key, result_sender } => {
+            Command::StartAnnouncing {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let res = self
                     .swarm
                     .behaviour_mut()
@@ -948,6 +974,7 @@ where
                             query_id,
                             QueryResultSender::Announce {
                                 sender: result_sender,
+                                _permit: permit,
                             },
                         );
                     }
@@ -964,7 +991,11 @@ where
 
                 let _ = result_sender.send(true);
             }
-            Command::GetProviders { key, result_sender } => {
+            Command::GetProviders {
+                key,
+                result_sender,
+                permit,
+            } => {
                 let query_id = self
                     .swarm
                     .behaviour_mut()
@@ -975,6 +1006,7 @@ where
                     query_id,
                     QueryResultSender::Providers {
                         sender: result_sender,
+                        _permit: permit,
                     },
                 );
             }

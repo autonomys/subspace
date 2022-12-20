@@ -2,7 +2,7 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::request_responses::RequestFailure;
-use crate::utils::ResizableSemaphore;
+use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -26,11 +26,13 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<Vec<u8>>,
+        permit: ResizableSemaphorePermit,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
         result_sender: mpsc::UnboundedSender<()>,
+        permit: ResizableSemaphorePermit,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -48,6 +50,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
+        permit: ResizableSemaphorePermit,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -61,6 +64,7 @@ pub(crate) enum Command {
     StartAnnouncing {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<()>,
+        permit: ResizableSemaphorePermit,
     },
     StopAnnouncing {
         key: Multihash,
@@ -69,6 +73,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
+        permit: ResizableSemaphorePermit,
     },
 }
 

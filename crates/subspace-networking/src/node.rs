@@ -20,34 +20,6 @@ use thiserror::Error;
 use tokio::time::sleep;
 use tracing::{error, trace};
 
-#[pin_project::pin_project]
-struct WrapperWithPermits<T> {
-    #[pin]
-    inner: T,
-    // Just holding onto permit while data structure is not dropped
-    _permit: ResizableSemaphorePermit,
-}
-
-impl<T> WrapperWithPermits<T> {
-    fn new(inner: T, permit: ResizableSemaphorePermit) -> Self {
-        Self {
-            inner,
-            _permit: permit,
-        }
-    }
-}
-
-impl<T> Stream for WrapperWithPermits<T>
-where
-    T: Stream,
-{
-    type Item = T::Item;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().inner.poll_next(cx)
-    }
-}
-
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
 #[pin_project::pin_project(PinnedDrop)]
@@ -317,11 +289,15 @@ impl Node {
         self.shared
             .command_sender
             .clone()
-            .send(Command::GetValue { key, result_sender })
+            .send(Command::GetValue {
+                key,
+                result_sender,
+                permit,
+            })
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(result_receiver, permit))
+        Ok(result_receiver)
     }
 
     pub async fn put_value(
@@ -339,11 +315,12 @@ impl Node {
                 key,
                 value,
                 result_sender,
+                permit,
             })
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(result_receiver, permit))
+        Ok(result_receiver)
     }
 
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
@@ -428,11 +405,15 @@ impl Node {
         self.shared
             .command_sender
             .clone()
-            .send(Command::GetClosestPeers { key, result_sender })
+            .send(Command::GetClosestPeers {
+                key,
+                result_sender,
+                permit,
+            })
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(result_receiver, permit))
+        Ok(result_receiver)
     }
 
     // TODO: add timeout
@@ -477,11 +458,15 @@ impl Node {
         self.shared
             .command_sender
             .clone()
-            .send(Command::StartAnnouncing { key, result_sender })
+            .send(Command::StartAnnouncing {
+                key,
+                result_sender,
+                permit,
+            })
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(result_receiver, permit))
+        Ok(result_receiver)
     }
 
     /// Stop announcing item by its key. Initiate 'stop_providing' Kademlia operation.
@@ -515,11 +500,15 @@ impl Node {
         self.shared
             .command_sender
             .clone()
-            .send(Command::GetProviders { key, result_sender })
+            .send(Command::GetProviders {
+                key,
+                result_sender,
+                permit,
+            })
             .await?;
 
         // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(WrapperWithPermits::new(result_receiver, permit))
+        Ok(result_receiver)
     }
 
     /// Node's own addresses where it listens for incoming requests.
