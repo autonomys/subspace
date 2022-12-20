@@ -447,7 +447,7 @@ where
     }
 }
 
-pub(super) fn new_full<Block, Client, Verifier>(
+pub fn new_full<Block, Client, Verifier>(
     config: &Configuration,
     task_manager: &TaskManager,
     client: Arc<Client>,

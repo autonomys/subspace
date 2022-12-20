@@ -19,12 +19,10 @@
 
 mod dsn;
 pub mod piece_cache;
-mod pool;
 pub mod rpc;
 
 use crate::dsn::create_dsn_instance;
 use crate::piece_cache::PieceCache;
-pub use crate::pool::FullPool;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -74,6 +72,7 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
+use subspace_transaction_pool::FullPool;
 use tracing::{error, info, Instrument};
 
 /// Error type for Subspace service.
@@ -251,7 +250,7 @@ where
         executor,
         task_manager.spawn_handle(),
     );
-    let transaction_pool = pool::new_full(
+    let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
