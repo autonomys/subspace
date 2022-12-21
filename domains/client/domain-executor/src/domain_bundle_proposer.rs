@@ -187,6 +187,7 @@ where
     }
 }
 
+/// Performs the sanity check in order to detect the potential invalid receipts earlier.
 fn receipts_sanity_check<Block, PBlock>(
     receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
 ) -> sp_blockchain::Result<()>
@@ -194,19 +195,21 @@ where
     Block: BlockT,
     PBlock: BlockT,
 {
-    let maybe_inconsecutive = (0..receipts.len() - 1)
-        .find(|i| receipts[*i].primary_number + One::one() != receipts[i + 1].primary_number);
+    if receipts.len() > 1 {
+        let maybe_inconsecutive = (0..receipts.len() - 1)
+            .find(|i| receipts[*i].primary_number + One::one() != receipts[i + 1].primary_number);
 
-    if let Some(i) = maybe_inconsecutive {
-        let last_cons = &receipts[i];
-        let got = &receipts[i + 1];
-        return Err(sp_blockchain::Error::Application(Box::from(format!(
-            "Found inconsecutive receipt at index {}, receipts[{i}]: {:?}, receipts[{}]: {:?}",
-            i + 1,
-            (last_cons.primary_number, last_cons.primary_hash),
-            i + 1,
-            (got.primary_number, got.primary_hash),
-        ))));
+        if let Some(i) = maybe_inconsecutive {
+            let last_cons = &receipts[i];
+            let got = &receipts[i + 1];
+            return Err(sp_blockchain::Error::Application(Box::from(format!(
+                "Found inconsecutive receipt at index {}, receipts[{i}]: {:?}, receipts[{}]: {:?}",
+                i + 1,
+                (last_cons.primary_number, last_cons.primary_hash),
+                i + 1,
+                (got.primary_number, got.primary_hash),
+            ))));
+        }
     }
 
     Ok(())
@@ -252,6 +255,9 @@ mod tests {
             create_dummy_receipt_for(2),
             create_dummy_receipt_for(3),
         ];
+        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
+
+        let receipts = vec![create_dummy_receipt_for(1)];
         assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
     }
 }

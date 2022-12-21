@@ -518,8 +518,12 @@ impl<T: Config> Pallet<T> {
     fn receipts_are_consecutive(
         receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
     ) -> bool {
-        (0..receipts.len() - 1)
-            .all(|i| receipts[i].primary_number + One::one() == receipts[i + 1].primary_number)
+        if receipts.len() > 1 {
+            (0..receipts.len() - 1)
+                .all(|i| receipts[i].primary_number + One::one() == receipts[i + 1].primary_number)
+        } else {
+            true
+        }
     }
 
     fn pre_dispatch_submit_bundle(

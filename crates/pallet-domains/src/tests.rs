@@ -501,4 +501,6 @@ fn test_receipts_are_consecutive() {
         create_dummy_receipt(4, Hash::random()),
     ];
     assert!(!Domains::receipts_are_consecutive(&receipts));
+    let receipts = vec![create_dummy_receipt(1, Hash::random())];
+    assert!(Domains::receipts_are_consecutive(&receipts));
 }
