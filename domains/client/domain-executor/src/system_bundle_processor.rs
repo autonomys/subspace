@@ -1,4 +1,4 @@
-use crate::domain_block_processor::DomainBlockProcessor;
+use crate::domain_block_processor::{preprocess_primary_block, DomainBlockProcessor};
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use codec::Decode;
@@ -10,12 +10,11 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
-use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
@@ -93,12 +92,12 @@ where
             NumberFor<PBlock>,
             ForkChoiceStrategy,
         ),
-        bundles: DomainBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) -> Result<(), sp_blockchain::Error> {
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
+
+        let (bundles, shuffling_seed, maybe_new_runtime) =
+            preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
 
         let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 

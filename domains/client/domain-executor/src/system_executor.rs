@@ -2,7 +2,6 @@ use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
-use crate::utils::DomainBundles;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
@@ -14,11 +13,10 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
-use sp_domains::{DomainId, ExecutorApi, OpaqueBundle};
+use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
-use std::borrow::Cow;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, Randomness};
+use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
 /// System domain executor.
@@ -184,20 +182,8 @@ where
     pub async fn process_bundles(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-        bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-        shuffling_seed: Randomness,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
     ) {
-        if let Err(err) = self
-            .bundle_processor
-            .process_bundles(
-                primary_info,
-                DomainBundles::System(bundles, Vec::new()), // TODO: No core domain bundles in tests.
-                shuffling_seed,
-                maybe_new_runtime,
-            )
-            .await
-        {
+        if let Err(err) = self.bundle_processor.process_bundles(primary_info).await {
             tracing::error!(?primary_info, ?err, "Error at processing bundles.");
         }
     }

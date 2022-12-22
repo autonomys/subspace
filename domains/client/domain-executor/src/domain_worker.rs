@@ -1,4 +1,4 @@
-use crate::utils::{to_number_primitive, BlockInfo, DomainBundles, ExecutorSlotInfo};
+use crate::utils::{to_number_primitive, BlockInfo, ExecutorSlotInfo};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
@@ -9,12 +9,10 @@ use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, ExecutorApi, SignedOpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
-use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use subspace_core_primitives::Randomness;
 
 pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
@@ -71,9 +69,6 @@ pub(crate) async fn handle_block_import_notifications<
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            DomainBundles<Block, PBlock>,
-            Randomness,
-            Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
@@ -209,9 +204,6 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            DomainBundles<Block, PBlock>,
-            Randomness,
-            Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
@@ -244,8 +236,8 @@ where
 /// 1. Extract the bundles from the block given the `domain_id`.
 /// 2. Pass the bundles to the respective domain bundle processor and do the computation there.
 async fn process_primary_block<Block, PBlock, PClient, ProcessorFn>(
-    domain_id: DomainId,
-    primary_chain_client: &PClient,
+    _domain_id: DomainId,
+    _primary_chain_client: &PClient,
     processor: &ProcessorFn,
     (block_hash, block_number, fork_choice): (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
 ) -> sp_blockchain::Result<()>
@@ -256,27 +248,11 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-            DomainBundles<Block, PBlock>,
-            Randomness,
-            Option<Cow<'static, [u8]>>,
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
 {
-    let (domain_bundles, shuffling_seed, maybe_new_runtime) =
-        crate::domain_block_processor::preprocess_primary_block(
-            domain_id,
-            primary_chain_client,
-            block_hash,
-        )?;
-
-    processor(
-        (block_hash, block_number, fork_choice),
-        domain_bundles,
-        shuffling_seed,
-        maybe_new_runtime,
-    )
-    .await?;
+    processor((block_hash, block_number, fork_choice)).await?;
 
     Ok(())
 }

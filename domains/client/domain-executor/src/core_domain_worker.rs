@@ -108,10 +108,10 @@ pub(super) async fn start_worker<
             {
                 let span = span.clone();
 
-                move |primary_info, bundles, shuffling_seed, maybe_new_runtime| {
+                move |primary_info| {
                     bundle_processor
                         .clone()
-                        .process_bundles(primary_info, bundles, shuffling_seed, maybe_new_runtime)
+                        .process_bundles(primary_info)
                         .instrument(span.clone())
                         .boxed()
                 }

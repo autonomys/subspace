@@ -12,7 +12,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::{BundleHeader, DomainId, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use tempfile::TempDir;
 
@@ -122,7 +122,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         trace_root: Default::default(),
     };
 
-    let bundles = vec![OpaqueBundle {
+    let _bundles = vec![OpaqueBundle {
         header: BundleHeader {
             primary_hash: ferdie.client.info().best_hash,
             slot_number: Default::default(),
@@ -152,16 +152,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             ForkChoiceStrategy::LongestChain,
         )
     };
-    alice
-        .executor
-        .clone()
-        .process_bundles(
-            primary_info,
-            bundles,
-            BlakeTwo256::hash_of(&[1u8; 64]).into(),
-            None,
-        )
-        .await;
+    alice.executor.clone().process_bundles(primary_info).await;
 
     let best_hash = alice.client.info().best_hash;
     let header = alice
