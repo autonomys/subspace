@@ -1,4 +1,6 @@
-use crate::domain_block_processor::{preprocess_primary_block, DomainBlockProcessor};
+use crate::domain_block_processor::{
+    preprocess_primary_block, DomainBlockProcessor, ForkAwareBlockImports,
+};
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
@@ -6,7 +8,7 @@ use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domain_tracker::StateRootUpdate;
@@ -78,7 +80,11 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api:
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    PClient: HeaderBackend<PBlock>
+        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
@@ -115,11 +121,41 @@ where
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
     ) -> Result<(), sp_blockchain::Error> {
-        let parent_hash = self.client.info().best_hash;
-        let parent_number = self.client.info().best_number;
+        tracing::debug!(?primary_info, "Processing imported primary block");
 
-        self.process_bundles_at(primary_info, (parent_hash, parent_number))
-            .await?;
+        let (primary_hash, primary_number, fork_choice) = primary_info;
+
+        let ForkAwareBlockImports {
+            initial_parent,
+            primary_imports,
+        } = self
+            .domain_block_processor
+            .fork_aware_block_imports(primary_hash, primary_number)?;
+
+        tracing::trace!(
+            ?initial_parent,
+            ?primary_imports,
+            "Pending primary blocks to process"
+        );
+
+        let mut domain_parent = initial_parent;
+
+        for (i, primary_info) in primary_imports.iter().enumerate() {
+            // Use the origin fork_choice for the target primary block,
+            // the intermediate ones use `Custom(false)`.
+            let fork_choice = if i == primary_imports.len() - 1 {
+                fork_choice
+            } else {
+                ForkChoiceStrategy::Custom(false)
+            };
+
+            domain_parent = self
+                .process_bundles_at(
+                    (primary_info.hash, primary_info.number, fork_choice),
+                    domain_parent,
+                )
+                .await?;
+        }
 
         Ok(())
     }
@@ -128,7 +164,7 @@ where
         &self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
         parent_info: (Block::Hash, NumberFor<Block>),
-    ) -> Result<(), sp_blockchain::Error> {
+    ) -> Result<(Block::Hash, NumberFor<Block>), sp_blockchain::Error> {
         tracing::debug!(?primary_info, ?parent_info, "Building a new domain block");
 
         let (primary_hash, primary_number, fork_choice) = primary_info;
@@ -188,6 +224,11 @@ where
         let oldest_receipt_number =
             translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(oldest_receipt_number);
 
+        let built_block_info = (
+            domain_block_result.header_hash,
+            domain_block_result.header_number,
+        );
+
         if let Some(fraud_proof) = self.domain_block_processor.on_domain_block_processed(
             primary_hash,
             domain_block_result,
@@ -197,7 +238,7 @@ where
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 
-        Ok(())
+        Ok(built_block_info)
     }
 
     fn bundles_to_extrinsics(

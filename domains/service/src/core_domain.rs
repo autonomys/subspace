@@ -17,7 +17,7 @@ use sc_service::{BuildNetworkParams, NetworkStarter, SpawnTasksParams, TFullBack
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
@@ -135,6 +135,7 @@ where
         + sp_domain_tracker::DomainTrackerApi<SBlock, NumberFor<SBlock>>
         + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
+        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + Send
