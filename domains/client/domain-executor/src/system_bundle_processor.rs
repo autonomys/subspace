@@ -87,14 +87,26 @@ where
     // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
-        (primary_hash, primary_number, fork_choice): (
-            PBlock::Hash,
-            NumberFor<PBlock>,
-            ForkChoiceStrategy,
-        ),
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
     ) -> Result<(), sp_blockchain::Error> {
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
+
+        self.process_bundles_at(primary_info, (parent_hash, parent_number))
+            .await?;
+
+        Ok(())
+    }
+
+    async fn process_bundles_at(
+        &self,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+        parent_info: (Block::Hash, NumberFor<Block>),
+    ) -> Result<(), sp_blockchain::Error> {
+        tracing::debug!(?primary_info, ?parent_info, "Building a new domain block");
+
+        let (primary_hash, primary_number, fork_choice) = primary_info;
+        let (parent_hash, parent_number) = parent_info;
 
         let (bundles, shuffling_seed, maybe_new_runtime) =
             preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
