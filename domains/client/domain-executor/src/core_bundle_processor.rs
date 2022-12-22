@@ -212,10 +212,11 @@ where
         let head_receipt_number =
             translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(head_receipt_number);
 
-        assert!(
-            domain_block_result.header_number > head_receipt_number,
-            "Consensus chain number must larger than execution chain number by at least 1"
-        );
+        // TODO: can be re-enabled once the TODO above is resolved
+        // assert!(
+        // domain_block_result.header_number > head_receipt_number,
+        // "Consensus chain number must larger than execution chain number by at least 1"
+        // );
 
         let oldest_receipt_number = self
             .system_domain_client
