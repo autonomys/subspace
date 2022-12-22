@@ -58,6 +58,7 @@
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
+#![feature(array_windows)]
 #![feature(drain_filter)]
 
 mod aux_schema;

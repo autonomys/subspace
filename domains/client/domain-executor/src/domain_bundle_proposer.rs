@@ -195,23 +195,17 @@ where
     Block: BlockT,
     PBlock: BlockT,
 {
-    if receipts.len() > 1 {
-        let maybe_inconsecutive = (0..receipts.len() - 1)
-            .find(|i| receipts[*i].primary_number + One::one() != receipts[i + 1].primary_number);
-
-        if let Some(i) = maybe_inconsecutive {
-            let last_cons = &receipts[i];
-            let got = &receipts[i + 1];
+    for (i, [ref head, ref tail]) in receipts.array_windows().enumerate() {
+        if head.primary_number + One::one() != tail.primary_number {
             return Err(sp_blockchain::Error::Application(Box::from(format!(
                 "Found inconsecutive receipt at index {}, receipts[{i}]: {:?}, receipts[{}]: {:?}",
                 i + 1,
-                (last_cons.primary_number, last_cons.primary_hash),
+                (head.primary_number, head.primary_hash),
                 i + 1,
-                (got.primary_number, got.primary_hash),
+                (tail.primary_number, tail.primary_hash),
             ))));
         }
     }
-
     Ok(())
 }
 
