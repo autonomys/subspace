@@ -1,6 +1,6 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::custom_record_store::{
-    instant_to_ms, ms_to_instant, CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+    instant_to_micros, micros_to_instant, CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
 };
 use crate::utils::record_binary_heap::RecordBinaryHeap;
 use libp2p::kad::record::Key;
@@ -225,8 +225,8 @@ fn binary_heap_eviction_works() {
 #[test]
 fn instant_conversion() {
     let inst1 = Instant::now();
-    let ms = instant_to_ms(inst1);
-    let inst2 = ms_to_instant(ms);
+    let ms = instant_to_micros(inst1);
+    let inst2 = micros_to_instant(ms);
 
     assert!(inst1.saturating_duration_since(inst2) < Duration::from_millis(1));
     assert!(inst2.saturating_duration_since(inst1) < Duration::from_millis(1));

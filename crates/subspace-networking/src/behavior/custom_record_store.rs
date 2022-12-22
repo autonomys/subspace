@@ -6,7 +6,7 @@ use libp2p::kad::store::RecordStore;
 use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::PeerId;
 #[cfg(test)]
-pub(crate) use providers::{instant_to_ms, ms_to_instant};
+pub(crate) use providers::{instant_to_micros, micros_to_instant};
 pub use providers::{
     FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, MemoryProviderStorage,
     ParityDbProviderStorage,

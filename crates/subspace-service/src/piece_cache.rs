@@ -80,7 +80,8 @@ where
         }))
     }
 
-    fn put_local_provided_keys(&self) -> Result<(), Box<dyn Error>> {
+    fn write_local_provided_keys(&self) -> Result<(), Box<dyn Error>> {
+        // TODO: Could be a slow process. We need to optimize it ASAP!
         self.aux_store
             .insert_aux(
                 &vec![(
@@ -157,7 +158,7 @@ where
             self.local_provided_keys.insert(piece_index);
         }
 
-        self.put_local_provided_keys()?;
+        self.write_local_provided_keys()?;
 
         Ok(())
     }

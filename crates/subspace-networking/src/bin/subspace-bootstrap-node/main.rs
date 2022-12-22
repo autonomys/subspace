@@ -2,6 +2,7 @@
 
 #![feature(type_changing_struct_update)]
 
+use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
@@ -80,19 +81,23 @@ async fn main() -> anyhow::Result<()> {
             db_path,
             piece_providers_cache_size,
         } => {
+            const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
+            let recs = piece_providers_cache_size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
+            let converted_cache_size =
+                NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
+
             let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
             let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
 
             let provider_storage = if let Some(path) = db_path {
                 let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
 
-                println!("{:?}", db_path);
                 let db_provider_storage = ParityDbProviderStorage::new(&db_path, local_peer_id)
                     .expect("Provider storage DB path should be valid.");
 
                 let limited_size_provider_storage = LimitedSizeProviderStorageWrapper::new(
                     db_provider_storage,
-                    convert_bytesize_to_provider_records(piece_providers_cache_size),
+                    converted_cache_size,
                     local_peer_id,
                 );
 
@@ -140,13 +145,4 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-// Convert bytesize provider records
-fn convert_bytesize_to_provider_records(size: ByteSize) -> NonZeroUsize {
-    const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
-
-    let recs = size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
-
-    NonZeroUsize::new(recs as usize).expect("Incorrect cache size.")
 }

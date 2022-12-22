@@ -153,9 +153,10 @@ impl Config {
 
         let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
+        let peer_id = peer_id(&keypair);
 
         Self {
-            keypair: keypair.clone(),
+            keypair,
             listen_on: vec![],
             listen_on_fallback_to_random_port: true,
             timeout: Duration::from_secs(10),
@@ -164,7 +165,7 @@ impl Config {
             gossipsub,
             record_store: CustomRecordStore::new(
                 NoRecordStorage,
-                MemoryProviderStorage::new(peer_id(&keypair)),
+                MemoryProviderStorage::new(peer_id),
             ),
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),

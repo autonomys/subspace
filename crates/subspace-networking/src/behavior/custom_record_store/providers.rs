@@ -121,8 +121,8 @@ impl ParityDbProviderCollection {
         self.map.remove(&provider);
     }
 
-    fn providers(&self) -> Vec<ParityDbProviderRecord> {
-        self.map.values().cloned().collect()
+    fn providers(&self) -> impl Iterator<Item = ParityDbProviderRecord> + '_ {
+        self.map.values().cloned()
     }
 }
 
@@ -158,7 +158,7 @@ impl From<ProviderRecord> for ParityDbProviderRecord {
             key: rec.key.to_vec(),
             provider: rec.provider.to_bytes(),
             addresses: rec.addresses.iter().map(|a| a.to_vec()).collect(),
-            expires: rec.expires.map(instant_to_ms),
+            expires: rec.expires.map(instant_to_micros),
         }
     }
 }
@@ -183,7 +183,7 @@ impl From<ParityDbProviderRecord> for ProviderRecord {
                         .expect("Multiaddr should be valid in bytes representation.")
                 })
                 .collect::<Vec<_>>(),
-            expires: rec.expires.map(ms_to_instant),
+            expires: rec.expires.map(micros_to_instant),
         }
     }
 }
@@ -291,8 +291,8 @@ impl ParityDbProviderStorage {
         let tx = [(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME, key, Some(rec.into()))];
 
         let result = self.db.commit(tx);
-        if let Err(ref err) = result {
-            debug!(?key, ?err, "Local provider DB adding error.");
+        if let Err(err) = &result {
+            error!(?key, ?err, "Local provider DB adding error.");
         }
     }
 
@@ -302,8 +302,8 @@ impl ParityDbProviderStorage {
         let tx = [(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME, key, None)];
 
         let result = self.db.commit(tx);
-        if let Err(ref err) = result {
-            debug!(?key, ?err, "Local provider DB removing error.");
+        if let Err(err) = &result {
+            error!(?key, ?err, "Local provider DB removing error.");
         }
     }
 
@@ -317,8 +317,8 @@ impl ParityDbProviderStorage {
         )];
 
         let result = self.db.commit(tx);
-        if let Err(ref err) = result {
-            debug!(?key, ?err, "DB saving error.");
+        if let Err(err) = &result {
+            error!(?key, ?err, "DB saving error.");
         }
 
         result.is_ok()
@@ -390,8 +390,8 @@ impl FixedProviderRecordStorage for ParityDbProviderStorage {
         )];
 
         let result = self.db.commit(tx);
-        if let Err(ref err) = result {
-            debug!(?key, ?err, "Local fixed provider adding error (parity db).");
+        if let Err(err) = &result {
+            error!(?key, ?err, "Local fixed provider adding error (parity db).");
         }
     }
 }
@@ -448,8 +448,6 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
         self.load_providers(key)
             .unwrap_or_default()
             .providers()
-            .iter()
-            .cloned()
             .map(Into::into)
             .collect()
     }
@@ -609,7 +607,7 @@ where
 }
 
 // Instant to microseconds conversion function.
-pub(crate) fn instant_to_ms(instant: Instant) -> u64 {
+pub(crate) fn instant_to_micros(instant: Instant) -> u64 {
     let system_now = SystemTime::now();
     let instant_now = Instant::now();
 
@@ -622,9 +620,9 @@ pub(crate) fn instant_to_ms(instant: Instant) -> u64 {
 }
 
 // Microseconds to Instant conversion function.
-pub(crate) fn ms_to_instant(ms: u64) -> Instant {
+pub(crate) fn micros_to_instant(micros: u64) -> Instant {
     let system_time = SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_micros(ms))
+        .checked_add(Duration::from_micros(micros))
         .expect("Cannot overflow here (system time).");
 
     let system_now = SystemTime::now();
@@ -767,7 +765,7 @@ impl<'a> Iterator for ParityDbProviderRecordCollectionIterator<'a> {
                 let db_rec_result: Result<ParityDbProviderCollection, _> = value.try_into();
 
                 match db_rec_result {
-                    Ok(collection) => Some(collection.providers()),
+                    Ok(collection) => Some(collection.providers().collect::<Vec<_>>()),
                     Err(err) => {
                         warn!(
                             ?key,
