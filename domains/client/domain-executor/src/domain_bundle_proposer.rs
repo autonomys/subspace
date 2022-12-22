@@ -253,5 +253,7 @@ mod tests {
 
         let receipts = vec![create_dummy_receipt_for(1)];
         assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
+
+        assert!(receipts_sanity_check::<Block, PBlock>(&[]).is_ok());
     }
 }
