@@ -151,7 +151,6 @@ where
             "core-executor-worker",
             None,
             crate::core_domain_worker::start_worker(
-                domain_id,
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 bundle_producer,

@@ -6,7 +6,7 @@ use sc_client_api::BlockBackend;
 use sc_consensus::ForkChoiceStrategy;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, ExecutorApi, SignedOpaqueBundle};
+use sp_domains::{ExecutorApi, SignedOpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
 use std::collections::hash_map::Entry;
@@ -55,7 +55,6 @@ pub(crate) async fn handle_block_import_notifications<
     ProcessorFn,
     BlockImports,
 >(
-    domain_id: DomainId,
     primary_chain_client: &PClient,
     best_secondary_number: NumberFor<Block>,
     processor: ProcessorFn,
@@ -83,14 +82,7 @@ pub(crate) async fn handle_block_import_notifications<
         let _ = active_leaves.insert(hash, number);
         // Skip the blocks that have been processed by the execution chain.
         if number > best_secondary_number.into() {
-            if let Err(error) = process_primary_block::<Block, PBlock, _, _>(
-                domain_id,
-                primary_chain_client,
-                &processor,
-                (hash, number, fork_choice),
-            )
-            .await
-            {
+            if let Err(error) = processor((hash, number, fork_choice)).await {
                 tracing::error!(?error, "Failed to process primary block on startup");
                 // Bring down the service as bundles processor is an essential task.
                 // TODO: more graceful shutdown.
@@ -127,9 +119,7 @@ pub(crate) async fn handle_block_import_notifications<
                 let _ = block_import_acknowledgement_sender.send(()).await;
             }
             Some(block_info) = block_info_receiver.next() => {
-                if let Err(error) = block_imported::<Block, PBlock, _, _>(
-                    domain_id,
-                    primary_chain_client,
+                if let Err(error) = block_imported::<Block, PBlock, _>(
                     &processor,
                     &mut active_leaves,
                     block_info,
@@ -190,9 +180,7 @@ where
     Ok(())
 }
 
-async fn block_imported<Block, PBlock, PClient, ProcessorFn>(
-    domain_id: DomainId,
-    primary_chain_client: &PClient,
+async fn block_imported<Block, PBlock, ProcessorFn>(
     processor: &ProcessorFn,
     active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
     block_info: BlockInfo<PBlock>,
@@ -200,8 +188,6 @@ async fn block_imported<Block, PBlock, PClient, ProcessorFn>(
 where
     Block: BlockT,
     PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -220,39 +206,7 @@ where
         debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
     }
 
-    process_primary_block::<Block, PBlock, _, _>(
-        domain_id,
-        primary_chain_client,
-        processor,
-        (block_info.hash, block_info.number, block_info.fork_choice),
-    )
-    .await?;
-
-    Ok(())
-}
-
-/// Apply the domain bundles for given primary block as follows:
-///
-/// 1. Extract the bundles from the block given the `domain_id`.
-/// 2. Pass the bundles to the respective domain bundle processor and do the computation there.
-async fn process_primary_block<Block, PBlock, PClient, ProcessorFn>(
-    _domain_id: DomainId,
-    _primary_chain_client: &PClient,
-    processor: &ProcessorFn,
-    (block_hash, block_number, fork_choice): (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-) -> sp_blockchain::Result<()>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-    ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
-        + Send
-        + Sync,
-{
-    processor((block_hash, block_number, fork_choice)).await?;
+    processor((block_info.hash, block_info.number, block_info.fork_choice)).await?;
 
     Ok(())
 }

@@ -29,7 +29,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_core::traits::CodeExecutor;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::ExecutorApi;
 use sp_runtime::traits::{HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
@@ -87,7 +87,6 @@ pub(super) async fn start_worker<
 
     let handle_block_import_notifications_fut =
         handle_block_import_notifications::<Block, _, _, _, _>(
-            DomainId::SYSTEM,
             primary_chain_client.as_ref(),
             client.info().best_number,
             {
