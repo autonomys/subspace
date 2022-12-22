@@ -1,6 +1,4 @@
-use crate::utils::{
-    read_core_domain_runtime_blob, to_number_primitive, BlockInfo, DomainBundles, ExecutorSlotInfo,
-};
+use crate::utils::{to_number_primitive, BlockInfo, DomainBundles, ExecutorSlotInfo};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
@@ -9,7 +7,7 @@ use sc_consensus::ForkChoiceStrategy;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, ExecutorApi, SignedOpaqueBundle};
-use sp_runtime::generic::{BlockId, DigestItem};
+use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
@@ -265,77 +263,12 @@ where
         + Send
         + Sync,
 {
-    let block_id = BlockId::Hash(block_hash);
-    let extrinsics = match primary_chain_client.block_body(block_hash) {
-        Err(err) => {
-            tracing::error!(?err, "Failed to get block body from primary chain");
-            return Ok(());
-        }
-        Ok(None) => {
-            tracing::error!(?block_hash, "BlockBody unavailable");
-            return Ok(());
-        }
-        Ok(Some(body)) => body,
-    };
-
-    let header = match primary_chain_client.header(block_id) {
-        Err(err) => {
-            tracing::error!(?err, "Failed to get block from primary chain");
-            return Ok(());
-        }
-        Ok(None) => {
-            tracing::error!(?block_hash, "BlockHeader unavailable");
-            return Ok(());
-        }
-        Ok(Some(header)) => header,
-    };
-
-    let maybe_new_runtime = if header
-        .digest()
-        .logs
-        .iter()
-        .any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
-    {
-        let system_domain_runtime = primary_chain_client
-            .runtime_api()
-            .system_domain_wasm_bundle(&block_id)?;
-
-        let new_runtime = match domain_id {
-            DomainId::SYSTEM => system_domain_runtime,
-            DomainId::CORE_PAYMENTS => {
-                read_core_domain_runtime_blob(system_domain_runtime.as_ref(), domain_id)
-                    .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?
-                    .into()
-            }
-            _ => {
-                return Err(sp_blockchain::Error::Application(Box::from(format!(
-                    "No new runtime code for {domain_id:?}"
-                ))));
-            }
-        };
-
-        Some(new_runtime)
-    } else {
-        None
-    };
-
-    let shuffling_seed = primary_chain_client
-        .runtime_api()
-        .extrinsics_shuffling_seed(&block_id, header)?;
-
-    let domain_bundles = if domain_id.is_system() {
-        let (system_bundles, core_bundles) = primary_chain_client
-            .runtime_api()
-            .extract_system_bundles(&block_id, extrinsics)?;
-        DomainBundles::System(system_bundles, core_bundles)
-    } else if domain_id.is_core() {
-        let core_bundles = primary_chain_client
-            .runtime_api()
-            .extract_core_bundles(&block_id, extrinsics, domain_id)?;
-        DomainBundles::Core(core_bundles)
-    } else {
-        unreachable!("Open domains are unsupported")
-    };
+    let (domain_bundles, shuffling_seed, maybe_new_runtime) =
+        crate::domain_block_processor::preprocess_primary_block(
+            domain_id,
+            primary_chain_client,
+            block_hash,
+        )?;
 
     processor(
         (block_hash, block_number, fork_choice),
