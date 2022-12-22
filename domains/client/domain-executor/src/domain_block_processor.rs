@@ -395,6 +395,13 @@ where
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number = to_number_primitive(primary_number);
 
+        if to_number_primitive(parent_number) + 1 != primary_number {
+            return Err(sp_blockchain::Error::Application(Box::from(format!(
+                "Wrong domain parent block #{parent_number},{parent_hash:?} for \
+                primary block #{primary_number},{primary_hash:?}, the block number mismatches."
+            ))));
+        }
+
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(
                 parent_hash,
