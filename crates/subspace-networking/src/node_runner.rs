@@ -216,10 +216,28 @@ where
                 "Initiate connection to known peers",
             );
 
+            let allow_non_global_addresses_in_dht = self.allow_non_global_addresses_in_dht;
+
             let addresses = self
                 .networking_parameters_registry
                 .next_known_addresses_batch()
-                .await;
+                .await
+                .into_iter()
+                .filter(|(peer_id, address)| {
+                    if !allow_non_global_addresses_in_dht
+                        && !utils::is_global_address_or_dns(address)
+                    {
+                        trace!(
+                            %local_peer_id,
+                            %peer_id,
+                            %address,
+                            "Ignoring non-global address read from parameters registry.",
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                });
 
             trace!(%local_peer_id, "Processing addresses batch: {:?}", addresses);
 
