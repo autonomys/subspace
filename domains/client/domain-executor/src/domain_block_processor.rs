@@ -436,7 +436,7 @@ where
             })
             .collect();
 
-        tracing::debug!(
+        tracing::trace!(
             ?trace,
             ?trace_root,
             "Trace root calculated for #{header_number},{header_hash}"

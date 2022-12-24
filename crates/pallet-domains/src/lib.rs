@@ -410,10 +410,7 @@ mod pallet {
                     signed_opaque_bundle,
                 } => {
                     if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
-                        log::error!(
-                            target: "runtime::domains",
-                            "Bad bundle: {signed_opaque_bundle:?}, error: {e:?}",
-                        );
+                        log::error!(target: "runtime::domains", "Bad bundle, error: {e:?}");
                         if let BundleError::Receipt(_) = e {
                             return InvalidTransactionCode::ExecutionReceipt.into();
                         } else {
@@ -539,17 +536,31 @@ impl<T: Config> Pallet<T> {
             let (_, mut best_number) = <ReceiptHead<T>>::get();
 
             for receipt in execution_receipts {
+                let primary_number = receipt.primary_number;
                 // Non-best receipt
-                if receipt.primary_number <= best_number {
-                    if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
+                if primary_number <= best_number {
+                    let primary_hash = BlockHash::<T>::get(primary_number);
+                    if primary_hash != receipt.primary_hash {
+                        log::error!(
+                            target: "runtime::domains",
+                            "Invalid primary hash for #{primary_number:?} in receipt, \
+                            expected: {primary_hash:?}, got: {:?}",
+                            receipt.primary_hash,
+                        );
                         return Err(TransactionValidityError::Invalid(
                             InvalidTransactionCode::ExecutionReceipt.into(),
                         ));
                     }
-                    continue;
                 // New nest receipt.
-                } else if receipt.primary_number == best_number + One::one() {
-                    if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
+                } else if primary_number == best_number + One::one() {
+                    let primary_hash = BlockHash::<T>::get(primary_number);
+                    if primary_hash != receipt.primary_hash {
+                        log::error!(
+                            target: "runtime::domains",
+                            "Invalid primary hash for #{primary_number:?} in receipt, \
+                            expected: {primary_hash:?}, got: {:?}",
+                            receipt.primary_hash,
+                        );
                         return Err(TransactionValidityError::Invalid(
                             InvalidTransactionCode::ExecutionReceipt.into(),
                         ));
@@ -604,10 +615,24 @@ impl<T: Config> Pallet<T> {
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
                 None => StateRoots::<T>::get(block_number, block_hash)
-                    .ok_or(BundleError::StateRootNotFound)?,
+                    .ok_or(BundleError::StateRootNotFound)
+                    .map_err(|err| {
+                        log::error!(
+                            target: "runtime::domains",
+                            "State root for #{block_number:?},{block_hash:?} not found, \
+                            current head receipt: {:?}",
+                            <ReceiptHead<T>>::get(),
+                        );
+                        err
+                    })?,
             };
 
             if expected_state_root != *state_root {
+                log::error!(
+                    target: "runtime::domains",
+                    "Bad state root for #{block_number:?},{block_hash:?}, \
+                    expected: {expected_state_root:?}, got: {state_root:?}",
+                );
                 return Err(BundleError::BadStateRoot);
             }
         }
@@ -683,14 +708,24 @@ impl<T: Config> Pallet<T> {
                 let point_to_parent_block = primary_number == current_block_number - One::one()
                     && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
 
-                if !point_to_parent_block
-                    && BlockHash::<T>::get(primary_number) != execution_receipt.primary_hash
-                {
+                let primary_hash = BlockHash::<T>::get(primary_number);
+                if !point_to_parent_block && primary_hash != execution_receipt.primary_hash {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
+                        expected: #{primary_number:?},{primary_hash:?}",
+                        execution_receipt.primary_hash
+                    );
                     return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
                 }
 
                 // Ensure the receipt is not too new.
                 if primary_number == current_block_number || primary_number > max_allowed {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Receipt for #{primary_number:?} is too far in future, \
+                        current_block_number: {current_block_number:?}, max_allowed: {max_allowed:?}",
+                    );
                     return Err(BundleError::Receipt(ExecutionReceiptError::TooFarInFuture));
                 }
             }
