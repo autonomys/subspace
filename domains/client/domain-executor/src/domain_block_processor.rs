@@ -22,7 +22,6 @@ use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 
@@ -145,8 +144,14 @@ where
     }
 }
 
+/// A list of primary blocks waiting to be processed by executor on each imported primary block
+/// notification.
+///
+/// Usually, each new domain block is built on top of the current best domain block, with the block
+/// content extracted from the incoming primary block. However, an incoming imported primary block
+/// notification can also imply multiple pending primary blocks in case of the primary chain re-org.
 #[derive(Debug)]
-pub(crate) struct ForkAwareBlockImports<Block: BlockT, PBlock: BlockT> {
+pub(crate) struct PendingPrimaryBlocks<Block: BlockT, PBlock: BlockT> {
     /// Base block used to build new domain blocks derived from the primary blocks below.
     pub initial_parent: (Block::Hash, NumberFor<Block>),
     /// Pending primary blocks that need to be processed sequentially.
@@ -196,19 +201,23 @@ where
         }
     }
 
-    pub(crate) fn fork_aware_block_imports(
+    /// Returns a list of primary blocks waiting to be processed if any.
+    ///
+    /// It's possible to have multiple pending primary blocks that need to be processed in case
+    /// the primary chain re-org occurs.
+    pub(crate) fn pending_imported_primary_blocks(
         &self,
         primary_hash: PBlock::Hash,
         primary_number: NumberFor<PBlock>,
-    ) -> sp_blockchain::Result<ForkAwareBlockImports<Block, PBlock>> {
+    ) -> sp_blockchain::Result<Option<PendingPrimaryBlocks<Block, PBlock>>> {
         if primary_number == One::one() {
-            return Ok(ForkAwareBlockImports {
+            return Ok(Some(PendingPrimaryBlocks {
                 initial_parent: (self.client.info().genesis_hash, Zero::zero()),
                 primary_imports: vec![HashAndNumber {
                     hash: primary_hash,
                     number: primary_number,
                 }],
-            });
+            }));
         }
 
         let best_hash = self.client.info().best_hash;
@@ -220,7 +229,9 @@ where
             PBlock::Hash,
         >(&*self.client, best_hash)?
         .ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Execution receipt not found for {best_hash:?}"))
+            sp_blockchain::Error::Backend(format!(
+                "Receipt for #{best_number},{best_hash:?} not found"
+            ))
         })?;
 
         let primary_from = best_receipt.primary_hash;
@@ -242,79 +253,66 @@ where
             ?retracted,
             ?enacted,
             common_block = ?route.common_block(),
-            "Calculating ForkAwareBlockImports on #{best_number},{best_hash:?}"
+            "Calculating PendingPrimaryBlocks on #{best_number},{best_hash:?}"
         );
 
         match (retracted.is_empty(), enacted.is_empty()) {
             (true, false) => {
                 // New tip, A -> B
-                Ok(ForkAwareBlockImports {
+                Ok(Some(PendingPrimaryBlocks {
                     initial_parent: (self.client.info().best_hash, self.client.info().best_number),
                     primary_imports: enacted.to_vec(),
-                })
+                }))
             }
             (false, true) => {
-                let common_block_number = translate_number_type(route.common_block().number);
-                let parent_header = self
-                    .client
-                    .header(BlockId::Number(common_block_number))?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!("Header not found for {best_hash:?}"))
-                    })?;
-
-                Ok(ForkAwareBlockImports {
-                    initial_parent: (parent_header.hash(), *parent_header.number()),
-                    primary_imports: retracted.iter().cloned().rev().collect::<Vec<_>>(),
-                })
+                tracing::debug!("Primary blocks {retracted:?} have been already processed");
+                Ok(None)
             }
             (true, true) => {
-                unreachable!("Tree route must not be empty as `from` and `to` in tree_route() must not be the same.");
+                unreachable!(
+                    "Tree route is not empty as `primary_from` and `primary_to` in tree_route() \
+                    are checked above to be not the same; qed",
+                );
             }
             (false, false) => {
-                match retracted.len().cmp(&enacted.len()) {
-                    Ordering::Less | Ordering::Equal => {
-                        // Assuming the latest primary block processed by executor is A, the primary
-                        // chain switches to a fork [C, A1, B], the incoming block import
-                        // notification is B.
-                        //
-                        // From A to B, the common block is C, [retracted] = [A], [enacted] = [A1, B]
-                        //
-                        //    A1 -> B
-                        //   /
-                        //  C
-                        //   \
-                        //    A
-                        //
-                        // It's also possible to trigger re-org to a fork on the same height,
-                        //
-                        // From A to A1, the common block is C, [retracted] = [A], [enacted] = [A1]
-                        //
-                        //    A1
-                        //   /
-                        //  C
-                        //   \
-                        //    A
-                        let common_block_number =
-                            translate_number_type(route.common_block().number);
-                        let parent_header = self
-                            .client
-                            .header(BlockId::Number(common_block_number))?
-                            .ok_or_else(|| {
-                                sp_blockchain::Error::Backend(format!(
-                                    "Header not found for {best_hash:?}"
-                                ))
-                            })?;
+                if retracted.len() <= enacted.len() {
+                    // Assuming the latest primary block processed by executor is A, the primary
+                    // chain switches to a fork [C, A1, B], the incoming block import
+                    // notification is B.
+                    //
+                    // From A to B, the common block is C, [retracted] = [A], [enacted] = [A1, B]
+                    //
+                    //    A1 -> B
+                    //   /
+                    //  C
+                    //   \
+                    //    A
+                    //
+                    // It's also possible to trigger re-org to a fork on the same height,
+                    //
+                    // From A to A1, the common block is C, [retracted] = [A], [enacted] = [A1]
+                    //
+                    //    A1
+                    //   /
+                    //  C
+                    //   \
+                    //    A
+                    let common_block_number = translate_number_type(route.common_block().number);
+                    let parent_header = self
+                        .client
+                        .header(BlockId::Number(common_block_number))?
+                        .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Header for #{common_block_number} not found"
+                        ))
+                    })?;
 
-                        Ok(ForkAwareBlockImports {
-                            initial_parent: (parent_header.hash(), *parent_header.number()),
-                            primary_imports: enacted.to_vec(),
-                        })
-                    }
-                    Ordering::Greater => {
-                        unreachable!(
-                            "This must not happen as re-org never occurs on a lower fork."
-                        );
-                    }
+                    Ok(Some(PendingPrimaryBlocks {
+                        initial_parent: (parent_header.hash(), *parent_header.number()),
+                        primary_imports: enacted.to_vec(),
+                    }))
+                } else {
+                    unreachable!("This must not happen as re-org never occurs on a lower fork.");
                 }
             }
         }
@@ -398,7 +396,8 @@ where
         if to_number_primitive(parent_number) + 1 != primary_number {
             return Err(sp_blockchain::Error::Application(Box::from(format!(
                 "Wrong domain parent block #{parent_number},{parent_hash:?} for \
-                primary block #{primary_number},{primary_hash:?}, the block number mismatches."
+                primary block #{primary_number},{primary_hash:?}, the number of new \
+                domain block must match the number of corresponding primary block."
             ))));
         }
 
@@ -412,6 +411,11 @@ where
                 digests,
             )
             .await?;
+
+        tracing::debug!(
+            "Built new domain block #{header_number},{header_hash} \
+            from primary block #{primary_number},{primary_hash}",
+        );
 
         let mut roots = self
             .client
@@ -437,7 +441,7 @@ where
         tracing::debug!(
             ?trace,
             ?trace_root,
-            "Trace root calculated for #{header_hash}"
+            "Trace root calculated for #{header_number},{header_hash}"
         );
 
         let execution_receipt = ExecutionReceipt {
@@ -511,7 +515,9 @@ where
 
         match import_result {
             ImportResult::Imported(..) => {}
-            ImportResult::AlreadyInChain => {}
+            ImportResult::AlreadyInChain => {
+                tracing::debug!("Block #{header_number},{header_hash:?} is already in chain");
+            }
             ImportResult::KnownBad => {
                 return Err(sp_consensus::Error::ClientImport(format!(
                     "Bad block #{header_number}({header_hash:?})"
@@ -628,7 +634,7 @@ where
                     // becomes the canonical chain later.
                     let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Header hash not found for number {block_number}"
+                            "Header hash for #{block_number} not found"
                         ))
                     })?;
 
@@ -704,14 +710,13 @@ where
                 &*self.client,
             )?
         {
-            let local_receipt =
-                crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?.ok_or_else(
-                    || {
-                        sp_blockchain::Error::Backend(format!(
-                            "Execution receipt not found for {block_hash:?}"
-                        ))
-                    },
-                )?;
+            let local_receipt = crate::aux_schema::load_execution_receipt(
+                &*self.client,
+                block_hash,
+            )?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!("Receipt for {block_hash:?} not found"))
+            })?;
 
             let fraud_proof = self
                 .fraud_proof_generator

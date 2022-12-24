@@ -1,5 +1,5 @@
 use crate::domain_block_processor::{
-    preprocess_primary_block, DomainBlockProcessor, ForkAwareBlockImports,
+    preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
 };
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{translate_number_type, DomainBundles};
@@ -125,36 +125,39 @@ where
 
         let (primary_hash, primary_number, fork_choice) = primary_info;
 
-        let ForkAwareBlockImports {
+        let maybe_pending_primary_blocks = self
+            .domain_block_processor
+            .pending_imported_primary_blocks(primary_hash, primary_number)?;
+
+        if let Some(PendingPrimaryBlocks {
             initial_parent,
             primary_imports,
-        } = self
-            .domain_block_processor
-            .fork_aware_block_imports(primary_hash, primary_number)?;
+        }) = maybe_pending_primary_blocks
+        {
+            tracing::trace!(
+                ?initial_parent,
+                ?primary_imports,
+                "Pending primary blocks to process"
+            );
 
-        tracing::trace!(
-            ?initial_parent,
-            ?primary_imports,
-            "Pending primary blocks to process"
-        );
+            let mut domain_parent = initial_parent;
 
-        let mut domain_parent = initial_parent;
+            for (i, primary_info) in primary_imports.iter().enumerate() {
+                // Use the origin fork_choice for the target primary block,
+                // the intermediate ones use `Custom(false)`.
+                let fork_choice = if i == primary_imports.len() - 1 {
+                    fork_choice
+                } else {
+                    ForkChoiceStrategy::Custom(false)
+                };
 
-        for (i, primary_info) in primary_imports.iter().enumerate() {
-            // Use the origin fork_choice for the target primary block,
-            // the intermediate ones use `Custom(false)`.
-            let fork_choice = if i == primary_imports.len() - 1 {
-                fork_choice
-            } else {
-                ForkChoiceStrategy::Custom(false)
-            };
-
-            domain_parent = self
-                .process_bundles_at(
-                    (primary_info.hash, primary_info.number, fork_choice),
-                    domain_parent,
-                )
-                .await?;
+                domain_parent = self
+                    .process_bundles_at(
+                        (primary_info.hash, primary_info.number, fork_choice),
+                        domain_parent,
+                    )
+                    .await?;
+            }
         }
 
         Ok(())
@@ -165,10 +168,13 @@ where
         primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
         parent_info: (Block::Hash, NumberFor<Block>),
     ) -> Result<(Block::Hash, NumberFor<Block>), sp_blockchain::Error> {
-        tracing::debug!(?primary_info, ?parent_info, "Building a new domain block");
-
         let (primary_hash, primary_number, fork_choice) = primary_info;
         let (parent_hash, parent_number) = parent_info;
+
+        tracing::debug!(
+            "Building a new domain block derived from primary block #{primary_number},{primary_hash} \
+            on top of #{parent_number},{parent_hash}"
+        );
 
         let (bundles, shuffling_seed, maybe_new_runtime) =
             preprocess_primary_block(self.domain_id, &*self.primary_chain_client, primary_hash)?;
