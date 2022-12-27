@@ -64,7 +64,7 @@ fn test_batching() {
 #[test]
 fn test_resizable_semaphore_alloc() {
     // Capacity = 3. We should be able to alloc only three permits.
-    let sem = ResizableSemaphore::new(3);
+    let sem = ResizableSemaphore::new(NonZeroUsize::new(3).unwrap());
     let _permit_1 = sem.try_acquire().unwrap();
     let _permit_2 = sem.try_acquire().unwrap();
     let _permit_3 = sem.try_acquire().unwrap();
@@ -74,7 +74,7 @@ fn test_resizable_semaphore_alloc() {
 #[test]
 fn test_resizable_semaphore_expand() {
     // Initial capacity = 3.
-    let sem = ResizableSemaphore::new(3);
+    let sem = ResizableSemaphore::new(NonZeroUsize::new(3).unwrap());
     let _permit_1 = sem.try_acquire().unwrap();
     let _permit_2 = sem.try_acquire().unwrap();
     let _permit_3 = sem.try_acquire().unwrap();
@@ -90,7 +90,7 @@ fn test_resizable_semaphore_expand() {
 #[test]
 fn test_resizable_semaphore_shrink() {
     // Initial capacity = 4, alloc 4 outstanding permits.
-    let sem = ResizableSemaphore::new(4);
+    let sem = ResizableSemaphore::new(NonZeroUsize::new(4).unwrap());
     let permit_1 = sem.try_acquire().unwrap();
     let permit_2 = sem.try_acquire().unwrap();
     let permit_3 = sem.try_acquire().unwrap();

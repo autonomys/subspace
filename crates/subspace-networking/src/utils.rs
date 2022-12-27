@@ -5,9 +5,10 @@ mod tests;
 
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
+use parking_lot::Mutex;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::warn;
 
@@ -98,15 +99,6 @@ pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddre
         .collect()
 }
 
-/// Semaphore like implementation that allows both shrinking and expanding
-/// the max permits.
-#[derive(Clone, Debug)]
-pub(crate) struct ResizableSemaphore(Arc<SemShared>);
-
-/// The permit.
-#[derive(Clone, Debug)]
-pub(crate) struct ResizableSemaphorePermit(Arc<SemShared>);
-
 /// The state shared between the semaphore and the outstanding permits.
 #[derive(Debug)]
 struct SemShared {
@@ -178,10 +170,18 @@ impl SemState {
     }
 }
 
+/// Semaphore like implementation that allows both shrinking and expanding
+/// the max permits.
+#[derive(Clone, Debug)]
+pub(crate) struct ResizableSemaphore(Arc<SemShared>);
+
 impl ResizableSemaphore {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: NonZeroUsize) -> Self {
         let shared = SemShared {
-            state: Mutex::new(SemState { capacity, usage: 0 }),
+            state: Mutex::new(SemState {
+                capacity: capacity.get(),
+                usage: 0,
+            }),
             notify: Notify::new(),
         };
         Self(Arc::new(shared))
@@ -191,7 +191,7 @@ impl ResizableSemaphore {
     pub(crate) async fn acquire(&self) -> ResizableSemaphorePermit {
         loop {
             let wait = {
-                let mut state = self.0.state.lock().unwrap();
+                let mut state = self.0.state.lock();
                 if state.alloc_one() {
                     None
                 } else {
@@ -212,7 +212,7 @@ impl ResizableSemaphore {
     // Currently used only for tests.
     #[cfg(test)]
     pub(crate) fn try_acquire(&self) -> Option<ResizableSemaphorePermit> {
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = self.0.state.lock();
         if state.alloc_one() {
             Some(ResizableSemaphorePermit(self.0.clone()))
         } else {
@@ -222,7 +222,7 @@ impl ResizableSemaphore {
 
     // Expands the capacity by the specified amount.
     pub(crate) fn expand(&self, delta: usize) {
-        let notify_waiters = self.0.state.lock().unwrap().expand(delta);
+        let notify_waiters = self.0.state.lock().expand(delta);
         if notify_waiters {
             self.0.notify.notify_waiters();
         }
@@ -230,13 +230,17 @@ impl ResizableSemaphore {
 
     // Shrinks the capacity by the specified amount.
     pub(crate) fn shrink(&self, delta: usize) {
-        self.0.state.lock().unwrap().shrink(delta)
+        self.0.state.lock().shrink(delta)
     }
 }
 
+/// The semaphore permit.
+#[derive(Clone, Debug)]
+pub(crate) struct ResizableSemaphorePermit(Arc<SemShared>);
+
 impl Drop for ResizableSemaphorePermit {
     fn drop(&mut self) {
-        let notify_waiters = self.0.state.lock().unwrap().free_one();
+        let notify_waiters = self.0.state.lock().free_one();
         if notify_waiters {
             self.0.notify.notify_waiters();
         }

@@ -65,7 +65,8 @@ const YAMUX_MAX_STREAMS: usize = 256;
 ///
 /// We restrict this so we don't exceed number of incoming streams for single peer, but this value
 /// will be boosted depending on number of connected peers.
-const KADEMLIA_BASE_CONCURRENT_TASKS: usize = 30;
+const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize =
+    NonZeroUsize::new(30).expect("KADEMLIA_BASE_CONCURRENT_TASKS is 0");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
@@ -77,7 +78,9 @@ pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
 ///
 /// We restrict this so we don't exceed number of streams for single peer, but this value will be
 /// boosted depending on number of connected peers.
-const REGULAR_BASE_CONCURRENT_TASKS: usize = 120 - KADEMLIA_BASE_CONCURRENT_TASKS;
+const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
+    NonZeroUsize::new(120 - KADEMLIA_BASE_CONCURRENT_TASKS.get())
+        .expect("REGULAR_BASE_CONCURRENT_TASKS is 0");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
