@@ -2,6 +2,7 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::request_responses::RequestFailure;
+use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
@@ -12,7 +13,6 @@ use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use tokio::sync::OwnedSemaphorePermit;
 
 #[derive(Debug)]
 pub(crate) struct CreatedSubscription {
@@ -27,13 +27,13 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<Vec<u8>>,
-        permit: OwnedSemaphorePermit,
+        permit: ResizableSemaphorePermit,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
         result_sender: mpsc::UnboundedSender<()>,
-        permit: OwnedSemaphorePermit,
+        permit: ResizableSemaphorePermit,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -51,7 +51,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: OwnedSemaphorePermit,
+        permit: ResizableSemaphorePermit,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -65,7 +65,7 @@ pub(crate) enum Command {
     StartAnnouncing {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<()>,
-        permit: OwnedSemaphorePermit,
+        permit: ResizableSemaphorePermit,
     },
     StopAnnouncing {
         key: Multihash,
@@ -74,7 +74,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: OwnedSemaphorePermit,
+        permit: ResizableSemaphorePermit,
     },
 }
 
@@ -93,16 +93,25 @@ pub(crate) struct Shared {
     pub(crate) connected_peers_count: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
+    pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
+    pub(crate) regular_tasks_semaphore: ResizableSemaphore,
 }
 
 impl Shared {
-    pub(crate) fn new(id: PeerId, command_sender: mpsc::Sender<Command>) -> Self {
+    pub(crate) fn new(
+        id: PeerId,
+        command_sender: mpsc::Sender<Command>,
+        kademlia_tasks_semaphore: ResizableSemaphore,
+        regular_tasks_semaphore: ResizableSemaphore,
+    ) -> Self {
         Self {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
             connected_peers_count: Arc::new(AtomicUsize::new(0)),
             command_sender,
+            kademlia_tasks_semaphore,
+            regular_tasks_semaphore,
         }
     }
 }

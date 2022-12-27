@@ -1,9 +1,12 @@
 use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
+use crate::create::{
+    KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER, REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
+};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
-use crate::utils;
+use crate::utils::{is_global_address_or_dns, ResizableSemaphorePermit};
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -24,39 +27,45 @@ use nohash_hasher::IntMap;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Weak;
 use std::time::Duration;
-use tokio::sync::OwnedSemaphorePermit;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
+
+/// How many peers should node be connected to before boosting turns on.
+///
+/// 1 means boosting starts with second peer.
+const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
+    NonZeroUsize::new(5).expect("Not zero; qed");
 
 enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<Vec<u8>>,
         // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
+        _permit: ResizableSemaphorePermit,
     },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
+        _permit: ResizableSemaphorePermit,
     },
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
+        _permit: ResizableSemaphorePermit,
     },
     Announce {
         sender: mpsc::UnboundedSender<()>,
         // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
+        _permit: ResizableSemaphorePermit,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,
         // Just holding onto permit while data structure is not dropped
-        _permit: OwnedSemaphorePermit,
+        _permit: ResizableSemaphorePermit,
     },
 }
 
@@ -315,7 +324,17 @@ where
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
                 debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
-                shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
+                if shared.connected_peers_count.fetch_add(1, Ordering::SeqCst)
+                    >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
+                {
+                    // The peer count exceeded the threshold, bump up the quota.
+                    shared
+                        .kademlia_tasks_semaphore
+                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
+                    shared
+                        .regular_tasks_semaphore
+                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
+                }
 
                 let (in_connections_number, out_connections_number) = {
                     let network_info = self.swarm.network_info();
@@ -375,7 +394,17 @@ where
                 };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
-                shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
+                if shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst)
+                    > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
+                {
+                    // The previous peer count was over the threshold, reclaim the quota.
+                    shared
+                        .kademlia_tasks_semaphore
+                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
+                    shared
+                        .regular_tasks_semaphore
+                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
+                }
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
                 DialError::Transport(ref addresses) => {
@@ -431,7 +460,7 @@ where
             if kademlia_enabled {
                 for address in info.listen_addrs {
                     if !self.allow_non_global_addresses_in_dht
-                        && !utils::is_global_address_or_dns(&address)
+                        && !is_global_address_or_dns(&address)
                     {
                         trace!(
                             %local_peer_id,
