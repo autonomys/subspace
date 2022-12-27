@@ -16,7 +16,7 @@
 //! Pallet Domains
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(is_sorted)]
+#![feature(array_windows)]
 
 #[cfg(test)]
 mod tests;
@@ -45,9 +45,7 @@ mod pallet {
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
-    use sp_runtime::traits::{
-        CheckEqual, MaybeDisplay, MaybeMallocSizeOf, One, SimpleBitOps, Zero,
-    };
+    use sp_runtime::traits::{CheckEqual, MaybeDisplay, One, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
@@ -68,7 +66,6 @@ mod pallet {
             + sp_std::hash::Hash
             + AsRef<[u8]>
             + AsMut<[u8]>
-            + MaybeMallocSizeOf
             + MaxEncodedLen;
 
         /// Number of execution receipts kept in the state.
@@ -128,8 +125,8 @@ mod pallet {
         UnknownBlock,
         /// The execution receipt is too far in the future.
         TooFarInFuture,
-        /// Receipts are not in ascending order.
-        Unsorted,
+        /// Receipts are not consecutive.
+        Inconsecutive,
         /// Receipts in a bundle can not be empty.
         Empty,
     }
@@ -187,6 +184,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
@@ -241,26 +239,29 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            // Revert the execution chain.
-            let (_, mut to_remove) = ReceiptHead::<T>::get();
+            if fraud_proof.domain_id.is_system() {
+                // Revert the execution chain.
+                let (_, mut to_remove) = ReceiptHead::<T>::get();
 
-            let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
-            let new_best_hash = BlockHash::<T>::get(new_best_number);
+                let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
+                let new_best_hash = BlockHash::<T>::get(new_best_number);
 
-            ReceiptHead::<T>::put((new_best_hash, new_best_number));
+                ReceiptHead::<T>::put((new_best_hash, new_best_number));
 
-            while to_remove > new_best_number {
-                let block_hash = BlockHash::<T>::get(to_remove);
-                for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                    Receipts::<T>::remove(receipt_hash);
+                while to_remove > new_best_number {
+                    let block_hash = BlockHash::<T>::get(to_remove);
+                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
+                        Receipts::<T>::remove(receipt_hash);
+                    }
+                    to_remove -= One::one();
                 }
-                to_remove -= One::one();
             }
 
             // TODO: slash the executor accordingly.
@@ -271,6 +272,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
@@ -288,6 +290,7 @@ mod pallet {
         }
 
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_invalid_transaction_proof(
             origin: OriginFor<T>,
@@ -513,16 +516,20 @@ impl<T: Config> Pallet<T> {
         OldestReceiptNumber::<T>::put::<T::BlockNumber>(Zero::zero());
     }
 
+    fn receipts_are_consecutive(
+        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+    ) -> bool {
+        receipts
+            .array_windows()
+            .all(|[ref head, ref tail]| head.primary_number + One::one() == tail.primary_number)
+    }
+
     fn pre_dispatch_submit_bundle(
         signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
         let execution_receipts = &signed_opaque_bundle.bundle.receipts;
 
-        if !execution_receipts
-            .iter()
-            .map(|r| r.primary_number)
-            .is_sorted()
-        {
+        if !Self::receipts_are_consecutive(execution_receipts) {
             return Err(TransactionValidityError::Invalid(
                 InvalidTransactionCode::ExecutionReceipt.into(),
             ));
@@ -550,14 +557,6 @@ impl<T: Config> Pallet<T> {
                     best_number += One::one();
                 // Missing receipt.
                 } else {
-                    return Err(TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into(),
-                    ));
-                }
-            }
-        } else {
-            for receipt in execution_receipts {
-                if BlockHash::<T>::get(receipt.primary_number) != receipt.primary_hash {
                     return Err(TransactionValidityError::Invalid(
                         InvalidTransactionCode::ExecutionReceipt.into(),
                     ));
@@ -634,28 +633,8 @@ impl<T: Config> Pallet<T> {
             return Err(ExecutionReceiptError::Empty);
         }
 
-        if !execution_receipts
-            .iter()
-            .map(|r| r.primary_number)
-            .is_sorted()
-        {
-            return Err(ExecutionReceiptError::Unsorted);
-        }
-
-        for execution_receipt in execution_receipts {
-            // Due to `initialize_block` is skipped while calling the runtime api, the block
-            // hash mapping for last block is unknown to the transaction pool, but this info
-            // is already available in System.
-            let point_to_parent_block = execution_receipt.primary_number
-                == current_block_number - One::one()
-                && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
-
-            if !point_to_parent_block
-                && BlockHash::<T>::get(execution_receipt.primary_number)
-                    != execution_receipt.primary_hash
-            {
-                return Err(ExecutionReceiptError::UnknownBlock);
-            }
+        if !Self::receipts_are_consecutive(execution_receipts) {
+            return Err(ExecutionReceiptError::Inconsecutive);
         }
 
         Ok(())
@@ -697,6 +676,18 @@ impl<T: Config> Pallet<T> {
 
             for execution_receipt in &bundle.receipts {
                 let primary_number = execution_receipt.primary_number;
+
+                // Due to `initialize_block` is skipped while calling the runtime api, the block
+                // hash mapping for last block is unknown to the transaction pool, but this info
+                // is already available in System.
+                let point_to_parent_block = primary_number == current_block_number - One::one()
+                    && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
+
+                if !point_to_parent_block
+                    && BlockHash::<T>::get(primary_number) != execution_receipt.primary_hash
+                {
+                    return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
+                }
 
                 // Ensure the receipt is not too new.
                 if primary_number == current_block_number || primary_number > max_allowed {

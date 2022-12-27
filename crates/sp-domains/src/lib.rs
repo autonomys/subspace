@@ -135,6 +135,13 @@ impl DomainId {
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
     }
+
+    /// Returns the section name when a core domain wasm blob is embedded into the system domain
+    /// runtime via the `link_section` attribute.
+    #[cfg(feature = "std")]
+    pub fn link_section_name(&self) -> String {
+        format!("runtime_blob_{}", self.0)
+    }
 }
 
 /// Domain configuration.
@@ -398,13 +405,13 @@ sp_api::decl_runtime_apis! {
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>) -> Vec<FraudProof>;
+        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
-        /// WASM bundle for execution runtime.
-        fn execution_wasm_bundle() -> Cow<'static, [u8]>;
+        /// WASM bundle for system domain runtime.
+        fn system_domain_wasm_bundle() -> Cow<'static, [u8]>;
 
         /// Returns the best execution chain number.
         fn head_receipt_number() -> NumberFor<Block>;

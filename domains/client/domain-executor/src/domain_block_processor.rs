@@ -16,7 +16,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -176,12 +176,6 @@ where
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number = to_number_primitive(primary_number);
 
-        assert_eq!(
-            Into::<NumberFor<Block>>::into(primary_number),
-            parent_number + One::one(),
-            "New secondary best number must be equal to the primary number"
-        );
-
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(
                 parent_hash,
@@ -315,6 +309,8 @@ where
         Ok((header_hash, header_number, state_root))
     }
 
+    // TODO: remove once fraud-proof is enabled again.
+    #[allow(unreachable_code, unused_variables)]
     pub(crate) fn on_domain_block_processed(
         &self,
         primary_hash: PBlock::Hash,
@@ -336,6 +332,10 @@ where
         )?;
 
         // TODO: The applied txs can be fully removed from the transaction pool
+
+        // TODO: Skip fraud-proof processing until
+        // https://github.com/subspace/subspace/issues/1020 is resolved.
+        return Ok(None);
 
         self.check_receipts_in_primary_block(primary_hash)?;
 
@@ -420,7 +420,7 @@ where
         let fraud_proofs = self
             .primary_chain_client
             .runtime_api()
-            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics)?;
+            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics, self.domain_id)?;
 
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()
@@ -489,7 +489,12 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof(trace_mismatch_index, &local_receipt, bad_signed_bundle_hash)
+                .generate_proof(
+                    self.domain_id,
+                    trace_mismatch_index,
+                    &local_receipt,
+                    bad_signed_bundle_hash,
+                )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to generate fraud proof: {err}"

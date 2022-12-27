@@ -159,6 +159,7 @@ mod pallet {
     impl<T: Config> Pallet<T> {
         /// Register the origin account as an executor.
         // TODO: proper weight
+        #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
         pub fn register(
             origin: OriginFor<T>,
@@ -207,6 +208,7 @@ mod pallet {
 
         /// Declare no desire to be an executor and remove the registration.
         // TODO: proper weight
+        #[pallet::call_index(1)]
         #[pallet::weight(10_000)]
         pub fn deregister(origin: OriginFor<T>) -> DispatchResult {
             let _who = ensure_signed(origin)?;
@@ -223,6 +225,7 @@ mod pallet {
 
         /// Increase the executor's stake by locking some more balance.
         // TODO: proper weight
+        #[pallet::call_index(2)]
         #[pallet::weight(10_000)]
         pub fn increase_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -271,6 +274,7 @@ mod pallet {
         /// The reduced stake will be held locked for a while until it
         /// can be withdrawn to be transferrable.
         // TODO: proper weight
+        #[pallet::call_index(3)]
         #[pallet::weight(10_000)]
         pub fn decrease_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -325,6 +329,7 @@ mod pallet {
         ///
         /// The balance being locked will become free on success.
         // TODO: proper weight
+        #[pallet::call_index(4)]
         #[pallet::weight(10_000)]
         pub fn withdraw_decreased_stake(
             origin: OriginFor<T>,
@@ -374,6 +379,7 @@ mod pallet {
 
         /// Stop participating in the bundle election temporarily.
         // TODO: proper weight
+        #[pallet::call_index(5)]
         #[pallet::weight(10_000)]
         pub fn pause_execution(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -409,6 +415,7 @@ mod pallet {
 
         /// Participate in the bundle election again.
         // TODO: proper weight
+        #[pallet::call_index(6)]
         #[pallet::weight(10_000)]
         pub fn resume_execution(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -439,6 +446,7 @@ mod pallet {
         ///
         /// It won't take effect until next epoch.
         // TODO: proper weight
+        #[pallet::call_index(7)]
         #[pallet::weight(10_000)]
         pub fn update_public_key(
             origin: OriginFor<T>,
@@ -463,6 +471,7 @@ mod pallet {
 
         /// Set a new reward address.
         // TODO: proper weight
+        #[pallet::call_index(8)]
         #[pallet::weight(10_000)]
         pub fn update_reward_address(origin: OriginFor<T>, new: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;

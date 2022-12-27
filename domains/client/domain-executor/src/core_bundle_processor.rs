@@ -1,4 +1,5 @@
 use crate::domain_block_processor::DomainBlockProcessor;
+use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -29,6 +30,7 @@ where
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
+    parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
@@ -48,6 +50,7 @@ where
             domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             system_domain_client: self.system_domain_client.clone(),
+            parent_chain: self.parent_chain.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
@@ -91,10 +94,15 @@ where
         keystore: SyncCryptoStorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
+        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
+            system_domain_client.clone(),
+            domain_id,
+        );
         Self {
             domain_id,
             primary_chain_client,
             system_domain_client,
+            parent_chain,
             client,
             backend,
             keystore,
@@ -175,13 +183,7 @@ where
             head_receipt_number,
             oldest_receipt_number,
         )? {
-            // TODO: self.system_domain_client.runtime_api().submit_fraud_proof_unsigned()
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    fraud_proof,
-                )?;
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 
         Ok(())

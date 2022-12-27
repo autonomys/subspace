@@ -29,7 +29,7 @@ use core::num::NonZeroU64;
 use frame_support::dispatch::RawOrigin;
 use frame_support::parameter_types;
 use frame_support::traits::{CallerTrait, ConstU32, ConstU64, CrateVersion};
-use frame_support::weights::RuntimeDbWeight;
+use frame_support::weights::{RuntimeDbWeight, Weight};
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
 use sp_api::{decl_runtime_apis, impl_runtime_apis};
@@ -42,7 +42,6 @@ use sp_runtime::traits::{
     BlakeTwo256, BlindCheckable, Block as BlockT, Extrinsic as ExtrinsicT, GetNodeBlockType,
     GetRuntimeBlockType, IdentityLookup, NumberFor, Verify,
 };
-use frame_support::weights::Weight;
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
     ValidTransaction,
@@ -50,7 +49,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{create_runtime_str, impl_opaque_keys, ApplyExtrinsicResult, Perbill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_trie::trie_types::{TrieDBBuilder,TrieDBMutBuilderV1};
+use sp_trie::trie_types::{TrieDBBuilder, TrieDBMutBuilderV1};
 use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
@@ -164,8 +163,6 @@ pub enum Extrinsic {
     Store(Vec<u8>),
 }
 
-parity_util_mem::malloc_size_of_is_0!(Extrinsic); // non-opaque extrinsic does not need this
-
 #[cfg(feature = "std")]
 impl serde::Serialize for Extrinsic {
     fn serialize<S>(&self, seq: S) -> Result<S::Ok, S::Error>
@@ -227,7 +224,10 @@ impl sp_runtime::traits::Dispatchable for Extrinsic {
     type Config = ();
     type Info = ();
     type PostInfo = ();
-    fn dispatch(self, _origin: Self::RuntimeOrigin) -> sp_runtime::DispatchResultWithInfo<Self::PostInfo> {
+    fn dispatch(
+        self,
+        _origin: Self::RuntimeOrigin,
+    ) -> sp_runtime::DispatchResultWithInfo<Self::PostInfo> {
         panic!("This implemention should not be used for actual dispatch.");
     }
 }
@@ -665,7 +665,7 @@ fn code_using_trie() -> u64 {
         (b"0103000000000000000464".to_vec(), b"0400000000".to_vec()),
         (b"0103000000000000000469".to_vec(), b"0401000000".to_vec()),
     ]
-        .to_vec();
+    .to_vec();
 
     let mut mdb = PrefixedMemoryDB::default();
     let mut root = sp_std::default::Default::default();
@@ -673,13 +673,17 @@ fn code_using_trie() -> u64 {
         let mut t = TrieDBMutBuilderV1::<Hashing>::new(&mut mdb, &mut root).build();
         for (key, value) in &pairs {
             if t.insert(key, value).is_err() {
-                return 101
+                return 101;
             }
         }
     }
 
     let trie = TrieDBBuilder::<Hashing>::new(&mdb, &root).build();
-    let res = if let Ok(iter) = trie.iter() { iter.flatten().count() as u64 } else { 102 };
+    let res = if let Ok(iter) = trie.iter() {
+        iter.flatten().count() as u64
+    } else {
+        102
+    };
 
     res
 }

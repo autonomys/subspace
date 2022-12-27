@@ -79,6 +79,7 @@ where
                 execution_phase.proving_method(),
                 execution_phase.call_data(),
                 &runtime_code,
+                Default::default(),
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
@@ -91,6 +92,7 @@ where
                 execution_phase.proving_method(),
                 execution_phase.call_data(),
                 &runtime_code,
+                Default::default(),
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
@@ -242,7 +244,7 @@ where
         let wasm_bundle = self
             .client
             .runtime_api()
-            .execution_wasm_bundle(&BlockId::Hash(at))
+            .system_domain_wasm_bundle(&BlockId::Hash(at))
             .map_err(VerificationError::RuntimeApi)?;
 
         let code_fetcher = RuntimCodeFetcher {

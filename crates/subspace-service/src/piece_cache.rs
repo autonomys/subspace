@@ -117,11 +117,8 @@ where
     }
 }
 
-impl<'a, AS> RecordStorage<'a> for PieceCache<AS>
-where
-    AS: AuxStore + 'a,
-{
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+impl<AS: AuxStore> RecordStorage for PieceCache<AS> {
+    fn get(&'_ self, key: &Key) -> Option<Cow<'_, Record>> {
         let get_result = self.get_piece_by_index_multihash(key.as_ref());
 
         match get_result {

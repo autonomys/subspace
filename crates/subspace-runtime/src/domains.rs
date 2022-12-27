@@ -73,17 +73,19 @@ pub(crate) fn extract_receipts(
         .collect()
 }
 
-pub(crate) fn extract_fraud_proofs(extrinsics: Vec<UncheckedExtrinsic>) -> Vec<FraudProof> {
+pub(crate) fn extract_fraud_proofs(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    domain_id: DomainId,
+) -> Vec<FraudProof> {
     extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) =
-                uxt.function
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
+                if fraud_proof.domain_id == domain_id =>
             {
                 Some(fraud_proof)
-            } else {
-                None
             }
+            _ => None,
         })
         .collect()
 }

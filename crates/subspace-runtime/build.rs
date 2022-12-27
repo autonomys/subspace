@@ -17,8 +17,9 @@
 fn main() {
     subspace_wasm_tools::create_runtime_bundle_inclusion_file(
         "system-domain-runtime",
-        "EXECUTION_WASM_BUNDLE",
-        "execution_wasm_bundle.rs",
+        "SYSTEM_DOMAIN_WASM_BUNDLE",
+        None,
+        "system_domain_wasm_bundle.rs",
     );
 
     #[cfg(feature = "std")]
