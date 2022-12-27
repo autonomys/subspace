@@ -44,7 +44,7 @@ pub(crate) struct Behavior<RecordStore> {
 
 impl<RecordStore> Behavior<RecordStore>
 where
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
     pub(crate) fn new(config: BehaviorConfig<RecordStore>) -> Self {
         let kademlia = Kademlia::<RecordStore>::with_config(

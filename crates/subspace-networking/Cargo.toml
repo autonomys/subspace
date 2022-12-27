@@ -45,7 +45,7 @@ unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_code
 [dependencies.libp2p]
 # TODO: change when https://github.com/libp2p/rust-libp2p/pull/3178 is released
 git = "https://github.com/libp2p/rust-libp2p"
-rev = "be0b62a78fe9d72811b9eda742137cc8ddc4da35"
+rev = "56b3b8fe5a1e5d0b14ba7987a74ff3bc29f6b4e2"
 default-features = false
 features = [
     "dns",

@@ -73,7 +73,7 @@ enum QueryResultSender {
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner<RecordStore = CustomRecordStore>
 where
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
@@ -107,7 +107,7 @@ where
 // Helper struct for NodeRunner configuration (clippy requirement).
 pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
 where
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
     pub allow_non_global_addresses_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
@@ -123,7 +123,7 @@ where
 
 impl<RecordStore> NodeRunner<RecordStore>
 where
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
     pub(crate) fn new(
         NodeRunnerConfig::<RecordStore> {

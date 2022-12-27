@@ -243,7 +243,7 @@ pub async fn create<RecordStore>(
     config: Config<RecordStore>,
 ) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
 where
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
     let Config {
         keypair,
