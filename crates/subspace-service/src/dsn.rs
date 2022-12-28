@@ -24,11 +24,11 @@ use tokio::time::timeout;
 use tracing::{debug, error, info, trace, warn, Instrument};
 
 /// Max time allocated for putting piece from DSN before attempt is considered to fail
-const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
+const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
 /// Defines initial duration between put_piece calls.
 const PUBLISH_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between put_piece calls.
-const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
+const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
