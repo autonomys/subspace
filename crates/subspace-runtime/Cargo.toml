@@ -18,14 +18,14 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
-frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", optional = true }
-frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", optional = true }
-frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f", optional = true }
+frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f", optional = true }
+frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../orml/vesting" }
-pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 pallet-domains = { version = "0.1.0", default-features = false, path = "../pallet-domains" }
 pallet-feeds = { version = "0.1.0", default-features = false, path = "../pallet-feeds" }
 pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../pallet-grandpa-finality-verifier" }
@@ -34,27 +34,27 @@ pallet-offences-subspace = { version = "0.1.0", default-features = false, path =
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../pallet-rewards" }
 pallet-runtime-configs = { version = "0.1.0", default-features = false, path = "../pallet-runtime-configs" }
 pallet-subspace = { version = "0.1.0", default-features = false, path = "../pallet-subspace" }
-pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 pallet-transaction-fees = { version = "0.1.0", default-features = false, path = "../pallet-transaction-fees" }
-pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-pallet-utility = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+pallet-utility = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false, version = "4.0.0-dev"}
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-block-builder = { git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f", default-features = false, version = "4.0.0-dev"}
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
-sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
-sp-inherents = { git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", default-features = false, version = "4.0.0-dev"}
+sp-inherents = { git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f", default-features = false, version = "4.0.0-dev"}
 sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
-sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
-sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809" }
+sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../subspace-verification" }
@@ -62,7 +62,7 @@ system-domain-runtime = { version = "0.1.0", default-features = false, path = ".
 
 [build-dependencies]
 subspace-wasm-tools = { version = "0.1.0", path = "../subspace-wasm-tools" }
-substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "4682b676af9087e8b5c946c383f75d74633d6809", optional = true }
+substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f", optional = true }
 
 [dev-dependencies]
 hex-literal = "0.3.3"
