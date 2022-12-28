@@ -197,10 +197,6 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub dsn_disable_private_ips: bool,
 
-    /// Defines piece publishing batch size
-    #[arg(long, default_value_t = 15)]
-    pub dsn_piece_publisher_batch_size: usize,
-
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,

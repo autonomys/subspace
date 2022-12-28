@@ -35,7 +35,6 @@ futures = "0.3.25"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
-tokio = { version = "1.23.0", features = ["sync"] }
 
 [features]
 default = ["std"]

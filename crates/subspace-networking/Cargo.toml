@@ -43,9 +43,9 @@ tracing-subscriber = "0.3.16"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
 [dependencies.libp2p]
-# TODO: change when https://github.com/libp2p/rust-libp2p/pull/3178 is released
-git = "https://github.com/libp2p/rust-libp2p"
-rev = "be0b62a78fe9d72811b9eda742137cc8ddc4da35"
+# TODO: change to upstream release when https://github.com/libp2p/rust-libp2p/pull/3287 is released
+git = "https://github.com/subspace/rust-libp2p"
+rev = "b700d0c9a12f984936b44f634e79c9f3ee5e342d"
 default-features = false
 features = [
     "dns",

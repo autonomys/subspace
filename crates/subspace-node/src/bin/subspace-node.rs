@@ -36,9 +36,6 @@ use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
-// Defines a maximum constraint for the piece publisher batch.
-const MAX_PIECE_PUBLISHER_BATCH_SIZE: usize = 30;
-
 /// System domain executor instance.
 pub struct SystemDomainExecutorDispatch;
 
@@ -411,16 +408,6 @@ fn main() -> Result<(), Error> {
                             cli.dsn_bootstrap_nodes
                         };
 
-                        if cli.dsn_piece_publisher_batch_size == 0
-                            || cli.dsn_piece_publisher_batch_size > MAX_PIECE_PUBLISHER_BATCH_SIZE
-                        {
-                            return Err(sc_service::Error::Other(format!(
-                                "Incorrect piece publisher batch size: {}. Should be 1-{}",
-                                cli.dsn_piece_publisher_batch_size, MAX_PIECE_PUBLISHER_BATCH_SIZE
-                            ))
-                            .into());
-                        }
-
                         // TODO: Libp2p versions for Substrate and Subspace diverged.
                         // We get type compatibility by encoding and decoding the original keypair.
                         let encoded_keypair = network_keypair
@@ -438,7 +425,6 @@ fn main() -> Result<(), Error> {
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
                             allow_non_global_addresses_in_dht: !cli.dsn_disable_private_ips,
-                            piece_publisher_batch_size: cli.dsn_piece_publisher_batch_size,
                         }
                     };
 

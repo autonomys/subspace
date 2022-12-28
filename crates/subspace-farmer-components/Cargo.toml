@@ -29,7 +29,6 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.32"
-tokio = { version = "1.23.0", features = ["sync"] }
 tracing = "0.1.37"
 
 [dev-dependencies]

@@ -271,10 +271,6 @@ pub struct SingleDiskPlotOptions<RC> {
     pub reward_address: PublicKey,
     /// Optional DSN Node.
     pub dsn_node: Node,
-    /// Semaphore to limit concurrency of piece receiving process.
-    pub piece_receiver_semaphore: Arc<tokio::sync::Semaphore>,
-    /// Semaphore to limit concurrency of piece publishing process.
-    pub piece_publisher_semaphore: Arc<tokio::sync::Semaphore>,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
@@ -472,8 +468,6 @@ impl SingleDiskPlot {
             rpc_client,
             reward_address,
             dsn_node,
-            piece_publisher_semaphore,
-            piece_receiver_semaphore,
             concurrent_plotting_semaphore,
         } = options;
 
@@ -651,11 +645,8 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let rpc_client = rpc_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher = PieceSectorPublisher::new(
-                    dsn_node.clone(),
-                    shutting_down.clone(),
-                    piece_publisher_semaphore,
-                );
+                let piece_publisher =
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -732,7 +723,6 @@ impl SingleDiskPlot {
                                 &sector_codec,
                                 sector,
                                 sector_metadata,
-                                &piece_receiver_semaphore,
                             );
                             let plotted_sector = match plot_sector_fut.await {
                                 Ok(plotted_sector) => {

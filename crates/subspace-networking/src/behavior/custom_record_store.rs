@@ -36,44 +36,48 @@ impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderSt
     }
 }
 
-impl<'a, RS, PS> RecordStore<'a> for CustomRecordStore<RS, PS>
+impl<RS, PS> RecordStore for CustomRecordStore<RS, PS>
 where
-    RS: RecordStorage + 'a,
-    PS: ProviderStorage + 'a,
+    RS: RecordStorage,
+    PS: ProviderStorage,
 {
-    type RecordsIter = Empty<Cow<'a, Record>>;
-    type ProvidedIter = PS::ProvidedIter<'a>;
+    type RecordsIter<'a> = Empty<Cow<'a, Record>>
+    where
+        Self: 'a;
+    type ProvidedIter<'a> = PS::ProvidedIter<'a>
+    where
+        Self: 'a;
 
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
         self.record_storage.get(key)
     }
 
-    fn put(&'a mut self, record: Record) -> store::Result<()> {
+    fn put(&mut self, record: Record) -> store::Result<()> {
         self.record_storage.put(record)
     }
 
-    fn remove(&'a mut self, key: &Key) {
+    fn remove(&mut self, key: &Key) {
         self.record_storage.remove(key)
     }
 
-    fn records(&'a self) -> Self::RecordsIter {
+    fn records(&self) -> Self::RecordsIter<'_> {
         // We don't use Kademlia's periodic replication
         iter::empty()
     }
 
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         self.provider_storage.add_provider(record)
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         self.provider_storage.providers(key)
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         self.provider_storage.provided()
     }
 
-    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
         self.provider_storage.remove_provider(key, provider)
     }
 }
