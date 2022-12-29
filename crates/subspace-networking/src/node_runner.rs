@@ -17,7 +17,7 @@ use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent,
-    ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -43,7 +43,7 @@ const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
 
 enum QueryResultSender {
     Value {
-        sender: mpsc::UnboundedSender<Vec<u8>>,
+        sender: mpsc::UnboundedSender<PeerRecord>,
         // Just holding onto permit while data structure is not dropped
         _permit: ResizableSemaphorePermit,
     },
@@ -615,7 +615,7 @@ where
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
                                 sender,
-                                rec.record.value,
+                                rec,
                                 "GetRecordOk",
                                 &id,
                             ) || cancelled;

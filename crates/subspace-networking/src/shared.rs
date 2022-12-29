@@ -9,6 +9,7 @@ use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -26,7 +27,7 @@ pub(crate) struct CreatedSubscription {
 pub(crate) enum Command {
     GetValue {
         key: Multihash,
-        result_sender: mpsc::UnboundedSender<Vec<u8>>,
+        result_sender: mpsc::UnboundedSender<PeerRecord>,
         permit: ResizableSemaphorePermit,
     },
     PutValue {

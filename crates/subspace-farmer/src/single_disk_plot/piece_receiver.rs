@@ -91,11 +91,12 @@ impl<'a> MultiChannelPieceReceiver<'a> {
 
         match get_value_result {
             Ok(mut get_value_stream) => match get_value_stream.next().await {
-                Some(piece) => {
+                Some(piece_record) => {
                     trace!(%piece_index, ?key, "get_value returned a piece");
 
-                    match piece.try_into() {
+                    match piece_record.record.value.try_into() {
                         Ok(piece) => {
+                            // TODO: Verify that piece is valid and ban peer if it is not
                             return Some(piece);
                         }
                         Err(error) => {
@@ -126,7 +127,7 @@ impl<'a> MultiChannelPieceReceiver<'a> {
         match get_value_result {
             Ok(mut encoded_gset_stream) => {
                 match encoded_gset_stream.next().await {
-                    Some(encoded_gset) => {
+                    Some(encoded_gset_record) => {
                         trace!(
                             %piece_index,
                             ?key,
@@ -134,9 +135,9 @@ impl<'a> MultiChannelPieceReceiver<'a> {
                         );
 
                         // Workaround for archival sector until we fix https://github.com/libp2p/rust-libp2p/issues/3048
-                        let peer_set = if let Ok(set) =
-                            BTreeSet::<Vec<u8>>::decode(&mut encoded_gset.as_slice())
-                        {
+                        let peer_set = if let Ok(set) = BTreeSet::<Vec<u8>>::decode(
+                            &mut encoded_gset_record.record.value.as_slice(),
+                        ) {
                             set
                         } else {
                             warn!(
