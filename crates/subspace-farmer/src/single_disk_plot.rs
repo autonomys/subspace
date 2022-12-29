@@ -677,6 +677,13 @@ impl SingleDiskPlot {
                                 (sector_offset as u64 + first_sector_index, sector, metadata)
                             });
 
+                        let piece_receiver = MultiChannelPieceReceiver::new(
+                            &dsn_node,
+                            &node_client,
+                            &kzg,
+                            &shutting_down,
+                        );
+
                         // TODO: Concurrency
                         for (sector_index, sector, sector_metadata) in plot_initial_sector {
                             trace!(%sector_index, "Preparing to plot sector");
@@ -708,10 +715,6 @@ impl SingleDiskPlot {
                                 .farmer_app_info()
                                 .await
                                 .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
-
-                            // TODO: Remove RPC version and keep DSN version only.
-                            let piece_receiver =
-                                MultiChannelPieceReceiver::new(dsn_node.clone(), &shutting_down);
 
                             let plot_sector_fut = plot_sector(
                                 &public_key,
