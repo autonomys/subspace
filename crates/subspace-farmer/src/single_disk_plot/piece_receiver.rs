@@ -104,82 +104,85 @@ where
 
         let get_value_result = self.dsn_node.get_value(key).await;
 
-        match get_value_result {
-            Ok(mut get_value_stream) => match get_value_stream.next().await {
-                Some(piece_record) => {
-                    trace!(%piece_index, ?key, "get_value returned a piece");
-
-                    let piece: Piece = match piece_record.record.value.try_into() {
-                        Ok(piece) => piece,
-                        Err(error) => {
-                            error!(%piece_index, ?key, ?error, "Error on piece construction");
-                            return None;
-                        }
-                    };
-
-                    if let Some(source_peer_id) = piece_record.peer {
-                        let segment_index = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
-                        let records_roots =
-                            match self.node_client.records_roots(vec![segment_index]).await {
-                                Ok(records_roots) => records_roots,
-                                Err(error) => {
-                                    error!(
-                                        %piece_index,
-                                        ?key,
-                                        ?error,
-                                        "Failed tor retrieve records root from node"
-                                    );
-                                    return None;
-                                }
-                            };
-
-                        let records_root = match records_roots.into_iter().next().flatten() {
-                            Some(records_root) => records_root,
-                            None => {
-                                error!(
-                                    %piece_index,
-                                    %segment_index,
-                                    ?key,
-                                    "Records root for segment index wasn't found on node"
-                                );
-                                return None;
-                            }
-                        };
-
-                        if !is_piece_valid(
-                            self.kzg,
-                            PIECES_IN_SEGMENT,
-                            &piece,
-                            records_root,
-                            u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
-                                .expect("Always fix into u32; qed"),
-                            RECORD_SIZE,
-                        ) {
-                            error!(
-                                %piece_index,
-                                %source_peer_id,
-                                ?key,
-                                "Received invalid piece from peer"
-                            );
-
-                            // We don't care about result here
-                            let _ = self.dsn_node.ban_peer(source_peer_id).await;
-                            return None;
-                        }
-                    }
-
-                    Some(piece)
-                }
-                None => {
-                    debug!(%piece_index, ?key, "get_value returned no piece");
-                    None
-                }
-            },
+        let mut get_value_stream = match get_value_result {
+            Ok(get_value_stream) => get_value_stream,
             Err(err) => {
                 error!(%piece_index, ?key, ?err, "get_value returned an error");
-                None
+                return None;
+            }
+        };
+
+        let piece_record = match get_value_stream.next().await {
+            Some(piece_record) => {
+                trace!(%piece_index, ?key, "get_value returned a piece");
+
+                piece_record
+            }
+            None => {
+                debug!(%piece_index, ?key, "get_value returned no piece");
+                return None;
+            }
+        };
+
+        let piece: Piece = match piece_record.record.value.try_into() {
+            Ok(piece) => piece,
+            Err(error) => {
+                error!(%piece_index, ?key, ?error, "Error on piece construction");
+                return None;
+            }
+        };
+
+        if let Some(source_peer_id) = piece_record.peer && source_peer_id != self.dsn_node.id() {
+            let segment_index = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
+            let records_roots = match self.node_client.records_roots(vec![segment_index]).await {
+                Ok(records_roots) => records_roots,
+                Err(error) => {
+                    error!(
+                        %piece_index,
+                        ?key,
+                        ?error,
+                        "Failed tor retrieve records root from node"
+                    );
+                    return None;
+                }
+            };
+
+            let records_root = match records_roots.into_iter().next().flatten() {
+                Some(records_root) => records_root,
+                None => {
+                    error!(
+                        %piece_index,
+                        %segment_index,
+                        ?key,
+                        "Records root for segment index wasn't found on node"
+                    );
+                    return None;
+                }
+            };
+
+            if !is_piece_valid(
+                self.kzg,
+                PIECES_IN_SEGMENT,
+                &piece,
+                records_root,
+                u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
+                    .expect("Always fix into u32; qed"),
+                RECORD_SIZE,
+            ) {
+                error!(
+                    %piece_index,
+                    %source_peer_id,
+                    ?key,
+                    "Received invalid piece from peer"
+                );
+
+                // We don't care about result here
+                let _ = self.dsn_node.ban_peer(source_peer_id).await;
+                return None;
             }
         }
+
+        Some(piece)
     }
 
     // Get piece from archival storage (L1) from sectors. Log errors.

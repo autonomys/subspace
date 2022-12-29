@@ -3,6 +3,7 @@
     drain_filter,
     hash_drain_filter,
     io_error_other,
+    let_chains,
     trait_alias,
     try_blocks,
     type_changing_struct_update
