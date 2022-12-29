@@ -76,6 +76,9 @@ pub(crate) enum Command {
         result_sender: mpsc::UnboundedSender<PeerId>,
         permit: ResizableSemaphorePermit,
     },
+    BanPeer {
+        peer_id: PeerId,
+    },
 }
 
 #[derive(Default, Debug)]

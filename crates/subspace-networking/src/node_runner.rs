@@ -1042,6 +1042,13 @@ where
                     },
                 );
             }
+            Command::BanPeer { peer_id } => {
+                self.swarm.ban_peer_id(peer_id);
+                self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+                self.networking_parameters_registry
+                    .remove_all_known_peer_addresses(peer_id)
+                    .await;
+            }
         }
     }
 

@@ -511,6 +511,15 @@ impl Node {
         Ok(result_receiver)
     }
 
+    /// Ban peer with specified peer ID.
+    pub async fn ban_peer(&self, peer_id: PeerId) -> Result<(), SendError> {
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::BanPeer { peer_id })
+            .await
+    }
+
     /// Node's own addresses where it listens for incoming requests.
     pub fn listeners(&self) -> Vec<Multiaddr> {
         self.shared.listeners.lock().clone()
