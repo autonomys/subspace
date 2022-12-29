@@ -1,20 +1,20 @@
 use crate::identity::Identity;
-use crate::rpc_client::RpcClient;
+use crate::node_client::NodeClient;
 use futures::StreamExt;
 use std::future::Future;
 use subspace_rpc_primitives::{RewardSignatureResponse, RewardSigningInfo};
 use tracing::{info, warn};
 
-pub async fn reward_signing<RC>(
-    rpc_client: RC,
+pub async fn reward_signing<NC>(
+    node_client: NC,
     identity: Identity,
 ) -> Result<impl Future<Output = ()>, Box<dyn std::error::Error + Send + Sync>>
 where
-    RC: RpcClient,
+    NC: NodeClient,
 {
     info!("Subscribing to reward signing notifications");
 
-    let mut reward_signing_info_notifications = rpc_client.subscribe_reward_signing().await?;
+    let mut reward_signing_info_notifications = node_client.subscribe_reward_signing().await?;
 
     let reward_signing_fut = async move {
         while let Some(RewardSigningInfo { hash, public_key }) =
@@ -27,7 +27,7 @@ where
 
             let signature = identity.sign_reward_hash(&hash);
 
-            match rpc_client
+            match node_client
                 .submit_reward_signature(RewardSignatureResponse {
                     hash,
                     signature: Some(signature.to_bytes().into()),

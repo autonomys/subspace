@@ -11,7 +11,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
-use subspace_farmer::{Identity, NodeRpcClient, RpcClient};
+use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
@@ -70,7 +70,7 @@ pub(crate) async fn farm_multi_disk(
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
     info!("Connecting to node RPC at {}", node_rpc_url);
-    let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
+    let node_client = NodeRpcClient::new(&node_rpc_url).await?;
     let concurrent_plotting_semaphore = Arc::new(tokio::sync::Semaphore::new(
         farming_args.max_concurrent_plots.get(),
     ));
@@ -88,7 +88,7 @@ pub(crate) async fn farm_multi_disk(
 
         if dsn.bootstrap_nodes.is_empty() {
             dsn.bootstrap_nodes = {
-                rpc_client
+                node_client
                     .farmer_app_info()
                     .await
                     .map_err(|error| anyhow::anyhow!(error))?
@@ -113,12 +113,12 @@ pub(crate) async fn farm_multi_disk(
         }
 
         info!("Connecting to node RPC at {}", node_rpc_url);
-        let rpc_client = NodeRpcClient::new(&node_rpc_url).await?;
+        let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
         let single_disk_plot_fut = SingleDiskPlot::new(SingleDiskPlotOptions {
             directory: disk_farm.directory,
             allocated_space: disk_farm.allocated_plotting_space,
-            rpc_client,
+            node_client,
             reward_address,
             dsn_node: node.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),

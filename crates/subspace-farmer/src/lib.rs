@@ -30,15 +30,15 @@
 //! 64-bit unsigned integers.
 
 pub(crate) mod identity;
+pub mod node_client;
 pub(crate) mod object_mappings;
 pub mod reward_signing;
-pub mod rpc_client;
 pub mod single_disk_plot;
 mod utils;
 pub mod ws_rpc_server;
 
 pub use identity::Identity;
 pub use jsonrpsee;
+pub use node_client::node_rpc_client::NodeRpcClient;
+pub use node_client::{Error as RpcClientError, NodeClient};
 pub use object_mappings::{ObjectMappingError, ObjectMappings};
-pub use rpc_client::node_rpc_client::NodeRpcClient;
-pub use rpc_client::{Error as RpcClientError, RpcClient};
