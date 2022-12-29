@@ -17,6 +17,7 @@ use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use lru::LruCache;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -26,7 +27,7 @@ use static_assertions::const_assert;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,6 +62,8 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Only useful for initial network bootstrapping where due to initial plot size there might be too
 /// many solutions.
 const SOLUTIONS_LIMIT: usize = 10;
+
+const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -677,10 +680,14 @@ impl SingleDiskPlot {
                                 (sector_offset as u64 + first_sector_index, sector, metadata)
                             });
 
+                        let records_roots_cache =
+                            Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
+
                         let piece_receiver = MultiChannelPieceReceiver::new(
                             &dsn_node,
                             &node_client,
                             &kzg,
+                            &records_roots_cache,
                             &shutting_down,
                         );
 

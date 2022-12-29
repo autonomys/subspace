@@ -26,6 +26,7 @@ fdlimit = "0.2"
 futures = "0.3.25"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.2", features = ["client", "macros", "server"] }
+lru = "0.8.1"
 memmap2 = "0.5.8"
 num-traits = "0.2.15"
 parity-db = "0.4.2"

@@ -4,7 +4,9 @@ use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use lru::LruCache;
 use parity_scale_codec::Decode;
+use parking_lot::Mutex;
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::future::Future;
@@ -13,7 +15,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT, RECORD_SIZE};
+use subspace_core_primitives::{
+    Piece, PieceIndex, PieceIndexHash, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
+};
 use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
@@ -35,6 +39,7 @@ pub(crate) struct MultiChannelPieceReceiver<'a, NC> {
     dsn_node: &'a Node,
     node_client: &'a NC,
     kzg: &'a Kzg,
+    records_root_cache: &'a Mutex<LruCache<SegmentIndex, RecordsRoot>>,
     cancelled: &'a AtomicBool,
 }
 
@@ -46,12 +51,14 @@ where
         dsn_node: &'a Node,
         node_client: &'a NC,
         kzg: &'a Kzg,
+        records_root_cache: &'a Mutex<LruCache<SegmentIndex, RecordsRoot>>,
         cancelled: &'a AtomicBool,
     ) -> Self {
         Self {
             dsn_node,
             node_client,
             kzg,
+            records_root_cache,
             cancelled,
         }
     }
@@ -133,30 +140,44 @@ where
         };
 
         if let Some(source_peer_id) = piece_record.peer && source_peer_id != self.dsn_node.id() {
-            let segment_index = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
-            let records_roots = match self.node_client.records_roots(vec![segment_index]).await {
-                Ok(records_roots) => records_roots,
-                Err(error) => {
-                    error!(
-                        %piece_index,
-                        ?key,
-                        ?error,
-                        "Failed tor retrieve records root from node"
-                    );
-                    return None;
-                }
-            };
+            let segment_index: SegmentIndex = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
 
-            let records_root = match records_roots.into_iter().next().flatten() {
+            let maybe_records_root = self.records_root_cache.lock().get(&segment_index).copied();
+            let records_root = match maybe_records_root {
                 Some(records_root) => records_root,
                 None => {
-                    error!(
-                        %piece_index,
-                        %segment_index,
-                        ?key,
-                        "Records root for segment index wasn't found on node"
-                    );
-                    return None;
+                    let records_roots =
+                        match self.node_client.records_roots(vec![segment_index]).await {
+                            Ok(records_roots) => records_roots,
+                            Err(error) => {
+                                error!(
+                                    %piece_index,
+                                    ?key,
+                                    ?error,
+                                    "Failed tor retrieve records root from node"
+                                );
+                                return None;
+                            }
+                        };
+
+                    let records_root = match records_roots.into_iter().next().flatten() {
+                        Some(records_root) => records_root,
+                        None => {
+                            error!(
+                                %piece_index,
+                                %segment_index,
+                                ?key,
+                                "Records root for segment index wasn't found on node"
+                            );
+                            return None;
+                        }
+                    };
+
+                    self.records_root_cache
+                        .lock()
+                        .push(segment_index, records_root);
+
+                    records_root
                 }
             };
 
@@ -237,7 +258,13 @@ where
                                         }
                                     }
                                     Err(error) => {
-                                        error!(%piece_index,?peer_id, ?key, ?error, "Error on piece-by-hash request.");
+                                        error!(
+                                            %piece_index,
+                                            ?peer_id,
+                                            ?key,
+                                            ?error,
+                                            "Error on piece-by-hash request."
+                                        );
                                     }
                                 }
                             } else {
@@ -245,7 +272,8 @@ where
                                     %piece_index,
                                     ?peer_id,
                                     ?key,
-                                    "Cannot convert piece-by-sector provider PeerId from received bytes"
+                                    "Cannot convert piece-by-sector provider PeerId from received \
+                                    bytes"
                                 );
                             }
                         }

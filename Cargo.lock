@@ -9574,6 +9574,7 @@ dependencies = [
  "hex",
  "jemallocator",
  "jsonrpsee",
+ "lru 0.8.1",
  "memmap2",
  "num-traits",
  "parity-db",
