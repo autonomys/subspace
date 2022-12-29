@@ -10,6 +10,7 @@ use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
@@ -282,7 +283,7 @@ impl Node {
     pub async fn get_value(
         &self,
         key: Multihash,
-    ) -> Result<impl Stream<Item = Vec<u8>>, GetValueError> {
+    ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
         let permit = self.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -509,6 +510,15 @@ impl Node {
 
         // TODO: A wrapper that'll immediately cancel query on drop
         Ok(result_receiver)
+    }
+
+    /// Ban peer with specified peer ID.
+    pub async fn ban_peer(&self, peer_id: PeerId) -> Result<(), SendError> {
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::BanPeer { peer_id })
+            .await
     }
 
     /// Node's own addresses where it listens for incoming requests.
