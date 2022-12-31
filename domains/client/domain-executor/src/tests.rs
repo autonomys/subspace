@@ -281,16 +281,11 @@ async fn set_new_code_should_work() {
     alice
         .executor
         .clone()
-        .process_bundles(
-            (
-                primary_hash,
-                primary_number,
-                ForkChoiceStrategy::LongestChain,
-            ),
-            Default::default(),
-            BlakeTwo256::hash_of(&[1u8; 64]).into(),
-            Some(new_runtime_wasm_blob.clone().into()),
-        )
+        .process_bundles((
+            primary_hash,
+            primary_number,
+            ForkChoiceStrategy::LongestChain,
+        ))
         .await;
 
     let best_hash = alice.client.info().best_hash;
