@@ -205,7 +205,9 @@ where
             if let Some(piece_vec) = maybe_piece {
                 found_one_piece = true;
 
-                piece.replace(piece_vec.as_slice().try_into()?);
+                // TODO: We do not keep track of peers here and don't verify records, we probably
+                //  should though
+                piece.replace(piece_vec.record.value.as_slice().try_into()?);
             }
         }
 

@@ -138,8 +138,6 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
-        /// Defines piece publishing batch size
-        piece_publisher_batch_size: usize,
     },
     /// Networking must be instantiated internally
     Create {
@@ -429,78 +427,72 @@ where
         other: (block_import, subspace_link, mut telemetry),
     } = partial_components;
 
-    let (node, bootstrap_nodes, piece_publisher_batch_size) =
-        match config.subspace_networking.clone() {
-            SubspaceNetworking::Reuse {
-                node,
-                bootstrap_nodes,
-                piece_publisher_batch_size,
-            } => (node, bootstrap_nodes, piece_publisher_batch_size),
-            SubspaceNetworking::Create {
-                config,
-                piece_cache_size,
-            } => {
-                let piece_cache = PieceCache::new(client.clone(), piece_cache_size);
+    let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
+        SubspaceNetworking::Reuse {
+            node,
+            bootstrap_nodes,
+        } => (node, bootstrap_nodes),
+        SubspaceNetworking::Create {
+            config,
+            piece_cache_size,
+        } => {
+            let piece_cache = PieceCache::new(client.clone(), piece_cache_size);
 
-                // Start before archiver below, so we don't have potential race condition and miss pieces
-                task_manager
-                    .spawn_handle()
-                    .spawn_blocking("subspace-piece-cache", None, {
-                        let piece_cache = piece_cache.clone();
-                        let mut archived_segment_notification_stream = subspace_link
-                            .archived_segment_notification_stream()
-                            .subscribe();
+            // Start before archiver below, so we don't have potential race condition and miss pieces
+            task_manager
+                .spawn_handle()
+                .spawn_blocking("subspace-piece-cache", None, {
+                    let piece_cache = piece_cache.clone();
+                    let mut archived_segment_notification_stream = subspace_link
+                        .archived_segment_notification_stream()
+                        .subscribe();
 
-                        async move {
-                            while let Some(archived_segment_notification) =
-                                archived_segment_notification_stream.next().await
-                            {
-                                let segment_index = archived_segment_notification
-                                    .archived_segment
-                                    .root_block
-                                    .segment_index();
-                                if let Err(error) = piece_cache.add_pieces(
-                                    segment_index * u64::from(PIECES_IN_SEGMENT),
-                                    &archived_segment_notification.archived_segment.pieces,
-                                ) {
-                                    error!(
-                                        %segment_index,
-                                        %error,
-                                        "Failed to store pieces for segment in cache"
-                                    );
-                                }
+                    async move {
+                        while let Some(archived_segment_notification) =
+                            archived_segment_notification_stream.next().await
+                        {
+                            let segment_index = archived_segment_notification
+                                .archived_segment
+                                .root_block
+                                .segment_index();
+                            if let Err(error) = piece_cache.add_pieces(
+                                segment_index * u64::from(PIECES_IN_SEGMENT),
+                                &archived_segment_notification.archived_segment.pieces,
+                            ) {
+                                error!(
+                                    %segment_index,
+                                    %error,
+                                    "Failed to store pieces for segment in cache"
+                                );
                             }
                         }
-                    });
+                    }
+                });
 
-                let (node, mut node_runner) =
-                    create_dsn_instance::<Block, _>(config.clone(), piece_cache.clone())
-                        .instrument(tracing::info_span!(
-                            sc_tracing::logging::PREFIX_LOG_SPAN,
-                            name = "DSN"
-                        ))
-                        .await?;
+            let (node, mut node_runner) =
+                create_dsn_instance::<Block, _>(config.clone(), piece_cache.clone())
+                    .instrument(tracing::info_span!(
+                        sc_tracing::logging::PREFIX_LOG_SPAN,
+                        name = "DSN"
+                    ))
+                    .await?;
 
-                info!("Subspace networking initialized: Node ID is {}", node.id());
+            info!("Subspace networking initialized: Node ID is {}", node.id());
 
-                task_manager.spawn_essential_handle().spawn_essential(
-                    "node-runner",
-                    Some("subspace-networking"),
-                    Box::pin(
-                        async move {
-                            node_runner.run().await;
-                        }
-                        .in_current_span(),
-                    ),
-                );
+            task_manager.spawn_essential_handle().spawn_essential(
+                "node-runner",
+                Some("subspace-networking"),
+                Box::pin(
+                    async move {
+                        node_runner.run().await;
+                    }
+                    .in_current_span(),
+                ),
+            );
 
-                (
-                    node,
-                    config.bootstrap_nodes,
-                    config.piece_publisher_batch_size,
-                )
-            }
-        };
+            (node, config.bootstrap_nodes)
+        }
+    };
 
     let dsn_archiving_fut = start_dsn_archiver(
         subspace_link
@@ -508,19 +500,13 @@ where
             .subscribe(),
         node.clone(),
         task_manager.spawn_handle(),
-        piece_publisher_batch_size,
         config.segment_publish_concurrency,
     );
 
     task_manager.spawn_essential_handle().spawn_essential(
         "archiver",
         Some("subspace-networking"),
-        Box::pin(
-            async move {
-                dsn_archiving_fut.await;
-            }
-            .in_current_span(),
-        ),
+        Box::pin(dsn_archiving_fut.in_current_span()),
     );
 
     let dsn_bootstrap_nodes = {

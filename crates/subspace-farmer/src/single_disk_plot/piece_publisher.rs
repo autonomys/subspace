@@ -11,36 +11,29 @@ use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, ToMultihash};
-use tokio::sync::Semaphore;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 use tracing::{debug, error, info, trace};
 
 /// Max time allocated for putting piece from DSN before attempt is considered to fail
-const PUT_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
+const PUT_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
 /// Defines initial duration between put_piece calls.
 const PUT_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between put_piece calls.
-const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
+const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 
 // Piece-by-sector DSN publishing helper.
 #[derive(Clone)]
 pub(crate) struct PieceSectorPublisher {
     dsn_node: Node,
     cancelled: Arc<AtomicBool>,
-    semaphore: Arc<Semaphore>,
 }
 
 impl PieceSectorPublisher {
-    pub(crate) fn new(
-        dsn_node: Node,
-        cancelled: Arc<AtomicBool>,
-        semaphore: Arc<Semaphore>,
-    ) -> Self {
+    pub(crate) fn new(dsn_node: Node, cancelled: Arc<AtomicBool>) -> Self {
         Self {
             dsn_node,
             cancelled,
-            semaphore,
         }
     }
 
@@ -61,17 +54,7 @@ impl PieceSectorPublisher {
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         let mut pieces_receiving_futures = piece_indexes
             .iter()
-            .map(|piece_index| {
-                Box::pin(async {
-                    let _permit = self
-                        .semaphore
-                        .acquire()
-                        .await
-                        .expect("Should be valid on non-closed semaphore");
-
-                    self.publish_single_piece_with_backoff(*piece_index).await
-                })
-            })
+            .map(|piece_index| self.publish_single_piece_with_backoff(*piece_index))
             .collect::<FuturesUnordered<_>>();
 
         while pieces_receiving_futures.next().await.is_some() {

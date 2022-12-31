@@ -1,4 +1,4 @@
-use crate::rpc_client::{Error as RpcError, Error, RpcClient};
+use crate::node_client::{Error as RpcError, Error, NodeClient};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
@@ -24,7 +24,7 @@ pub struct NodeRpcClient {
 }
 
 impl NodeRpcClient {
-    /// Create a new instance of [`RpcClient`].
+    /// Create a new instance of [`NodeClient`].
     pub async fn new(url: &str) -> Result<Self, JsonError> {
         let client = Arc::new(
             WsClientBuilder::default()
@@ -38,7 +38,7 @@ impl NodeRpcClient {
 }
 
 #[async_trait]
-impl RpcClient for NodeRpcClient {
+impl NodeClient for NodeRpcClient {
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error> {
         Ok(self
             .client

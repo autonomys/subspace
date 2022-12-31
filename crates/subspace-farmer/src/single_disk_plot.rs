@@ -3,9 +3,9 @@ pub mod piece_reader;
 pub mod piece_receiver;
 
 use crate::identity::Identity;
+use crate::node_client;
+use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::rpc_client;
-use crate::rpc_client::RpcClient;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
@@ -17,6 +17,7 @@ use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use lru::LruCache;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -26,7 +27,7 @@ use static_assertions::const_assert;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,6 +62,8 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Only useful for initial network bootstrapping where due to initial plot size there might be too
 /// many solutions.
 const SOLUTIONS_LIMIT: usize = 10;
+
+const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -260,21 +263,17 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single dis plot
-pub struct SingleDiskPlotOptions<RC> {
+pub struct SingleDiskPlotOptions<NC> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
     /// How much space in bytes can plot use for plot
     pub allocated_space: u64,
     /// RPC client connected to Subspace node
-    pub rpc_client: RC,
+    pub node_client: NC,
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
     /// Optional DSN Node.
     pub dsn_node: Node,
-    /// Semaphore to limit concurrency of piece receiving process.
-    pub piece_receiver_semaphore: Arc<tokio::sync::Semaphore>,
-    /// Semaphore to limit concurrency of piece publishing process.
-    pub piece_publisher_semaphore: Arc<tokio::sync::Semaphore>,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
@@ -351,7 +350,7 @@ pub enum PlottingError {
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: rpc_client::Error,
+        error: node_client::Error,
     },
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
@@ -365,13 +364,13 @@ pub enum FarmingError {
     #[error("Failed to substribe to slot info notifications: {error}")]
     FailedToSubscribeSlotInfo {
         /// Lower-level error
-        error: rpc_client::Error,
+        error: node_client::Error,
     },
     /// Failed to retrieve farmer info
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {
         /// Lower-level error
-        error: rpc_client::Error,
+        error: node_client::Error,
     },
     /// Failed to create memory mapping for plot
     #[error("Failed to create memory mapping for plot: {error}")]
@@ -389,7 +388,7 @@ pub enum FarmingError {
     #[error("Failed to submit solutions response: {error}")]
     FailedToSubmitSolutionsResponse {
         /// Lower-level error
-        error: rpc_client::Error,
+        error: node_client::Error,
     },
     /// Low-level farming error
     #[error("Low-level farming error: {0}")]
@@ -460,20 +459,18 @@ impl SingleDiskPlot {
     /// Create new single disk plot instance
     ///
     /// NOTE: Thought this function is async, it will do some blocking I/O.
-    pub async fn new<RC>(options: SingleDiskPlotOptions<RC>) -> Result<Self, SingleDiskPlotError>
+    pub async fn new<NC>(options: SingleDiskPlotOptions<NC>) -> Result<Self, SingleDiskPlotError>
     where
-        RC: RpcClient,
+        NC: NodeClient,
     {
         let handle = Handle::current();
 
         let SingleDiskPlotOptions {
             directory,
             allocated_space,
-            rpc_client,
+            node_client,
             reward_address,
             dsn_node,
-            piece_publisher_semaphore,
-            piece_receiver_semaphore,
             concurrent_plotting_semaphore,
         } = options;
 
@@ -497,7 +494,7 @@ impl SingleDiskPlot {
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
 
-        let farmer_app_info = rpc_client
+        let farmer_app_info = node_client
             .farmer_app_info()
             .await
             .map_err(SingleDiskPlotError::NodeRpcError)?;
@@ -649,13 +646,10 @@ impl SingleDiskPlot {
                 let metadata_header = Arc::clone(&metadata_header);
                 let handlers = Arc::clone(&handlers);
                 let shutting_down = Arc::clone(&shutting_down);
-                let rpc_client = rpc_client.clone();
+                let node_client = node_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher = PieceSectorPublisher::new(
-                    dsn_node.clone(),
-                    shutting_down.clone(),
-                    piece_publisher_semaphore,
-                );
+                let piece_publisher =
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -686,6 +680,17 @@ impl SingleDiskPlot {
                                 (sector_offset as u64 + first_sector_index, sector, metadata)
                             });
 
+                        let records_roots_cache =
+                            Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
+
+                        let piece_receiver = MultiChannelPieceReceiver::new(
+                            &dsn_node,
+                            &node_client,
+                            &kzg,
+                            &records_roots_cache,
+                            &shutting_down,
+                        );
+
                         // TODO: Concurrency
                         for (sector_index, sector, sector_metadata) in plot_initial_sector {
                             trace!(%sector_index, "Preparing to plot sector");
@@ -713,14 +718,10 @@ impl SingleDiskPlot {
 
                             debug!(%sector_index, "Plotting sector");
 
-                            let farmer_app_info = rpc_client
+                            let farmer_app_info = node_client
                                 .farmer_app_info()
                                 .await
                                 .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
-
-                            // TODO: Remove RPC version and keep DSN version only.
-                            let piece_receiver =
-                                MultiChannelPieceReceiver::new(dsn_node.clone(), &shutting_down);
 
                             let plot_sector_fut = plot_sector(
                                 &public_key,
@@ -732,7 +733,6 @@ impl SingleDiskPlot {
                                 &sector_codec,
                                 sector,
                                 sector_metadata,
-                                &piece_receiver_semaphore,
                             );
                             let plotted_sector = match plot_sector_fut.await {
                                 Ok(plotted_sector) => {
@@ -815,12 +815,12 @@ impl SingleDiskPlot {
 
         tasks.push(Box::pin({
             let shutting_down = Arc::clone(&shutting_down);
-            let rpc_client = rpc_client.clone();
+            let node_client = node_client.clone();
 
             async move {
                 info!("Subscribing to slot info notifications");
 
-                let mut slot_info_notifications = rpc_client
+                let mut slot_info_notifications = node_client
                     .subscribe_slot_info()
                     .await
                     .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
@@ -855,7 +855,7 @@ impl SingleDiskPlot {
                 let mut start_receiver = start_sender.subscribe();
                 let shutting_down = Arc::clone(&shutting_down);
                 let identity = identity.clone();
-                let rpc_client = rpc_client.clone();
+                let node_client = node_client.clone();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -976,7 +976,7 @@ impl SingleDiskPlot {
                                 solutions,
                             };
                             handlers.solution.call_simple(&response);
-                            rpc_client
+                            node_client
                                 .submit_solution_response(response)
                                 .await
                                 .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
@@ -1055,7 +1055,7 @@ impl SingleDiskPlot {
 
         tasks.push(Box::pin(async move {
             // TODO: Error handling here
-            reward_signing(rpc_client, identity).await.unwrap().await;
+            reward_signing(node_client, identity).await.unwrap().await;
 
             Ok(())
         }));

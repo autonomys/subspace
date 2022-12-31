@@ -43,6 +43,9 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     /// Unregisters associated addresses for peer ID.
     async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 
+    /// Unregisters associated addresses for peer ID.
+    async fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId);
+
     /// Returns a batch of the combined collection of known addresses from networking parameters DB
     /// and boostrap addresses from networking parameters initialization.
     /// It removes p2p-protocol suffix.
@@ -87,7 +90,9 @@ impl BootstrappedNetworkingParameters {
 impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
-    async fn remove_known_peer_addresses(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
+    async fn remove_known_peer_addresses(&mut self, _peer_id: PeerId, _addresses: Vec<Multiaddr>) {}
+
+    async fn remove_all_known_peer_addresses(&mut self, _peer_id: PeerId) {}
 
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
         self.bootstrap_addresses()
@@ -269,6 +274,14 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             addresses,
             chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS),
         );
+
+        self.cache_need_saving = true;
+    }
+
+    async fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId) {
+        trace!(%peer_id, "Remove all peer addresses from the networking parameters registry");
+
+        self.known_peers.pop(&peer_id);
 
         self.cache_need_saving = true;
     }

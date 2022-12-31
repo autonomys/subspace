@@ -170,6 +170,9 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
         "subspace_gemini_3b_system_domain",
         ChainType::Local,
         move || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Invalid Sudo account.");
             testnet_genesis(
                 vec![
                     // Genesis executor
@@ -205,7 +208,7 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
                         .expect("Wrong executor account address"),
                     Percent::one(),
                 )],
-                None,
+                Some(sudo_account),
                 Default::default(),
             )
         },
