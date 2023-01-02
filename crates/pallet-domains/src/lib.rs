@@ -202,15 +202,17 @@ mod pallet {
                 let (_, mut best_number) = <ReceiptHead<T>>::get();
 
                 for receipt in &signed_opaque_bundle.bundle.receipts {
+                    let primary_number = receipt.primary_number;
+
                     // Ignore the receipt if it has already been pruned.
-                    if receipt.primary_number < oldest_receipt_number {
+                    if primary_number < oldest_receipt_number {
                         continue;
                     }
 
-                    if receipt.primary_number <= best_number {
+                    if primary_number <= best_number {
                         // Either increase the vote for a known receipt or add a fork receipt at this height.
                         Self::apply_non_new_best_receipt(domain_id, receipt);
-                    } else if receipt.primary_number == best_number + One::one() {
+                    } else if primary_number == best_number + One::one() {
                         Self::apply_new_best_receipt(domain_id, receipt);
                         best_number += One::one();
                     } else {
@@ -533,10 +535,17 @@ impl<T: Config> Pallet<T> {
         }
 
         if signed_opaque_bundle.domain_id().is_system() {
+            let oldest_receipt_number = OldestReceiptNumber::<T>::get();
             let (_, mut best_number) = <ReceiptHead<T>>::get();
 
             for receipt in execution_receipts {
                 let primary_number = receipt.primary_number;
+
+                // Ignore the receipt if it has already been pruned.
+                if primary_number < oldest_receipt_number {
+                    continue;
+                }
+
                 // Non-best receipt
                 if primary_number <= best_number {
                     let primary_hash = BlockHash::<T>::get(primary_number);
@@ -699,8 +708,16 @@ impl<T: Config> Pallet<T> {
             let (_, best_number) = <ReceiptHead<T>>::get();
             let max_allowed = best_number + T::MaximumReceiptDrift::get();
 
+            let oldest_receipt_number = OldestReceiptNumber::<T>::get();
+
             for execution_receipt in &bundle.receipts {
                 let primary_number = execution_receipt.primary_number;
+
+                // The corresponding block info has been pruned, such expired receipts
+                // will be skipped too while applying the bundle.
+                if primary_number < oldest_receipt_number {
+                    continue;
+                }
 
                 // Due to `initialize_block` is skipped while calling the runtime api, the block
                 // hash mapping for last block is unknown to the transaction pool, but this info
