@@ -618,9 +618,6 @@ impl_runtime_apis! {
                 RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof }) => {
                     PreValidationObject::FraudProof(fraud_proof)
                 }
-                RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
-                    signed_opaque_bundle,
-                }) => PreValidationObject::Receipts(signed_opaque_bundle.bundle.receipts),
                 _ => PreValidationObject::Null,
             }
         }

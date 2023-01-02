@@ -96,8 +96,6 @@ where
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
     Block,
     FullClient<RuntimeApi, Executor>,
-    // The `FraudProofVerifier` need the primary chain client to get the runtime blob file for code domain
-    // runtime thus need `PBlock` and `PClient`.
     FraudProofVerifier<PBlock, PClient, Executor>,
 >;
 
@@ -110,10 +108,7 @@ type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::Proof
     Hash,
 >;
 
-/// Starts a `ServiceBuilder` for a full service.
-///
-/// Use this macro if you don't actually need the full service, but just the builder in order to
-/// be able to perform chain operations.
+/// Constructs a partial system domain node.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
     config: &ServiceConfiguration,

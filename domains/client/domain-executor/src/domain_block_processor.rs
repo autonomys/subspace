@@ -64,12 +64,11 @@ where
 
         let new_runtime = match domain_id {
             DomainId::SYSTEM => system_domain_runtime,
-            DomainId::CORE_PAYMENTS => read_core_domain_runtime_blob(
-                system_domain_runtime.as_ref(),
-                domain_id.link_section_name(),
-            )
-            .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?
-            .into(),
+            DomainId::CORE_PAYMENTS => {
+                read_core_domain_runtime_blob(system_domain_runtime.as_ref(), domain_id)
+                    .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?
+                    .into()
+            }
             _ => {
                 return Err(sp_blockchain::Error::Application(Box::from(format!(
                     "No new runtime code for {domain_id:?}"

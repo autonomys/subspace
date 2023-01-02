@@ -341,11 +341,9 @@ async fn extract_core_domain_wasm_bundle_in_system_domain_runtime_should_work() 
         .system_domain_wasm_bundle(&BlockId::Hash(ferdie.client.info().best_hash))
         .unwrap();
 
-    let core_payments_runtime_blob = read_core_domain_runtime_blob(
-        system_domain_bundle.as_ref(),
-        DomainId::CORE_PAYMENTS.link_section_name(),
-    )
-    .unwrap();
+    let core_payments_runtime_blob =
+        read_core_domain_runtime_blob(system_domain_bundle.as_ref(), DomainId::CORE_PAYMENTS)
+            .unwrap();
 
     let core_payments_blob = RuntimeBlob::new(&core_payments_runtime_blob).unwrap();
     let core_payments_version = sc_executor::read_embedded_version(&core_payments_blob)

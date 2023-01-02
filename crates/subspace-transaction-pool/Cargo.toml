@@ -1,9 +1,12 @@
 [package]
 name = "subspace-transaction-pool"
 version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Subspace transaction pool"
 
 [dependencies]
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
@@ -22,6 +25,3 @@ sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspac
 subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 tracing = "0.1.37"
-
-[features]
-default = []

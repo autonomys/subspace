@@ -96,10 +96,7 @@ pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool
     Block,
 >;
 
-/// Starts a `ServiceBuilder` for a full service.
-///
-/// Use this macro if you don't actually need the full service, but just the builder in order to
-/// be able to perform chain operations.
+/// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, Executor>(
     config: &ServiceConfiguration,

@@ -372,6 +372,8 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: Rename this extrinsic since the core bundle is not submit to the transaction pool but crafted and injected
+        // on fly when building the system domain block.
         // TODO: proper weight
         #[pallet::call_index(5)]
         #[pallet::weight((10_000, Pays::No))]
