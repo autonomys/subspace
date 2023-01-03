@@ -1,8 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::utils::{
-    read_core_domain_runtime_blob, shuffle_extrinsics, to_number_primitive, translate_number_type,
-    DomainBundles,
-};
+use crate::utils::{shuffle_extrinsics, to_number_primitive, translate_number_type, DomainBundles};
 use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -24,6 +21,7 @@ use sp_runtime::Digest;
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
+use subspace_wasm_tools::read_core_domain_runtime_blob;
 
 type DomainBlockElements<Block, PBlock> = (
     DomainBundles<Block, PBlock>,

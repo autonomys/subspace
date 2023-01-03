@@ -54,7 +54,7 @@ use substrate_test_client::{
 };
 
 use cross_domain_message_gossip::GossipWorker;
-use domain_service::DomainConfiguration;
+use domain_service::{DomainConfiguration, FullPool};
 pub use domain_test_runtime as runtime;
 use sp_domains::DomainId;
 pub use sp_keyring::Sr25519Keyring as Keyring;
@@ -74,7 +74,7 @@ pub type Executor = domain_client_executor::SystemExecutor<
     PBlock,
     Client,
     subspace_test_client::Client,
-    sc_transaction_pool::BasicPool<sc_transaction_pool::FullChainApi<Client, Block>, Block>,
+    FullPool<PBlock, subspace_test_client::Client, runtime::RuntimeApi, RuntimeExecutor>,
     Backend,
     CodeExecutor,
 >;
@@ -179,6 +179,7 @@ async fn run_executor(
     >(
         secondary_chain_config,
         primary_chain_full_node.client.clone(),
+        primary_chain_full_node.backend.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,
         primary_chain_full_node

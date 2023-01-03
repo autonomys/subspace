@@ -58,7 +58,9 @@ sp-session = { version = "4.0.0-dev", git = "https://github.com/subspace/substra
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 system-runtime-primitives = { version = "0.1.0", path = "../primitives/system-runtime" }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
+subspace-fraud-proof = { version = "0.1.0", path = "../../crates/subspace-fraud-proof" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
+subspace-transaction-pool = { version = "0.1.0", path = "../../crates/subspace-transaction-pool" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
 
 [build-dependencies]

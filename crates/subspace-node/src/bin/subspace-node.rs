@@ -528,6 +528,7 @@ fn main() -> Result<(), Error> {
                     >(
                         secondary_chain_config,
                         primary_chain_node.client.clone(),
+                        primary_chain_node.backend.clone(),
                         primary_chain_node.network.clone(),
                         &primary_chain_node.select_chain,
                         imported_block_notification_stream(),

@@ -2185,6 +2185,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
+ "subspace-wasm-tools",
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "system-runtime-primitives",
@@ -2316,7 +2317,9 @@ dependencies = [
  "sp-session",
  "sp-transaction-pool",
  "subspace-core-primitives",
+ "subspace-fraud-proof",
  "subspace-runtime-primitives",
+ "subspace-transaction-pool",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "system-runtime-primitives",
@@ -9651,6 +9654,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
+ "subspace-wasm-tools",
  "substrate-test-utils",
  "tempfile",
  "tokio",
@@ -9867,6 +9871,7 @@ dependencies = [
  "subspace-fraud-proof",
  "subspace-networking",
  "subspace-runtime-primitives",
+ "subspace-transaction-pool",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -9984,10 +9989,33 @@ dependencies = [
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
+ "subspace-transaction-pool",
  "substrate-test-client",
  "substrate-test-utils",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "subspace-transaction-pool"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "futures 0.3.25",
+ "jsonrpsee",
+ "sc-client-api",
+ "sc-service",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "sp-transaction-pool",
+ "subspace-fraud-proof",
+ "substrate-prometheus-endpoint",
+ "tracing",
 ]
 
 [[package]]
@@ -10009,6 +10037,10 @@ dependencies = [
 [[package]]
 name = "subspace-wasm-tools"
 version = "0.1.0"
+dependencies = [
+ "sc-executor-common",
+ "sp-domains",
+]
 
 [[package]]
 name = "substrate-bip39"

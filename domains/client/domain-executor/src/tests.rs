@@ -1,4 +1,3 @@
-use crate::utils::read_core_domain_runtime_blob;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
@@ -22,6 +21,7 @@ use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
+use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]

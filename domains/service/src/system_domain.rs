@@ -1,4 +1,4 @@
-use crate::{new_partial, DomainConfiguration, FullBackend, FullClient, FullPool};
+use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
@@ -15,7 +15,11 @@ use sc_client_api::{BlockBackend, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_service::{BuildNetworkParams, NetworkStarter, SpawnTasksParams, TFullBackend, TaskManager};
+use sc_service::{
+    BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
+    SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
+};
+use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -23,6 +27,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
+use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
@@ -39,7 +44,7 @@ type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Syste
     PBlock,
     FullClient<RuntimeApi, ExecutorDispatch>,
     PClient,
-    FullPool<RuntimeApi, ExecutorDispatch>,
+    FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     FullBackend,
     NativeElseWasmExecutor<ExecutorDispatch>,
 >;
@@ -49,6 +54,8 @@ pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatc
 where
     PBlock: BlockT,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
+    PClient: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -63,7 +70,8 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+        + RelayerApi<Block, RelayerId, NumberFor<Block>>
+        + PreValidationObjectApi<Block, Hash>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -85,6 +93,117 @@ where
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
+pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
+    Block,
+    FullClient<RuntimeApi, Executor>,
+    FraudProofVerifier<PBlock, PClient, Executor>,
+>;
+
+type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::ProofVerifier<
+    PBlock,
+    PClient,
+    TFullBackend<PBlock>,
+    NativeElseWasmExecutor<Executor>,
+    SpawnTaskHandle,
+    Hash,
+>;
+
+/// Constructs a partial system domain node.
+#[allow(clippy::type_complexity)]
+fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
+    config: &ServiceConfiguration,
+    primary_chain_client: Arc<PClient>,
+    primary_backend: Arc<TFullBackend<PBlock>>,
+) -> Result<
+    PartialComponents<
+        FullClient<RuntimeApi, Executor>,
+        FullBackend,
+        (),
+        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
+        FullPool<PBlock, PClient, RuntimeApi, Executor>,
+        (
+            Option<Telemetry>,
+            Option<TelemetryWorkerHandle>,
+            NativeElseWasmExecutor<Executor>,
+        ),
+    >,
+    sc_service::Error,
+>
+where
+    PBlock: BlockT,
+    PClient: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    PClient::Api: ExecutorApi<PBlock, Hash>,
+    RuntimeApi:
+        ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
+    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
+        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+        + PreValidationObjectApi<Block, Hash>,
+    Executor: NativeExecutionDispatch + 'static,
+{
+    let telemetry = config
+        .telemetry_endpoints
+        .clone()
+        .filter(|x| !x.is_empty())
+        .map(|endpoints| -> Result<_, sc_telemetry::Error> {
+            let worker = TelemetryWorker::new(16)?;
+            let telemetry = worker.handle().new_telemetry(endpoints);
+            Ok((worker, telemetry))
+        })
+        .transpose()?;
+
+    let executor = NativeElseWasmExecutor::new(
+        config.wasm_method,
+        config.default_heap_pages,
+        config.max_runtime_instances,
+        config.runtime_cache_size,
+    );
+
+    let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
+        config,
+        telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+        executor.clone(),
+    )?;
+    let client = Arc::new(client);
+
+    let telemetry_worker_handle = telemetry.as_ref().map(|(worker, _)| worker.handle());
+
+    let telemetry = telemetry.map(|(worker, telemetry)| {
+        task_manager
+            .spawn_handle()
+            .spawn("telemetry", None, worker.run());
+        telemetry
+    });
+
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+        primary_chain_client,
+        primary_backend,
+        executor.clone(),
+        task_manager.spawn_handle(),
+    );
+
+    let transaction_pool =
+        subspace_transaction_pool::new_full(config, &task_manager, client.clone(), proof_verifier);
+
+    let import_queue = domain_client_consensus_relay_chain::import_queue(
+        client.clone(),
+        &task_manager.spawn_essential_handle(),
+        config.prometheus_registry(),
+    )?;
+
+    let params = PartialComponents {
+        backend,
+        client,
+        import_queue,
+        keystore_container,
+        task_manager,
+        transaction_pool,
+        select_chain: (),
+        other: (telemetry, telemetry_worker_handle, executor),
+    };
+
+    Ok(params)
+}
+
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
@@ -92,6 +211,7 @@ where
 pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut secondary_chain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
+    primary_backend: Arc<TFullBackend<PBlock>>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     select_chain: &SC,
     imported_block_notification_stream: IBNS,
@@ -135,7 +255,8 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+        + RelayerApi<Block, RelayerId, NumberFor<Block>>
+        + PreValidationObjectApi<Block, Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     // TODO: Do we even need block announcement on secondary node?
@@ -147,7 +268,11 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial(&secondary_chain_config.service_config)?;
+    let params = new_partial(
+        &secondary_chain_config.service_config,
+        primary_chain_client.clone(),
+        primary_backend,
+    )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 

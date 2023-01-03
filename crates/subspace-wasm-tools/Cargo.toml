@@ -9,3 +9,7 @@ include = [
     "/src",
     "/Cargo.toml",
 ]
+
+[dependencies]
+sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-domains = { version = "0.1.0", path = "../sp-domains" }

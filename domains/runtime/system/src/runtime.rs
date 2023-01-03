@@ -14,6 +14,7 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::fraud_proof::FraudProof;
+use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
@@ -617,6 +618,19 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
+        }
+    }
+
+    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn extract_pre_validation_object(
+            extrinsic: <Block as BlockT>::Extrinsic,
+        ) -> PreValidationObject<Block, domain_runtime_primitives::Hash> {
+                match extrinsic.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof }) => {
+                        PreValidationObject::FraudProof(fraud_proof)
+                    }
+                    _ => PreValidationObject::Null,
+                }
         }
     }
 

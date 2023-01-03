@@ -119,6 +119,13 @@ pub enum VerificationError {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
     RuntimeApi(#[from] sp_api::ApiError),
+    /// Fail to get runtime code.
+    // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
+    // error, but it will be improper to use `WasmError` directly here since it will make
+    // `sp-domain` (a runtime crate) depend on `sc_executor_common` (a client crate).
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Failed to get runtime code: {0}"))]
+    RuntimeCode(String),
 }
 
 /// Fraud proof for the state computation.
