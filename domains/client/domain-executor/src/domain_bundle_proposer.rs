@@ -11,6 +11,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{Bundle, BundleHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -48,17 +49,17 @@ where
         }
     }
 
-    pub(crate) async fn propose_bundle_at<PBlock, R, RHash>(
+    pub(crate) async fn propose_bundle_at<PBlock, ParentChain, ParentChainHash>(
         &self,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
-        parent_chain: R,
-        parent_chain_block_hash: RHash,
+        parent_chain: ParentChain,
+        parent_chain_block_hash: ParentChainHash,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
         PBlock: BlockT,
-        R: ParentChainInterface<RHash>,
-        RHash: Copy,
+        ParentChain: ParentChainInterface<ParentChainHash>,
+        ParentChainHash: Copy + Debug,
     {
         let parent_number = self.client.info().best_number;
 
@@ -129,20 +130,27 @@ where
         Ok(bundle)
     }
 
-    /// Returns the receipts in the next core domain bundle.
-    fn collect_bundle_receipts<PBlock, R, RHash>(
+    /// Returns the receipts in the next domain bundle.
+    fn collect_bundle_receipts<PBlock, ParentChain, ParentChainHash>(
         &self,
         header_number: NumberFor<Block>,
-        parent_chain: R,
-        parent_chain_block_hash: RHash,
+        parent_chain: ParentChain,
+        parent_chain_block_hash: ParentChainHash,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
         PBlock: BlockT,
-        R: ParentChainInterface<RHash>,
-        RHash: Copy,
+        ParentChain: ParentChainInterface<ParentChainHash>,
+        ParentChainHash: Copy + Debug,
     {
         let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
         let max_drift = parent_chain.maximum_receipt_drift(parent_chain_block_hash)?;
+
+        tracing::trace!(
+            ?header_number,
+            ?head_receipt_number,
+            ?max_drift,
+            "Collecting receipts at {parent_chain_block_hash:?}"
+        );
 
         let load_receipt = |block_hash| {
             crate::aux_schema::load_execution_receipt::<
