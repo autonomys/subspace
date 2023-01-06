@@ -185,7 +185,7 @@ where
         let system_domain_hash = self.system_domain_client.info().best_hash;
         let digests = self
             .system_domain_client
-            .header(BlockId::Hash(system_domain_hash))?
+            .header(system_domain_hash)?
             .map(|header| {
                 let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
                     number: *header.number(),

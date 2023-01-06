@@ -124,12 +124,12 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     alice.wait_for_blocks(3).await;
 
-    let header = alice.client.header(&BlockId::Number(1)).unwrap().unwrap();
-    let parent_header = alice
+    let header = alice
         .client
-        .header(&BlockId::Hash(*header.parent_hash()))
+        .header(alice.client.hash(1).unwrap().unwrap())
         .unwrap()
         .unwrap();
+    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let intermediate_roots = alice
         .client
@@ -162,7 +162,11 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         )
         .expect("Create `initialize_block` proof");
 
-    let header_ferdie = ferdie.client.header(&BlockId::Number(1)).unwrap().unwrap();
+    let header_ferdie = ferdie
+        .client
+        .header(ferdie.client.hash(1).unwrap().unwrap())
+        .unwrap()
+        .unwrap();
     let parent_hash_ferdie = header_ferdie.hash();
     let parent_number_ferdie = *header_ferdie.number();
 
@@ -293,13 +297,7 @@ async fn set_new_code_should_work() {
     let trie_backend = state.as_trie_backend();
     let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
-    let logs = alice
-        .client
-        .header(&BlockId::Hash(best_hash))
-        .unwrap()
-        .unwrap()
-        .digest
-        .logs;
+    let logs = alice.client.header(best_hash).unwrap().unwrap().digest.logs;
     if logs != vec![DigestItem::RuntimeEnvironmentUpdated] {
         let extrinsics = alice
             .client

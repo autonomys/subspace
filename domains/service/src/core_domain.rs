@@ -327,7 +327,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("core_domain_bundle_stream");
+    let (bundle_sender, bundle_receiver) = tracing_unbounded("core_domain_bundle_stream", 100);
 
     let executor = CoreExecutor::new(
         domain_id,
@@ -390,7 +390,7 @@ where
         );
     }
 
-    let (msg_sender, msg_receiver) = tracing_unbounded("core_domain_message_channel");
+    let (msg_sender, msg_receiver) = tracing_unbounded("core_domain_message_channel", 100);
 
     // start cross domain message listener for system domain
     let core_domain_listener = cross_domain_message_gossip::start_domain_message_listener(

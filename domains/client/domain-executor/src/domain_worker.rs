@@ -105,8 +105,13 @@ pub(crate) async fn handle_block_import_notifications<
                         break;
                     }
                 };
+                // TODO: `.expect()` on `Option` is fine here, but not for `Error`
                 let header = primary_chain_client
-                    .header(BlockId::Number(block_number))
+                    .header(
+                        primary_chain_client.hash(block_number)
+                            .expect("Header of imported block must exist; qed")
+                            .expect("Header of imported block must exist; qed")
+                    )
                     .expect("Header of imported block must exist; qed")
                     .expect("Header of imported block must exist; qed");
                 let block_info = BlockInfo {

@@ -14,7 +14,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 parity-scale-codec = { version = "3.2.1", default-features = false, features = ["derive"] }
 sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 
 [features]
 default = ["std"]

@@ -515,7 +515,7 @@ fn main() -> Result<(), Error> {
                     };
 
                     let (gossip_msg_sink, gossip_msg_stream) =
-                        tracing_unbounded("Cross domain gossip messages");
+                        tracing_unbounded("cross_domain_gossip_messages", 100);
 
                     let secondary_chain_node = domain_service::new_full::<
                         _,

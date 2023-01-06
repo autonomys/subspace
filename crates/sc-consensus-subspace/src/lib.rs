@@ -70,7 +70,7 @@ use sp_consensus_subspace::{
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{One, Zero};
+use sp_runtime::traits::One;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::future::Future;
@@ -839,7 +839,7 @@ where
 
         let parent_header = self
             .client
-            .header(parent_block_id)?
+            .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
         let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
@@ -903,6 +903,7 @@ where
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with root blocks are not yet in runtime.
         let maybe_records_root = if block_number.is_one() {
+            let genesis_block_hash = self.client.info().genesis_hash;
             let archived_segments = Archiver::new(
                 RECORD_SIZE,
                 RECORDED_HISTORY_SEGMENT_SIZE,
@@ -911,7 +912,7 @@ where
             .expect("Incorrect parameters for archiver")
             .add_block(
                 self.client
-                    .block(&BlockId::Number(Zero::zero()))?
+                    .block(genesis_block_hash)?
                     .ok_or(Error::GenesisUnavailable)?
                     .encode(),
                 BlockObjectMapping::default(),
@@ -1018,7 +1019,7 @@ where
         let block_number = *block.header.number();
 
         // Early exit if block already in chain
-        match self.client.status(BlockId::Hash(block_hash)) {
+        match self.client.status(block_hash) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
                 return self

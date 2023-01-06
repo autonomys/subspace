@@ -42,11 +42,12 @@ use sc_consensus::{
 use sc_consensus_slots::{BackoffAuthoringOnFinalizedHeadLagging, SlotProportion};
 use sc_network_test::{
     BlockImportAdapter, Peer, PeersClient, PeersFullClient, TestClientBuilder,
-    TestClientBuilderExt, TestNetFactory, WithRuntime,
+    TestClientBuilderExt, TestNetFactory,
 };
 use sc_service::TaskManager;
 use schnorrkel::Keypair;
 use sp_api::HeaderT;
+use sp_blockchain::HeaderBackend;
 use sp_consensus::{
     BlockOrigin, CacheKeyId, DisableProofRecording, Environment, NoNetwork as DummyOracle,
     Proposal, Proposer,
@@ -269,21 +270,9 @@ where
 
 type SubspacePeer = Peer<Option<PeerData>, SubspaceBlockImport>;
 
+#[derive(Default)]
 pub struct SubspaceTestNet {
-    rt_handle: Handle,
     peers: Vec<SubspacePeer>,
-}
-
-impl WithRuntime for SubspaceTestNet {
-    fn with_runtime(rt_handle: Handle) -> Self {
-        SubspaceTestNet {
-            rt_handle,
-            peers: Vec::new(),
-        }
-    }
-    fn rt_handle(&self) -> &Handle {
-        &self.rt_handle
-    }
 }
 
 type TestHeader = <TestBlock as BlockT>::Header;
@@ -430,8 +419,7 @@ impl TestNetFactory for SubspaceTestNet {
 #[should_panic]
 fn rejects_empty_block() {
     sp_tracing::try_init_simple();
-    let runtime = Runtime::new().unwrap();
-    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 3);
+    let mut net = SubspaceTestNet::new(3);
     let block_builder = |builder: BlockBuilder<_, _, _>| builder.build().unwrap().block;
     net.mut_peers(|peer| {
         peer[0].generate_blocks(1, BlockOrigin::NetworkInitialSync, block_builder);
@@ -439,13 +427,11 @@ fn rejects_empty_block() {
 }
 
 fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
-    let genesis_block_id = BlockId::Number(Zero::zero());
-
     let kzg = Kzg::new(kzg::test_public_parameters());
     let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
         .expect("Incorrect parameters for archiver");
 
-    let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
+    let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default())
         .into_iter()
@@ -453,18 +439,16 @@ fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
         .collect()
 }
 
-fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static) {
+async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static) {
     sp_tracing::try_init_simple();
     let mutator = Arc::new(mutator) as Mutator;
 
     MUTATOR.with(|m| *m.borrow_mut() = mutator.clone());
-    let runtime = Runtime::new().unwrap();
-    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 3);
+    let mut net = SubspaceTestNet::new(3);
 
     let net = Arc::new(Mutex::new(net));
     let mut import_notifications = Vec::new();
     let mut subspace_futures = Vec::<Pin<Box<dyn Future<Output = ()>>>>::new();
-    let tokio_runtime = sc_cli::build_runtime().unwrap();
 
     for peer_id in [0, 1, 2_usize].iter() {
         let mut net = net.lock();
@@ -508,7 +492,8 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
                 .for_each(|_| future::ready(())),
         );
 
-        let task_manager = TaskManager::new(tokio_runtime.handle().clone(), None).unwrap();
+        let task_manager =
+            TaskManager::new(sc_cli::build_runtime().unwrap().handle().clone(), None).unwrap();
 
         super::start_subspace_archiver(
             &data.link,
@@ -602,7 +587,7 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
         subspace_futures.push(Box::pin(subspace_worker));
         subspace_futures.push(Box::pin(subspace_farmer));
     }
-    tokio_runtime.block_on(future::select(
+    future::select(
         futures::future::poll_fn(move |cx| {
             let mut net = net.lock();
             net.poll(cx);
@@ -618,20 +603,21 @@ fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + 'static
             future::join_all(import_notifications),
             future::join_all(subspace_futures),
         ),
-    ));
+    )
+    .await;
 }
 
 // TODO: Un-ignore once `submit_test_store_root_block()` is working or transactions are supported in
 //  test runtime
-#[test]
+#[tokio::test]
 #[ignore]
-fn authoring_blocks() {
-    run_one_test(|_, _| ())
+async fn authoring_blocks() {
+    run_one_test(|_, _| ()).await;
 }
 
-#[test]
+#[tokio::test]
 #[should_panic]
-fn rejects_missing_inherent_digest() {
+async fn rejects_missing_inherent_digest() {
     run_one_test(|header: &mut TestHeader, stage| {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
@@ -642,11 +628,12 @@ fn rejects_missing_inherent_digest() {
             })
             .collect()
     })
+    .await;
 }
 
-#[test]
+#[tokio::test]
 #[should_panic]
-fn rejects_missing_seals() {
+async fn rejects_missing_seals() {
     run_one_test(|header: &mut TestHeader, stage| {
         let v = std::mem::take(&mut header.digest_mut().logs);
         header.digest_mut().logs = v
@@ -654,6 +641,7 @@ fn rejects_missing_seals() {
             .filter(|v| stage == Stage::PreSeal || DigestItem::as_subspace_seal(v).is_none())
             .collect()
     })
+    .await;
 }
 
 #[test]
@@ -805,8 +793,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
 #[test]
 #[should_panic]
 fn verify_slots_are_strictly_increasing() {
-    let runtime = Runtime::new().unwrap();
-    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 1);
+    let mut net = SubspaceTestNet::new(1);
 
     let peer = net.peer(0);
     let data = peer
@@ -826,7 +813,7 @@ fn verify_slots_are_strictly_increasing() {
         mutator: Arc::new(|_, _| ()),
     };
 
-    let genesis_header = client.header(&BlockId::Number(0)).unwrap().unwrap();
+    let genesis_header = client.header(client.info().genesis_hash).unwrap().unwrap();
 
     // we should have no issue importing this block
     let b1 = propose_and_import_block(
@@ -836,7 +823,7 @@ fn verify_slots_are_strictly_increasing() {
         &mut block_import,
     );
 
-    let b1 = client.header(&BlockId::Hash(b1)).unwrap().unwrap();
+    let b1 = client.header(b1).unwrap().unwrap();
 
     // we should fail to import this block since the slot number didn't increase.
     // we will panic due to the `PanickingBlockImport` defined above.
@@ -853,8 +840,7 @@ fn verify_slots_are_strictly_increasing() {
 // // Check that block import results in archiving working.
 // #[test]
 // fn archiving_works() {
-//    let runtime = Runtime::new().unwrap();
-//    let mut net = SubspaceTestNet::new(runtime.handle().clone(), 1);
+//    let mut net = SubspaceTestNet::new(1);
 //
 //     let peer = net.peer(0);
 //     let data = peer
@@ -880,7 +866,7 @@ fn verify_slots_are_strictly_increasing() {
 //         .expect("import set up during init");
 //
 //     let tokio_runtime = sc_cli::build_runtime().unwrap();
-//     let task_manager = TaskManager::new(tokio_runtime.handle().clone(), None).unwrap();
+//     let task_manager = TaskManager::new(tokio_None).unwrap();
 //
 //     super::start_subspace_archiver(&data.link, client.clone(), &task_manager.spawn_essential_handle());
 //

@@ -102,7 +102,6 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnNamed;
 use sp_domains::{ExecutionReceipt, SignedBundle};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
@@ -191,7 +190,7 @@ where
                 return None;
             };
 
-            let parent_hash = *client.header(BlockId::Hash(hash)).ok()??.parent_hash();
+            let parent_hash = *client.header(hash).ok()??.parent_hash();
 
             Some(BlockInfo {
                 hash,
