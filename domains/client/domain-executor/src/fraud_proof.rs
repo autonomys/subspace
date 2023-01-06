@@ -9,7 +9,6 @@ use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::{DomainId, ExecutionReceipt};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
@@ -210,10 +209,10 @@ where
         Ok(fraud_proof)
     }
 
-    fn header(&self, at: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
-        self.client
-            .header(BlockId::Hash(at))?
-            .ok_or_else(|| sp_blockchain::Error::Backend(format!("Header not found for {:?}", at)))
+    fn header(&self, hash: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
+        self.client.header(hash)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Header not found for {:?}", hash))
+        })
     }
 
     fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {

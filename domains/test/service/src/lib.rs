@@ -162,7 +162,7 @@ async fn run_executor(
     };
 
     let (gossip_msg_sink, gossip_msg_stream) =
-        sc_utils::mpsc::tracing_unbounded("Cross domain gossip messages");
+        sc_utils::mpsc::tracing_unbounded("cross_domain_gossip_messages", 100);
     let secondary_chain_config = DomainConfiguration {
         service_config: secondary_chain_config,
         maybe_relayer_id: None,

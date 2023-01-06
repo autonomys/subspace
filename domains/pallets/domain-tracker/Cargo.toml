@@ -15,21 +15,21 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
 sp-domain-digests = { version = "0.1.0", default-features = false, path = "../../primitives/digests" }
 sp-domain-tracker = { version = "0.1.0", default-features = false, path = "../../primitives/domain-tracker" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 system-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../primitives/system-runtime" }
 
 [dev-dependencies]
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 
 [features]
 default = ["std"]

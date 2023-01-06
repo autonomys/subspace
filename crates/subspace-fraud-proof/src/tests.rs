@@ -133,16 +133,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     alice.executor.clone().process_bundles(primary_info).await;
 
     let best_hash = alice.client.info().best_hash;
-    let header = alice
-        .client
-        .header(&BlockId::Hash(best_hash))
-        .unwrap()
-        .unwrap();
-    let parent_header = alice
-        .client
-        .header(&BlockId::Hash(*header.parent_hash()))
-        .unwrap()
-        .unwrap();
+    let header = alice.client.header(best_hash).unwrap().unwrap();
+    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let create_block_builder = || {
         BlockBuilder::new(
@@ -421,16 +413,8 @@ async fn invalid_execution_proof_should_not_work() {
     alice.wait_for_blocks(1).await;
 
     let best_hash = alice.client.info().best_hash;
-    let header = alice
-        .client
-        .header(&BlockId::Hash(best_hash))
-        .unwrap()
-        .unwrap();
-    let parent_header = alice
-        .client
-        .header(&BlockId::Hash(*header.parent_hash()))
-        .unwrap()
-        .unwrap();
+    let header = alice.client.header(best_hash).unwrap().unwrap();
+    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let create_block_builder = || {
         BlockBuilder::new(

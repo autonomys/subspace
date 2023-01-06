@@ -110,7 +110,7 @@ where
         key: &[u8],
     ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
         system_domain_client
-            .header(BlockId::Hash(block_hash))?
+            .header(block_hash)?
             .map(|header| *header.state_root())
             .and_then(|state_root| {
                 let proof = system_domain_client
@@ -137,7 +137,7 @@ where
         SHash: Into<Block::Hash>,
     {
         core_domain_client
-            .header(BlockId::Hash(block_hash))?
+            .header(block_hash)?
             .map(|header| *header.number())
             .and_then(|number| {
                 let proof = core_domain_client
@@ -250,12 +250,12 @@ where
             .checked_sub(&confirmation_depth)
             .ok_or(Error::ArithmeticError(ArithmeticError::Underflow))?;
 
-        system_domain_client
-            .header(BlockId::Number(confirmed_block))?
-            .ok_or(
+        Ok(system_domain_client
+            .hash(confirmed_block)?
+            .and_then(|block_hash| system_domain_client.header(block_hash).transpose())
+            .ok_or_else(|| {
                 sp_blockchain::Error::MissingHeader(format!("number: {:?}", confirmed_block))
-                    .into(),
-            )
+            })??)
     }
 
     pub(crate) fn submit_messages_from_system_domain(
@@ -346,7 +346,7 @@ where
             let confirmed_system_domain_hash = confirmed_system_domain_block_header.hash();
             let core_domain_id = Self::domain_id(core_domain_client)?;
             let confirmed_block_number = *core_domain_client
-                .header(BlockId::Hash(confirmed_block_hash))?
+                .header(confirmed_block_hash)?
                 .ok_or(Error::UnableToFetchBlockNumber)?
                 .number();
             match system_domain_api.storage_key_for_core_domain_state_root(

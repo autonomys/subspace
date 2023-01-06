@@ -8,10 +8,10 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.58"
 parking_lot = "0.12.1"
-sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
-substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "74d61357f76a3cb582dd3febd665552d030e4e7f" }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }

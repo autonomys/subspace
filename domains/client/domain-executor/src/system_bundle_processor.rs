@@ -154,7 +154,7 @@ where
 
         let digests = self
             .client
-            .header(BlockId::Hash(parent_hash))?
+            .header(parent_hash)?
             .map(|header| {
                 let system_domain_state_root =
                     DigestItem::system_domain_state_root_update(StateRootUpdate {

@@ -6,7 +6,6 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
 use sp_domain_tracker::DomainTrackerApi;
 use sp_messenger::RelayerApi;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::sync::Arc;
@@ -175,10 +174,10 @@ where
                 domain_id,
                 relay_block_from
             );
+
             let block_hash = domain_client
-                .header(BlockId::Number(relay_block_from))?
-                .ok_or(Error::UnableToFetchBlockNumber)?
-                .hash();
+                .hash(relay_block_from)?
+                .ok_or(Error::UnableToFetchBlockNumber)?;
             if let Err(err) = message_processor(relayer_id.clone(), &domain_client, block_hash) {
                 tracing::error!(
                     target: LOG_TARGET,

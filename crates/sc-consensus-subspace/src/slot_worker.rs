@@ -169,7 +169,7 @@ where
             voting_solution_range,
         };
         let (solution_sender, mut solution_receiver) =
-            tracing_unbounded("subspace_slot_solution_stream");
+            tracing_unbounded("subspace_slot_solution_stream", 100);
 
         self.subspace_link
             .new_slot_notification_sender
@@ -440,7 +440,7 @@ where
         public_key: &FarmerPublicKey,
     ) -> Result<FarmerSignature, ConsensusError> {
         let (signature_sender, mut signature_receiver) =
-            tracing_unbounded("subspace_signature_signing_stream");
+            tracing_unbounded("subspace_signature_signing_stream", 100);
 
         self.subspace_link
             .reward_signing_notification_sender

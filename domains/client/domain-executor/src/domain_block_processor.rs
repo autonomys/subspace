@@ -29,7 +29,7 @@ type DomainBlockElements<Block, PBlock> = (
     Option<Cow<'static, [u8]>>,
 );
 
-/// Extracts the neccessary materials for building a new domain block from the primary block.
+/// Extracts the necessary materials for building a new domain block from the primary block.
 pub(crate) fn preprocess_primary_block<Block, PBlock, PClient>(
     domain_id: DomainId,
     primary_chain_client: &PClient,
@@ -48,7 +48,7 @@ where
             sp_blockchain::Error::Backend(format!("BlockBody of {block_hash:?} unavailable"))
         })?;
 
-    let header = primary_chain_client.header(block_id)?.ok_or_else(|| {
+    let header = primary_chain_client.header(block_hash)?.ok_or_else(|| {
         sp_blockchain::Error::Backend(format!("BlockHeader of {block_hash:?} unavailable"))
     })?;
 
@@ -298,12 +298,16 @@ where
                     let common_block_number = translate_number_type(route.common_block().number);
                     let parent_header = self
                         .client
-                        .header(BlockId::Number(common_block_number))?
+                        .header(self.client.hash(common_block_number)?.ok_or_else(|| {
+                            sp_blockchain::Error::Backend(format!(
+                                "Header for #{common_block_number} not found"
+                            ))
+                        })?)?
                         .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header for #{common_block_number} not found"
-                        ))
-                    })?;
+                            sp_blockchain::Error::Backend(format!(
+                                "Header for #{common_block_number} not found"
+                            ))
+                        })?;
 
                     Ok(Some(PendingPrimaryBlocks {
                         initial_parent: (parent_header.hash(), *parent_header.number()),

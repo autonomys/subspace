@@ -59,7 +59,6 @@ use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -275,7 +274,7 @@ where
 
                     // TODO: Would be nice if the whole header was passed in here
                     let parent_block_number = client
-                        .header(&BlockId::Hash(parent_hash))
+                        .header(parent_hash)
                         .expect("Parent header must always exist when block is created; qed")
                         .expect("Parent header must always exist when block is created; qed")
                         .number;
@@ -617,8 +616,7 @@ where
 
                         // TODO: Would be nice if the whole header was passed in here
                         let parent_block_number = client
-                            .header(&BlockId::Hash(parent_hash))
-                            .expect("Parent header must always exist when block is created; qed")
+                            .header(parent_hash)?
                             .expect("Parent header must always exist when block is created; qed")
                             .number;
 
