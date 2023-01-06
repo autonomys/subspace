@@ -35,7 +35,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ## 🖼️ Windows Instructions
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
-2. Open `Powershell` (we do not recommend using Command Prompt as it's syntax is slightly different)
+2. Open `Powershell` (we do not recommend using Command Prompt as its syntax is slightly different)
 3. In the terminal we will change to the Downloads directory using this command `cd Downloads`
 4. We will then start the node using the following command
 
@@ -232,7 +232,7 @@ services:
     ]
     healthcheck:
       timeout: 5s
-# If node setup takes longer then expected, you want to increase `interval` and `retries` number.
+# If node setup takes longer than expected, you want to increase `interval` and `retries` number.
       interval: 30s
       retries: 5
 
@@ -336,7 +336,7 @@ Examples:
 
 Farmer has an advanced set of parameters that allow using multiple disks.
 
-To use this advanced parameters you need to replace this command:
+To use these advanced parameters you need to replace this command:
 ```
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
