@@ -103,14 +103,14 @@ where
     /// height to be produced locally in order to check the validity of the external receipt.
     async fn wait_for_local_future_receipt(
         &self,
-        secondary_block_hash: Block::Hash,
-        secondary_block_number: <Block::Header as HeaderT>::Number,
+        block_hash: Block::Hash,
+        block_number: <Block::Header as HeaderT>::Number,
         tx: crossbeam::channel::Sender<
             sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
         >,
     ) -> Result<(), GossipMessageError> {
         loop {
-            match crate::aux_schema::load_execution_receipt(&*self.client, secondary_block_hash) {
+            match crate::aux_schema::load_execution_receipt(&*self.client, block_hash) {
                 Ok(Some(local_receipt)) => {
                     return tx
                         .send(Ok(local_receipt))
@@ -124,10 +124,10 @@ where
                     // updated, the local client has proceeded to a higher block, that means the receipt
                     // of `block_hash` received from the network does not match the local one,
                     // we should just send back the local receipt at the same height.
-                    if self.client.info().best_number >= secondary_block_number {
+                    if self.client.info().best_number >= block_number {
                         let local_block_hash = self
                             .client
-                            .expect_block_hash_from_id(&BlockId::Number(secondary_block_number))?;
+                            .expect_block_hash_from_id(&BlockId::Number(block_number))?;
                         let local_receipt_result = crate::aux_schema::load_execution_receipt(
                             &*self.client,
                             local_block_hash,

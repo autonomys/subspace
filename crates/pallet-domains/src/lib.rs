@@ -339,9 +339,9 @@ mod pallet {
     pub(super) type ReceiptVotes<T: Config> =
         StorageDoubleMap<_, Twox64Concat, T::Hash, Blake2_128Concat, H256, u32, ValueQuery>;
 
-    /// Mapping for tracking the secondary state roots.
+    /// Mapping for tracking the system domain state roots.
     ///
-    /// (secondary_block_number, secondary_block_hash, secondary_state_root)
+    /// (domain_block_number, domain_block_hash, domain_state_root)
     #[pallet::storage]
     pub(super) type StateRoots<T: Config> = StorageDoubleMap<
         _,

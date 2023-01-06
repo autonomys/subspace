@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Secondary chain configurations.
+//! System domain configurations.
 
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,

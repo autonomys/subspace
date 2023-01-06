@@ -49,8 +49,8 @@ type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Syste
     NativeElseWasmExecutor<ExecutorDispatch>,
 >;
 
-/// Full node along with some other components.
-pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
+/// System domain full node along with some other components.
+pub struct NewFullSystem<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
 where
     PBlock: BlockT,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -204,12 +204,12 @@ where
     Ok(params)
 }
 
-/// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
+/// Start a node with the given system domain `Configuration` and consensus chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[allow(clippy::too_many_arguments)]
-pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
-    mut secondary_chain_config: DomainConfiguration,
+pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
+    mut system_domain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
     primary_backend: Arc<TFullBackend<PBlock>>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
@@ -219,7 +219,7 @@ pub async fn new_full<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispa
     block_import_throttling_buffer_size: u32,
     gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
-    NewFull<
+    NewFullSystem<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
         PBlock,
@@ -259,17 +259,17 @@ where
         + PreValidationObjectApi<Block, Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
-    // TODO: Do we even need block announcement on secondary node?
-    // secondary_chain_config.announce_block = false;
+    // TODO: Do we even need block announcement on system domain node?
+    // system_domain_config.announce_block = false;
 
-    secondary_chain_config
+    system_domain_config
         .service_config
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
     let params = new_partial(
-        &secondary_chain_config.service_config,
+        &system_domain_config.service_config,
         primary_chain_client.clone(),
         primary_backend,
     )?;
@@ -283,7 +283,7 @@ where
     let mut task_manager = params.task_manager;
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(BuildNetworkParams {
-            config: &secondary_chain_config.service_config,
+            config: &system_domain_config.service_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
@@ -296,10 +296,7 @@ where
     let rpc_builder = {
         let client = client.clone();
         let transaction_pool = transaction_pool.clone();
-        let chain_spec = secondary_chain_config
-            .service_config
-            .chain_spec
-            .cloned_box();
+        let chain_spec = system_domain_config.service_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
@@ -313,14 +310,14 @@ where
         })
     };
 
-    let is_authority = secondary_chain_config.service_config.role.is_authority();
+    let is_authority = system_domain_config.service_config.role.is_authority();
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
         client: client.clone(),
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
-        config: secondary_chain_config.service_config,
+        config: system_domain_config.service_config,
         keystore: params.keystore_container.sync_keystore(),
         backend: backend.clone(),
         network: network.clone(),
@@ -374,7 +371,7 @@ where
         Box::pin(executor_gossip),
     );
 
-    if let Some(relayer_id) = secondary_chain_config.maybe_relayer_id {
+    if let Some(relayer_id) = system_domain_config.maybe_relayer_id {
         tracing::info!(
             "Starting system domain relayer with relayer_id[{:?}]",
             relayer_id
@@ -409,7 +406,7 @@ where
         Box::pin(system_domain_listener),
     );
 
-    let new_full = NewFull {
+    let new_full = NewFullSystem {
         task_manager,
         client,
         backend,

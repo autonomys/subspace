@@ -56,7 +56,7 @@ pub(crate) async fn handle_block_import_notifications<
     BlockImports,
 >(
     primary_chain_client: &PClient,
-    best_secondary_number: NumberFor<Block>,
+    best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy)>,
     mut block_imports: BlockImports,
@@ -75,13 +75,13 @@ pub(crate) async fn handle_block_import_notifications<
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
-    let best_secondary_number = to_number_primitive(best_secondary_number);
+    let best_domain_number = to_number_primitive(best_domain_number);
 
     // Notify about active leaves on startup before starting the loop
     for (hash, number, fork_choice) in std::mem::take(&mut leaves) {
         let _ = active_leaves.insert(hash, number);
         // Skip the blocks that have been processed by the execution chain.
-        if number > best_secondary_number.into() {
+        if number > best_domain_number.into() {
             if let Err(error) = processor((hash, number, fork_choice)).await {
                 tracing::error!(?error, "Failed to process primary block on startup");
                 // Bring down the service as bundles processor is an essential task.

@@ -45,8 +45,8 @@ async fn test_executor_full_node_catching_up() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -55,8 +55,8 @@ async fn test_executor_full_node_catching_up() {
     .build(Role::Authority, false, false)
     .await;
 
-    // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(
+    // Run Bob (a system domain full node)
+    let bob = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -71,7 +71,7 @@ async fn test_executor_full_node_catching_up() {
     assert_eq!(
         ferdie.client.info().best_number,
         alice.client.info().best_number,
-        "Primary chain and secondary chain must be on the same best height"
+        "Primary chain and system domain must be on the same best height"
     );
 
     let alice_block_hash = alice
@@ -112,8 +112,8 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -255,8 +255,8 @@ async fn set_new_code_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -372,10 +372,10 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain full node)
+    // Run Alice (a system domain full node)
     // Run a full node deliberately in order to control the execution chain by
     // submitting the receipts manually later.
-    let alice = domain_test_service::TestNodeBuilder::new(
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
