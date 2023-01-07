@@ -113,24 +113,11 @@ async fn execution_proof_creation_and_verification_should_work() {
     //
     // alice.wait_for_blocks(1).await;
 
-    let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {
-        // TODO: the check was removed.
-        // The executor might have already imported the latest primary block, make a fake future block to
-        // bypass the check of `latest_primary_number = old_best_secondary_number + 1` in `process_bundles`.
-        //
-        // This invalid primary hash does not affect the test result.
-        (
-            Hash::random(),
-            ferdie.client.info().best_number + 1,
-            ForkChoiceStrategy::LongestChain,
-        )
-    } else {
-        (
-            ferdie.client.info().best_hash,
-            ferdie.client.info().best_number,
-            ForkChoiceStrategy::LongestChain,
-        )
-    };
+    let primary_info = (
+        ferdie.client.info().best_hash,
+        ferdie.client.info().best_number,
+        ForkChoiceStrategy::LongestChain,
+    );
     alice.executor.clone().process_bundles(primary_info).await;
 
     let best_hash = alice.client.info().best_hash;
