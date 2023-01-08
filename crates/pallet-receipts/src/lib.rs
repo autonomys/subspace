@@ -249,8 +249,9 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Submit fraud proof that targetted a given domain
-    pub fn process_fraud_proof(domain_id: DomainId, fraud_proof: FraudProof) {
+    pub fn process_fraud_proof(fraud_proof: FraudProof) {
         // Revert the execution chain.
+        let domain_id = fraud_proof.domain_id;
         let (_, mut to_remove) = <ReceiptHead<T>>::get(domain_id);
 
         let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();

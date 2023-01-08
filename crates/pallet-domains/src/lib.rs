@@ -207,7 +207,7 @@ mod pallet {
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id.is_system() {
-                pallet_receipts::Pallet::<T>::process_fraud_proof(DomainId::SYSTEM, fraud_proof);
+                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof);
             }
 
             // TODO: slash the executor accordingly.
