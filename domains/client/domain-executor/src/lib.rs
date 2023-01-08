@@ -14,45 +14,64 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-//! # Subspace Executor
+//! # Domain Executor
 //!
-//! Executors, a separate class of nodes in addition to the consensus nodes (farmers) in Subspace,
-//! are designed to reduce the burden of maintaining the chain state for farmers by decoupling the
-//! consensus and computation. As an execution layer, executor chain itself does no rely on any
-//! typical blockchain consensus like PoW for producing blocks, the block production of executor
-//! chain is totally driven by the consensus layer which are collectively maintained by Subspace
-//! farmers. Please refer to the white paper [Computation section] for more in-depth description
-//! and analysis.
+//! ## Domains
 //!
-//! Specifically, executors are responsible for producing a [`SignedBundle`] on each slot from
-//! the primary chain and producing an [`ExecutionReceipt`] on each primary block.
+//! Domains, the enshrined rollups solution of Subspace, is a configurable execution
+//! framework allowing for the simple, secure and low-cost deployment of application
+//! specific blockchain called domain.
 //!
-//! On each new primary chain slot, executors will collect a set of extrinsics from the transaction
-//! pool which are verified to be able to cover the transaction fee, and then use these extrinsics
-//! to create a [`SignedBundle`], submitting it to the primary chain. The submitted bundles are mere
-//! blob from the point of primary chain.
+//! There are three types of domains: system domain, core domain and open domain.
 //!
-//! On each imported primary block, executors will extract all the bundles from the primary block and
-//! convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to build a secondary
-//! block. The execution trace of all the extrinsics and hooks like
-//! `initialize_block`/`finalize_block` will be recorded during the block execution. Once the
-//! secondary block has been imported successfully, an executor that wins the election for producing
-//! an execution receipt will publish the receipt over the executors network.
+//! - System domain: responsible for securing and managing all the non-system domains
+//! by maintaining the receipts of other domains and handling the potential execution
+//! disputes using the fraud-proof mechanism. The system domain itself is secured by the
+//! consensus chain.
+//! - Core domain: developed and audited by Subspace team, providing some important
+//! system-wide features, e.g., the payments, contracts and messages.
+//! - Open domain: similar to the smart contract in Ethereum which reflects application
+//! specific business logic and can be created by anyone with enough security deposits.
 //!
-//! The execution receipt of each block contains all the intermediate state roots during the block
+//! All kinds of domains form the Subspace execution layer. The domains do not rely on
+//! any typical blockchain consensus like PoW for producing blocks, the block production
+//! of each domain is totally driven by the consensus chain which are collectively
+//! maintained by Subspace farmers. Please refer to the white paper [Computation section]
+//! for more in-depth description and analysis.
+//!
+//! ## Executors
+//!
+//! In Subspace, the farmers offering the storage resources are responsible for maintaining
+//! the consensus layer, executors are a separate class of contributors in the system focusing
+//! on the execution layer, they provide the necessary computational resources to maintain the
+//! blockchain state by running domains. Some deposits as the stake are required to be an executor.
+//! Every executor must run the system domain, but they can opt-in to run one or multiple
+//! non-system domains by partially allocating their executor stake on the domain.
+//!
+//! Specifically, executors have the responsibity of producing a [`SignedBundle`] which contains a
+//! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The executors
+//! are primarily driven by two events from the consensus chain.
+//!
+//! - On each new slot, executors will attempt to solve a domain-specific bundle election
+//! challenge derived from a global randomness provided by the consensus chain. Upon finding
+//! a solution to the challenge, they will start producing a bundle: they will collect a set
+//! of extrinsics from the transaction pool which are verified to be able to cover the transaction
+//! fee. With these colltected extrinsics, the bundle election solution and proper receipts, a
+//! [`SignedBundle`] can be constructed and then be submitted to the consensus chain. The transactions
+//! included in each bundle are uninterpretable blob from the consensus chain's persepective.
+//!
+//! - On each imported primary block, executors will extract all the needed bundles from it
+//! and convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to
+//! build a domain block. The execution trace of all the extrinsics and hooks like
+//! `initialize_block`/`finalize_block` will be recorded during the domain block execution.
+//! Once the domain block is imported successfully, the [`ExecutionReceipt`] of this block
+//! will be generated and stored locally.
+//!
+//! The receipt of each domain block contains all the intermediate state roots during the block
 //! execution, which will be gossiped in the executor network. All executors whether running as an
 //! authority or a full node will compute each block and generate an execution receipt independently,
 //! once the execution receipt received from the network does not match the one produced locally,
-//! a [`FraudProof`] will be generated and reported to the primary chain accordingly.
-//!
-//! ## Notes
-//!
-//! Currently, the following terms are interexchangeable in the executor context:
-//!
-//! - Farmer, consensus node.
-//! - Executor, execution/compute node.
-//! - Primary chain, consensus layer.
-//! - Secondary chain, execution layer.
+//! a [`FraudProof`] will be generated and reported to the consensus chain accordingly.
 //!
 //! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html

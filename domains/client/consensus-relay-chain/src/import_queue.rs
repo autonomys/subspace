@@ -28,16 +28,16 @@ use std::marker::PhantomData;
 use substrate_prometheus_endpoint::Registry;
 
 // TODO: remove as it's unused, and may even remove this whole crate.
-/// Secondary chain specific block import.
+/// Domain specific block import.
 ///
 /// This is used to set `block_import_params.fork_choice` to `false` as long as the block origin is
-/// not `NetworkInitialSync`. The best block for secondary chain is determined by the primary chain.
+/// not `NetworkInitialSync`. The best block for domain is determined by the primary chain.
 /// Meaning we will update the best block, as it is included by the primary chain.
-struct SecondaryChainBlockImport<I> {
+struct DomainBlockImport<I> {
     inner: I,
 }
 
-impl<I> SecondaryChainBlockImport<I> {
+impl<I> DomainBlockImport<I> {
     /// Create a new instance.
     fn new(inner: I) -> Self {
         Self { inner }
@@ -45,7 +45,7 @@ impl<I> SecondaryChainBlockImport<I> {
 }
 
 #[async_trait::async_trait]
-impl<Block, I> BlockImport<Block> for SecondaryChainBlockImport<I>
+impl<Block, I> BlockImport<Block> for DomainBlockImport<I>
 where
     Block: BlockT,
     I: BlockImport<Block> + Send,
@@ -123,7 +123,7 @@ where
 {
     Ok(BasicQueue::new(
         Verifier::default(),
-        Box::new(SecondaryChainBlockImport::<I>::new(block_import)),
+        Box::new(DomainBlockImport::<I>::new(block_import)),
         None,
         spawner,
         registry,

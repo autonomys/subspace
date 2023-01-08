@@ -59,31 +59,28 @@ pub struct DomainCli {
     pub core_domain_args: Vec<String>,
 }
 
-pub struct SecondaryChainCli {
+pub struct SystemDomainCli {
     /// Run a node.
     pub run: DomainCli,
 
-    /// The base path that should be used by the secondary chain.
+    /// The base path that should be used by the system domain.
     pub base_path: Option<PathBuf>,
 
-    /// Specification of the secondary chain derived from primary chain spec.
+    /// Specification of the system domain derived from primary chain spec.
     pub chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
 }
 
-impl SecondaryChainCli {
-    /// Constructs a new instance of [`SecondaryChainCli`].
+impl SystemDomainCli {
+    /// Constructs a new instance of [`SystemDomainCli`].
     ///
-    /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
+    /// If no explicit base path for the system domain, the default value will be `base_path/system`.
     pub fn new(
         mut base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
-        secondary_chain_args: impl Iterator<Item = String>,
+        domain_args: impl Iterator<Item = String>,
     ) -> (Self, Option<CoreDomainCli>) {
-        let domain_cli = DomainCli::parse_from(
-            [Self::executable_name()]
-                .into_iter()
-                .chain(secondary_chain_args),
-        );
+        let domain_cli =
+            DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
 
         let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
             let core_domain_cli = CoreDomainCli::new(
@@ -105,7 +102,7 @@ impl SecondaryChainCli {
         )
     }
 
-    /// Creates domain configuration from Secondary chain cli.
+    /// Creates domain configuration from system domain cli.
     pub fn create_domain_configuration(
         &self,
         tokio_handle: tokio::runtime::Handle,
@@ -128,7 +125,7 @@ impl SecondaryChainCli {
     }
 }
 
-impl SubstrateCli for SecondaryChainCli {
+impl SubstrateCli for SystemDomainCli {
     fn impl_name() -> String {
         "Subspace Executor".into()
     }
@@ -187,7 +184,7 @@ impl SubstrateCli for SecondaryChainCli {
     }
 }
 
-impl DefaultConfigurationValues for SecondaryChainCli {
+impl DefaultConfigurationValues for SystemDomainCli {
     fn p2p_listen_port() -> u16 {
         30334
     }
@@ -205,7 +202,7 @@ impl DefaultConfigurationValues for SecondaryChainCli {
     }
 }
 
-impl CliConfiguration<Self> for SecondaryChainCli {
+impl CliConfiguration<Self> for SystemDomainCli {
     fn shared_params(&self) -> &SharedParams {
         self.run.run_system.shared_params()
     }

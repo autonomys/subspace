@@ -39,8 +39,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -49,8 +49,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     .build(Role::Authority, false, false)
     .await;
 
-    // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(
+    // Run Bob (a system domain full node)
+    let bob = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -113,23 +113,11 @@ async fn execution_proof_creation_and_verification_should_work() {
     //
     // alice.wait_for_blocks(1).await;
 
-    let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {
-        // The executor might have already imported the latest primary block, make a fake future block to
-        // bypass the check of `latest_primary_number = old_best_secondary_number + 1` in `process_bundles`.
-        //
-        // This invalid primary hash does not affect the test result.
-        (
-            Hash::random(),
-            ferdie.client.info().best_number + 1,
-            ForkChoiceStrategy::LongestChain,
-        )
-    } else {
-        (
-            ferdie.client.info().best_hash,
-            ferdie.client.info().best_number,
-            ForkChoiceStrategy::LongestChain,
-        )
-    };
+    let primary_info = (
+        ferdie.client.info().best_hash,
+        ferdie.client.info().best_number,
+        ForkChoiceStrategy::LongestChain,
+    );
     alice.executor.clone().process_bundles(primary_info).await;
 
     let best_hash = alice.client.info().best_hash;
@@ -352,8 +340,8 @@ async fn invalid_execution_proof_should_not_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -362,8 +350,8 @@ async fn invalid_execution_proof_should_not_work() {
     .build(Role::Authority, false, false)
     .await;
 
-    // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(
+    // Run Bob (a system domain full node)
+    let bob = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),

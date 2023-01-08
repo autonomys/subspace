@@ -200,7 +200,7 @@ pub struct ProofOfElection<DomainHash> {
     pub state_root: DomainHash,
     /// Storage proof for the bundle election state.
     pub storage_proof: StorageProof,
-    /// Number of the secondary block at which the proof of election was created.
+    /// Number of the system domain block at which the proof of election was created.
     pub block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
     pub block_hash: DomainHash,

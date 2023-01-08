@@ -62,7 +62,7 @@ pub struct CoreDomainCli {
     #[clap(long, value_parser = parse_relayer_id)]
     pub relayer_id: Option<RelayerId>,
 
-    /// The base path that should be used by the secondary chain.
+    /// The base path that should be used by the core domain.
     #[clap(skip)]
     pub base_path: Option<PathBuf>,
 }
@@ -72,13 +72,14 @@ static CORE_DOMAIN_ID: OnceCell<DomainId> = OnceCell::new();
 impl CoreDomainCli {
     /// Constructs a new instance of [`CoreDomainCli`].
     ///
-    /// If no explicit base path for the secondary chain, the default value will be `primary_base_path/executor`.
+    /// If no explicit base path for the core domain, the default value will be
+    /// `base_path/core-domain-{domain_id}`.
     pub fn new(
-        system_domain_base_path: Option<PathBuf>,
+        base_path: Option<PathBuf>,
         core_payments_domain_args: impl Iterator<Item = String>,
     ) -> Self {
         let mut cli = Self {
-            base_path: system_domain_base_path,
+            base_path,
             ..Self::parse_from(
                 [Self::executable_name()]
                     .into_iter()

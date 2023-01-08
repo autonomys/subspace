@@ -31,7 +31,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
 use std::any::TypeId;
 use std::collections::BTreeMap;
-use subspace_node::{Cli, ExecutorDispatch, SecondaryChainCli, Subcommand};
+use subspace_node::{Cli, ExecutorDispatch, Subcommand, SystemDomainCli};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
@@ -235,35 +235,35 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(&cmd.base)?;
 
             runner.sync_run(|primary_chain_config| {
-                let maybe_secondary_chain_spec = primary_chain_config
+                let maybe_system_domain_chain_spec = primary_chain_config
                     .chain_spec
                     .extensions()
                     .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
                     .downcast_ref()
                     .cloned();
 
-                let (secondary_chain_cli, _maybe_core_domain_cli) = SecondaryChainCli::new(
+                let (system_domain_cli, _maybe_core_domain_cli) = SystemDomainCli::new(
                     cmd.base
                         .base_path()?
                         .map(|base_path| base_path.path().to_path_buf()),
-                    maybe_secondary_chain_spec.ok_or_else(|| {
-                        "Primary chain spec must contain secondary chain spec".to_string()
+                    maybe_system_domain_chain_spec.ok_or_else(|| {
+                        "Primary chain spec must contain system domain chain spec".to_string()
                     })?,
-                    cli.secondary_chain_args.into_iter(),
+                    cli.domain_args.into_iter(),
                 );
 
-                let secondary_chain_config = SubstrateCli::create_configuration(
-                    &secondary_chain_cli,
-                    &secondary_chain_cli,
+                let system_domain_config = SubstrateCli::create_configuration(
+                    &system_domain_cli,
+                    &system_domain_cli,
                     primary_chain_config.tokio_handle.clone(),
                 )
                 .map_err(|error| {
                     sc_service::Error::Other(format!(
-                        "Failed to create secondary chain configuration: {error:?}"
+                        "Failed to create system domain configuration: {error:?}"
                     ))
                 })?;
 
-                cmd.run(primary_chain_config, secondary_chain_config)
+                cmd.run(primary_chain_config, system_domain_config)
             })?;
         }
         Some(Subcommand::Revert(cmd)) => {
@@ -362,7 +362,7 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|primary_chain_config| async move {
                 let tokio_handle = primary_chain_config.tokio_handle.clone();
 
-                let maybe_secondary_chain_spec = primary_chain_config
+                let maybe_system_domain_chain_spec = primary_chain_config
                     .chain_spec
                     .extensions()
                     .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
@@ -430,8 +430,8 @@ fn main() -> Result<(), Error> {
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
-                        // Secondary node needs slots notifications for bundle production.
-                        force_new_slot_notifications: !cli.secondary_chain_args.is_empty(),
+                        // Domain node needs slots notifications for bundle production.
+                        force_new_slot_notifications: !cli.domain_args.is_empty(),
                         subspace_networking: SubspaceNetworking::Create {
                             config: dsn_config,
                             piece_cache_size: cli.piece_cache_size.as_u64(),
@@ -464,28 +464,28 @@ fn main() -> Result<(), Error> {
                 };
 
                 // Run an executor node, an optional component of Subspace full node.
-                if !cli.secondary_chain_args.is_empty() {
+                if !cli.domain_args.is_empty() {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
-                        name = "SecondaryChain"
+                        name = "SystemDomain"
                     );
                     let _enter = span.enter();
 
-                    let (secondary_chain_cli, maybe_core_domain_cli) = SecondaryChainCli::new(
+                    let (system_domain_cli, maybe_core_domain_cli) = SystemDomainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
-                        maybe_secondary_chain_spec.ok_or_else(|| {
-                            "Primary chain spec must contain secondary chain spec".to_string()
+                        maybe_system_domain_chain_spec.ok_or_else(|| {
+                            "Primary chain spec must contain system domain chain spec".to_string()
                         })?,
-                        cli.secondary_chain_args.into_iter(),
+                        cli.domain_args.into_iter(),
                     );
 
-                    let secondary_chain_config = secondary_chain_cli
+                    let system_domain_config = system_domain_cli
                         .create_domain_configuration(tokio_handle.clone())
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
-                                "Failed to create secondary chain configuration: {error:?}"
+                                "Failed to create system domain configuration: {error:?}"
                             ))
                         })?;
 
@@ -517,7 +517,7 @@ fn main() -> Result<(), Error> {
                     let (gossip_msg_sink, gossip_msg_stream) =
                         tracing_unbounded("cross_domain_gossip_messages", 100);
 
-                    let secondary_chain_node = domain_service::new_full::<
+                    let system_domain_node = domain_service::new_full_system::<
                         _,
                         _,
                         _,
@@ -526,7 +526,7 @@ fn main() -> Result<(), Error> {
                         system_domain_runtime::RuntimeApi,
                         SystemDomainExecutorDispatch,
                     >(
-                        secondary_chain_config,
+                        system_domain_config,
                         primary_chain_node.client.clone(),
                         primary_chain_node.backend.clone(),
                         primary_chain_node.network.clone(),
@@ -539,12 +539,11 @@ fn main() -> Result<(), Error> {
                     .await?;
 
                     let mut domain_tx_pool_sinks = BTreeMap::new();
-                    domain_tx_pool_sinks
-                        .insert(DomainId::SYSTEM, secondary_chain_node.tx_pool_sink);
+                    domain_tx_pool_sinks.insert(DomainId::SYSTEM, system_domain_node.tx_pool_sink);
 
                     primary_chain_node
                         .task_manager
-                        .add_child(secondary_chain_node.task_manager);
+                        .add_child(system_domain_node.task_manager);
 
                     if let Some(core_domain_cli) = maybe_core_domain_cli {
                         let span = sc_tracing::tracing::info_span!(
@@ -576,8 +575,8 @@ fn main() -> Result<(), Error> {
                                 >(
                                     core_domain_cli.domain_id,
                                     core_domain_config,
-                                    secondary_chain_node.client.clone(),
-                                    secondary_chain_node.network.clone(),
+                                    system_domain_node.client.clone(),
+                                    system_domain_node.network.clone(),
                                     primary_chain_node.client.clone(),
                                     primary_chain_node.network.clone(),
                                     &primary_chain_node.select_chain,
@@ -620,7 +619,7 @@ fn main() -> Result<(), Error> {
                             Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
                         );
 
-                    secondary_chain_node.network_starter.start_network();
+                    system_domain_node.network_starter.start_network();
                 }
 
                 primary_chain_node.network_starter.start_network();

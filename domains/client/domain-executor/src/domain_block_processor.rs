@@ -641,7 +641,7 @@ where
                     })?;
 
                     // The receipt of a prior block must exist, otherwise it means the receipt included
-                    // on the primary chain points to an invalid secondary block.
+                    // on the primary chain points to an invalid domain block.
                     bad_receipts_to_write.push((
                         execution_receipt.primary_number,
                         execution_receipt.hash(),

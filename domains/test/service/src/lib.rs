@@ -68,7 +68,7 @@ pub type Backend = TFullBackend<Block>;
 /// Code executor for the test service.
 pub type CodeExecutor = sc_executor::NativeElseWasmExecutor<RuntimeExecutor>;
 
-/// Secondary executor for the test service.
+/// System domain executor for the test service.
 pub type Executor = domain_client_executor::SystemExecutor<
     Block,
     PBlock,
@@ -98,13 +98,13 @@ impl sc_executor::NativeExecutionDispatch for RuntimeExecutor {
 pub type Client =
     TFullClient<Block, runtime::RuntimeApi, sc_executor::NativeElseWasmExecutor<RuntimeExecutor>>;
 
-/// Start an executor with the given secondary chain `Configuration` and primary chain `Configuration`.
+/// Start an executor with the given system domain `Configuration` and primary chain `Configuration`.
 ///
-/// A primary chain full node and secondary chain node will be started, similar to the behaviour in
+/// A primary chain full node and system domain node will be started, similar to the behaviour in
 /// the production.
-#[sc_tracing::logging::prefix_logs_with(secondary_chain_config.network.node_name.as_str())]
+#[sc_tracing::logging::prefix_logs_with(system_domain_config.network.node_name.as_str())]
 async fn run_executor(
-    secondary_chain_config: ServiceConfiguration,
+    system_domain_config: ServiceConfiguration,
     primary_chain_config: ServiceConfiguration,
 ) -> sc_service::error::Result<(
     TaskManager,
@@ -163,12 +163,12 @@ async fn run_executor(
 
     let (gossip_msg_sink, gossip_msg_stream) =
         sc_utils::mpsc::tracing_unbounded("cross_domain_gossip_messages", 100);
-    let secondary_chain_config = DomainConfiguration {
-        service_config: secondary_chain_config,
+    let system_domain_config = DomainConfiguration {
+        service_config: system_domain_config,
         maybe_relayer_id: None,
     };
     let block_import_throttling_buffer_size = 10;
-    let secondary_chain_node = domain_service::new_full::<
+    let system_domain_node = domain_service::new_full_system::<
         _,
         _,
         _,
@@ -177,7 +177,7 @@ async fn run_executor(
         domain_test_runtime::RuntimeApi,
         RuntimeExecutor,
     >(
-        secondary_chain_config,
+        system_domain_config,
         primary_chain_full_node.client.clone(),
         primary_chain_full_node.backend.clone(),
         primary_chain_full_node.network.clone(),
@@ -206,7 +206,7 @@ async fn run_executor(
     )
     .await?;
 
-    let domain_service::NewFull {
+    let domain_service::NewFullSystem {
         mut task_manager,
         client,
         backend,
@@ -216,7 +216,7 @@ async fn run_executor(
         rpc_handlers,
         executor,
         tx_pool_sink,
-    } = secondary_chain_node;
+    } = system_domain_node;
 
     let mut domain_tx_pool_sinks = BTreeMap::new();
     domain_tx_pool_sinks.insert(DomainId::SYSTEM, tx_pool_sink);
@@ -249,7 +249,7 @@ async fn run_executor(
 }
 
 /// A Cumulus test node instance used for testing.
-pub struct TestNode {
+pub struct SystemDomainNode {
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -265,24 +265,23 @@ pub struct TestNode {
     pub addr: MultiaddrWithPeerId,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: RpcHandlers,
-    /// Secondary executor.
+    /// System domain executor.
     pub executor: Executor,
 }
 
-/// A builder to create a [`TestNode`].
-pub struct TestNodeBuilder {
+/// A builder to create a [`SystemDomainNode`].
+pub struct SystemDomainNodeBuilder {
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
-    secondary_nodes: Vec<MultiaddrWithPeerId>,
-    secondary_nodes_exclusive: bool,
+    system_domain_nodes: Vec<MultiaddrWithPeerId>,
+    system_domain_nodes_exclusive: bool,
     primary_nodes: Vec<MultiaddrWithPeerId>,
     base_path: BasePath,
 }
 
-impl TestNodeBuilder {
+impl SystemDomainNodeBuilder {
     /// Create a new instance of `Self`.
     ///
-    /// `para_id` - The parachain id this node is running for.
     /// `tokio_handle` - The tokio handler to use.
     /// `key` - The key that will be used to generate the name.
     /// `base_path` - Where databases will be stored.
@@ -291,11 +290,11 @@ impl TestNodeBuilder {
         key: Sr25519Keyring,
         base_path: BasePath,
     ) -> Self {
-        TestNodeBuilder {
+        SystemDomainNodeBuilder {
             key,
             tokio_handle,
-            secondary_nodes: Vec::new(),
-            secondary_nodes_exclusive: false,
+            system_domain_nodes: Vec::new(),
+            system_domain_nodes_exclusive: false,
             primary_nodes: Vec::new(),
             base_path,
         }
@@ -303,31 +302,32 @@ impl TestNodeBuilder {
 
     /// Instruct the node to exclusively connect to registered parachain nodes.
     ///
-    /// Parachain nodes can be registered using [`Self::connect_to_secondary_chain_node`] and
-    /// [`Self::connect_to_secondary_chain_nodes`].
+    /// System domain nodes can be registered using [`Self::connect_to_system_domain_node`] and
+    /// [`Self::connect_to_system_domain_nodes`].
     pub fn exclusively_connect_to_registered_parachain_nodes(mut self) -> Self {
-        self.secondary_nodes_exclusive = true;
+        self.system_domain_nodes_exclusive = true;
         self
     }
 
-    /// Make the node connect to the given secondary chain node.
+    /// Make the node connect to the given system domain node.
     ///
     /// By default the node will not be connected to any node or will be able to discover any other
     /// node.
-    pub fn connect_to_secondary_chain_node(mut self, node: &TestNode) -> Self {
-        self.secondary_nodes.push(node.addr.clone());
+    pub fn connect_to_system_domain_node(mut self, node: &SystemDomainNode) -> Self {
+        self.system_domain_nodes.push(node.addr.clone());
         self
     }
 
-    /// Make the node connect to the given secondary chain nodes.
+    /// Make the node connect to the given system domain nodes.
     ///
     /// By default the node will not be connected to any node or will be able to discover any other
     /// node.
-    pub fn connect_to_secondary_chain_nodes<'a>(
+    pub fn connect_to_system_domain_nodes<'a>(
         mut self,
-        nodes: impl Iterator<Item = &'a TestNode>,
+        nodes: impl Iterator<Item = &'a SystemDomainNode>,
     ) -> Self {
-        self.secondary_nodes.extend(nodes.map(|n| n.addr.clone()));
+        self.system_domain_nodes
+            .extend(nodes.map(|n| n.addr.clone()));
         self
     }
 
@@ -356,22 +356,22 @@ impl TestNodeBuilder {
         self
     }
 
-    /// Build the [`TestNode`].
+    /// Build the [`SystemDomainNode`].
     pub async fn build(
         self,
         role: Role,
         primary_force_authoring: bool,
         primary_force_synced: bool,
-    ) -> TestNode {
-        let secondary_chain_config = node_config(
+    ) -> SystemDomainNode {
+        let system_domain_config = node_config(
             self.tokio_handle.clone(),
             self.key,
-            self.secondary_nodes,
-            self.secondary_nodes_exclusive,
+            self.system_domain_nodes,
+            self.system_domain_nodes_exclusive,
             role,
-            BasePath::new(self.base_path.path().join("secondary")),
+            BasePath::new(self.base_path.path().join("system")),
         )
-        .expect("could not generate secondary chain node Configuration");
+        .expect("could not generate system domain node Configuration");
 
         let mut primary_chain_config = subspace_test_service::node_config(
             self.tokio_handle,
@@ -386,16 +386,16 @@ impl TestNodeBuilder {
         primary_chain_config.network.node_name =
             format!("{} (PrimaryChain)", primary_chain_config.network.node_name);
 
-        let multiaddr = secondary_chain_config.network.listen_addresses[0].clone();
+        let multiaddr = system_domain_config.network.listen_addresses[0].clone();
         let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-            run_executor(secondary_chain_config, primary_chain_config)
+            run_executor(system_domain_config, primary_chain_config)
                 .await
-                .expect("could not start secondary chain node");
+                .expect("could not start system domain node");
 
         let peer_id = network.local_peer_id();
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
-        TestNode {
+        SystemDomainNode {
             task_manager,
             client,
             backend,
@@ -408,7 +408,7 @@ impl TestNodeBuilder {
     }
 }
 
-/// Create a secondary chain node `Configuration`.
+/// Create a system domain node `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide nodes if you want the
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect
@@ -427,7 +427,7 @@ pub fn node_config(
     let spec = Box::new(chain_spec::get_chain_spec());
 
     let mut network_config = NetworkConfiguration::new(
-        format!("{} (SecondaryChain)", key_seed),
+        format!("{} (SystemDomain)", key_seed),
         "network/test/0.1",
         Default::default(),
         None,
@@ -506,7 +506,7 @@ pub fn node_config(
     })
 }
 
-impl TestNode {
+impl SystemDomainNode {
     /// Wait for `count` blocks to be imported in the node and then exit. This function will not
     /// return if no blocks are ever created, thus you should restrict the maximum amount of time of
     /// the test execution.
