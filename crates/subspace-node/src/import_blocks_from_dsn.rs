@@ -24,7 +24,6 @@ use sc_service::ImportQueue;
 use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
@@ -205,7 +204,9 @@ where
             if let Some(piece_vec) = maybe_piece {
                 found_one_piece = true;
 
-                piece.replace(piece_vec.as_slice().try_into()?);
+                // TODO: We do not keep track of peers here and don't verify records, we probably
+                //  should though
+                piece.replace(piece_vec.record.value.as_slice().try_into()?);
             }
         }
 
@@ -224,7 +225,9 @@ where
                 if block_number <= best_block_number {
                     if block_number == 0u32.into() {
                         let block = client
-                            .block(&BlockId::Number(block_number))?
+                            .block(client.hash(block_number)?.expect(
+                                "Block before best block number must always be found; qed",
+                            ))?
                             .expect("Block before best block number must always be found; qed");
 
                         if block.encode() != block_bytes {

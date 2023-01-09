@@ -372,6 +372,8 @@ mod pallet {
             Ok(())
         }
 
+        // TODO: Rename this extrinsic since the core bundle is not submit to the transaction pool but crafted and injected
+        // on fly when building the system domain block.
         // TODO: proper weight
         #[pallet::call_index(5)]
         #[pallet::weight((10_000, Pays::No))]
@@ -663,10 +665,7 @@ mod pallet {
                 Call::submit_core_bundle {
                     signed_opaque_bundle,
                 } => Self::pre_dispatch_submit_core_bundle(signed_opaque_bundle).map_err(|e| {
-                    log::error!(
-                        target: "runtime::domain-registry",
-                        "Bad core bundle: {signed_opaque_bundle:?}, error: {e:?}",
-                    );
+                    log::error!(target: "runtime::domain-registry", "Bad core bundle, error: {e:?}");
                     TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
                 }),
                 Call::submit_fraud_proof { .. } => Ok(()),
@@ -847,7 +846,8 @@ impl<T: Config> Pallet<T> {
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
         let mut new_best_number = head_receipt_number;
-        for receipt in &signed_opaque_bundle.bundle.receipts {
+        let receipts = &signed_opaque_bundle.bundle.receipts;
+        for receipt in receipts {
             // Non-best receipt
             if receipt.primary_number <= new_best_number {
                 continue;
@@ -856,14 +856,33 @@ impl<T: Config> Pallet<T> {
                 new_best_number += One::one();
             // Missing receipt.
             } else {
+                let missing_receipt_number = new_best_number + One::one();
+                log::error!(
+                    target: "runtime::domain-registry",
+                    "Receipt for {domain_id:?} #{missing_receipt_number:?} is missing, \
+                    head_receipt_number: {head_receipt_number:?}, max_allowed: {max_allowed:?}, received: {:?}",
+                    receipts.iter().map(|r| r.primary_number).collect::<Vec<_>>()
+                );
                 return Err(Error::<T>::Receipt(ReceiptError::MissingParent));
             }
 
-            if BlockHash::<T>::get(domain_id, receipt.primary_number) != receipt.primary_hash {
+            let primary_number = receipt.primary_number;
+            let primary_hash = BlockHash::<T>::get(domain_id, primary_number);
+            if primary_hash != receipt.primary_hash {
+                log::error!(
+                    target: "runtime::domain-registry",
+                    "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
+                    expected: #{primary_number:?},{primary_hash:?}",
+                    receipt.primary_hash
+                );
                 return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
             }
 
-            if receipt.primary_number > max_allowed {
+            if primary_number > max_allowed {
+                log::error!(
+                    target: "runtime::domain-registry",
+                    "Receipt for #{primary_number:?} is too far in future, max_allowed: {max_allowed:?}",
+                );
                 return Err(Error::<T>::Receipt(ReceiptError::TooFarInFuture));
             }
         }
@@ -916,10 +935,24 @@ impl<T: Config> Pallet<T> {
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
                 None => StateRoots::<T>::get((domain_id, core_block_number, core_block_hash))
-                    .ok_or(Error::<T>::StateRootNotFound)?,
+                    .ok_or(Error::<T>::StateRootNotFound)
+                    .map_err(|err|{
+                        log::error!(
+                            target: "runtime::domain-registry",
+                            "State root for {domain_id:?} #{core_block_number:?},{core_block_hash:?} not found, \
+                            current head receipt: {:?}",
+                            ReceiptHead::<T>::get(domain_id),
+                        );
+                        err
+                    })?,
             };
 
             if expected_state_root != *core_state_root {
+                log::error!(
+                    target: "runtime::domains",
+                    "Bad state root for {domain_id:?} #{core_block_number:?},{core_block_hash:?}, \
+                    expected: {expected_state_root:?}, got: {core_state_root:?}",
+                );
                 return Err(Error::<T>::BadStateRoot);
             }
         }

@@ -40,24 +40,24 @@ use subspace_core_primitives::{
 
 fn find_last_archived_block<Block, Client>(
     client: &Client,
-    best_block_id: BlockId<Block>,
+    best_block_hash: Block::Hash,
 ) -> Option<(RootBlock, SignedBlock<Block>, BlockObjectMapping)>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
-    let mut block_to_check = best_block_id;
+    let mut block_to_check = best_block_hash;
     let last_root_block = 'outer: loop {
         let block = client
-            .block(&block_to_check)
+            .block(block_to_check)
             .expect("Older blocks should always exist")
             .expect("Older blocks should always exist");
 
         for extrinsic in block.block.extrinsics() {
             match client
                 .runtime_api()
-                .extract_root_blocks(&block_to_check, extrinsic)
+                .extract_root_blocks(&BlockId::Hash(block_to_check), extrinsic)
             {
                 Ok(Some(root_blocks)) => {
                     break 'outer root_blocks.into_iter().last()?;
@@ -82,14 +82,14 @@ where
             return None;
         }
 
-        block_to_check = BlockId::Hash(parent_block_hash);
+        block_to_check = parent_block_hash;
     };
 
     let last_archived_block_number = last_root_block.last_archived_block().number;
 
     let last_archived_block = loop {
         let block = client
-            .block(&block_to_check)
+            .block(block_to_check)
             .expect("Older blocks must always exist")
             .expect("Older blocks must always exist");
 
@@ -97,14 +97,14 @@ where
             break block;
         }
 
-        block_to_check = BlockId::Hash(*block.block.header().parent_hash());
+        block_to_check = *block.block.header().parent_hash();
     };
 
     let last_archived_block_hash = block_to_check;
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(&last_archived_block_hash)
+        .validated_object_call_hashes(&BlockId::Hash(last_archived_block_hash))
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
                 &BlockId::Hash(*last_archived_block.block.header().parent_hash()),
@@ -141,8 +141,9 @@ where
     let mut best_archived = None;
 
     loop {
+        // TODO: `Error` here must be handled instead
         let header = client
-            .header(BlockId::Hash(block_hash_to_check))
+            .header(block_hash_to_check)
             .expect("Parent block must exist; qed")
             .expect("Parent block must exist; qed");
 
@@ -189,12 +190,11 @@ where
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
-    let best_block_id = BlockId::Hash(best_block_hash);
     let confirmation_depth_k = get_chain_constants(client)
         .expect("Must always be able to get chain constants")
         .confirmation_depth_k();
 
-    let maybe_last_archived_block = find_last_archived_block(client, best_block_id);
+    let maybe_last_archived_block = find_last_archived_block(client, best_block_hash);
     let have_last_root_block = maybe_last_archived_block.is_some();
     let mut best_archived_block = None;
 
@@ -275,16 +275,15 @@ where
             let block_hashes_to_archive = block_hashes_to_archive.block_hashes;
 
             for block_hash_to_archive in block_hashes_to_archive.into_iter().rev() {
-                let block_id_to_archive = BlockId::Hash(block_hash_to_archive);
                 let block = client
-                    .block(&block_id_to_archive)
+                    .block(block_hash_to_archive)
                     .expect("Older block by number must always exist")
                     .expect("Older block by number must always exist");
                 let block_number_to_archive = *block.block.header().number();
 
                 let block_object_mappings = client
                     .runtime_api()
-                    .validated_object_call_hashes(&block_id_to_archive)
+                    .validated_object_call_hashes(&BlockId::Hash(block_hash_to_archive))
                     .and_then(|calls| {
                         client.runtime_api().extract_block_object_mapping(
                             &BlockId::Hash(*block.block.header().parent_hash()),
@@ -455,7 +454,12 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                     best_archived_block_number = block_number_to_archive;
 
                     let block = client
-                        .block(&BlockId::Number(block_number_to_archive))
+                        .block(
+                            client
+                                .hash(block_number_to_archive)
+                                .expect("Older block by number must always exist")
+                                .expect("Older block by number must always exist"),
+                        )
                         .expect("Older block by number must always exist")
                         .expect("Older block by number must always exist");
 
@@ -539,7 +543,7 @@ async fn send_archived_segment_notification(
     archived_segment: ArchivedSegment,
 ) {
     let (acknowledgement_sender, mut acknowledgement_receiver) =
-        tracing_unbounded::<()>("subspace_acknowledgement");
+        tracing_unbounded::<()>("subspace_acknowledgement", 100);
     let archived_segment_notification = ArchivedSegmentNotification {
         archived_segment: Arc::new(archived_segment),
         acknowledgement_sender,

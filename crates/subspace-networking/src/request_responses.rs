@@ -42,11 +42,12 @@ use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 use libp2p::core::connection::ConnectionId;
 use libp2p::core::{Multiaddr, PeerId};
-pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use libp2p::request_response::{
-    ProtocolSupport, RequestResponse, RequestResponseCodec, RequestResponseConfig,
-    RequestResponseEvent, RequestResponseMessage, ResponseChannel,
+    Behaviour as RequestResponse, Codec as RequestResponseCodec, Config as RequestResponseConfig,
+    Event as RequestResponseEvent, Message as RequestResponseMessage, ProtocolSupport,
+    ResponseChannel,
 };
+pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use libp2p::swarm::behaviour::{ConnectionClosed, DialFailure, FromSwarm, ListenFailure};
 use libp2p::swarm::handler::multi::MultiHandler;
 use libp2p::swarm::{ConnectionHandler, NetworkBehaviour, NetworkBehaviourAction, PollParameters};

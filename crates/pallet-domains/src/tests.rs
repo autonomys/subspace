@@ -486,3 +486,22 @@ fn submit_fraud_proof_should_work() {
         });
     });
 }
+
+#[test]
+fn test_receipts_are_consecutive() {
+    let receipts = vec![
+        create_dummy_receipt(1, Hash::random()),
+        create_dummy_receipt(2, Hash::random()),
+        create_dummy_receipt(3, Hash::random()),
+    ];
+    assert!(Domains::receipts_are_consecutive(&receipts));
+    let receipts = vec![
+        create_dummy_receipt(1, Hash::random()),
+        create_dummy_receipt(2, Hash::random()),
+        create_dummy_receipt(4, Hash::random()),
+    ];
+    assert!(!Domains::receipts_are_consecutive(&receipts));
+    let receipts = vec![create_dummy_receipt(1, Hash::random())];
+    assert!(Domains::receipts_are_consecutive(&receipts));
+    assert!(Domains::receipts_are_consecutive(&[]));
+}

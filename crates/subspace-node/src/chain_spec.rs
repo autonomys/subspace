@@ -17,7 +17,7 @@
 //! Subspace chain configurations.
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
-use crate::secondary_chain;
+use crate::system_domain;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::{ChainSpecExtensions, ConsensusChainSpec};
 use sc_telemetry::TelemetryEndpoints;
@@ -154,7 +154,7 @@ pub fn gemini_3b_compiled(
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: secondary_chain::chain_spec::gemini_3b_config(),
+            execution_chain_spec: system_domain::chain_spec::gemini_3b_config(),
         },
     ))
 }
@@ -241,7 +241,7 @@ pub fn x_net_2_config_compiled(
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: secondary_chain::chain_spec::x_net_2_config(),
+            execution_chain_spec: system_domain::chain_spec::x_net_2_config(),
         },
     ))
 }
@@ -288,7 +288,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: secondary_chain::chain_spec::development_config(),
+            execution_chain_spec: system_domain::chain_spec::development_config(),
         },
     ))
 }
@@ -343,7 +343,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: secondary_chain::chain_spec::local_testnet_config(),
+            execution_chain_spec: system_domain::chain_spec::local_testnet_config(),
         },
     ))
 }

@@ -10,10 +10,9 @@ use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
-use sp_domains::{BundleHeader, DomainId, ExecutionReceipt, OpaqueBundle};
+use sp_domains::DomainId;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
-use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use tempfile::TempDir;
 
 // Use the system domain id for testing
@@ -40,8 +39,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -50,8 +49,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     .build(Role::Authority, false, false)
     .await;
 
-    // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(
+    // Run Bob (a system domain full node)
+    let bob = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -114,66 +113,16 @@ async fn execution_proof_creation_and_verification_should_work() {
     //
     // alice.wait_for_blocks(1).await;
 
-    let dummy_receipt = ExecutionReceipt {
-        primary_number: ferdie.client.info().best_number,
-        primary_hash: ferdie.client.info().best_hash,
-        domain_hash: alice.client.info().best_hash,
-        trace: Vec::new(),
-        trace_root: Default::default(),
-    };
-
-    let bundles = vec![OpaqueBundle {
-        header: BundleHeader {
-            primary_hash: ferdie.client.info().best_hash,
-            slot_number: Default::default(),
-            extrinsics_root: Default::default(),
-        },
-        extrinsics: test_txs
-            .iter()
-            .map(|xt| OpaqueExtrinsic::from_bytes(&xt.encode()).unwrap())
-            .collect(),
-        receipts: vec![dummy_receipt],
-    }];
-
-    let primary_info = if alice.client.info().best_number == ferdie.client.info().best_number {
-        // The executor might have already imported the latest primary block, make a fake future block to
-        // bypass the check of `latest_primary_number = old_best_secondary_number + 1` in `process_bundles`.
-        //
-        // This invalid primary hash does not affect the test result.
-        (
-            Hash::random(),
-            ferdie.client.info().best_number + 1,
-            ForkChoiceStrategy::LongestChain,
-        )
-    } else {
-        (
-            ferdie.client.info().best_hash,
-            ferdie.client.info().best_number,
-            ForkChoiceStrategy::LongestChain,
-        )
-    };
-    alice
-        .executor
-        .clone()
-        .process_bundles(
-            primary_info,
-            bundles,
-            BlakeTwo256::hash_of(&[1u8; 64]).into(),
-            None,
-        )
-        .await;
+    let primary_info = (
+        ferdie.client.info().best_hash,
+        ferdie.client.info().best_number,
+        ForkChoiceStrategy::LongestChain,
+    );
+    alice.executor.clone().process_bundles(primary_info).await;
 
     let best_hash = alice.client.info().best_hash;
-    let header = alice
-        .client
-        .header(&BlockId::Hash(best_hash))
-        .unwrap()
-        .unwrap();
-    let parent_header = alice
-        .client
-        .header(&BlockId::Hash(*header.parent_hash()))
-        .unwrap()
-        .unwrap();
+    let header = alice.client.header(best_hash).unwrap().unwrap();
+    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let create_block_builder = || {
         BlockBuilder::new(
@@ -391,8 +340,8 @@ async fn invalid_execution_proof_should_not_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -401,8 +350,8 @@ async fn invalid_execution_proof_should_not_work() {
     .build(Role::Authority, false, false)
     .await;
 
-    // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(
+    // Run Bob (a system domain full node)
+    let bob = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -452,16 +401,8 @@ async fn invalid_execution_proof_should_not_work() {
     alice.wait_for_blocks(1).await;
 
     let best_hash = alice.client.info().best_hash;
-    let header = alice
-        .client
-        .header(&BlockId::Hash(best_hash))
-        .unwrap()
-        .unwrap();
-    let parent_header = alice
-        .client
-        .header(&BlockId::Hash(*header.parent_hash()))
-        .unwrap()
-        .unwrap();
+    let header = alice.client.header(best_hash).unwrap().unwrap();
+    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let create_block_builder = || {
         BlockBuilder::new(

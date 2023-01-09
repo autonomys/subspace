@@ -6,7 +6,6 @@ use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
 use sp_domains::ExecutionReceipt;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
 
@@ -339,7 +338,7 @@ where
 
             // TODO: Ensure the block from which the trace mismatch index was generated is still on the
             // canonical chain.
-            if backend.header(BlockId::Hash(block_hash))?.is_some() {
+            if backend.header(block_hash)?.is_some() {
                 if !fork_receipt_hashes.is_empty() {
                     // TODO: Handle the receipts on the fork properly once the executor is primary-chain-fork-aware.
                     tracing::debug!(

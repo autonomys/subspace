@@ -16,11 +16,9 @@ use std::borrow::Cow;
 use std::iter;
 use std::iter::Empty;
 
-// TODO: Consider adding a generic lifetime when we upgrade the compiler to 1.65 (GAT feature)
-// fn records(&'_ self) -> Self::RecordsIter<'_>;
-pub trait RecordStorage<'a> {
+pub trait RecordStorage {
     /// Gets a record from the store, given its key.
-    fn get(&'a self, k: &Key) -> Option<Cow<'_, Record>>;
+    fn get(&self, k: &Key) -> Option<Cow<'_, Record>>;
 
     /// Puts a record into the store.
     fn put(&mut self, r: Record) -> store::Result<()>;
@@ -29,8 +27,10 @@ pub trait RecordStorage<'a> {
     fn remove(&mut self, k: &Key);
 }
 
-pub trait ProviderStorage<'a> {
-    type ProvidedIter: Iterator<Item = Cow<'a, ProviderRecord>>;
+pub trait ProviderStorage {
+    type ProvidedIter<'a>: Iterator<Item = Cow<'a, ProviderRecord>>
+    where
+        Self: 'a;
 
     /// Adds a provider record to the store.
     ///
@@ -40,11 +40,11 @@ pub trait ProviderStorage<'a> {
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()>;
 
     /// Gets a copy of the stored provider records for the given key.
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord>;
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord>;
 
     /// Gets an iterator over all stored provider records for which the
     /// node owning the store is itself the provider.
-    fn provided(&'a self) -> Self::ProvidedIter;
+    fn provided(&self) -> Self::ProvidedIter<'_>;
 
     /// Removes a provider record from the store.
     fn remove_provider(&mut self, k: &Key, p: &PeerId);
@@ -68,42 +68,40 @@ impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderSt
     }
 }
 
-impl<'a, Rs: RecordStorage<'a>, Ps: ProviderStorage<'a>> RecordStore<'a>
-    for CustomRecordStore<Rs, Ps>
-{
-    type RecordsIter = Empty<Cow<'a, Record>>;
-    type ProvidedIter = Ps::ProvidedIter;
+impl<Rs: RecordStorage, Ps: ProviderStorage> RecordStore for CustomRecordStore<Rs, Ps> {
+    type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
+    type ProvidedIter<'a> = Ps::ProvidedIter<'a> where Self: 'a;
 
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
         self.record_storage.get(key)
     }
 
-    fn put(&'a mut self, record: Record) -> store::Result<()> {
+    fn put(&mut self, record: Record) -> store::Result<()> {
         self.record_storage.put(record)
     }
 
-    fn remove(&'a mut self, key: &Key) {
+    fn remove(&mut self, key: &Key) {
         self.record_storage.remove(key)
     }
 
-    fn records(&'a self) -> Self::RecordsIter {
+    fn records(&self) -> Self::RecordsIter<'_> {
         // We don't use Kademlia's periodic replication
         iter::empty()
     }
 
-    fn add_provider(&'a mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         self.provider_storage.add_provider(record)
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         self.provider_storage.providers(key)
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         self.provider_storage.provided()
     }
 
-    fn remove_provider(&'a mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
         self.provider_storage.remove_provider(key, provider)
     }
 }

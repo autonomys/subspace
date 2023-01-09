@@ -1,19 +1,28 @@
+use crate::NodeClient;
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use lru::LruCache;
+use parking_lot::Mutex;
 use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_archiving::archiver::is_piece_valid;
+use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::{
+    Piece, PieceIndex, PieceIndexHash, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
+};
 use subspace_farmer_components::plotting::PieceReceiver;
+use subspace_networking::libp2p::multihash::Multihash;
+use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, PieceByHashRequest, PieceByHashResponse, PieceKey, ToMultihash};
 use tokio::time::{sleep, timeout};
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
@@ -23,12 +32,6 @@ const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 const GET_PIECE_ARCHIVAL_STORAGE_DELAY: Duration = Duration::from_secs(2);
 /// Max time allocated for getting piece from DSN before attempt is considered to fail
 const GET_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
-
-// Temporary struct serving pieces from different providers using configuration arguments.
-pub(crate) struct MultiChannelPieceReceiver<'a> {
-    dsn_node: Node,
-    cancelled: &'a AtomicBool,
-}
 
 // Defines target storage type for requets.
 #[derive(Debug, Copy, Clone)]
@@ -48,10 +51,31 @@ impl From<StorageType> for MultihashCode {
     }
 }
 
-impl<'a> MultiChannelPieceReceiver<'a> {
-    pub(crate) fn new(dsn_node: Node, cancelled: &'a AtomicBool) -> Self {
+// Temporary struct serving pieces from different providers using configuration arguments.
+pub(crate) struct MultiChannelPieceReceiver<'a, NC> {
+    dsn_node: &'a Node,
+    node_client: &'a NC,
+    kzg: &'a Kzg,
+    records_root_cache: &'a Mutex<LruCache<SegmentIndex, RecordsRoot>>,
+    cancelled: &'a AtomicBool,
+}
+
+impl<'a, NC> MultiChannelPieceReceiver<'a, NC>
+where
+    NC: NodeClient,
+{
+    pub(crate) fn new(
+        dsn_node: &'a Node,
+        node_client: &'a NC,
+        kzg: &'a Kzg,
+        records_root_cache: &'a Mutex<LruCache<SegmentIndex, RecordsRoot>>,
+        cancelled: &'a AtomicBool,
+    ) -> Self {
         Self {
             dsn_node,
+            node_client,
+            kzg,
+            records_root_cache,
             cancelled,
         }
     }
@@ -94,7 +118,9 @@ impl<'a> MultiChannelPieceReceiver<'a> {
                     match request_result {
                         Ok(PieceByHashResponse { piece: Some(piece) }) => {
                             trace!(%provider_id, %piece_index, ?key, "Piece request succeeded.");
-                            return Some(piece);
+                            return self
+                                .validate_piece(provider_id, piece_index, key, piece)
+                                .await;
                         }
                         Ok(PieceByHashResponse { piece: None }) => {
                             debug!(%provider_id, %piece_index, ?key, "Piece request returned empty piece.");
@@ -112,10 +138,87 @@ impl<'a> MultiChannelPieceReceiver<'a> {
 
         None
     }
+
+    async fn validate_piece(
+        &self,
+        source_peer_id: PeerId,
+        piece_index: PieceIndex,
+        key: Multihash,
+        piece: Piece,
+    ) -> Option<Piece> {
+        if source_peer_id != self.dsn_node.id() {
+            let segment_index: SegmentIndex = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
+
+            let maybe_records_root = self.records_root_cache.lock().get(&segment_index).copied();
+            let records_root = match maybe_records_root {
+                Some(records_root) => records_root,
+                None => {
+                    let records_roots =
+                        match self.node_client.records_roots(vec![segment_index]).await {
+                            Ok(records_roots) => records_roots,
+                            Err(error) => {
+                                error!(
+                                    %piece_index,
+                                    ?key,
+                                    ?error,
+                                    "Failed tor retrieve records root from node"
+                                );
+                                return None;
+                            }
+                        };
+
+                    let records_root = match records_roots.into_iter().next().flatten() {
+                        Some(records_root) => records_root,
+                        None => {
+                            error!(
+                                %piece_index,
+                                ?key,
+                                %segment_index,
+                                "Records root for segment index wasn't found on node"
+                            );
+                            return None;
+                        }
+                    };
+
+                    self.records_root_cache
+                        .lock()
+                        .push(segment_index, records_root);
+
+                    records_root
+                }
+            };
+
+            if !is_piece_valid(
+                self.kzg,
+                PIECES_IN_SEGMENT,
+                &piece,
+                records_root,
+                u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
+                    .expect("Always fix into u32; qed"),
+                RECORD_SIZE,
+            ) {
+                error!(
+                    %piece_index,
+                    ?key,
+                    %source_peer_id,
+                    "Received invalid piece from peer"
+                );
+
+                // We don't care about result here
+                let _ = self.dsn_node.ban_peer(source_peer_id).await;
+                return None;
+            }
+        }
+
+        None
+    }
 }
 
 #[async_trait]
-impl<'a> PieceReceiver for MultiChannelPieceReceiver<'a> {
+impl<'a, NC> PieceReceiver for MultiChannelPieceReceiver<'a, NC>
+where
+    NC: NodeClient,
+{
     async fn get_piece(
         &self,
         piece_index: PieceIndex,

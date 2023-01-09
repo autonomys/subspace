@@ -7,7 +7,7 @@ use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
-use crate::utils::convert_multiaddresses;
+use crate::utils::{convert_multiaddresses, ResizableSemaphore};
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -25,8 +25,9 @@ use libp2p::swarm::SwarmBuilder;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
-use libp2p::yamux::{WindowUpdateMode, YamuxConfig};
+use libp2p::yamux::YamuxConfig;
 use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
@@ -47,7 +48,36 @@ const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
 const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
-    Some(Duration::from_secs(4 * 3600)); /* 4 hour */
+    Some(Duration::from_secs(3600)); /* 1 hour */
+// Defines a replication factor for Kademlia on get_record operation.
+// "Good citizen" supports the network health.
+const YAMUX_MAX_STREAMS: usize = 256;
+
+/// Base limit for number of concurrent tasks initiated towards Kademlia.
+///
+/// Kademlia has 32 substream as a hardcoded constant, we leave 2 for auxiliary internal functions
+/// like periodic random walk.
+///
+/// We restrict this so we don't exceed number of incoming streams for single peer, but this value
+/// will be boosted depending on number of connected peers.
+const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
+/// Above base limit will be boosted by specified number for every peer connected starting with
+/// second peer, such that it scaled with network connectivity, but the exact coefficient might need
+/// to be tweaked in the future.
+pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
+/// Base limit for number of any concurrent tasks except Kademlia.
+///
+/// We configure total number of streams per connection to 256. Here we assume half of them might be
+/// incoming and half outgoing, we also leave a small buffer of streams just in case.
+///
+/// We restrict this so we don't exceed number of streams for single peer, but this value will be
+/// boosted depending on number of connected peers.
+const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
+    NonZeroUsize::new(120 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
+/// Above base limit will be boosted by specified number for every peer connected starting with
+/// second peer, such that it scaled with network connectivity, but the exact coefficient might need
+/// to be tweaked in the future.
+pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
@@ -135,9 +165,7 @@ impl Config {
             .set_replication_interval(None);
 
         let mut yamux_config = YamuxConfig::default();
-        // Enable proper flow-control: window updates are only sent when buffered data has been
-        // consumed.
-        yamux_config.set_window_update_mode(WindowUpdateMode::on_read());
+        yamux_config.set_max_num_streams(YAMUX_MAX_STREAMS);
 
         let gossipsub = GossipsubConfigBuilder::default()
             .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
@@ -208,7 +236,7 @@ pub async fn create<RecordStore>(
     config: Config<RecordStore>,
 ) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
 where
-    RecordStore: Send + Sync + for<'a> libp2p::kad::store::RecordStore<'a> + 'static,
+    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
     let Config {
         keypair,
@@ -270,10 +298,18 @@ where
         // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
-        let shared = Arc::new(Shared::new(local_peer_id, command_sender));
+        let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
+        let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
+
+        let shared = Arc::new(Shared::new(
+            local_peer_id,
+            command_sender,
+            kademlia_tasks_semaphore.clone(),
+            regular_tasks_semaphore.clone(),
+        ));
         let shared_weak = Arc::downgrade(&shared);
 
-        let node = Node::new(shared);
+        let node = Node::new(shared, kademlia_tasks_semaphore, regular_tasks_semaphore);
         let node_runner = NodeRunner::<RecordStore>::new(NodeRunnerConfig::<RecordStore> {
             allow_non_global_addresses_in_dht,
             command_receiver,

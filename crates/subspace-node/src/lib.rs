@@ -20,10 +20,10 @@ mod chain_spec;
 mod chain_spec_utils;
 mod core_domain;
 mod import_blocks_from_dsn;
-mod secondary_chain;
+mod system_domain;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::secondary_chain::cli::SecondaryChainCli;
+pub use crate::system_domain::cli::SystemDomainCli;
 use bytesize::ByteSize;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
@@ -57,7 +57,7 @@ impl NativeExecutionDispatch for ExecutorDispatch {
     }
 }
 
-/// This `purge-chain` command used to remove both primary and secondary chains.
+/// This `purge-chain` command used to remove both consensus chain and system domain.
 #[derive(Debug, Clone, Parser)]
 pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
@@ -70,10 +70,10 @@ impl PurgeChainCmd {
     pub fn run(
         &self,
         primary_chain_config: sc_service::Configuration,
-        secondary_chain_config: sc_service::Configuration,
+        system_domain_config: sc_service::Configuration,
     ) -> sc_cli::Result<()> {
         let db_paths = vec![
-            secondary_chain_config
+            system_domain_config
                 .database
                 .path()
                 .expect("No custom database used here; qed"),
@@ -156,7 +156,7 @@ pub enum Subcommand {
 
     /// Run executor sub-commands.
     #[clap(subcommand)]
-    Executor(secondary_chain::cli::Subcommand),
+    Executor(system_domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
@@ -197,10 +197,6 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub dsn_disable_private_ips: bool,
 
-    /// Defines piece publishing batch size
-    #[arg(long, default_value_t = 15)]
-    pub dsn_piece_publisher_batch_size: usize,
-
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,
@@ -210,17 +206,17 @@ pub struct Cli {
     #[arg(long, default_value = "10")]
     pub segment_publish_concurrency: NonZeroUsize,
 
-    /// Secondary chain arguments
+    /// Domain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
     /// while the arguments provided after `--` will be passed to the system domain node.
     ///
     /// If you want to run a core domain node, specify the core domain node arguments after
-    /// the system domain node arguments with an extra `-- --`.
+    /// the system domain node arguments with an extra `--`.
     ///
-    /// subspace-node [primarychain-args] -- [secondarychain-args] -- -- [core-domain-args]
+    /// subspace-node [primarychain-args] -- [system-domain-args] -- [core-domain-args]
     #[arg(raw = true)]
-    pub secondary_chain_args: Vec<String>,
+    pub domain_args: Vec<String>,
 }
 
 impl SubstrateCli for Cli {

@@ -26,7 +26,7 @@ use futures::{SinkExt, StreamExt};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
-use sp_api::{BlockId, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::error::Error;
@@ -222,8 +222,6 @@ async fn plot_one_segment<Client>(
 where
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
-    let genesis_block_id = BlockId::Number(sp_runtime::traits::Zero::zero());
-
     let kzg = Kzg::new(kzg::test_public_parameters());
     let mut archiver = subspace_archiving::archiver::Archiver::new(
         RECORD_SIZE,
@@ -232,7 +230,7 @@ where
     )
     .expect("Incorrect parameters for archiver");
 
-    let genesis_block = client.block(&genesis_block_id).unwrap().unwrap();
+    let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     let archived_segment = archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default())
         .into_iter()
@@ -262,7 +260,6 @@ where
         sector_codec,
         Cursor::new(sector.as_mut_slice()),
         Cursor::new(sector_metadata.as_mut_slice()),
-        &tokio::sync::Semaphore::new(tokio::sync::Semaphore::MAX_PERMITS),
     )
     .await
     .expect("Plotting one sector in memory must not fail");

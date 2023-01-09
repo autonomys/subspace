@@ -133,7 +133,7 @@ where
 
                     let state_root = *self
                         .system_domain_client
-                        .header(best_block_id)?
+                        .header(best_hash)?
                         .expect("Best block header must exist; qed")
                         .state_root();
 

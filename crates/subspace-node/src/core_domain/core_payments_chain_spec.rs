@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Secondary chain configurations.
+//! Core payments domain configurations.
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use core_payments_domain_runtime::{
@@ -118,13 +118,16 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
         "subspace_gemini_3b_core_payments_domain",
         ChainType::Local,
         move || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Invalid Sudo account");
             testnet_genesis(
                 vec![
                     // Genesis executor
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
                 ],
-                None,
+                Some(sudo_account),
                 Default::default(),
             )
         },

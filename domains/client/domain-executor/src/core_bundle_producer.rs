@@ -12,7 +12,6 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{BundleSolution, DomainId, ProofOfElection, SignedOpaqueBundle};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -144,7 +143,7 @@ where
             let core_block_hash = self.client.info().best_hash;
             let core_state_root = *self
                 .client
-                .header(BlockId::Hash(core_block_hash))?
+                .header(core_block_hash)?
                 .expect("Best block header must exist; qed")
                 .state_root();
 

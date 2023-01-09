@@ -61,11 +61,11 @@ impl MemoryProviderStorage {
     }
 }
 
-impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
-    type ProvidedIter = iter::Map<
+impl ProviderStorage for MemoryProviderStorage {
+    type ProvidedIter<'a> = iter::Map<
         hash_set::Iter<'a, ProviderRecord>,
         fn(&'a ProviderRecord) -> Cow<'a, ProviderRecord>,
-    >;
+    > where Self:'a;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         trace!("New provider record added: {:?}", record);
@@ -73,11 +73,11 @@ impl<'a> ProviderStorage<'a> for MemoryProviderStorage {
         self.inner.add_provider(record)
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         self.inner.providers(key)
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         self.inner.provided()
     }
 
@@ -396,8 +396,8 @@ impl FixedProviderRecordStorage for ParityDbProviderStorage {
     }
 }
 
-impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
-    type ProvidedIter = ParityDbProviderRecordIterator<'a>;
+impl ProviderStorage for ParityDbProviderStorage {
+    type ProvidedIter<'a> = ParityDbProviderRecordIterator<'a> where Self:'a;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         let key = record.key.clone();
@@ -426,7 +426,7 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
         self.remove_provider_from_db(key, provider.to_bytes());
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         let rec_iter_result: Result<ParityDbProviderRecordIterator, parity_db::Error> = try {
             let btree_iter = self.db.iter(PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME)?;
             ParityDbProviderRecordIterator::new(btree_iter)?
@@ -444,7 +444,7 @@ impl<'a> ProviderStorage<'a> for ParityDbProviderStorage {
         }
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         self.load_providers(key)
             .unwrap_or_default()
             .providers()
@@ -533,12 +533,12 @@ impl<'a> EnumerableProviderStorage<'a> for ParityDbProviderStorage {
     }
 }
 
-impl<'a, L, R> ProviderStorage<'a> for Either<L, R>
+impl<L, R> ProviderStorage for Either<L, R>
 where
-    L: ProviderStorage<'a>,
-    R: ProviderStorage<'a>,
+    L: ProviderStorage,
+    R: ProviderStorage,
 {
-    type ProvidedIter = impl Iterator<Item = Cow<'a, ProviderRecord>>;
+    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         match self {
@@ -547,14 +547,14 @@ where
         }
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         match self {
             Either::Left(inner) => inner.providers(key),
             Either::Right(inner) => inner.providers(key),
         }
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         let iterator = match self {
             Either::Left(inner) => Either::Left(inner.provided()),
             Either::Right(inner) => Either::Right(inner.provided()),
@@ -644,7 +644,7 @@ pub struct LimitedSizeProviderStorageWrapper<RC = MemoryProviderStorage> {
     peer_id: PeerId,
 }
 
-impl<RC: for<'a> ProviderStorage<'a> + for<'a> EnumerableProviderStorage<'a>>
+impl<RC: ProviderStorage + for<'a> EnumerableProviderStorage<'a>>
     LimitedSizeProviderStorageWrapper<RC>
 {
     pub fn new(record_store: RC, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
@@ -669,10 +669,10 @@ impl<RC: for<'a> ProviderStorage<'a> + for<'a> EnumerableProviderStorage<'a>>
     }
 }
 
-impl<'a, RC: ProviderStorage<'a> + FixedProviderRecordStorage> ProviderStorage<'a>
+impl<RC: ProviderStorage + FixedProviderRecordStorage> ProviderStorage
     for LimitedSizeProviderStorageWrapper<RC>
 {
-    type ProvidedIter = impl Iterator<Item = Cow<'a, ProviderRecord>>;
+    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         let record_key = record.key.clone();
@@ -693,11 +693,11 @@ impl<'a, RC: ProviderStorage<'a> + FixedProviderRecordStorage> ProviderStorage<'
         Ok(())
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         self.inner.providers(key)
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         self.inner.provided()
     }
 

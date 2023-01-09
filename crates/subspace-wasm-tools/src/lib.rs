@@ -1,3 +1,6 @@
+use sc_executor_common::error::WasmError;
+use sc_executor_common::runtime_blob::RuntimeBlob;
+use sp_domains::DomainId;
 use std::path::PathBuf;
 use std::{env, fs};
 
@@ -82,4 +85,21 @@ pub fn create_runtime_bundle_inclusion_file(
     .unwrap_or_else(|error| {
         panic!("Must be able to write to {target_file_name}: {error}");
     });
+}
+
+/// Read the core domain runtime blob from the system domain runtime blob.
+pub fn read_core_domain_runtime_blob(
+    system_domain_bundle: &[u8],
+    core_domain_id: DomainId,
+) -> Result<Vec<u8>, WasmError> {
+    let system_runtime_blob = RuntimeBlob::new(system_domain_bundle)?;
+
+    let section_contents_name = core_domain_id.link_section_name();
+    let embedded_runtime_blob = system_runtime_blob
+        .custom_section_contents(&section_contents_name)
+        .ok_or_else(|| {
+            WasmError::Other(format!("Custom section {section_contents_name} not found"))
+        })?;
+
+    Ok(embedded_runtime_blob.to_vec())
 }

@@ -1,4 +1,3 @@
-use crate::utils::read_core_domain_runtime_blob;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
@@ -22,6 +21,7 @@ use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
+use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
@@ -45,8 +45,8 @@ async fn test_executor_full_node_catching_up() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -55,8 +55,8 @@ async fn test_executor_full_node_catching_up() {
     .build(Role::Authority, false, false)
     .await;
 
-    // Run Bob (a secondary chain full node)
-    let bob = domain_test_service::TestNodeBuilder::new(
+    // Run Bob (a system domain full node)
+    let bob = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -71,7 +71,7 @@ async fn test_executor_full_node_catching_up() {
     assert_eq!(
         ferdie.client.info().best_number,
         alice.client.info().best_number,
-        "Primary chain and secondary chain must be on the same best height"
+        "Primary chain and system domain must be on the same best height"
     );
 
     let alice_block_hash = alice
@@ -112,8 +112,8 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -124,12 +124,12 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     alice.wait_for_blocks(3).await;
 
-    let header = alice.client.header(&BlockId::Number(1)).unwrap().unwrap();
-    let parent_header = alice
+    let header = alice
         .client
-        .header(&BlockId::Hash(*header.parent_hash()))
+        .header(alice.client.hash(1).unwrap().unwrap())
         .unwrap()
         .unwrap();
+    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let intermediate_roots = alice
         .client
@@ -162,7 +162,11 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         )
         .expect("Create `initialize_block` proof");
 
-    let header_ferdie = ferdie.client.header(&BlockId::Number(1)).unwrap().unwrap();
+    let header_ferdie = ferdie
+        .client
+        .header(ferdie.client.hash(1).unwrap().unwrap())
+        .unwrap()
+        .unwrap();
     let parent_hash_ferdie = header_ferdie.hash();
     let parent_number_ferdie = *header_ferdie.number();
 
@@ -251,8 +255,8 @@ async fn set_new_code_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain authority node)
-    let alice = domain_test_service::TestNodeBuilder::new(
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -281,16 +285,11 @@ async fn set_new_code_should_work() {
     alice
         .executor
         .clone()
-        .process_bundles(
-            (
-                primary_hash,
-                primary_number,
-                ForkChoiceStrategy::LongestChain,
-            ),
-            Default::default(),
-            BlakeTwo256::hash_of(&[1u8; 64]).into(),
-            Some(new_runtime_wasm_blob.clone().into()),
-        )
+        .process_bundles((
+            primary_hash,
+            primary_number,
+            ForkChoiceStrategy::LongestChain,
+        ))
         .await;
 
     let best_hash = alice.client.info().best_hash;
@@ -298,13 +297,7 @@ async fn set_new_code_should_work() {
     let trie_backend = state.as_trie_backend();
     let state_runtime_code = sp_state_machine::backend::BackendRuntimeCode::new(trie_backend);
     let runtime_code = state_runtime_code.fetch_runtime_code().unwrap();
-    let logs = alice
-        .client
-        .header(&BlockId::Hash(best_hash))
-        .unwrap()
-        .unwrap()
-        .digest
-        .logs;
+    let logs = alice.client.header(best_hash).unwrap().unwrap().digest.logs;
     if logs != vec![DigestItem::RuntimeEnvironmentUpdated] {
         let extrinsics = alice
             .client
@@ -379,10 +372,10 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .await;
     ferdie_network_starter.start_network();
 
-    // Run Alice (a secondary chain full node)
+    // Run Alice (a system domain full node)
     // Run a full node deliberately in order to control the execution chain by
     // submitting the receipts manually later.
-    let alice = domain_test_service::TestNodeBuilder::new(
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),

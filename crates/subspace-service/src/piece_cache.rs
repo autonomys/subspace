@@ -207,11 +207,11 @@ impl TryFrom<Vec<u8>> for ParityDbKeyCollection {
     }
 }
 
-impl<'a, AS> RecordStorage<'a> for PieceCache<AS>
+impl<AS> RecordStorage for PieceCache<AS>
 where
-    AS: AuxStore + 'a,
+    AS: AuxStore,
 {
-    fn get(&'a self, key: &Key) -> Option<Cow<'_, Record>> {
+    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
         let get_result = self.get_piece_by_index_multihash(key.as_ref());
 
         match get_result {
@@ -249,11 +249,11 @@ where
     }
 }
 
-impl<'a, AS> ProviderStorage<'a> for PieceCache<AS>
+impl<AS> ProviderStorage for PieceCache<AS>
 where
-    AS: AuxStore + 'a,
+    AS: AuxStore,
 {
-    type ProvidedIter = AuxStoreProviderRecordIterator<'a, AS>;
+    type ProvidedIter<'a> = AuxStoreProviderRecordIterator<'a, AS> where Self:'a;
 
     fn add_provider(
         &mut self,
@@ -264,7 +264,7 @@ where
         Ok(())
     }
 
-    fn providers(&'a self, key: &Key) -> Vec<ProviderRecord> {
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         let get_result = self.get_piece_by_index_multihash(key.as_ref());
 
         let providers = match get_result {
@@ -290,7 +290,7 @@ where
         providers.unwrap_or_default()
     }
 
-    fn provided(&'a self) -> Self::ProvidedIter {
+    fn provided(&self) -> Self::ProvidedIter<'_> {
         let pieces_indexes = self.local_provided_keys.iter();
 
         AuxStoreProviderRecordIterator::new(pieces_indexes, self.clone())

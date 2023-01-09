@@ -25,11 +25,11 @@ use tokio::time::timeout;
 use tracing::{debug, error, info, trace, warn, Instrument};
 
 /// Max time allocated for putting piece from DSN before attempt is considered to fail
-const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
+const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
 /// Defines initial duration between put_piece calls.
 const PUBLISH_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between put_piece calls.
-const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
+const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -48,9 +48,6 @@ pub struct DsnConfig {
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     pub allow_non_global_addresses_in_dht: bool,
-
-    /// Defines piece publishing batch size
-    pub piece_publisher_batch_size: usize,
 }
 
 pub(crate) async fn create_dsn_instance<Block, AS>(
@@ -112,14 +109,12 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
     mut archived_segment_notification_stream: impl Stream<Item = ArchivedSegmentNotification> + Unpin,
     node: Node,
     spawner: Spawner,
-    piece_publisher_batch_size: usize,
     segment_publish_concurrency: NonZeroUsize,
 ) where
     Spawner: SpawnNamed,
 {
     trace!("Subspace DSN archiver started.");
 
-    let piece_publisher_semaphore = Arc::new(Semaphore::new(piece_publisher_batch_size));
     let segment_publish_semaphore = Arc::new(Semaphore::new(segment_publish_concurrency.get()));
 
     let mut last_published_segment_index: Option<u64> = None;
@@ -157,17 +152,9 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
             Some("subspace-networking"),
             Box::pin({
                 let node = node.clone();
-                let piece_publisher_semaphore = Arc::clone(&piece_publisher_semaphore);
 
                 async move {
-                    publish_pieces(
-                        &node,
-                        first_piece_index,
-                        segment_index,
-                        archived_segment,
-                        &piece_publisher_semaphore,
-                    )
-                    .await;
+                    publish_pieces(&node, first_piece_index, segment_index, archived_segment).await;
 
                     // Release only after publishing is finished
                     drop(publishing_permit);
@@ -186,21 +173,11 @@ pub(crate) async fn publish_pieces(
     first_piece_index: PieceIndex,
     segment_index: u64,
     archived_segment: Arc<ArchivedSegment>,
-    semaphore: &Semaphore,
 ) {
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
 
     let mut pieces_publishing_futures = pieces_indexes
-        .map(|piece_index| {
-            Box::pin(async move {
-                let _permit = semaphore
-                    .acquire()
-                    .await
-                    .expect("Should be valid on non-closed semaphore");
-
-                publish_single_piece_with_backoff(node, piece_index).await
-            })
-        })
+        .map(|piece_index| publish_single_piece_with_backoff(node, piece_index))
         .collect::<FuturesUnordered<_>>();
 
     while pieces_publishing_futures.next().await.is_some() {

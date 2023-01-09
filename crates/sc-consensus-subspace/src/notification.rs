@@ -76,7 +76,7 @@ impl<T: Clone + Send + Sync + fmt::Debug + 'static> SubspaceNotificationStream<T
 
     /// Subscribe to a channel through which notifications are sent.
     pub fn subscribe(&self) -> NotificationStream<T> {
-        let (sender, receiver) = tracing_unbounded(self.stream_name);
+        let (sender, receiver) = tracing_unbounded(self.stream_name, 100);
         self.subscribers.lock().push(sender);
         receiver
     }

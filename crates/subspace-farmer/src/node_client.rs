@@ -12,9 +12,9 @@ use subspace_rpc_primitives::{
 /// To become error type agnostic
 pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-/// Abstraction of the Remote Procedure Call Client
+/// Abstraction of the Node Client
 #[async_trait]
-pub trait RpcClient: Clone + Send + Sync + 'static {
+pub trait NodeClient: Clone + Send + Sync + 'static {
     /// Get farmer app info
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
 

@@ -26,13 +26,13 @@ use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
+use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
     crypto, ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock,
-    RootBlock, BLAKE2B_256_HASH_SIZE, WITNESS_SIZE,
+    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, WITNESS_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -731,7 +731,7 @@ pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: u32,
     piece: &[u8],
-    commitment: Commitment,
+    commitment: RecordsRoot,
     position: u32,
     record_size: u32,
 ) -> bool {
@@ -762,7 +762,7 @@ pub fn is_piece_record_hash_valid(
     kzg: &Kzg,
     num_pieces_in_segment: u32,
     piece_record_hash: &Blake2b256Hash,
-    commitment: &Commitment,
+    commitment: &RecordsRoot,
     witness: &Witness,
     position: u32,
 ) -> bool {

@@ -35,7 +35,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ## 🖼️ Windows Instructions
 
 1. Download the executables for your operating system from the [Releases](https://github.com/subspace/subspace/releases) tab.
-2. Open `Powershell` (we do not recommend using Command Prompt as it's syntax is slightly different)
+2. Open `Powershell` (we do not recommend using Command Prompt as its syntax is slightly different)
 3. In the terminal we will change to the Downloads directory using this command `cd Downloads`
 4. We will then start the node using the following command
 
@@ -44,9 +44,12 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
---chain gemini-2a `
+--chain gemini-3b `
 --execution wasm `
+--blocks-pruning archive `
 --state-pruning archive `
+--dsn-disable-private-ips `
+--no-private-ipv4 `
 --validator `
 --name INSERT_YOUR_ID
 ```
@@ -55,7 +58,7 @@ If you're connected directly without any router, then again nothing needs to be 
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-windows
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 2a
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3b
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at C:\Users\X\AppData\Local\subspace-node-windows-x86_64-snapshot-2022-jan-05.exe\data\chains\subspace_test\db\full
@@ -78,7 +81,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-.\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+.\FARMER_FILE_NAME.exe farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
 ## 🐧 Ubuntu Instructions
@@ -93,9 +96,12 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-2a \
+  --chain gemini-3b \
   --execution wasm \
+  --blocks-pruning archive \
   --state-pruning archive \
+  --dsn-disable-private-ips \
+  --no-private-ipv4 \
   --validator \
   --name INSERT_YOUR_ID
 ```
@@ -104,7 +110,7 @@ If you're connected directly without any router, then again nothing needs to be 
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-ubuntu
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 2a
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3b
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /home/X/.local/share/subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -126,7 +132,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+./FARMER_FILE_NAME farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
 ## 🍎 macOS Instructions
@@ -145,9 +151,12 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-2a \
+  --chain gemini-3b \
   --execution wasm \
+  --blocks-pruning archive \
   --state-pruning archive \
+  --dsn-disable-private-ips \
+  --no-private-ipv4 \
   --validator \
   --name INSERT_YOUR_ID
 ```
@@ -156,7 +165,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 2a
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3b
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -178,7 +187,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+./FARMER_FILE_NAME farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 
@@ -205,22 +214,25 @@ services:
       - "0.0.0.0:30433:30433"
     restart: unless-stopped
     command: [
-      "--chain", "gemini-2a",
+      "--chain", "gemini-3b",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
+      "--blocks-pruning", "archive",
       "--state-pruning", "archive",
       "--port", "30333",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
       "--rpc-cors", "all",
       "--rpc-methods", "safe",
       "--unsafe-ws-external",
+      "--dsn-disable-private-ips",
+      "--no-private-ipv4",
       "--validator",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
     ]
     healthcheck:
       timeout: 5s
-# If node setup takes longer then expected, you want to increase `interval` and `retries` number.
+# If node setup takes longer than expected, you want to increase `interval` and `retries` number.
       interval: 30s
       retries: 5
 
@@ -247,6 +259,7 @@ services:
     command: [
       "--base-path", "/var/subspace",
       "farm",
+      "--disable-private-ips",
       "--node-rpc-url", "ws://node:9944",
       "--ws-server-listen-addr", "0.0.0.0:9955",
       "--listen-on", "/ip4/0.0.0.0/tcp/30533",
@@ -276,7 +289,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-2a.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3b.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
 
 ## Switching from older/different versions of Subspace
 
@@ -287,7 +300,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain gemini-2a
+./NODE_FILE_NAME purge-chain --chain gemini-3b
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -309,8 +322,8 @@ Below are some helpful samples:
 
 - `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
 - `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
-- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-2a ...` : start node and store data in `/path/to/data` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-2a` : erases data related to the node if data were stored in `/path/to/data`
+- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-3b ...` : start node and store data in `/path/to/data` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-3b` : erases data related to the node if data were stored in `/path/to/data`
 
 Examples:
 ```bash
@@ -323,7 +336,7 @@ Examples:
 
 Farmer has an advanced set of parameters that allow using multiple disks.
 
-To use this advanced parameters you need to replace this command:
+To use these advanced parameters you need to replace this command:
 ```
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```

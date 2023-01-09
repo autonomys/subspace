@@ -42,13 +42,14 @@ use std::sync::Arc;
 use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
-use subspace_service::{DsnConfig, FullPool, NewFull, SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::{DsnConfig, NewFull, SubspaceConfiguration, SubspaceNetworking};
 use subspace_test_client::{
     chain_spec, start_farmer, Backend, Client, FraudProofVerifier, TestExecutorDispatch,
 };
 use subspace_test_runtime::{
     BlockHashCount, Runtime, RuntimeApi, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
+use subspace_transaction_pool::FullPool;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
@@ -199,7 +200,6 @@ pub async fn run_validator_node(
                     reserved_peers: vec![],
                     keypair: identity::Keypair::generate_ed25519(),
                     allow_non_global_addresses_in_dht: true,
-                    piece_publisher_batch_size: 10,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
             },

@@ -17,7 +17,7 @@ use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, VerificationError};
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::backend::AsTrieBackend;
@@ -25,6 +25,7 @@ use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_wasm_tools::read_core_domain_runtime_blob;
 
 /// Creates storage proof for verifying an execution without owning the whole state.
 pub struct ExecutionProver<Block, B, Exec> {
@@ -231,6 +232,7 @@ where
     /// Verifies the fraud proof.
     pub fn verify(&self, proof: &FraudProof) -> Result<(), VerificationError> {
         let FraudProof {
+            domain_id,
             parent_hash,
             pre_state_root,
             post_state_root,
@@ -241,11 +243,29 @@ where
 
         let at = PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
             .expect("Block Hash must be H256; qed");
-        let wasm_bundle = self
+        let system_wasm_bundle = self
             .client
             .runtime_api()
             .system_domain_wasm_bundle(&BlockId::Hash(at))
             .map_err(VerificationError::RuntimeApi)?;
+
+        let wasm_bundle = match *domain_id {
+            DomainId::SYSTEM => system_wasm_bundle,
+            DomainId::CORE_PAYMENTS => {
+                read_core_domain_runtime_blob(system_wasm_bundle.as_ref(), *domain_id)
+                    .map_err(|err| {
+                        VerificationError::RuntimeCode(format!(
+                    "failed to read core domain {domain_id:?} runtime blob file, error {err:?}"
+                ))
+                    })?
+                    .into()
+            }
+            _ => {
+                return Err(VerificationError::RuntimeCode(format!(
+                    "No runtime code for {domain_id:?}"
+                )));
+            }
+        };
 
         let code_fetcher = RuntimCodeFetcher {
             wasm_bundle: &wasm_bundle,

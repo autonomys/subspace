@@ -250,9 +250,9 @@ where
 
     fn block_header(
         &self,
-        at: &BlockId<Self::Block>,
+        hash: <Self::Block as BlockT>::Hash,
     ) -> Result<Option<<Self::Block as BlockT>::Header>, Self::Error> {
-        self.inner.block_header(at)
+        self.inner.block_header(hash)
     }
 
     fn tree_route(
@@ -447,7 +447,7 @@ where
     }
 }
 
-pub(super) fn new_full<Block, Client, Verifier>(
+pub fn new_full<Block, Client, Verifier>(
     config: &Configuration,
     task_manager: &TaskManager,
     client: Arc<Client>,

@@ -10,7 +10,8 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{Bundle, BundleHeader};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -48,17 +49,17 @@ where
         }
     }
 
-    pub(crate) async fn propose_bundle_at<PBlock, R, RHash>(
+    pub(crate) async fn propose_bundle_at<PBlock, ParentChain, ParentChainHash>(
         &self,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
-        parent_chain: R,
-        parent_chain_block_hash: RHash,
+        parent_chain: ParentChain,
+        parent_chain_block_hash: ParentChainHash,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
         PBlock: BlockT,
-        R: ParentChainInterface<RHash>,
-        RHash: Copy,
+        ParentChain: ParentChainInterface<ParentChainHash>,
+        ParentChainHash: Copy + Debug,
     {
         let parent_number = self.client.info().best_number;
 
@@ -114,6 +115,8 @@ where
             )?
         };
 
+        receipts_sanity_check::<Block, PBlock>(&receipts)?;
+
         let bundle = Bundle {
             header: BundleHeader {
                 primary_hash,
@@ -127,20 +130,27 @@ where
         Ok(bundle)
     }
 
-    /// Returns the receipts in the next core domain bundle.
-    fn collect_bundle_receipts<PBlock, R, RHash>(
+    /// Returns the receipts in the next domain bundle.
+    fn collect_bundle_receipts<PBlock, ParentChain, ParentChainHash>(
         &self,
         header_number: NumberFor<Block>,
-        parent_chain: R,
-        parent_chain_block_hash: RHash,
+        parent_chain: ParentChain,
+        parent_chain_block_hash: ParentChainHash,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
         PBlock: BlockT,
-        R: ParentChainInterface<RHash>,
-        RHash: Copy,
+        ParentChain: ParentChainInterface<ParentChainHash>,
+        ParentChainHash: Copy + Debug,
     {
         let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
         let max_drift = parent_chain.maximum_receipt_drift(parent_chain_block_hash)?;
+
+        tracing::trace!(
+            ?header_number,
+            ?head_receipt_number,
+            ?max_drift,
+            "Collecting receipts at {parent_chain_block_hash:?}"
+        );
 
         let load_receipt = |block_hash| {
             crate::aux_schema::load_execution_receipt::<
@@ -182,5 +192,76 @@ where
         };
 
         Ok(receipts)
+    }
+}
+
+/// Performs the sanity check in order to detect the potential invalid receipts earlier.
+fn receipts_sanity_check<Block, PBlock>(
+    receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
+) -> sp_blockchain::Result<()>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+{
+    for (i, [ref head, ref tail]) in receipts.array_windows().enumerate() {
+        if head.primary_number + One::one() != tail.primary_number {
+            return Err(sp_blockchain::Error::Application(Box::from(format!(
+                "Found inconsecutive receipt at index {}, receipts[{i}]: {:?}, receipts[{}]: {:?}",
+                i + 1,
+                (head.primary_number, head.primary_hash),
+                i + 1,
+                (tail.primary_number, tail.primary_hash),
+            ))));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::receipts_sanity_check;
+    use domain_test_service::runtime::Block;
+    use sp_core::H256;
+    use sp_domains::ExecutionReceipt;
+    use subspace_core_primitives::BlockNumber;
+    use subspace_runtime_primitives::Hash;
+    use subspace_test_runtime::Block as PBlock;
+
+    fn create_dummy_receipt_for(
+        primary_number: BlockNumber,
+    ) -> ExecutionReceipt<BlockNumber, Hash, H256> {
+        ExecutionReceipt {
+            primary_number,
+            primary_hash: H256::random(),
+            domain_hash: H256::random(),
+            trace: if primary_number == 0 {
+                Vec::new()
+            } else {
+                vec![H256::random(), H256::random()]
+            },
+            trace_root: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_receipts_sanity_check() {
+        let receipts = vec![
+            create_dummy_receipt_for(1),
+            create_dummy_receipt_for(2),
+            create_dummy_receipt_for(4),
+        ];
+        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_err());
+
+        let receipts = vec![
+            create_dummy_receipt_for(1),
+            create_dummy_receipt_for(2),
+            create_dummy_receipt_for(3),
+        ];
+        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
+
+        let receipts = vec![create_dummy_receipt_for(1)];
+        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
+
+        assert!(receipts_sanity_check::<Block, PBlock>(&[]).is_ok());
     }
 }
