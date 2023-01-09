@@ -15,11 +15,9 @@
 
 //! Primitives for system domain runtime.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
-use codec::{Decode, Encode};
+use crate::DomainId;
+use parity_scale_codec::{Decode, Encode};
 use sp_core::sp_std;
-use sp_domains::DomainId;
 use sp_std::vec::Vec;
 
 /// Predigest item that contains the Confirmed Block's state root for domain tracker
@@ -38,6 +36,15 @@ pub trait CoreDomainTracker<BlockNumber, StateRoot> {
         block_number: BlockNumber,
         state_root: StateRoot,
     );
+}
+
+impl<BlockNumber, StateRoot> CoreDomainTracker<BlockNumber, StateRoot> for () {
+    fn add_core_domain_state_root(
+        _domain_id: DomainId,
+        _block_number: BlockNumber,
+        _state_root: StateRoot,
+    ) {
+    }
 }
 
 sp_api::decl_runtime_apis! {

@@ -22,7 +22,6 @@
 mod tests;
 
 use codec::{Decode, Encode};
-use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -31,54 +30,26 @@ use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proo
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
-use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
+    use pallet_receipts::{Error as ReceiptError, FraudProofError};
     use sp_core::H256;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
-    use sp_runtime::traits::{CheckEqual, MaybeDisplay, One, SimpleBitOps, Zero};
+    use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
+    use sp_runtime::traits::{One, Zero};
     use sp_std::fmt::Debug;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config + pallet_receipts::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
-        /// Domain block hash type.
-        type DomainHash: Parameter
-            + Member
-            + MaybeSerializeDeserialize
-            + Debug
-            + MaybeDisplay
-            + SimpleBitOps
-            + Ord
-            + Default
-            + Copy
-            + CheckEqual
-            + sp_std::hash::Hash
-            + AsRef<[u8]>
-            + AsMut<[u8]>
-            + MaxEncodedLen;
-
-        /// Number of execution receipts kept in the state.
-        #[pallet::constant]
-        type ReceiptsPruningDepth: Get<Self::BlockNumber>;
-
-        /// Maximum execution receipt drift.
-        ///
-        /// If the primary number of an execution receipt plus the maximum drift is bigger than the
-        /// best execution chain number, this receipt will be rejected as being too far in the
-        /// future.
-        #[pallet::constant]
-        type MaximumReceiptDrift: Get<Self::BlockNumber>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
@@ -131,21 +102,14 @@ mod pallet {
         Empty,
     }
 
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
-    pub enum FraudProofError {
-        /// Fraud proof is expired as the execution receipt has been pruned.
-        ExecutionReceiptPruned,
-        /// Trying to prove an receipt from the future.
-        ExecutionReceiptInFuture,
-        /// Unexpected hash type.
-        WrongHashType,
-        /// The execution receipt points to a block unknown to the history.
-        UnknownBlock,
-    }
-
-    impl<T> From<FraudProofError> for Error<T> {
-        fn from(e: FraudProofError) -> Self {
-            Self::FraudProof(e)
+    impl<T> From<ReceiptError> for Error<T> {
+        fn from(error: ReceiptError) -> Self {
+            match error {
+                ReceiptError::MissingParent => {
+                    Self::Bundle(BundleError::Receipt(ExecutionReceiptError::MissingParent))
+                }
+                ReceiptError::FraudProof(err) => Self::FraudProof(err),
+            }
         }
     }
 
@@ -198,33 +162,11 @@ mod pallet {
 
             // Only process the system domain receipts.
             if domain_id.is_system() {
-                let oldest_receipt_number = OldestReceiptNumber::<T>::get();
-                let (_, mut best_number) = <ReceiptHead<T>>::get();
-
-                for receipt in &signed_opaque_bundle.bundle.receipts {
-                    let primary_number = receipt.primary_number;
-
-                    // Ignore the receipt if it has already been pruned.
-                    if primary_number < oldest_receipt_number {
-                        continue;
-                    }
-
-                    if primary_number <= best_number {
-                        // Either increase the vote for a known receipt or add a fork receipt at this height.
-                        Self::apply_non_new_best_receipt(domain_id, receipt);
-                    } else if primary_number == best_number + One::one() {
-                        Self::apply_new_best_receipt(domain_id, receipt);
-                        best_number += One::one();
-                    } else {
-                        // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
-                        //
-                        // This should never happen as pre_dispatch_submit_bundle ensures no missing receipt.
-                        return Err(Error::<T>::Bundle(BundleError::Receipt(
-                            ExecutionReceiptError::MissingParent,
-                        ))
-                        .into());
-                    }
-                }
+                pallet_receipts::Pallet::<T>::track_receipts(
+                    domain_id,
+                    signed_opaque_bundle.bundle.receipts.as_slice(),
+                )
+                .map_err(Error::<T>::from)?;
             }
 
             Self::deposit_event(Event::BundleStored {
@@ -249,21 +191,7 @@ mod pallet {
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id.is_system() {
-                // Revert the execution chain.
-                let (_, mut to_remove) = ReceiptHead::<T>::get();
-
-                let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
-                let new_best_hash = BlockHash::<T>::get(new_best_number);
-
-                ReceiptHead::<T>::put((new_best_hash, new_best_number));
-
-                while to_remove > new_best_number {
-                    let block_hash = BlockHash::<T>::get(to_remove);
-                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                        Receipts::<T>::remove(receipt_hash);
-                    }
-                    to_remove -= One::one();
-                }
+                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof);
             }
 
             // TODO: slash the executor accordingly.
@@ -310,70 +238,21 @@ mod pallet {
         }
     }
 
-    /// Map of primary block number to primary block hash.
-    ///
-    /// NOTE: The oldest block hash will be pruned once the oldest receipt is pruned. However, if the
-    /// system domain stalls, i.e., no receipts are included in the primary chain for a long time,
-    /// this mapping will grow indefinitely.
-    #[pallet::storage]
-    pub(super) type BlockHash<T: Config> =
-        StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, ValueQuery>;
-
-    /// Mapping from the receipt hash to the corresponding verified execution receipt.
-    ///
-    /// The capacity of receipts stored in the state is [`Config::ReceiptsPruningDepth`], the older
-    /// ones will be pruned once the size of receipts exceeds this number.
-    #[pallet::storage]
-    pub(super) type Receipts<T: Config> = StorageMap<
-        _,
-        Twox64Concat,
-        H256,
-        ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
-        OptionQuery,
-    >;
-
-    /// Mapping for tracking the receipt votes.
-    ///
-    /// (primary_block_hash, receipt_hash, receipt_count)
-    #[pallet::storage]
-    pub(super) type ReceiptVotes<T: Config> =
-        StorageDoubleMap<_, Twox64Concat, T::Hash, Blake2_128Concat, H256, u32, ValueQuery>;
-
-    /// Mapping for tracking the system domain state roots.
-    ///
-    /// (domain_block_number, domain_block_hash, domain_state_root)
-    #[pallet::storage]
-    pub(super) type StateRoots<T: Config> = StorageDoubleMap<
-        _,
-        Twox64Concat,
-        T::BlockNumber,
-        Blake2_128Concat,
-        T::DomainHash,
-        T::DomainHash,
-        OptionQuery,
-    >;
-
-    /// A pair of (block_hash, block_number) of the latest execution receipt.
-    #[pallet::storage]
-    #[pallet::getter(fn receipt_head)]
-    pub(super) type ReceiptHead<T: Config> = StorageValue<_, (T::Hash, T::BlockNumber), ValueQuery>;
-
-    /// Block number of the oldest receipt stored in the state.
-    #[pallet::storage]
-    pub(super) type OldestReceiptNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
-
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
 
-            <BlockHash<T>>::insert(parent_number, parent_hash);
+            pallet_receipts::BlockHash::<T>::insert(DomainId::SYSTEM, parent_number, parent_hash);
 
             // The genesis block hash is not finalized until the genesis block building is done,
             // hence the genesis receipt is initialized after the genesis building.
             if parent_number.is_zero() {
-                Self::initialize_genesis_receipt(parent_hash);
+                pallet_receipts::Pallet::<T>::initialize_genesis_receipt(
+                    DomainId::SYSTEM,
+                    parent_hash,
+                );
             }
 
             T::DbWeight::get().writes(1)
@@ -430,7 +309,8 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
+                    if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
+                    {
                         log::error!(
                             target: "runtime::domains",
                             "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
@@ -487,32 +367,12 @@ mod pallet {
 impl<T: Config> Pallet<T> {
     /// Returns the block number of the latest receipt.
     pub fn head_receipt_number() -> T::BlockNumber {
-        let (_, best_number) = <ReceiptHead<T>>::get();
-        best_number
+        pallet_receipts::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
     }
 
     /// Returns the block number of the oldest receipt still being tracked in the state.
     pub fn oldest_receipt_number() -> T::BlockNumber {
-        Self::finalized_receipt_number() + One::one()
-    }
-
-    /// Returns the block number of latest _finalized_ receipt.
-    pub fn finalized_receipt_number() -> T::BlockNumber {
-        let (_, best_number) = <ReceiptHead<T>>::get();
-        best_number.saturating_sub(T::ReceiptsPruningDepth::get())
-    }
-
-    fn initialize_genesis_receipt(genesis_hash: T::Hash) {
-        let genesis_receipt = ExecutionReceipt {
-            primary_number: Zero::zero(),
-            primary_hash: genesis_hash,
-            domain_hash: T::DomainHash::default(),
-            trace: Vec::new(),
-            trace_root: Default::default(),
-        };
-        Self::apply_new_best_receipt(DomainId::SYSTEM, &genesis_receipt);
-        // Explicitly initialize the oldest receipt number even not necessary as ValueQuery is used.
-        OldestReceiptNumber::<T>::put::<T::BlockNumber>(Zero::zero());
+        pallet_receipts::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
     }
 
     fn receipts_are_consecutive(
@@ -535,8 +395,8 @@ impl<T: Config> Pallet<T> {
         }
 
         if signed_opaque_bundle.domain_id().is_system() {
-            let oldest_receipt_number = OldestReceiptNumber::<T>::get();
-            let (_, mut best_number) = <ReceiptHead<T>>::get();
+            let oldest_receipt_number = Self::oldest_receipt_number();
+            let mut best_number = Self::head_receipt_number();
 
             for receipt in execution_receipts {
                 let primary_number = receipt.primary_number;
@@ -548,12 +408,15 @@ impl<T: Config> Pallet<T> {
 
                 // Non-best receipt
                 if primary_number <= best_number {
-                    let primary_hash = BlockHash::<T>::get(primary_number);
-                    if primary_hash != receipt.primary_hash {
+                    if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
+                        DomainId::SYSTEM,
+                        receipt,
+                    ) {
                         log::error!(
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
-                            expected: {primary_hash:?}, got: {:?}",
+                            expected: {:?}, got: {:?}",
+                            pallet_receipts::BlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                             receipt.primary_hash,
                         );
                         return Err(TransactionValidityError::Invalid(
@@ -562,12 +425,15 @@ impl<T: Config> Pallet<T> {
                     }
                 // New nest receipt.
                 } else if primary_number == best_number + One::one() {
-                    let primary_hash = BlockHash::<T>::get(primary_number);
-                    if primary_hash != receipt.primary_hash {
+                    if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
+                        DomainId::SYSTEM,
+                        receipt,
+                    ) {
                         log::error!(
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
-                            expected: {primary_hash:?}, got: {:?}",
+                            expected: {:?}, got: {:?}",
+                            pallet_receipts::BlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                             receipt.primary_hash,
                         );
                         return Err(TransactionValidityError::Invalid(
@@ -623,17 +489,21 @@ impl<T: Config> Pallet<T> {
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
-                None => StateRoots::<T>::get(block_number, block_hash)
-                    .ok_or(BundleError::StateRootNotFound)
-                    .map_err(|err| {
-                        log::error!(
-                            target: "runtime::domains",
-                            "State root for #{block_number:?},{block_hash:?} not found, \
-                            current head receipt: {:?}",
-                            <ReceiptHead<T>>::get(),
-                        );
-                        err
-                    })?,
+                None => pallet_receipts::Pallet::<T>::state_root((
+                    DomainId::SYSTEM,
+                    block_number,
+                    block_hash,
+                ))
+                .ok_or(BundleError::StateRootNotFound)
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "State root for #{block_number:?},{block_hash:?} not found, \
+                        current head receipt: {:?}",
+                        pallet_receipts::Pallet::<T>::receipt_head(DomainId::SYSTEM),
+                    );
+                    err
+                })?,
             };
 
             if expected_state_root != *state_root {
@@ -705,10 +575,10 @@ impl<T: Config> Pallet<T> {
 
             let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
-            let (_, best_number) = <ReceiptHead<T>>::get();
+            let best_number = Self::head_receipt_number();
             let max_allowed = best_number + T::MaximumReceiptDrift::get();
 
-            let oldest_receipt_number = OldestReceiptNumber::<T>::get();
+            let oldest_receipt_number = Self::oldest_receipt_number();
 
             for execution_receipt in &bundle.receipts {
                 let primary_number = execution_receipt.primary_number;
@@ -725,13 +595,19 @@ impl<T: Config> Pallet<T> {
                 let point_to_parent_block = primary_number == current_block_number - One::one()
                     && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
 
-                let primary_hash = BlockHash::<T>::get(primary_number);
-                if !point_to_parent_block && primary_hash != execution_receipt.primary_hash {
+                let point_to_valid_primary_block =
+                    pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
+                        DomainId::SYSTEM,
+                        execution_receipt,
+                    );
+
+                if !point_to_parent_block && !point_to_valid_primary_block {
                     log::error!(
                         target: "runtime::domains",
                         "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
-                        expected: #{primary_number:?},{primary_hash:?}",
-                        execution_receipt.primary_hash
+                        expected: #{primary_number:?},{:?}",
+                        execution_receipt.primary_hash,
+                        pallet_receipts::BlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                     );
                     return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
                 }
@@ -751,33 +627,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), FraudProofError> {
-        let (_, best_number) = <ReceiptHead<T>>::get();
-
-        let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
-        ensure!(
-            to_prove > best_number.saturating_sub(T::ReceiptsPruningDepth::get()),
-            FraudProofError::ExecutionReceiptPruned
-        );
-
-        ensure!(
-            to_prove <= best_number,
-            FraudProofError::ExecutionReceiptInFuture
-        );
-
-        let parent_hash = T::Hash::decode(&mut fraud_proof.parent_hash.encode().as_slice())
-            .map_err(|_| FraudProofError::WrongHashType)?;
-        let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
-        ensure!(
-            BlockHash::<T>::get(parent_number) == parent_hash,
-            FraudProofError::UnknownBlock
-        );
-
-        // TODO: prevent the spamming of fraud proof transaction.
-
-        Ok(())
-    }
-
     // TODO: Checks if the bundle equivocation proof is valid.
     fn validate_bundle_equivocation_proof(
         _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
@@ -790,80 +639,6 @@ impl<T: Config> Pallet<T> {
         _invalid_transaction_proof: &InvalidTransactionProof,
     ) -> Result<(), Error<T>> {
         Ok(())
-    }
-
-    fn apply_new_best_receipt(
-        domain_id: DomainId,
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
-    ) {
-        let primary_hash = execution_receipt.primary_hash;
-        let primary_number = execution_receipt.primary_number;
-        let receipt_hash = execution_receipt.hash();
-
-        // Apply the new best receipt.
-        <Receipts<T>>::insert(receipt_hash, execution_receipt);
-        <ReceiptHead<T>>::put((primary_hash, primary_number));
-        <ReceiptVotes<T>>::mutate(primary_hash, receipt_hash, |count| {
-            *count += 1;
-        });
-
-        if !primary_number.is_zero() {
-            let state_root = execution_receipt
-                .trace
-                .last()
-                .expect("There are at least 2 elements in trace after the genesis block; qed");
-
-            <StateRoots<T>>::insert(primary_number, execution_receipt.domain_hash, state_root);
-        }
-
-        // Remove the expired receipts once the receipts cache is full.
-        if let Some(to_prune) = primary_number.checked_sub(&T::ReceiptsPruningDepth::get()) {
-            BlockHash::<T>::mutate_exists(to_prune, |maybe_block_hash| {
-                if let Some(block_hash) = maybe_block_hash.take() {
-                    for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix(block_hash) {
-                        Receipts::<T>::remove(receipt_hash);
-                    }
-                }
-            });
-            OldestReceiptNumber::<T>::put(to_prune + One::one());
-            let _ = <StateRoots<T>>::clear_prefix(to_prune, u32::MAX, None);
-        }
-
-        Self::deposit_event(Event::NewSystemDomainReceipt {
-            domain_id,
-            primary_number,
-            primary_hash,
-        });
-    }
-
-    fn apply_non_new_best_receipt(
-        domain_id: DomainId,
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
-    ) {
-        let primary_hash = execution_receipt.primary_hash;
-        let primary_number = execution_receipt.primary_number;
-        let receipt_hash = execution_receipt.hash();
-
-        // Track the fork receipt if it's not seen before.
-        if !<Receipts<T>>::contains_key(receipt_hash) {
-            <Receipts<T>>::insert(receipt_hash, execution_receipt);
-            if !primary_number.is_zero() {
-                let state_root = execution_receipt
-                    .trace
-                    .last()
-                    .expect("There are at least 2 elements in trace after the genesis block; qed");
-
-                <StateRoots<T>>::insert(primary_number, execution_receipt.domain_hash, state_root);
-            }
-            Self::deposit_event(Event::NewSystemDomainReceipt {
-                domain_id,
-                primary_number,
-                primary_hash,
-            });
-        }
-        <ReceiptVotes<T>>::mutate(primary_hash, receipt_hash, |count| {
-            *count += 1;
-        });
     }
 }
 
