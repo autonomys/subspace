@@ -30,7 +30,7 @@ use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
 use sc_rpc::SubscriptionTaskExecutor;
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -40,7 +40,7 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as Sub
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, Zero};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -116,7 +116,7 @@ struct BlockSignatureSenders {
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block, Client> {
+pub struct SubspaceRpc<Block: BlockT, Client> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -125,6 +125,7 @@ pub struct SubspaceRpc<Block, Client> {
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
+    subspace_link: SubspaceLink<Block>,
     _phantom: PhantomData<Block>,
 }
 
@@ -135,7 +136,7 @@ pub struct SubspaceRpc<Block, Client> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client> SubspaceRpc<Block, Client> {
+impl<Block: BlockT, Client> SubspaceRpc<Block, Client> {
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
         client: Arc<Client>,
@@ -146,6 +147,7 @@ impl<Block, Client> SubspaceRpc<Block, Client> {
             ArchivedSegmentNotification,
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
+        subspace_link: SubspaceLink<Block>,
     ) -> Self {
         Self {
             client,
@@ -156,6 +158,7 @@ impl<Block, Client> SubspaceRpc<Block, Client> {
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
+            subspace_link,
             _phantom: PhantomData::default(),
         }
     }
@@ -459,12 +462,28 @@ where
 
         let runtime_api = self.client.runtime_api();
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        let best_block_number = self.client.info().best_number;
 
         let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
-            .map(|idx| {
-                runtime_api.records_root(&best_block_id, idx).map_err(|_| {
-                    JsonRpseeError::Custom("Internal error during `records_root` call".to_string())
+            .map(|segment_index| {
+                let api_result = runtime_api
+                    .records_root(&best_block_id, segment_index)
+                    .map_err(|_| {
+                        JsonRpseeError::Custom(
+                            "Internal error during `records_root` call".to_string(),
+                        )
+                    });
+
+                api_result.map(|maybe_records_root| {
+                    // This is not a very nice hack due to the fact that at the time first block is produced
+                    // extrinsics with root blocks are not yet in runtime.
+                    if maybe_records_root.is_none() && best_block_number.is_zero() {
+                        self.subspace_link
+                            .records_root_by_segment_index(segment_index)
+                    } else {
+                        maybe_records_root
+                    }
                 })
             })
             .collect();
