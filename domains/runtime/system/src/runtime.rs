@@ -281,6 +281,11 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+}
+
+impl pallet_receipts::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type CoreDomainTracker = DomainTracker;
@@ -370,6 +375,7 @@ construct_runtime!(
         // Must be after Balances pallet so that its genesis is built after the Balances genesis is
         // built.
         ExecutorRegistry: pallet_executor_registry = 4,
+        Receipts: pallet_receipts = 9,
         DomainRegistry: pallet_domain_registry = 5,
         DomainTracker: pallet_domain_tracker = 6,
         Messenger: pallet_messenger = 7,
@@ -582,7 +588,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domain_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
+    impl sp_domains::state_root_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
         fn storage_key_for_core_domain_state_root(
             domain_id: DomainId,
             block_number: BlockNumber,

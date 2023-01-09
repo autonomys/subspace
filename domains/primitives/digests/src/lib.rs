@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
-use sp_domain_tracker::StateRootUpdate;
+use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 
 const DOMAIN_ENGINE_ID: ConsensusEngineId = *b"DMN_";

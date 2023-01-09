@@ -9,7 +9,7 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
-use sp_domain_tracker::DomainTrackerApi;
+use sp_domains::state_root_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
     CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,

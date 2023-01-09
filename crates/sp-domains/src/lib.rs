@@ -19,6 +19,7 @@
 
 pub mod bundle_election;
 pub mod fraud_proof;
+pub mod state_root_tracker;
 pub mod transaction;
 
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
