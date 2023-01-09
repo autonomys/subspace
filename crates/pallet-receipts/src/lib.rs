@@ -13,12 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # Pallet Receipt track all the execution receipt related onchain state for both primary
-//! chain (tracking the system domain execution receipt) and system domain (tracking the core
-//! domains execution receipt)
+//! # Receipts Pallet
+//! This pallet provides the general common settlement functions needed by the consensus chain
+//! and system domain, which mainly includes tracking the receipts and handling the fraud proofs
+//! from the chain they secure.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::{Decode, Encode};
+use frame_support::ensure;
 use frame_support::traits::Get;
 pub use pallet::*;
 use sp_domains::fraud_proof::FraudProof;
@@ -30,6 +33,7 @@ use sp_std::vec::Vec;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
+    use frame_support::PalletError;
     use sp_core::H256;
     use sp_domains::state_root_tracker::CoreDomainTracker;
     use sp_domains::{DomainId, ExecutionReceipt};
@@ -171,11 +175,32 @@ mod pallet {
             new_best_hash: T::Hash,
         },
     }
+
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    pub enum FraudProofError {
+        /// Fraud proof is expired as the execution receipt has been pruned.
+        ExecutionReceiptPruned,
+        /// Trying to prove an receipt from the future.
+        ExecutionReceiptInFuture,
+        /// Unexpected hash type.
+        WrongHashType,
+        /// The execution receipt points to a block unknown to the history.
+        UnknownBlock,
+    }
 }
 
+#[derive(Debug)]
 pub enum Error {
     /// The parent execution receipt is missing.
     MissingParent,
+    /// Invalid fraud proof.
+    FraudProof(FraudProofError),
+}
+
+impl From<FraudProofError> for Error {
+    fn from(e: FraudProofError) -> Self {
+        Self::FraudProof(e)
+    }
 }
 
 impl<T: Config> Pallet<T> {
@@ -272,6 +297,32 @@ impl<T: Config> Pallet<T> {
             new_best_number,
             new_best_hash,
         });
+    }
+
+    pub fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error> {
+        let best_number = Self::head_receipt_number(fraud_proof.domain_id);
+        let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
+        ensure!(
+            to_prove > best_number.saturating_sub(T::ReceiptsPruningDepth::get()),
+            FraudProofError::ExecutionReceiptPruned
+        );
+
+        ensure!(
+            to_prove <= best_number,
+            FraudProofError::ExecutionReceiptInFuture
+        );
+
+        let parent_hash = T::Hash::decode(&mut fraud_proof.parent_hash.encode().as_slice())
+            .map_err(|_| FraudProofError::WrongHashType)?;
+        let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
+        ensure!(
+            Self::primary_hash(fraud_proof.domain_id, parent_number) == parent_hash,
+            FraudProofError::UnknownBlock
+        );
+
+        // TODO: prevent the spamming of fraud proof transaction.
+
+        Ok(())
     }
 }
 

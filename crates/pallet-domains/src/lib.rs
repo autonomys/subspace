@@ -22,7 +22,6 @@
 mod tests;
 
 use codec::{Decode, Encode};
-use frame_support::ensure;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -31,7 +30,7 @@ use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proo
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
-use sp_runtime::traits::{BlockNumberProvider, One, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
 
@@ -40,7 +39,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
-    use pallet_receipts::Error as ReceiptError;
+    use pallet_receipts::{Error as ReceiptError, FraudProofError};
     use sp_core::H256;
     use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
     use sp_domains::transaction::InvalidTransactionCode;
@@ -103,29 +102,14 @@ mod pallet {
         Empty,
     }
 
-    impl From<ReceiptError> for ExecutionReceiptError {
+    impl<T> From<ReceiptError> for Error<T> {
         fn from(error: ReceiptError) -> Self {
             match error {
-                ReceiptError::MissingParent => Self::MissingParent,
+                ReceiptError::MissingParent => {
+                    Self::Bundle(BundleError::Receipt(ExecutionReceiptError::MissingParent))
+                }
+                ReceiptError::FraudProof(err) => Self::FraudProof(err),
             }
-        }
-    }
-
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
-    pub enum FraudProofError {
-        /// Fraud proof is expired as the execution receipt has been pruned.
-        ExecutionReceiptPruned,
-        /// Trying to prove an receipt from the future.
-        ExecutionReceiptInFuture,
-        /// Unexpected hash type.
-        WrongHashType,
-        /// The execution receipt points to a block unknown to the history.
-        UnknownBlock,
-    }
-
-    impl<T> From<FraudProofError> for Error<T> {
-        fn from(e: FraudProofError) -> Self {
-            Self::FraudProof(e)
         }
     }
 
@@ -182,7 +166,7 @@ mod pallet {
                     domain_id,
                     signed_opaque_bundle.bundle.receipts.as_slice(),
                 )
-                .map_err(|err| Error::<T>::Bundle(BundleError::Receipt(err.into())))?;
+                .map_err(Error::<T>::from)?;
             }
 
             Self::deposit_event(Event::BundleStored {
@@ -325,7 +309,8 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
+                    if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
+                    {
                         log::error!(
                             target: "runtime::domains",
                             "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
@@ -638,33 +623,6 @@ impl<T: Config> Pallet<T> {
                 }
             }
         }
-
-        Ok(())
-    }
-
-    fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), FraudProofError> {
-        let best_number = Self::head_receipt_number();
-        let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
-        ensure!(
-            to_prove > best_number.saturating_sub(T::ReceiptsPruningDepth::get()),
-            FraudProofError::ExecutionReceiptPruned
-        );
-
-        ensure!(
-            to_prove <= best_number,
-            FraudProofError::ExecutionReceiptInFuture
-        );
-
-        let parent_hash = T::Hash::decode(&mut fraud_proof.parent_hash.encode().as_slice())
-            .map_err(|_| FraudProofError::WrongHashType)?;
-        let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
-        ensure!(
-            pallet_receipts::Pallet::<T>::primary_hash(DomainId::SYSTEM, parent_number)
-                == parent_hash,
-            FraudProofError::UnknownBlock
-        );
-
-        // TODO: prevent the spamming of fraud proof transaction.
 
         Ok(())
     }
