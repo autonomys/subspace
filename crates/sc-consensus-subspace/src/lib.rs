@@ -83,8 +83,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, RootBlock, SectorId, SegmentIndex, Solution, SolutionRange,
-    PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Blake2b256Hash, BlockWeight, RecordsRoot, RootBlock, SectorId, SegmentIndex, Solution,
+    SolutionRange, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -494,6 +494,25 @@ impl<Block: BlockT> SubspaceLink<Block> {
             .peek(&block_number)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Get the first found records root by segment index.
+    pub fn records_root_by_segment_index(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Option<RecordsRoot> {
+        self.root_blocks
+            .lock()
+            .iter()
+            .find_map(|(_block_number, root_blocks)| {
+                root_blocks.iter().find_map(|root_block| {
+                    if root_block.segment_index() == segment_index {
+                        Some(root_block.records_root())
+                    } else {
+                        None
+                    }
+                })
+            })
     }
 }
 

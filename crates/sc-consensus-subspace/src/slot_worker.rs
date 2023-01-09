@@ -219,17 +219,9 @@ where
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
             if maybe_records_root.is_none() && parent_header.number().is_zero() {
-                maybe_records_root = self.subspace_link.root_blocks.lock().iter().find_map(
-                    |(_block_number, root_blocks)| {
-                        root_blocks.iter().find_map(|root_block| {
-                            if root_block.segment_index() == segment_index {
-                                Some(root_block.records_root())
-                            } else {
-                                None
-                            }
-                        })
-                    },
-                );
+                maybe_records_root = self
+                    .subspace_link
+                    .records_root_by_segment_index(segment_index);
             }
 
             let records_root = match maybe_records_root {

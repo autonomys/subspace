@@ -26,7 +26,7 @@ use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiSe
 use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
 use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
@@ -65,6 +65,8 @@ pub struct FullDeps<C, P> {
         SubspaceNotificationStream<ArchivedSegmentNotification>,
     /// Bootstrap nodes for DSN.
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// SubspaceLink shared state.
+    pub subspace_link: SubspaceLink<Block>,
 }
 
 /// Instantiate all full RPC extensions.
@@ -96,6 +98,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
+        subspace_link,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -114,6 +117,7 @@ where
             reward_signing_notification_stream,
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
+            subspace_link,
         )
         .into_rpc(),
     )?;
