@@ -318,8 +318,6 @@ mod pallet {
 
             // TODO: slash the executor accordingly.
 
-            Self::deposit_event(Event::FraudProofProcessed);
-
             Ok(())
         }
 
@@ -537,12 +535,6 @@ mod pallet {
         DomainOperatorDeregistered {
             who: T::AccountId,
             domain_id: DomainId,
-        },
-
-        NewCoreDomainReceipt {
-            domain_id: DomainId,
-            primary_number: T::BlockNumber,
-            primary_hash: T::Hash,
         },
 
         FraudProofProcessed,
