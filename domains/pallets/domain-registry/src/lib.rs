@@ -318,8 +318,6 @@ mod pallet {
 
             // TODO: slash the executor accordingly.
 
-            Self::deposit_event(Event::FraudProofProcessed);
-
             Ok(())
         }
 
@@ -537,12 +535,6 @@ mod pallet {
         DomainOperatorDeregistered {
             who: T::AccountId,
             domain_id: DomainId,
-        },
-
-        NewCoreDomainReceipt {
-            domain_id: DomainId,
-            primary_number: T::BlockNumber,
-            primary_hash: T::Hash,
         },
 
         FraudProofProcessed,
@@ -868,40 +860,34 @@ impl<T: Config> Pallet<T> {
         let state_root =
             sp_core::H256::decode(&mut state_root.encode().as_slice()).expect("StateRootNotH256");
 
-        let read_value = |storage_key| {
+        let read_value = |storage_key: Vec<u8>| {
             sp_trie::read_trie_value::<sp_trie::LayoutV1<BlakeTwo256>, _>(
                 &db,
                 &state_root,
-                storage_key,
+                &storage_key,
                 None,
                 None,
             )
-            .map_err(|_| ReadBundleElectionParamsError::TrieError)
+            .map_err(|_| ReadBundleElectionParamsError::TrieError)?
+            .ok_or(ReadBundleElectionParamsError::MissingValue)
         };
 
+        fn decode<T: Decode>(storage_key: Vec<u8>) -> Result<T, ReadBundleElectionParamsError> {
+            T::decode(&mut storage_key.as_slice())
+                .map_err(|_| ReadBundleElectionParamsError::DecodeError)
+        }
+
         let executor_key = T::ExecutorRegistry::key_owner_storage_key(executor_public_key);
-        let executor_value =
-            read_value(&executor_key)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
-        let executor: T::AccountId = Decode::decode(&mut executor_value.as_slice())
-            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+        let executor: T::AccountId = decode(read_value(executor_key)?)?;
 
         let stake_weight_key = DomainAuthorities::<T>::hashed_key_for(domain_id, executor);
-        let stake_weight_value =
-            read_value(&stake_weight_key)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
-        let stake_weight: StakeWeight = Decode::decode(&mut stake_weight_value.as_slice())
-            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+        let stake_weight: StakeWeight = decode(read_value(stake_weight_key)?)?;
 
         let total_stake_weight_key = DomainTotalStakeWeight::<T>::hashed_key_for(domain_id);
-        let total_stake_weight_value = read_value(&total_stake_weight_key)?
-            .ok_or(ReadBundleElectionParamsError::MissingValue)?;
-        let total_stake_weight: StakeWeight =
-            Decode::decode(&mut total_stake_weight_value.as_slice())
-                .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+        let total_stake_weight: StakeWeight = decode(read_value(total_stake_weight_key)?)?;
 
-        let domain_config_value = read_value(&Domains::<T>::hashed_key_for(domain_id))?
-            .ok_or(ReadBundleElectionParamsError::MissingValue)?;
-        let domain_config: DomainConfig<T> = Decode::decode(&mut domain_config_value.as_slice())
-            .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
+        let domain_config_key = Domains::<T>::hashed_key_for(domain_id);
+        let domain_config: DomainConfig<T> = decode(read_value(domain_config_key)?)?;
 
         let slot_probability = domain_config.bundle_slot_probability;
 
