@@ -2111,7 +2111,6 @@ dependencies = [
  "sp-consensus-slots",
  "sp-core",
  "sp-domain-digests",
- "sp-domain-tracker",
  "sp-domains",
  "sp-keyring",
  "sp-keystore",
@@ -2168,7 +2167,6 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-core",
- "sp-domain-tracker",
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
@@ -2245,7 +2243,6 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-slots",
  "sp-core",
- "sp-domain-tracker",
  "sp-domains",
  "sp-inherents",
  "sp-keystore",
@@ -2282,6 +2279,7 @@ dependencies = [
  "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
+ "pallet-receipts",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
@@ -2289,7 +2287,6 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
- "sp-domain-tracker",
  "sp-domains",
  "sp-inherents",
  "sp-io",
@@ -5721,12 +5718,12 @@ dependencies = [
  "pallet-balances",
  "pallet-domain-tracker",
  "pallet-executor-registry",
+ "pallet-receipts",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "sp-core",
  "sp-domain-digests",
- "sp-domain-tracker",
  "sp-domains",
  "sp-executor-registry",
  "sp-io",
@@ -5746,7 +5743,6 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-domain-digests",
- "sp-domain-tracker",
  "sp-domains",
  "sp-io",
  "sp-messenger",
@@ -5762,6 +5758,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
+ "pallet-receipts",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -5884,6 +5881,21 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-receipts"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domains",
  "sp-runtime",
  "sp-std",
 ]
@@ -8860,18 +8872,8 @@ dependencies = [
  "parity-scale-codec",
  "sp-api",
  "sp-core",
- "sp-domain-tracker",
- "sp-runtime",
-]
-
-[[package]]
-name = "sp-domain-tracker"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
  "sp-domains",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -9738,6 +9740,7 @@ dependencies = [
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
+ "pallet-receipts",
  "pallet-rewards",
  "pallet-runtime-configs",
  "pallet-subspace",
@@ -9898,6 +9901,7 @@ dependencies = [
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
+ "pallet-receipts",
  "pallet-rewards",
  "pallet-subspace",
  "pallet-sudo",
@@ -10275,6 +10279,7 @@ dependencies = [
  "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
+ "pallet-receipts",
  "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -10284,7 +10289,6 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-core",
- "sp-domain-tracker",
  "sp-domains",
  "sp-inherents",
  "sp-io",

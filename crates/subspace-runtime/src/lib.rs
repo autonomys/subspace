@@ -387,10 +387,15 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
     type ConfirmationDepthK = ConfirmationDepthK;
+}
+
+impl pallet_receipts::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
+    type MaximumReceiptDrift = MaximumReceiptDrift;
+    type ReceiptsPruningDepth = ReceiptsPruningDepth;
+    type CoreDomainTracker = ();
 }
 
 parameter_types! {
@@ -474,6 +479,7 @@ construct_runtime!(
         Feeds: pallet_feeds = 9,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
+        Receipts: pallet_receipts = 15,
         Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
 

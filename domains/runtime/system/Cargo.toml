@@ -26,6 +26,7 @@ pallet-balances = { version = "4.0.0-dev", default-features = false, git = "http
 pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-registry", default-features = false }
 pallet-domain-tracker = { version = "0.1.0", path = "../../pallets/domain-tracker", default-features = false }
 pallet-executor-registry = { version = "0.1.0", path = "../../pallets/executor-registry", default-features = false }
+pallet-receipts = { version = "0.1.0", path = "../../../crates/pallet-receipts", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger", default-features = false }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
@@ -35,7 +36,6 @@ scale-info = { version = "2.3.1", default-features = false, features = ["derive"
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-sp-domain-tracker = { version = "0.1.0", path = "../../primitives/domain-tracker", default-features = false }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
@@ -72,6 +72,7 @@ std = [
 	"pallet-domain-registry/std",
 	"pallet-domain-tracker/std",
 	"pallet-executor-registry/std",
+	"pallet-receipts/std",
 	"pallet-messenger/std",
 	"pallet-sudo/std",
 	"pallet-transaction-payment/std",
@@ -81,7 +82,6 @@ std = [
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-core/std",
-	"sp-domain-tracker/std",
 	"sp-domains/std",
 	"sp-inherents/std",
 	"sp-io/std",

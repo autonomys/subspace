@@ -210,7 +210,7 @@ where
             }
         }
 
-        None
+        Some(piece)
     }
 }
 

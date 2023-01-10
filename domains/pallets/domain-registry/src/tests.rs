@@ -29,6 +29,7 @@ frame_support::construct_runtime!(
         Balances: pallet_balances,
         ExecutorRegistry: pallet_executor_registry,
         DomainTracker: pallet_domain_tracker,
+        Receipts: pallet_receipts,
         DomainRegistry: pallet_domain_registry,
     }
 );
@@ -132,6 +133,11 @@ impl pallet_domain_registry::Config for Test {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+}
+
+impl pallet_receipts::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type DomainHash = Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
     type CoreDomainTracker = DomainTracker;

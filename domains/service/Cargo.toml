@@ -48,7 +48,6 @@ sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/subs
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-domains = { version = "0.1.0", path = "../../crates/sp-domains" }
-sp-domain-tracker = { version = "0.1.0", path = "../../domains/primitives/domain-tracker" }
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-keystore = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }

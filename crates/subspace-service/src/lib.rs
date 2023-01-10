@@ -634,7 +634,7 @@ where
             },
             force_authoring: config.force_authoring,
             backoff_authoring_blocks,
-            subspace_link,
+            subspace_link: subspace_link.clone(),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
@@ -677,6 +677,7 @@ where
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
+                    subspace_link: subspace_link.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)
