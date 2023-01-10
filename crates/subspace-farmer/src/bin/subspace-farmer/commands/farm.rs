@@ -1,4 +1,5 @@
 mod dsn;
+mod fixed_provider_storage;
 mod piece_storage;
 
 use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
@@ -26,7 +27,7 @@ struct PieceDetails {
 }
 
 #[derive(Debug)]
-struct ReadersAndPieces {
+pub(crate) struct ReadersAndPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndexHash, PieceDetails>,
 }
@@ -64,7 +65,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let (node, mut node_runner, fixed_provider_storage, wrapped_piece_storage) = {
+    let (node, mut node_runner, wrapped_piece_storage) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -112,7 +113,6 @@ pub(crate) async fn farm_multi_disk(
             reward_address,
             dsn_node: node.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
-            fixed_provider_storage: fixed_provider_storage.clone(),
         });
 
         let single_disk_plot = single_disk_plot_fut.await?;
