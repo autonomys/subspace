@@ -3,7 +3,7 @@ use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::{AccountId, DomainCoreApi, DomainExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
@@ -60,6 +60,7 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
+        + DomainExtrinsicApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: sc_consensus::BlockImport<

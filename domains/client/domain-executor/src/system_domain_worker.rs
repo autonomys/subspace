@@ -19,7 +19,7 @@ use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::system_bundle_producer::SystemBundleProducer;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::{AccountId, DomainCoreApi, DomainExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
@@ -66,6 +66,7 @@ pub(super) async fn start_worker<
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
+        + DomainExtrinsicApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,

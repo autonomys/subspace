@@ -12,7 +12,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
@@ -435,7 +435,9 @@ impl_runtime_apis! {
             let _ = Executive::apply_extrinsic(extrinsic);
             Executive::storage_root()
         }
+    }
 
+    impl domain_runtime_primitives::DomainExtrinsicApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
             use codec::Encode;
             let set_code_call = frame_system::Call::set_code { code };
@@ -445,6 +447,12 @@ impl_runtime_apis! {
                     weight: Weight::from_ref_time(0),
                 }.into()
             ).encode()
+        }
+
+        fn construct_submit_core_bundle_extrinsics(
+            _signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
+        ) -> Vec<Vec<u8>> {
+            Vec::new()
         }
     }
 

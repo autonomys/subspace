@@ -506,7 +506,9 @@ impl_runtime_apis! {
             let _ = Executive::apply_extrinsic(extrinsic);
             Executive::storage_root()
         }
+    }
 
+    impl domain_runtime_primitives::DomainExtrinsicApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
             use codec::Encode;
             let set_code_call = frame_system::Call::set_code { code };
@@ -517,9 +519,7 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
-    }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {
@@ -535,7 +535,9 @@ impl_runtime_apis! {
                 })
                 .collect()
         }
+    }
 
+    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
             if domain_id.is_system() {
                 BundleElectionParams {

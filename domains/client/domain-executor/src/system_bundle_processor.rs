@@ -1,10 +1,9 @@
 use crate::domain_block_processor::{
     preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
 };
-use crate::utils::{translate_number_type, DomainBundles};
+use crate::utils::translate_number_type;
 use crate::TransactionFor;
-use codec::Decode;
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::{AccountId, DomainCoreApi, DomainExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
@@ -18,7 +17,6 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
@@ -56,6 +54,7 @@ where
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
+        + DomainExtrinsicApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
@@ -150,7 +149,11 @@ where
         let (bundles, shuffling_seed, maybe_new_runtime) =
             preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
 
-        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+        let extrinsics = self.domain_block_processor.bundles_to_extrinsics(
+            parent_hash,
+            bundles,
+            shuffling_seed,
+        )?;
 
         let digests = self
             .client
@@ -222,47 +225,5 @@ where
         }
 
         Ok(built_block_info)
-    }
-
-    fn bundles_to_extrinsics(
-        &self,
-        parent_hash: Block::Hash,
-        bundles: DomainBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
-    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let (system_bundles, core_bundles) = match bundles {
-            DomainBundles::System(system_bundles, core_bundles) => (system_bundles, core_bundles),
-            DomainBundles::Core(_) => {
-                return Err(sp_blockchain::Error::Application(Box::from(
-                    "System bundle processor can not process core bundles.",
-                )))
-            }
-        };
-
-        let origin_system_extrinsics = self
-            .domain_block_processor
-            .compile_own_domain_bundles(system_bundles);
-        let extrinsics = self
-            .client
-            .runtime_api()
-            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
-            .into_iter()
-            .filter_map(
-                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                            error = ?e,
-                            "Failed to decode the opaque extrisic in bundle, this should not happen"
-                        );
-                        None
-                    }
-                },
-            )
-            .chain(origin_system_extrinsics)
-            .collect::<Vec<_>>();
-
-        self.domain_block_processor
-            .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
     }
 }

@@ -20,18 +20,13 @@
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionParams;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_domains::{DomainId, ExecutorPublicKey};
+use sp_runtime::traits::NumberFor;
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
     /// API necessary for system domain.
     pub trait SystemDomainApi<PNumber: Encode + Decode, PHash: Encode + Decode> {
-        /// Wrap the core domain bundles into extrinsics.
-        fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<PNumber, PHash, <Block as BlockT>::Hash>>,
-        ) -> Vec<Vec<u8>>;
-
         /// Returns the parameters for the bundle election.
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams;
 
