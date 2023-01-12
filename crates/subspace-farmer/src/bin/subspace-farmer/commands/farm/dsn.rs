@@ -70,8 +70,9 @@ pub(super) async fn configure_dsn(
     let default_config = Config::with_generated_keypair();
     let peer_id = peer_id(&keypair);
 
-    let provider_storage = ParityDbProviderStorage::new(&provider_cache_db_path, peer_id)
-        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let provider_storage =
+        ParityDbProviderStorage::new(&provider_cache_db_path, provider_cache_size, peer_id)
+            .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
     let fixed_provider_storage = FixedProviderStorage::new(peer_id, readers_and_pieces.clone());
 
@@ -151,7 +152,6 @@ pub(super) async fn configure_dsn(
         record_store: CustomRecordStore::new(LimitedSizeProviderStorageWrapper::new(
             provider_storage.clone(),
             fixed_provider_storage,
-            provider_cache_size,
             peer_id,
         )),
         ..default_config

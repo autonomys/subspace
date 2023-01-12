@@ -3,6 +3,7 @@ use libp2p::kad::record::Key;
 use libp2p::kad::ProviderRecord;
 use libp2p::PeerId;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use subspace_networking::{peer_id, ParityDbProviderStorage, ProviderStorage};
 use tempfile::TempDir;
 
@@ -19,8 +20,9 @@ fn main() -> anyhow::Result<()> {
     let keypair = Keypair::generate();
     let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair));
 
-    let mut provider_storage = ParityDbProviderStorage::new(&db_path, local_peer_id)
-        .expect("Provider storage DB path should be valid.");
+    let mut provider_storage =
+        ParityDbProviderStorage::new(&db_path, NonZeroUsize::new(1000).unwrap(), local_peer_id)
+            .expect("Provider storage DB path should be valid.");
 
     let key1: Key = b"key1".to_vec().into();
     let provider1 = PeerId::random();

@@ -116,13 +116,13 @@ async fn main() -> anyhow::Result<()> {
             let provider_storage = if let Some(path) = db_path {
                 let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
 
-                let db_provider_storage = ParityDbProviderStorage::new(&db_path, local_peer_id)
-                    .expect("Provider storage DB path should be valid.");
+                let db_provider_storage =
+                    ParityDbProviderStorage::new(&db_path, converted_cache_size, local_peer_id)
+                        .expect("Provider storage DB path should be valid.");
 
                 let limited_size_provider_storage = LimitedSizeProviderStorageWrapper::new(
                     db_provider_storage,
                     NoProviderStorage,
-                    converted_cache_size,
                     local_peer_id,
                 );
 
