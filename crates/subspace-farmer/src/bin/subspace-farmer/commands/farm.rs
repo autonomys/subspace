@@ -1,5 +1,5 @@
 mod dsn;
-mod fixed_provider_storage;
+mod farmer_provider_storage;
 mod piece_storage;
 
 use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};

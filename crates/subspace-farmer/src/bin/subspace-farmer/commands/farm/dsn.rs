@@ -1,4 +1,4 @@
-use crate::commands::farm::fixed_provider_storage::FixedProviderStorage;
+use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
 use crate::commands::farm::piece_storage::{LimitedSizePieceStorageWrapper, ParityDbPieceStorage};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
@@ -14,9 +14,9 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{
-    create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, Node, NodeRunner, ParityDbProviderStorage,
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore, Node, NodeRunner,
+    ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    PieceKey, ToMultihash,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
@@ -24,9 +24,7 @@ use tracing::{debug, info, trace, warn};
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
 // Type alias for currently configured Kademlia's custom record store.
-type ConfiguredRecordStore = CustomRecordStore<
-    LimitedSizeProviderStorageWrapper<ParityDbProviderStorage, FixedProviderStorage>,
->;
+type ConfiguredRecordStore = CustomRecordStore<FarmerProviderStorage<ParityDbProviderStorage>>;
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -70,11 +68,12 @@ pub(super) async fn configure_dsn(
     let default_config = Config::with_generated_keypair();
     let peer_id = peer_id(&keypair);
 
-    let provider_storage =
+    let db_provider_storage =
         ParityDbProviderStorage::new(&provider_cache_db_path, provider_cache_size, peer_id)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
-    let fixed_provider_storage = FixedProviderStorage::new(peer_id, readers_and_pieces.clone());
+    let farmer_provider_storage =
+        FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
 
     //TODO: rename CLI parameters
     let piece_storage = ParityDbPieceStorage::new(&record_cache_db_path)
@@ -149,11 +148,7 @@ pub(super) async fn configure_dsn(
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(LimitedSizeProviderStorageWrapper::new(
-            provider_storage.clone(),
-            fixed_provider_storage,
-            peer_id,
-        )),
+        record_store: CustomRecordStore::new(farmer_provider_storage),
         ..default_config
     };
 

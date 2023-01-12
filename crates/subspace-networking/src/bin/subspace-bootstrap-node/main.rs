@@ -7,20 +7,14 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
 use libp2p::identity::ed25519::Keypair;
-use libp2p::kad::record::Key;
-use libp2p::kad::{store, ProviderRecord};
-use libp2p::{Multiaddr, PeerId};
-use std::borrow::Cow;
-use std::iter;
-use std::iter::Empty;
+use libp2p::Multiaddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, ParityDbProviderStorage,
-    ProviderStorage,
+    peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore, MemoryProviderStorage,
+    ParityDbProviderStorage,
 };
 use tracing::info;
 
@@ -28,25 +22,6 @@ use tracing::info;
 const MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 300;
 // The default maximum outgoing connections number for the peer.
 const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 300;
-
-struct NoProviderStorage;
-impl ProviderStorage for NoProviderStorage {
-    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self:'a;
-
-    fn add_provider(&mut self, _: ProviderRecord) -> store::Result<()> {
-        Ok(())
-    }
-
-    fn providers(&self, _: &Key) -> Vec<ProviderRecord> {
-        Vec::new()
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        iter::empty()
-    }
-
-    fn remove_provider(&mut self, _: &Key, _: &PeerId) {}
-}
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -116,17 +91,11 @@ async fn main() -> anyhow::Result<()> {
             let provider_storage = if let Some(path) = db_path {
                 let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
 
-                let db_provider_storage =
-                    ParityDbProviderStorage::new(&db_path, converted_cache_size, local_peer_id)
-                        .expect("Provider storage DB path should be valid.");
-
-                let limited_size_provider_storage = LimitedSizeProviderStorageWrapper::new(
-                    db_provider_storage,
-                    NoProviderStorage,
+                Either::Left(ParityDbProviderStorage::new(
+                    &db_path,
+                    converted_cache_size,
                     local_peer_id,
-                );
-
-                Either::Left(limited_size_provider_storage)
+                )?)
             } else {
                 Either::Right(MemoryProviderStorage::new(local_peer_id))
             };

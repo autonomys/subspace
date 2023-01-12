@@ -1,6 +1,4 @@
 use super::ProviderStorage;
-use crate::deconstruct_record_key;
-use crate::utils::multihash::MultihashCode;
 use crate::utils::record_binary_heap::RecordBinaryHeap;
 use either::Either;
 use libp2p::kad::record::Key;
@@ -569,65 +567,6 @@ pub(crate) fn micros_to_instant(micros: u64) -> Instant {
         .expect("Cannot overflow here (duration).");
 
     instant_now - duration
-}
-
-/// Provider record storage decorator. It wraps the inner provider storage and monitors items number.
-pub struct LimitedSizeProviderStorageWrapper<PS, FPS> {
-    // Wrapped provider storage implementation.
-    inner: PS,
-    // Fixed provider storage implementation.
-    fixed_provider_storage: FPS,
-    // Local PeerId
-    peer_id: PeerId,
-}
-
-impl<PS: ProviderStorage, FPS: ProviderStorage> LimitedSizeProviderStorageWrapper<PS, FPS> {
-    pub fn new(provider_storage: PS, fixed_provider_storage: FPS, peer_id: PeerId) -> Self {
-        Self {
-            inner: provider_storage,
-            fixed_provider_storage,
-            peer_id,
-        }
-    }
-}
-
-impl<PS: ProviderStorage, FPS: ProviderStorage> ProviderStorage
-    for LimitedSizeProviderStorageWrapper<PS, FPS>
-{
-    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
-
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
-        let record_key = record.key.clone();
-
-        // Skip adding local fixed provider records.
-        let (_, multihash_code) = deconstruct_record_key(&record_key);
-        if multihash_code == MultihashCode::Sector && record.provider == self.peer_id {
-            return Ok(());
-        }
-
-        self.inner.add_provider(record)?;
-
-        Ok(())
-    }
-
-    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        let mut fixed_providers = self.fixed_provider_storage.providers(key);
-        let mut all_providers = self.inner.providers(key);
-
-        all_providers.append(&mut fixed_providers);
-
-        all_providers
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        self.fixed_provider_storage
-            .provided()
-            .chain(self.inner.provided())
-    }
-
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
-        self.inner.remove_provider(key, peer_id);
-    }
 }
 
 /// Parity DB BTree ProviderRecordCollection iterator wrapper.

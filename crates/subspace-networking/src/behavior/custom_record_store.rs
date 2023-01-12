@@ -6,9 +6,7 @@ use libp2p::kad::{store, ProviderRecord, Record};
 use libp2p::PeerId;
 #[cfg(test)]
 pub(crate) use providers::{instant_to_micros, micros_to_instant};
-pub use providers::{
-    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, ParityDbProviderStorage,
-};
+pub use providers::{MemoryProviderStorage, ParityDbProviderStorage};
 use std::borrow::Cow;
 use std::iter;
 use std::iter::Empty;
