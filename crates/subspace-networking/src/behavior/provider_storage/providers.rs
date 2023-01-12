@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use super::ProviderStorage;
 use crate::utils::record_binary_heap::RecordBinaryHeap;
 use either::Either;
