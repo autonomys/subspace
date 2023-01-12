@@ -165,24 +165,18 @@ where
             shuffling_seed,
         )?;
 
-        let digests = self
-            .client
-            .header(parent_hash)?
-            .map(|header| {
-                let system_domain_state_root =
-                    DigestItem::system_domain_state_root_update(StateRootUpdate {
-                        number: parent_number,
-                        state_root: *header.state_root(),
-                    });
-
-                let primary_block_info =
-                    DigestItem::primary_block_info((primary_number, primary_hash));
-
-                Digest {
-                    logs: vec![system_domain_state_root, primary_block_info],
-                }
-            })
-            .unwrap_or_default();
+        let digests = {
+            let mut digest = Digest::default();
+            if let Some(state_root_update) = self
+                .domain_block_processor
+                .system_domain_state_root_update_digest(parent_hash)?
+            {
+                digest.push(state_root_update);
+            }
+            let primary_block_info = DigestItem::primary_block_info((primary_number, primary_hash));
+            digest.push(primary_block_info);
+            digest
+        };
 
         let domain_block_result = self
             .domain_block_processor

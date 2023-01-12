@@ -13,7 +13,9 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::FraudProof;
+use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
@@ -332,6 +334,19 @@ where
                 }
             }
         }
+    }
+
+    pub(crate) fn system_domain_state_root_update_digest(
+        &self,
+        at: SBlock::Hash,
+    ) -> Result<Option<DigestItem>, sp_blockchain::Error> {
+        let digest_item = self.system_domain_client.header(at)?.map(|header| {
+            AsPredigest::system_domain_state_root_update(StateRootUpdate {
+                number: *header.number(),
+                state_root: *header.state_root(),
+            })
+        });
+        Ok(digest_item)
     }
 
     pub(crate) fn bundles_to_extrinsics(

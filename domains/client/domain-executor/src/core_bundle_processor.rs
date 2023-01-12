@@ -195,20 +195,18 @@ where
             shuffling_seed,
         )?;
 
-        // include the latest state root of the system domain
-        let system_domain_hash = self.system_domain_client.info().best_hash;
-        let digests = self
-            .system_domain_client
-            .header(system_domain_hash)?
-            .map(|header| {
-                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
-                    number: *header.number(),
-                    state_root: *header.state_root(),
-                });
-
-                Digest { logs: vec![item] }
-            })
-            .unwrap_or_default();
+        let digests = {
+            // include the latest state root of the system domain
+            let system_domain_hash = self.system_domain_client.info().best_hash;
+            let mut digest = Digest::default();
+            if let Some(state_root_update) = self
+                .domain_block_processor
+                .system_domain_state_root_update_digest(system_domain_hash)?
+            {
+                digest.push(state_root_update);
+            }
+            digest
+        };
 
         let domain_block_result = self
             .domain_block_processor
