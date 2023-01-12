@@ -80,6 +80,9 @@ pub(crate) enum Command {
     BanPeer {
         peer_id: PeerId,
     },
+    Dial {
+        address: Multiaddr,
+    },
 }
 
 #[derive(Default, Debug)]
