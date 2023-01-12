@@ -14,7 +14,7 @@ use system_runtime_primitives::SystemDomainApi;
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
 pub(crate) trait ParentChainInterface<Block: BlockT> {
-    fn info(&self) -> Result<Info<Block>, sp_api::ApiError>;
+    fn info(&self) -> Info<Block>;
     fn head_receipt_number(&self, at: Block::Hash) -> Result<NumberFor<Block>, sp_api::ApiError>;
     fn oldest_receipt_number(&self, at: Block::Hash) -> Result<NumberFor<Block>, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Block::Hash) -> Result<NumberFor<Block>, sp_api::ApiError>;
@@ -57,8 +57,8 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock>,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
-    fn info(&self) -> Result<Info<SBlock>, sp_api::ApiError> {
-        Ok(self.system_domain_client.info())
+    fn info(&self) -> Info<SBlock> {
+        self.system_domain_client.info()
     }
 
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<NumberFor<SBlock>, sp_api::ApiError> {
@@ -132,8 +132,8 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
-    fn info(&self) -> Result<Info<PBlock>, sp_api::ApiError> {
-        Ok(self.primary_chain_client.info())
+    fn info(&self) -> Info<PBlock> {
+        self.primary_chain_client.info()
     }
 
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<NumberFor<PBlock>, sp_api::ApiError> {

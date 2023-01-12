@@ -1,7 +1,7 @@
-use crate::core_bundle_processor::CoreBundleProcessor;
 use crate::core_bundle_producer::CoreBundleProducer;
 use crate::domain_block_processor::DomainBlockProcessor;
 use crate::fraud_proof::FraudProofGenerator;
+use crate::parent_chain::CoreDomainParentChain;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi, DomainExtrinsicApi};
 use futures::channel::mpsc;
@@ -130,24 +130,17 @@ where
             params.code_executor,
         );
 
+        let parent_chain = CoreDomainParentChain::new(system_domain_client.clone(), domain_id);
+
         let domain_block_processor = DomainBlockProcessor::new(
             domain_id,
             params.client.clone(),
             params.primary_chain_client.clone(),
             system_domain_client.clone(),
+            parent_chain,
             params.primary_network,
             params.backend.clone(),
             fraud_proof_generator.clone(),
-        );
-
-        let bundle_processor = CoreBundleProcessor::new(
-            domain_id,
-            params.primary_chain_client.clone(),
-            system_domain_client,
-            params.client.clone(),
-            params.backend.clone(),
-            params.keystore,
-            domain_block_processor,
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -157,7 +150,7 @@ where
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 bundle_producer,
-                bundle_processor,
+                domain_block_processor,
                 params.imported_block_notification_stream,
                 params.new_slot_notification_stream,
                 active_leaves,

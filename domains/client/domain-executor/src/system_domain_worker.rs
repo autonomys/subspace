@@ -14,8 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::domain_block_processor::DomainBlockProcessor;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
-use crate::system_bundle_processor::SystemBundleProcessor;
+use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_producer::SystemBundleProducer;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
@@ -37,6 +38,7 @@ use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub(super) async fn start_worker<
     Block,
     PBlock,
@@ -51,7 +53,18 @@ pub(super) async fn start_worker<
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     bundle_producer: SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
-    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_processor: DomainBlockProcessor<
+        Block,
+        PBlock,
+        Block,
+        PBlock,
+        Client,
+        PClient,
+        Client,
+        SystemDomainParentChain<PClient, Block, PBlock>,
+        Backend,
+        E,
+    >,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
     active_leaves: Vec<BlockInfo<PBlock>>,
@@ -98,7 +111,7 @@ pub(super) async fn start_worker<
                 let span = span.clone();
 
                 move |primary_info| {
-                    bundle_processor
+                    domain_block_processor
                         .clone()
                         .process_bundles(primary_info)
                         .instrument(span.clone())

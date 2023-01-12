@@ -1,4 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::{shuffle_extrinsics, to_number_primitive, translate_number_type, DomainBundles};
 use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
@@ -117,24 +118,58 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
-where
+pub(crate) struct DomainBlockProcessor<
+    Block,
+    PBlock,
+    SBlock,
+    ParentChainBlock,
+    Client,
+    PClient,
+    SClient,
+    ParentChain,
+    Backend,
+    E,
+> where
     PBlock: BlockT,
 {
     domain_id: DomainId,
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
+    parent_chain: ParentChain,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    _phantom_data: PhantomData<SBlock>,
+    _phantom_data: PhantomData<(SBlock, ParentChainBlock)>,
 }
 
-impl<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E> Clone
-    for DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
+impl<
+        Block,
+        PBlock,
+        SBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        SClient,
+        ParentChain,
+        Backend,
+        E,
+    > Clone
+    for DomainBlockProcessor<
+        Block,
+        PBlock,
+        SBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        SClient,
+        ParentChain,
+        Backend,
+        E,
+    >
 where
     PBlock: BlockT,
+    ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -142,6 +177,7 @@ where
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
             system_domain_client: self.system_domain_client.clone(),
+            parent_chain: self.parent_chain.clone(),
             primary_network: self.primary_network.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
@@ -164,12 +200,35 @@ pub(crate) struct PendingPrimaryBlocks<Block: BlockT, PBlock: BlockT> {
     pub primary_imports: Vec<HashAndNumber<PBlock>>,
 }
 
-impl<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
-    DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
+impl<
+        Block,
+        PBlock,
+        SBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        SClient,
+        ParentChain,
+        Backend,
+        E,
+    >
+    DomainBlockProcessor<
+        Block,
+        PBlock,
+        SBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        SClient,
+        ParentChain,
+        Backend,
+        E,
+    >
 where
     Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
+    ParentChainBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
@@ -190,15 +249,18 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api:
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    ParentChain: ParentChainInterface<ParentChainBlock>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         domain_id: DomainId,
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
         system_domain_client: Arc<SClient>,
+        parent_chain: ParentChain,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         backend: Arc<Backend>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
@@ -208,6 +270,7 @@ where
             client,
             primary_chain_client,
             system_domain_client,
+            parent_chain,
             primary_network,
             backend,
             fraud_proof_generator,
@@ -457,6 +520,142 @@ where
             shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
         Ok(extrinsics)
+    }
+
+    // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
+    pub(crate) async fn process_bundles(
+        self,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+    ) -> Result<(), sp_blockchain::Error> {
+        tracing::debug!(?primary_info, "Processing imported primary block");
+
+        let (primary_hash, primary_number, fork_choice) = primary_info;
+
+        let maybe_pending_primary_blocks =
+            self.pending_imported_primary_blocks(primary_hash, primary_number)?;
+
+        if let Some(PendingPrimaryBlocks {
+            initial_parent,
+            primary_imports,
+        }) = maybe_pending_primary_blocks
+        {
+            tracing::trace!(
+                ?initial_parent,
+                ?primary_imports,
+                "Pending primary blocks to process"
+            );
+
+            let mut domain_parent = initial_parent;
+
+            for (i, primary_info) in primary_imports.iter().enumerate() {
+                // Use the origin fork_choice for the target primary block,
+                // the intermediate ones use `Custom(false)`.
+                let fork_choice = if i == primary_imports.len() - 1 {
+                    fork_choice
+                } else {
+                    ForkChoiceStrategy::Custom(false)
+                };
+
+                domain_parent = self
+                    .process_bundles_at(
+                        (primary_info.hash, primary_info.number, fork_choice),
+                        domain_parent,
+                    )
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_bundles_at(
+        &self,
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+        parent_info: (Block::Hash, NumberFor<Block>),
+    ) -> Result<(Block::Hash, NumberFor<Block>), sp_blockchain::Error> {
+        let (primary_hash, primary_number, fork_choice) = primary_info;
+        let (parent_hash, parent_number) = parent_info;
+
+        tracing::debug!(
+                "Building a new domain block derived from primary block #{primary_number},{primary_hash} \
+                on top of #{parent_number},{parent_hash}"
+            );
+
+        let (bundles, shuffling_seed, maybe_new_runtime) =
+            preprocess_primary_block(self.domain_id, &*self.primary_chain_client, primary_hash)?;
+
+        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+
+        let digests = {
+            let at = if self.domain_id.is_system() {
+                SBlock::Hash::decode(&mut parent_hash.encode().as_slice()).unwrap()
+            } else {
+                // include the latest state root of the system domain
+                self.system_domain_client.info().best_hash
+            };
+            let mut digest = Digest::default();
+            if let Some(state_root_update) = self.system_domain_state_root_update_digest(at)? {
+                digest.push(state_root_update);
+            }
+            if self.domain_id.is_system() {
+                let primary_block_info =
+                    DigestItem::primary_block_info((primary_number, primary_hash));
+                digest.push(primary_block_info);
+            }
+            digest
+        };
+
+        let domain_block_result = self
+            .process_domain_block(
+                (primary_hash, primary_number),
+                (parent_hash, parent_number),
+                extrinsics,
+                maybe_new_runtime,
+                fork_choice,
+                digests,
+            )
+            .await?;
+
+        let at = if self.domain_id.is_system() {
+            ParentChainBlock::Hash::decode(&mut primary_hash.encode().as_slice()).unwrap()
+        } else {
+            // TODO: just make it compile for now, likely wrong, rethink about it.
+            self.parent_chain.info().best_hash
+        };
+
+        let head_receipt_number = {
+            let n = self.parent_chain.head_receipt_number(at)?;
+            translate_number_type::<NumberFor<ParentChainBlock>, NumberFor<Block>>(n)
+        };
+
+        // TODO: can be re-enabled for core domain once the TODO above is resolved
+        if self.domain_id.is_system() {
+            assert!(
+                domain_block_result.header_number > head_receipt_number,
+                "Consensus chain number must larger than execution chain number by at least 1"
+            );
+        }
+
+        let oldest_receipt_number = {
+            let n = self.parent_chain.oldest_receipt_number(at)?;
+            translate_number_type::<NumberFor<ParentChainBlock>, NumberFor<Block>>(n)
+        };
+
+        let built_block_info = (
+            domain_block_result.header_hash,
+            domain_block_result.header_number,
+        );
+
+        if let Some(fraud_proof) = self.on_domain_block_processed(
+            primary_hash,
+            domain_block_result,
+            head_receipt_number,
+            oldest_receipt_number,
+        )? {
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+        }
+
+        Ok(built_block_info)
     }
 
     pub(crate) async fn process_domain_block(

@@ -82,7 +82,6 @@
 
 mod aux_schema;
 mod bundle_election_solver;
-mod core_bundle_processor;
 mod core_bundle_producer;
 mod core_domain_worker;
 mod core_executor;
@@ -95,7 +94,6 @@ mod fraud_proof;
 mod gossip_message_validator;
 mod merkle_tree;
 mod parent_chain;
-mod system_bundle_processor;
 mod system_bundle_producer;
 mod system_domain_worker;
 mod system_executor;
