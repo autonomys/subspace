@@ -1,4 +1,3 @@
-use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, Event};
 use crate::create::{
@@ -74,7 +73,7 @@ enum QueryResultSender {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<RecordStore = CustomRecordStore>
+pub struct NodeRunner<RecordStore>
 where
     RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {
@@ -112,7 +111,7 @@ where
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
+pub(crate) struct NodeRunnerConfig<RecordStore>
 where
     RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
 {

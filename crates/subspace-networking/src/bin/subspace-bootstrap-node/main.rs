@@ -19,8 +19,8 @@ use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoRecordStorage,
-    ParityDbProviderStorage, ProviderStorage,
+    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, ParityDbProviderStorage,
+    ProviderStorage,
 };
 use tracing::info;
 
@@ -143,7 +143,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
                 max_established_outgoing_connections: out_peers
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
-                record_store: CustomRecordStore::new(NoRecordStorage, provider_storage),
+                record_store: CustomRecordStore::new(provider_storage),
                 ..Config::with_keypair(keypair)
             };
             let (node, mut node_runner) = subspace_networking::create(config)

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE};
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{RecordStorage, ToMultihash};
+use subspace_networking::ToMultihash;
 
 #[derive(Default)]
 pub struct TestAuxStore {
@@ -55,23 +55,21 @@ fn basic() {
         .unwrap();
 
     let piece_index = 0u64;
-
     let piece_by_kad_key = store
-        .get(
+        .get_piece_by_index_multihash(
             &PieceIndexHash::from_index(piece_index)
                 .to_multihash()
-                .into(),
+                .to_bytes(),
         )
         .unwrap()
-        .value
-        .clone();
+        .unwrap();
 
     let piece_res = store
         .get_piece(PieceIndexHash::from_index(piece_index))
         .unwrap();
     let piece = piece_res.unwrap();
 
-    assert_eq!(piece_by_kad_key.as_slice(), piece.as_ref());
+    assert_eq!(piece_by_kad_key.as_ref(), piece.as_ref());
 }
 
 #[test]

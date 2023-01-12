@@ -7,11 +7,10 @@ use parity_db::{ColumnOptions, Db, Options};
 use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
-use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
-use std::{iter, vec};
+use std::vec;
 use tracing::{debug, error, info, trace};
 
 const PARITY_DB_COLUMN_NAME: u8 = 0;
@@ -53,34 +52,6 @@ pub trait EnumerableRecordStorage: RecordStorage {
 
     /// Gets an iterator over all (value-) records currently stored.
     fn records(&self) -> Self::RecordsIter<'_>;
-}
-
-/// Defines a stub for record storage with all operations defaulted.
-#[derive(Clone, Default)]
-pub struct NoRecordStorage;
-
-impl RecordStorage for NoRecordStorage {
-    fn get(&self, _: &Key) -> Option<Cow<'_, Record>> {
-        None
-    }
-
-    fn put(&mut self, record: Record) -> store::Result<()> {
-        debug!("Detected an attempt to add a new record: {:?}", record);
-
-        Ok(())
-    }
-
-    fn remove(&mut self, key: &Key) {
-        debug!(?key, "Detected an attempt to remove a record.");
-    }
-}
-
-impl EnumerableRecordStorage for NoRecordStorage {
-    type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self:'a;
-
-    fn records(&self) -> Self::RecordsIter<'_> {
-        iter::empty()
-    }
 }
 
 #[derive(Clone, Debug, Decode, Encode)]
@@ -285,7 +256,7 @@ impl<'a> Iterator for ParityDbRecordIterator<'a> {
 }
 
 /// Record storage decorator. It wraps the inner record storage and monitors items number.
-pub struct LimitedSizeRecordStorageWrapper<RC = NoRecordStorage> {
+pub struct LimitedSizeRecordStorageWrapper<RC> {
     // Wrapped record storage implementation.
     inner: RC,
     // Maintains a heap to limit total item number.

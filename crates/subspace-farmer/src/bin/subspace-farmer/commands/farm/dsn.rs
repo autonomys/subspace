@@ -15,7 +15,7 @@ use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, NoRecordStorage, Node, NodeRunner, ParityDbProviderStorage,
+    LimitedSizeProviderStorageWrapper, Node, NodeRunner, ParityDbProviderStorage,
     PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tokio::runtime::Handle;
@@ -25,7 +25,6 @@ const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
 // Type alias for currently configured Kademlia's custom record store.
 type ConfiguredRecordStore = CustomRecordStore<
-    NoRecordStorage,
     LimitedSizeProviderStorageWrapper<ParityDbProviderStorage, FixedProviderStorage>,
 >;
 
@@ -149,15 +148,12 @@ pub(super) async fn configure_dsn(
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store: CustomRecordStore::new(
-            NoRecordStorage,
-            LimitedSizeProviderStorageWrapper::new(
-                provider_storage.clone(),
-                fixed_provider_storage,
-                provider_cache_size,
-                peer_id,
-            ),
-        ),
+        record_store: CustomRecordStore::new(LimitedSizeProviderStorageWrapper::new(
+            provider_storage.clone(),
+            fixed_provider_storage,
+            provider_cache_size,
+            peer_id,
+        )),
         ..default_config
     };
 

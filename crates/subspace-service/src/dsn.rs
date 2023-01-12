@@ -53,23 +53,15 @@ pub struct DsnConfig {
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-) -> Result<
-    (
-        Node,
-        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
-    ),
-    CreationError,
->
+) -> Result<(Node, NodeRunner<CustomRecordStore<MemoryProviderStorage>>), CreationError>
 where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
 
-    let record_store = CustomRecordStore::new(
-        piece_cache.clone(),
-        MemoryProviderStorage::new(peer_id(&dsn_config.keypair)),
-    );
+    let record_store =
+        CustomRecordStore::new(MemoryProviderStorage::new(peer_id(&dsn_config.keypair)));
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),

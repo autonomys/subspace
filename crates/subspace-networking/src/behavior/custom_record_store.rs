@@ -10,7 +10,7 @@ pub(crate) use providers::{instant_to_micros, micros_to_instant};
 pub use providers::{
     LimitedSizeProviderStorageWrapper, MemoryProviderStorage, ParityDbProviderStorage,
 };
-pub use records::{LimitedSizeRecordStorageWrapper, NoRecordStorage, ParityDbRecordStorage};
+pub use records::{LimitedSizeRecordStorageWrapper, ParityDbRecordStorage};
 use std::borrow::Cow;
 use std::iter;
 use std::iter::Empty;
@@ -50,37 +50,32 @@ pub trait ProviderStorage {
 }
 
 #[derive(Clone)]
-pub struct CustomRecordStore<
-    RecordStorage = NoRecordStorage,
-    ProviderStorage = MemoryProviderStorage,
-> {
-    record_storage: RecordStorage,
+pub struct CustomRecordStore<ProviderStorage = MemoryProviderStorage> {
     provider_storage: ProviderStorage,
 }
 
-impl<RecordStorage, ProviderStorage> CustomRecordStore<RecordStorage, ProviderStorage> {
-    pub fn new(record_storage: RecordStorage, provider_storage: ProviderStorage) -> Self {
-        Self {
-            record_storage,
-            provider_storage,
-        }
+impl<ProviderStorage> CustomRecordStore<ProviderStorage> {
+    pub fn new(provider_storage: ProviderStorage) -> Self {
+        Self { provider_storage }
     }
 }
 
-impl<Rs: RecordStorage, Ps: ProviderStorage> RecordStore for CustomRecordStore<Rs, Ps> {
+impl<Ps: ProviderStorage> RecordStore for CustomRecordStore<Ps> {
     type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
     type ProvidedIter<'a> = Ps::ProvidedIter<'a> where Self: 'a;
 
-    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
-        self.record_storage.get(key)
+    fn get(&self, _key: &Key) -> Option<Cow<'_, Record>> {
+        // Not supported
+        None
     }
 
-    fn put(&mut self, record: Record) -> store::Result<()> {
-        self.record_storage.put(record)
+    fn put(&mut self, _record: Record) -> store::Result<()> {
+        // Not supported
+        Ok(())
     }
 
-    fn remove(&mut self, key: &Key) {
-        self.record_storage.remove(key)
+    fn remove(&mut self, _key: &Key) {
+        // Not supported
     }
 
     fn records(&self) -> Self::RecordsIter<'_> {

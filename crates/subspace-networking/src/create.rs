@@ -1,6 +1,4 @@
-use crate::behavior::custom_record_store::{
-    CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
-};
+use crate::behavior::custom_record_store::{CustomRecordStore, MemoryProviderStorage};
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::node::{CircuitRelayClientError, Node};
@@ -139,7 +137,7 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub metrics: Option<Metrics>,
 }
 
-impl fmt::Debug for Config {
+impl<RecordStore> fmt::Debug for Config<RecordStore> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }
@@ -191,10 +189,7 @@ impl Config {
             identify,
             kademlia,
             gossipsub,
-            record_store: CustomRecordStore::new(
-                NoRecordStorage,
-                MemoryProviderStorage::new(peer_id),
-            ),
+            record_store: CustomRecordStore::new(MemoryProviderStorage::new(peer_id)),
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),

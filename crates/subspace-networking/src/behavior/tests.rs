@@ -1,6 +1,6 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::custom_record_store::{
-    instant_to_micros, micros_to_instant, CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+    instant_to_micros, micros_to_instant, CustomRecordStore, MemoryProviderStorage,
 };
 use crate::utils::record_binary_heap::RecordBinaryHeap;
 use libp2p::kad::record::Key;
@@ -70,8 +70,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 #[test]
 fn check_custom_store_api() {
     let local_peer_id = PeerId::random();
-    let mut store =
-        CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::new(local_peer_id));
+    let mut store = CustomRecordStore::new(MemoryProviderStorage::new(local_peer_id));
 
     let key1: Key = b"key1".to_vec().into();
     let provider1 = PeerId::random();

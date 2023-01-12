@@ -22,7 +22,6 @@ async fn main() {
 
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
-        let keypair = Keypair::generate();
         let config = Config {
             networking_parameters_registry: BootstrappedNetworkingParameters::new(
                 bootstrap_nodes.clone(),
@@ -30,8 +29,9 @@ async fn main() {
             .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_global_addresses_in_dht: true,
-            ..Config::with_keypair(keypair.clone())
+            ..Config::with_generated_keypair()
         };
+        let libp2p::identity::Keypair::Ed25519(keypair) = config.keypair.clone();
 
         let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
