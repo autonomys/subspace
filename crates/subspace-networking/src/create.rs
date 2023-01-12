@@ -99,7 +99,7 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-pub struct Config<RecordStore = CustomRecordStore> {
+pub struct Config<RecordStore> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -143,12 +143,22 @@ impl<RecordStore> fmt::Debug for Config<RecordStore> {
     }
 }
 
-impl Config {
-    pub fn with_generated_keypair() -> Self {
-        Self::with_keypair(identity::ed25519::Keypair::generate())
+impl Config<CustomRecordStore<MemoryProviderStorage>> {
+    pub fn with_generated_keypair() -> Config<CustomRecordStore<MemoryProviderStorage>> {
+        let keypair = identity::ed25519::Keypair::generate();
+        let peer_id = identity::PublicKey::Ed25519(keypair.public()).to_peer_id();
+        Self::with_keypair(
+            keypair,
+            CustomRecordStore::new(MemoryProviderStorage::new(peer_id)),
+        )
     }
+}
 
-    pub fn with_keypair(keypair: identity::ed25519::Keypair) -> Self {
+impl<RecordStore> Config<RecordStore>
+where
+    RecordStore: libp2p::kad::store::RecordStore,
+{
+    pub fn with_keypair(keypair: identity::ed25519::Keypair, record_store: RecordStore) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
@@ -179,7 +189,6 @@ impl Config {
 
         let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
-        let peer_id = peer_id(&keypair);
 
         Self {
             keypair,
@@ -189,7 +198,7 @@ impl Config {
             identify,
             kademlia,
             gossipsub,
-            record_store: CustomRecordStore::new(MemoryProviderStorage::new(peer_id)),
+            record_store,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),

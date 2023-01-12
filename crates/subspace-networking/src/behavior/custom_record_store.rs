@@ -37,7 +37,7 @@ pub trait ProviderStorage {
 }
 
 #[derive(Clone)]
-pub struct CustomRecordStore<ProviderStorage = MemoryProviderStorage> {
+pub struct CustomRecordStore<ProviderStorage> {
     provider_storage: ProviderStorage,
 }
 
