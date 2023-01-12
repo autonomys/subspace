@@ -118,7 +118,7 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<
+pub(crate) struct DomainBundleProcessor<
     Block,
     PBlock,
     SBlock,
@@ -155,7 +155,7 @@ impl<
         Backend,
         E,
     > Clone
-    for DomainBlockProcessor<
+    for DomainBundleProcessor<
         Block,
         PBlock,
         SBlock,
@@ -212,7 +212,7 @@ impl<
         Backend,
         E,
     >
-    DomainBlockProcessor<
+    DomainBundleProcessor<
         Block,
         PBlock,
         SBlock,

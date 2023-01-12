@@ -1,4 +1,4 @@
-use crate::domain_block_processor::DomainBlockProcessor;
+use crate::domain_bundle_processor::DomainBundleProcessor;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_producer::SystemBundleProducer;
@@ -31,7 +31,7 @@ where
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
-    domain_block_processor: DomainBlockProcessor<
+    bundle_processor: DomainBundleProcessor<
         Block,
         PBlock,
         Block,
@@ -58,7 +58,7 @@ where
             transaction_pool: self.transaction_pool.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
-            domain_block_processor: self.domain_block_processor.clone(),
+            bundle_processor: self.bundle_processor.clone(),
         }
     }
 }
@@ -143,7 +143,7 @@ where
 
         let parent_chain = SystemDomainParentChain::new(params.primary_chain_client.clone());
 
-        let domain_block_processor = DomainBlockProcessor::new(
+        let bundle_processor = DomainBundleProcessor::new(
             DomainId::SYSTEM,
             params.client.clone(),
             params.primary_chain_client.clone(),
@@ -161,7 +161,7 @@ where
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 bundle_producer,
-                domain_block_processor.clone(),
+                bundle_processor.clone(),
                 params.imported_block_notification_stream,
                 params.new_slot_notification_stream,
                 active_leaves,
@@ -177,7 +177,7 @@ where
             transaction_pool: params.transaction_pool,
             backend: params.backend,
             fraud_proof_generator,
-            domain_block_processor,
+            bundle_processor,
         })
     }
 
@@ -193,11 +193,7 @@ where
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
     ) {
-        if let Err(err) = self
-            .domain_block_processor
-            .process_bundles(primary_info)
-            .await
-        {
+        if let Err(err) = self.bundle_processor.process_bundles(primary_info).await {
             tracing::error!(?primary_info, ?err, "Error at processing bundles.");
         }
     }

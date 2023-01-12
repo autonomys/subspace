@@ -86,7 +86,7 @@ mod core_bundle_producer;
 mod core_domain_worker;
 mod core_executor;
 mod core_gossip_message_validator;
-mod domain_block_processor;
+mod domain_bundle_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;

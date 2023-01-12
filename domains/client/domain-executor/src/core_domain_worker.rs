@@ -15,7 +15,7 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::core_bundle_producer::CoreBundleProducer;
-use crate::domain_block_processor::DomainBlockProcessor;
+use crate::domain_bundle_processor::DomainBundleProcessor;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
@@ -55,7 +55,7 @@ pub(super) async fn start_worker<
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     bundle_producer: CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>,
-    domain_block_processor: DomainBlockProcessor<
+    bundle_processor: DomainBundleProcessor<
         Block,
         PBlock,
         SBlock,
@@ -116,7 +116,7 @@ pub(super) async fn start_worker<
                 let span = span.clone();
 
                 move |primary_info| {
-                    domain_block_processor
+                    bundle_processor
                         .clone()
                         .process_bundles(primary_info)
                         .instrument(span.clone())

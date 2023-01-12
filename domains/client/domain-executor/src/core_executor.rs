@@ -1,5 +1,5 @@
 use crate::core_bundle_producer::CoreBundleProducer;
-use crate::domain_block_processor::DomainBlockProcessor;
+use crate::domain_bundle_processor::DomainBundleProcessor;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::CoreDomainParentChain;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
@@ -132,7 +132,7 @@ where
 
         let parent_chain = CoreDomainParentChain::new(system_domain_client.clone(), domain_id);
 
-        let domain_block_processor = DomainBlockProcessor::new(
+        let bundle_processor = DomainBundleProcessor::new(
             domain_id,
             params.client.clone(),
             params.primary_chain_client.clone(),
@@ -150,7 +150,7 @@ where
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 bundle_producer,
-                domain_block_processor,
+                bundle_processor,
                 params.imported_block_notification_stream,
                 params.new_slot_notification_stream,
                 active_leaves,
