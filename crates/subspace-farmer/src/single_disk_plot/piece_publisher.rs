@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{FixedProviderRecordStorage, Node, ToMultihash};
+use subspace_networking::{Node, ToMultihash};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 use tracing::{debug, error, info, trace};
@@ -22,22 +22,16 @@ const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 
 // Piece-by-sector DSN publishing helper.
 #[derive(Clone)]
-pub(crate) struct PieceSectorPublisher<FPRS: FixedProviderRecordStorage> {
+pub(crate) struct PieceSectorPublisher {
     dsn_node: Node,
     cancelled: Arc<AtomicBool>,
-    fixed_provider_storage: FPRS,
 }
 
-impl<FPRS: FixedProviderRecordStorage> PieceSectorPublisher<FPRS> {
-    pub(crate) fn new(
-        dsn_node: Node,
-        cancelled: Arc<AtomicBool>,
-        fixed_provider_storage: FPRS,
-    ) -> Self {
+impl PieceSectorPublisher {
+    pub(crate) fn new(dsn_node: Node, cancelled: Arc<AtomicBool>) -> Self {
         Self {
             dsn_node,
             cancelled,
-            fixed_provider_storage,
         }
     }
 
@@ -112,9 +106,6 @@ impl<FPRS: FixedProviderRecordStorage> PieceSectorPublisher<FPRS> {
 
         let key =
             PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
-
-        self.fixed_provider_storage
-            .register_fixed_local_provider(&key.into());
 
         let result = self.dsn_node.start_announcing(key).await;
 

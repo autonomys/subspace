@@ -42,7 +42,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
-use subspace_networking::{FixedProviderRecordStorage, Node};
+use subspace_networking::Node;
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -263,7 +263,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single dis plot
-pub struct SingleDiskPlotOptions<NC, FixedStorageProvider> {
+pub struct SingleDiskPlotOptions<NC> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
     /// How much space in bytes can plot use for plot
@@ -274,8 +274,6 @@ pub struct SingleDiskPlotOptions<NC, FixedStorageProvider> {
     pub reward_address: PublicKey,
     /// Optional DSN Node.
     pub dsn_node: Node,
-    /// Provides an access to fixed provider record storage,
-    pub fixed_provider_storage: FixedStorageProvider,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
@@ -461,9 +459,7 @@ impl SingleDiskPlot {
     /// Create new single disk plot instance
     ///
     /// NOTE: Thought this function is async, it will do some blocking I/O.
-    pub async fn new<NC, FPRS: FixedProviderRecordStorage + Send + Sync + 'static>(
-        options: SingleDiskPlotOptions<NC, FPRS>,
-    ) -> Result<Self, SingleDiskPlotError>
+    pub async fn new<NC>(options: SingleDiskPlotOptions<NC>) -> Result<Self, SingleDiskPlotError>
     where
         NC: NodeClient,
     {
@@ -475,7 +471,6 @@ impl SingleDiskPlot {
             node_client,
             reward_address,
             dsn_node,
-            fixed_provider_storage,
             concurrent_plotting_semaphore,
         } = options;
 
@@ -653,11 +648,8 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let node_client = node_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher = PieceSectorPublisher::new(
-                    dsn_node.clone(),
-                    shutting_down.clone(),
-                    fixed_provider_storage,
-                );
+                let piece_publisher =
+                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoRecordStorage,
+    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoProviderStorage, NoRecordStorage,
     ParityDbProviderStorage,
 };
 use tracing::info;
@@ -97,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let limited_size_provider_storage = LimitedSizeProviderStorageWrapper::new(
                     db_provider_storage,
+                    NoProviderStorage,
                     converted_cache_size,
                     local_peer_id,
                 );

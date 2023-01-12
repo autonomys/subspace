@@ -8,7 +8,7 @@ use libp2p::PeerId;
 #[cfg(test)]
 pub(crate) use providers::{instant_to_micros, micros_to_instant};
 pub use providers::{
-    FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, MemoryProviderStorage,
+    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoProviderStorage,
     ParityDbProviderStorage,
 };
 pub use records::{LimitedSizeRecordStorageWrapper, NoRecordStorage, ParityDbRecordStorage};

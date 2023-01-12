@@ -41,9 +41,9 @@ pub use crate::node::{
 };
 pub use crate::node_runner::NodeRunner;
 pub use behavior::custom_record_store::{
-    CustomRecordStore, FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper,
-    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, NoRecordStorage,
-    ParityDbProviderStorage, ParityDbRecordStorage, ProviderStorage, RecordStorage,
+    CustomRecordStore, LimitedSizeProviderStorageWrapper, LimitedSizeRecordStorageWrapper,
+    MemoryProviderStorage, NoProviderStorage, NoRecordStorage, ParityDbProviderStorage,
+    ParityDbRecordStorage, ProviderStorage, RecordStorage,
 };
 pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;
@@ -60,6 +60,7 @@ pub use request_handlers::piece_by_key::{
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
+pub use utils::deconstruct_record_key;
 pub use utils::multihash::ToMultihash;
 pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::record_binary_heap::RecordBinaryHeap;

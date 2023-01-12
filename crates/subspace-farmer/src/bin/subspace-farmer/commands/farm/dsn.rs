@@ -1,3 +1,4 @@
+use crate::commands::farm::fixed_provider_storage::FixedProviderStorage;
 use crate::commands::farm::piece_storage::{LimitedSizePieceStorageWrapper, ParityDbPieceStorage};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
@@ -14,9 +15,8 @@ use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    FixedProviderRecordStorage, LimitedSizeProviderStorageWrapper, NoRecordStorage, Node,
-    NodeRunner, ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler,
-    PieceByHashResponse, PieceKey, ToMultihash,
+    LimitedSizeProviderStorageWrapper, NoRecordStorage, Node, NodeRunner, ParityDbProviderStorage,
+    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
@@ -24,8 +24,10 @@ use tracing::{debug, info, trace, warn};
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 
 // Type alias for currently configured Kademlia's custom record store.
-type ConfiguredRecordStore =
-    CustomRecordStore<NoRecordStorage, LimitedSizeProviderStorageWrapper<ParityDbProviderStorage>>;
+type ConfiguredRecordStore = CustomRecordStore<
+    NoRecordStorage,
+    LimitedSizeProviderStorageWrapper<ParityDbProviderStorage, FixedProviderStorage>,
+>;
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -42,7 +44,6 @@ pub(super) async fn configure_dsn(
     (
         Node,
         NodeRunner<ConfiguredRecordStore>,
-        impl FixedProviderRecordStorage,
         LimitedSizePieceStorageWrapper,
     ),
     anyhow::Error,
@@ -72,6 +73,8 @@ pub(super) async fn configure_dsn(
 
     let provider_storage = ParityDbProviderStorage::new(&provider_cache_db_path, peer_id)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+
+    let fixed_provider_storage = FixedProviderStorage::new(peer_id, readers_and_pieces.clone());
 
     //TODO: rename CLI parameters
     let piece_storage = ParityDbPieceStorage::new(&record_cache_db_path)
@@ -150,6 +153,7 @@ pub(super) async fn configure_dsn(
             NoRecordStorage,
             LimitedSizeProviderStorageWrapper::new(
                 provider_storage.clone(),
+                fixed_provider_storage,
                 provider_cache_size,
                 peer_id,
             ),
@@ -159,7 +163,7 @@ pub(super) async fn configure_dsn(
 
     create::<ConfiguredRecordStore>(config)
         .await
-        .map(|(node, node_runner)| (node, node_runner, provider_storage, wrapped_piece_storage))
+        .map(|(node, node_runner)| (node, node_runner, wrapped_piece_storage))
         .map_err(Into::into)
 }
 
@@ -246,6 +250,11 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
         let multihash_bytes = rec.key.to_vec();
         let multihash = Multihash::from_bytes(multihash_bytes.as_slice())
             .expect("Key should represent a valid multihash");
+
+        if self.piece_storage.get_piece(&rec.key).is_some() {
+            trace!(key=?rec.key, "Skipped processing local piece...");
+            return;
+        }
 
         if multihash.code() == u64::from(MultihashCode::PieceIndex) {
             trace!(key=?rec.key, "Starting processing provider record...");
