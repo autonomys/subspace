@@ -1,9 +1,12 @@
+mod transport;
+
 pub use crate::behavior::custom_record_store::ValueGetter;
 use crate::behavior::custom_record_store::{
     CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
 };
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
 use crate::behavior::{Behavior, BehaviorConfig};
+use crate::create::transport::build_transport;
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
@@ -11,9 +14,6 @@ use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
 use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
-use libp2p::core::muxing::StreamMuxerBox;
-use libp2p::core::transport::Boxed;
-use libp2p::dns::TokioDnsConfig;
 use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
 };
@@ -21,13 +21,9 @@ use libp2p::identify::Config as IdentifyConfig;
 use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
-use libp2p::noise::NoiseConfig;
 use libp2p::swarm::SwarmBuilder;
-use libp2p::tcp::tokio::Transport as TokioTcpTransport;
-use libp2p::tcp::Config as GenTcpConfig;
-use libp2p::websocket::WsConfig;
 use libp2p::yamux::YamuxConfig;
-use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use libp2p::{identity, Multiaddr, PeerId, TransportError};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -266,7 +262,12 @@ where
     } = config;
     let local_peer_id = peer_id(&keypair);
 
-    let transport = build_transport(&keypair, timeout, yamux_config)?;
+    let transport = build_transport(
+        allow_non_global_addresses_in_dht,
+        &keypair,
+        timeout,
+        yamux_config,
+    )?;
 
     // libp2p uses blocking API, hence we need to create a blocking task.
     let create_swarm_fut = tokio::task::spawn_blocking(move || {
@@ -339,33 +340,4 @@ where
         "Blocking tasks never panics, if it does it is an implementation bug and everything \
         must crash",
     )
-}
-
-// Builds the transport stack that LibP2P will communicate over along with a relay client.
-fn build_transport(
-    keypair: &identity::Keypair,
-    timeout: Duration,
-    yamux_config: YamuxConfig,
-) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
-    let transport = {
-        let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
-            GenTcpConfig::default().nodelay(true),
-        ))?;
-        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpTransport::new(
-            GenTcpConfig::default().nodelay(true),
-        ))?);
-
-        dns_tcp.or_transport(ws)
-    };
-
-    let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(keypair)
-        .expect("Signing libp2p-noise static DH keypair failed.");
-
-    Ok(transport
-        .upgrade(core::upgrade::Version::V1Lazy)
-        .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(yamux_config)
-        .timeout(timeout)
-        .boxed())
 }
