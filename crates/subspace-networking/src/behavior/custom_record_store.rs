@@ -1,5 +1,4 @@
 mod providers;
-mod records;
 
 use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
@@ -10,21 +9,9 @@ pub(crate) use providers::{instant_to_micros, micros_to_instant};
 pub use providers::{
     LimitedSizeProviderStorageWrapper, MemoryProviderStorage, ParityDbProviderStorage,
 };
-pub use records::{LimitedSizeRecordStorageWrapper, ParityDbRecordStorage};
 use std::borrow::Cow;
 use std::iter;
 use std::iter::Empty;
-
-pub trait RecordStorage {
-    /// Gets a record from the store, given its key.
-    fn get(&self, k: &Key) -> Option<Cow<'_, Record>>;
-
-    /// Puts a record into the store.
-    fn put(&mut self, r: Record) -> store::Result<()>;
-
-    /// Removes the record with the given key from the store.
-    fn remove(&mut self, k: &Key);
-}
 
 pub trait ProviderStorage {
     type ProvidedIter<'a>: Iterator<Item = Cow<'a, ProviderRecord>>
