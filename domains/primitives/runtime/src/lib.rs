@@ -105,9 +105,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the storage root after applying the extrinsic.
         fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
-
-        // /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
-        // fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
     }
 
     /// API used to construct extrincsic.

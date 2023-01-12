@@ -1,6 +1,9 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::{shuffle_extrinsics, to_number_primitive, translate_number_type, DomainBundles};
+use crate::utils::{
+    shuffle_extrinsics, to_number_primitive, translate_block_hash_type, translate_number_type,
+    DomainBundles,
+};
 use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -588,7 +591,7 @@ where
 
         let digests = {
             let at = if self.domain_id.is_system() {
-                SBlock::Hash::decode(&mut parent_hash.encode().as_slice()).unwrap()
+                translate_block_hash_type::<Block, SBlock>(parent_hash)
             } else {
                 // include the latest state root of the system domain
                 self.system_domain_client.info().best_hash
@@ -617,7 +620,7 @@ where
             .await?;
 
         let at = if self.domain_id.is_system() {
-            ParentChainBlock::Hash::decode(&mut primary_hash.encode().as_slice()).unwrap()
+            translate_block_hash_type::<PBlock, ParentChainBlock>(primary_hash)
         } else {
             // TODO: just make it compile for now, likely wrong, rethink about it.
             self.parent_chain.info().best_hash

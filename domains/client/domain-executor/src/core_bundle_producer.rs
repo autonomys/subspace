@@ -2,9 +2,8 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_producer::sign_new_bundle;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::CoreDomainParentChain;
-use crate::utils::{to_number_primitive, ExecutorSlotInfo};
+use crate::utils::{to_number_primitive, translate_block_hash_type, ExecutorSlotInfo};
 use crate::BundleSender;
-use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
@@ -147,20 +146,20 @@ where
                 .expect("Best block header must exist; qed")
                 .state_root();
 
-            let as_core_block_hash = |system_block_hash: SBlock::Hash| {
-                Block::Hash::decode(&mut system_block_hash.encode().as_slice()).unwrap()
-            };
-
             let proof_of_election = ProofOfElection {
                 domain_id: proof_of_election.domain_id,
                 vrf_output: proof_of_election.vrf_output,
                 vrf_proof: proof_of_election.vrf_proof,
                 executor_public_key: proof_of_election.executor_public_key,
                 global_challenge: proof_of_election.global_challenge,
-                state_root: as_core_block_hash(proof_of_election.state_root),
+                state_root: translate_block_hash_type::<SBlock, Block>(
+                    proof_of_election.state_root,
+                ),
                 storage_proof: proof_of_election.storage_proof,
                 block_number: proof_of_election.block_number,
-                block_hash: as_core_block_hash(proof_of_election.block_hash),
+                block_hash: translate_block_hash_type::<SBlock, Block>(
+                    proof_of_election.block_hash,
+                ),
             };
 
             Ok(Some(sign_new_bundle::<Block, PBlock>(
