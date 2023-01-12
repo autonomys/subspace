@@ -167,7 +167,7 @@ mod pallet {
                     .bundle_solution
                     .proof_of_election()
                     .executor_public_key
-                    .clone(),
+                    .clone(), // This clone might be redundant
             });
 
             Ok(())
@@ -369,7 +369,7 @@ impl<T: Config> Pallet<T> {
     ) -> bool {
         receipts
             .array_windows()
-            .all(|[ref head, ref tail]| head.primary_number + One::one() == tail.primary_number)
+            .all(|[ref head, ref tail]| head.primary_number + One::one() == tail.primary_number) // saturating_add
     }
 
     fn pre_dispatch_submit_bundle(
@@ -413,7 +413,7 @@ impl<T: Config> Pallet<T> {
                         ));
                     }
                 // New nest receipt.
-                } else if primary_number == best_number + One::one() {
+                } else if primary_number == best_number + One::one() {  // saturating_add
                     if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
                         receipt,
@@ -429,7 +429,7 @@ impl<T: Config> Pallet<T> {
                             InvalidTransactionCode::ExecutionReceipt.into(),
                         ));
                     }
-                    best_number += One::one();
+                    best_number += One::one();  // saturating_inc
                 // Missing receipt.
                 } else {
                     return Err(TransactionValidityError::Invalid(
@@ -565,7 +565,7 @@ impl<T: Config> Pallet<T> {
             let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
             let best_number = Self::head_receipt_number();
-            let max_allowed = best_number + T::MaximumReceiptDrift::get();
+            let max_allowed = best_number + T::MaximumReceiptDrift::get(); // saturating_add
 
             let oldest_receipt_number = Self::oldest_receipt_number();
 

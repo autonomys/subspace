@@ -263,10 +263,10 @@ impl<T: Config> Pallet<T> {
             if primary_number <= best_number {
                 // Either increase the vote for a known receipt or add a fork receipt at this height.
                 Self::apply_non_new_best_receipt(domain_id, receipt);
-            } else if primary_number == best_number + One::one() {
+            } else if primary_number == best_number + One::one() { // saturating_add
                 Self::apply_new_best_receipt(domain_id, receipt);
                 Self::remove_expired_receipts(domain_id, primary_number);
-                best_number += One::one();
+                best_number += One::one(); // saturating_inc
             } else {
                 // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
                 return Err(Error::MissingParent);
@@ -291,7 +291,7 @@ impl<T: Config> Pallet<T> {
             for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix((domain_id, block_hash)) {
                 <Receipts<T>>::remove(domain_id, receipt_hash);
             }
-            to_remove -= One::one();
+            to_remove -= One::one(); // saturating_dec
         }
         // TODO: slash the executor accordingly.
         Self::deposit_event(Event::FraudProofProcessed {
@@ -358,7 +358,7 @@ impl<T: Config> Pallet<T> {
         <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
         <ReceiptHead<T>>::insert(domain_id, (primary_hash, primary_number));
         <ReceiptVotes<T>>::mutate((domain_id, primary_hash, receipt_hash), |count| {
-            *count += 1;
+            *count += 1; // saturating_inc
         });
 
         if !primary_number.is_zero() {
@@ -417,7 +417,7 @@ impl<T: Config> Pallet<T> {
             });
         }
         <ReceiptVotes<T>>::mutate((domain_id, primary_hash, receipt_hash), |count| {
-            *count += 1;
+            *count += 1; // saturating_inc
         });
     }
 }

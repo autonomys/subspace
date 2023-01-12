@@ -256,7 +256,7 @@ mod pallet {
 
                     if executor_config.is_active {
                         TotalActiveStake::<T>::mutate(|total| {
-                            *total += amount;
+                            *total += amount; // saturating_add
                         });
                     }
 
@@ -299,7 +299,7 @@ mod pallet {
                     let new_withdrawal = Withdrawal {
                         amount,
                         locked_until: frame_system::Pallet::<T>::current_block_number()
-                            + T::WithdrawalDuration::get(),
+                            + T::WithdrawalDuration::get(), // saturating_add
                     };
 
                     executor_config
@@ -309,7 +309,7 @@ mod pallet {
 
                     if executor_config.is_active {
                         TotalActiveStake::<T>::mutate(|total| {
-                            *total -= amount;
+                            *total -= amount; // saturating_reduce
                         });
                     }
 
@@ -364,7 +364,7 @@ mod pallet {
                     .iter()
                     .fold(Zero::zero(), |acc, x| acc + x.amount);
 
-                let new_total = executor_config.stake + inactive_stake;
+                let new_total = executor_config.stake + inactive_stake; // saturating_add
 
                 Self::lock_fund(&who, new_total);
 
@@ -400,10 +400,10 @@ mod pallet {
                     executor_config.is_active = false;
 
                     TotalActiveStake::<T>::mutate(|total| {
-                        *total -= executor_config.stake;
+                        *total -= executor_config.stake; // saturating_reduce
                     });
                     TotalActiveExecutors::<T>::mutate(|total| {
-                        *total -= 1;
+                        *total -= 1; // saturating_dec
                     });
 
                     Self::deposit_event(Event::<T>::Paused { who: who.clone() });
@@ -429,10 +429,10 @@ mod pallet {
                     executor_config.is_active = true;
 
                     TotalActiveStake::<T>::mutate(|total| {
-                        *total += executor_config.stake;
+                        *total += executor_config.stake; // saturating_accrue
                     });
                     TotalActiveExecutors::<T>::mutate(|total| {
-                        *total += 1;
+                        *total += 1; // saturating_inc
                     });
 
                     Self::deposit_event(Event::<T>::Resumed { who: who.clone() });
@@ -697,7 +697,7 @@ mod pallet {
                             "
                                 `total_stake_weight` as u128 won't overflow even with 100K executor and \
                                 each of them has 1_000_000_000 SSC at stake; qed",
-                        );
+                        ); // trait bound for StakeWeight is AtLeast32BitUnsigned, not u128
 
                         executor_weights.insert(who, stake_weight);
 
@@ -835,10 +835,10 @@ impl<T: Config> Pallet<T> {
 
         if is_active {
             TotalActiveStake::<T>::mutate(|total| {
-                *total += stake;
+                *total += stake; // saturating_accrue
             });
             TotalActiveExecutors::<T>::mutate(|total| {
-                *total += 1;
+                *total += 1; // saturating_inc
             });
         }
 

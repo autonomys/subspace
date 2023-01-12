@@ -259,6 +259,9 @@ pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
     pub header: BundleHeader<Hash>,
     /// Expected receipts by the primay chain when the bundle was created.
+    // Using unbounded vector might be potentially dangerous, especially when iterating over receipts.
+    // If possible, consider using a BoundedVec. Otherwise, double check if there's no possibility
+    // for a malicious agent to exploit this by providing an arbitrarily large vector.
     pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,

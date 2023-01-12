@@ -233,6 +233,7 @@ mod pallet {
             Ok(())
         }
 
+        // This function is *identical* to `register_domain_operator`. Probably should be removed.
         /// Update the domain stake.
         // TODO: proper weight
         #[pallet::call_index(3)]
@@ -366,7 +367,7 @@ mod pallet {
             let mut consumed_weight = Weight::zero();
             for domain_id in Domains::<T>::iter_keys() {
                 pallet_receipts::BlockHash::<T>::insert(domain_id, primary_number, primary_hash);
-                consumed_weight += T::DbWeight::get().reads_writes(1, 1);
+                consumed_weight += T::DbWeight::get().reads_writes(1, 1); // saturating_add
             }
 
             consumed_weight
@@ -648,7 +649,7 @@ impl<T: Config> OnNewEpoch<T::AccountId, T::StakeWeight> for Pallet<T> {
 
                 total_stake_weights
                     .entry(domain_id)
-                    .and_modify(|total| *total += domain_stake_weight)
+                    .and_modify(|total| *total += domain_stake_weight) // saturating_add
                     .or_insert(domain_stake_weight);
 
                 DomainAuthorities::<T>::insert(domain_id, operator, domain_stake_weight);
@@ -737,7 +738,7 @@ impl<T: Config> Pallet<T> {
         }
 
         let head_receipt_number = Self::head_receipt_number(domain_id);
-        let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
+        let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get(); // saturating_add
 
         let mut new_best_number = head_receipt_number;
         let receipts = &signed_opaque_bundle.bundle.receipts;
@@ -746,11 +747,11 @@ impl<T: Config> Pallet<T> {
             if receipt.primary_number <= new_best_number {
                 continue;
             // New nest receipt.
-            } else if receipt.primary_number == new_best_number + One::one() {
-                new_best_number += One::one();
+            } else if receipt.primary_number == new_best_number + One::one() { // saturating_add
+                new_best_number += One::one(); // saturating_inc
             // Missing receipt.
             } else {
-                let missing_receipt_number = new_best_number + One::one();
+                let missing_receipt_number = new_best_number + One::one(); // saturating_add
                 log::error!(
                     target: "runtime::domain-registry",
                     "Receipt for {domain_id:?} #{missing_receipt_number:?} is missing, \
@@ -940,7 +941,7 @@ impl<T: Config> Pallet<T> {
 
         Domains::<T>::insert(domain_id, domain_config);
         DomainCreators::<T>::insert(domain_id, who, deposit);
-        NextDomainId::<T>::put(domain_id + 1);
+        NextDomainId::<T>::put(domain_id + 1); // saturating_add or checked_add
 
         domain_id
     }
