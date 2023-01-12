@@ -19,9 +19,11 @@ use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
+use system_runtime_primitives::SystemDomainApi;
 
 type DomainBlockElements<Block, PBlock> = (
     DomainBundles<Block, PBlock>,
@@ -113,20 +115,22 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
+pub(crate) struct DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
 where
     PBlock: BlockT,
 {
     domain_id: DomainId,
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
+    system_domain_client: Arc<SClient>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    _phantom_data: PhantomData<SBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E> Clone
+    for DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
 where
     PBlock: BlockT,
 {
@@ -135,9 +139,11 @@ where
             domain_id: self.domain_id,
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
+            system_domain_client: self.system_domain_client.clone(),
             primary_network: self.primary_network.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
+            _phantom_data: self._phantom_data,
         }
     }
 }
@@ -156,11 +162,12 @@ pub(crate) struct PendingPrimaryBlocks<Block: BlockT, PBlock: BlockT> {
     pub primary_imports: Vec<HashAndNumber<PBlock>>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E>
-    DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
+    DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
+    SBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
@@ -178,6 +185,9 @@ where
         + ProvideRuntimeApi<PBlock>
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api:
+        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -186,6 +196,7 @@ where
         domain_id: DomainId,
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
+        system_domain_client: Arc<SClient>,
         primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
         backend: Arc<Backend>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
@@ -194,9 +205,11 @@ where
             domain_id,
             client,
             primary_chain_client,
+            system_domain_client,
             primary_network,
             backend,
             fraud_proof_generator,
+            _phantom_data: PhantomData::default(),
         }
     }
 

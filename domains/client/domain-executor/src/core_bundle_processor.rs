@@ -34,7 +34,8 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_processor:
+        DomainBlockProcessor<Block, PBlock, SBlock, Client, PClient, SClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
@@ -97,7 +98,16 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: SyncCryptoStorePtr,
-        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+        domain_block_processor: DomainBlockProcessor<
+            Block,
+            PBlock,
+            SBlock,
+            Client,
+            PClient,
+            SClient,
+            Backend,
+            E,
+        >,
     ) -> Self {
         let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
             system_domain_client.clone(),

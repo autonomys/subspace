@@ -27,7 +27,8 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_processor:
+        DomainBlockProcessor<Block, PBlock, Block, Client, PClient, Client, Backend, E>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -78,7 +79,16 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: SyncCryptoStorePtr,
-        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+        domain_block_processor: DomainBlockProcessor<
+            Block,
+            PBlock,
+            Block,
+            Client,
+            PClient,
+            Client,
+            Backend,
+            E,
+        >,
     ) -> Self {
         Self {
             primary_chain_client,

@@ -134,6 +134,7 @@ where
             domain_id,
             params.client.clone(),
             params.primary_chain_client.clone(),
+            system_domain_client.clone(),
             params.primary_network,
             params.backend.clone(),
             fraud_proof_generator.clone(),
