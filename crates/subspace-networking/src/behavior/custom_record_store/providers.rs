@@ -12,7 +12,6 @@ use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::{hash_set, BTreeMap};
 use std::iter;
-use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
@@ -552,7 +551,7 @@ pub(crate) fn micros_to_instant(micros: u64) -> Instant {
 }
 
 /// Provider record storage decorator. It wraps the inner provider storage and monitors items number.
-pub struct LimitedSizeProviderStorageWrapper<PS = MemoryProviderStorage, FPS = NoProviderStorage> {
+pub struct LimitedSizeProviderStorageWrapper<PS, FPS> {
     // Wrapped provider storage implementation.
     inner: PS,
     // Fixed provider storage implementation.
@@ -731,23 +730,4 @@ impl<'a> Iterator for ParityDbProviderRecordCollectionIterator<'a> {
 
         result
     }
-}
-
-pub struct NoProviderStorage;
-impl ProviderStorage for NoProviderStorage {
-    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self:'a;
-
-    fn add_provider(&mut self, _: ProviderRecord) -> store::Result<()> {
-        Ok(())
-    }
-
-    fn providers(&self, _: &Key) -> Vec<ProviderRecord> {
-        Vec::new()
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        iter::empty()
-    }
-
-    fn remove_provider(&mut self, _: &Key, _: &PeerId) {}
 }

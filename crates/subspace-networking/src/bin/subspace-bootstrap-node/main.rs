@@ -7,15 +7,20 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
 use libp2p::identity::ed25519::Keypair;
-use libp2p::Multiaddr;
+use libp2p::kad::record::Key;
+use libp2p::kad::{store, ProviderRecord};
+use libp2p::{Multiaddr, PeerId};
+use std::borrow::Cow;
+use std::iter;
+use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoProviderStorage, NoRecordStorage,
-    ParityDbProviderStorage,
+    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoRecordStorage,
+    ParityDbProviderStorage, ProviderStorage,
 };
 use tracing::info;
 
@@ -23,6 +28,25 @@ use tracing::info;
 const MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 300;
 // The default maximum outgoing connections number for the peer.
 const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 300;
+
+struct NoProviderStorage;
+impl ProviderStorage for NoProviderStorage {
+    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self:'a;
+
+    fn add_provider(&mut self, _: ProviderRecord) -> store::Result<()> {
+        Ok(())
+    }
+
+    fn providers(&self, _: &Key) -> Vec<ProviderRecord> {
+        Vec::new()
+    }
+
+    fn provided(&self) -> Self::ProvidedIter<'_> {
+        iter::empty()
+    }
+
+    fn remove_provider(&mut self, _: &Key, _: &PeerId) {}
+}
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
