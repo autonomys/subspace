@@ -14,6 +14,7 @@
 // limitations under the License.
 
 //! # Receipts Pallet
+//!
 //! This pallet provides the general common settlement functions needed by the consensus chain
 //! and system domain, which mainly includes tracking the receipts and handling the fraud proofs
 //! from the chain they secure.
@@ -162,7 +163,7 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A new domain receipt have processed
+        /// A new domain receipt.
         NewDomainReceipt {
             domain_id: DomainId,
             primary_number: T::BlockNumber,
@@ -221,6 +222,7 @@ impl<T: Config> Pallet<T> {
         best_number.saturating_sub(T::ReceiptsPruningDepth::get())
     }
 
+    /// Returns `true` if the primary block the receipt points to is part of the history.
     pub fn point_to_valid_primary_block(
         domain_id: DomainId,
         receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -273,7 +275,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    /// Submit fraud proof that targetted a given domain
+    /// Process a verified fraud proof.
     pub fn process_fraud_proof(fraud_proof: FraudProof) {
         // Revert the execution chain.
         let domain_id = fraud_proof.domain_id;

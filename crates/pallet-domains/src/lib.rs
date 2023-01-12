@@ -124,21 +124,12 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        // TODO: We do not rely on this event to collect the receipts included in a block, perhaps can be removed later.
-        /// A new system domain receipt was backed.
-        NewSystemDomainReceipt {
-            domain_id: DomainId,
-            primary_number: T::BlockNumber,
-            primary_hash: T::Hash,
-        },
         /// A domain bundle was included.
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
             bundle_author: ExecutorPublicKey,
         },
-        /// A fraud proof was processed.
-        FraudProofProcessed,
         /// A bundle equivocation proof was processed.
         BundleEquivocationProofProcessed,
         /// An invalid transaction proof was processed.
@@ -195,8 +186,6 @@ mod pallet {
             }
 
             // TODO: slash the executor accordingly.
-
-            Self::deposit_event(Event::FraudProofProcessed);
 
             Ok(())
         }
