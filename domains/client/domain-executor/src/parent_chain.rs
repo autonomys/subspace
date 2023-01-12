@@ -1,13 +1,11 @@
-use crate::utils::to_number_primitive;
 use sp_api::{NumberFor, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HeaderBackend, Info};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::BlockNumber;
 use system_runtime_primitives::SystemDomainApi;
 
 /// Trait for interacting between the domain and its corresponding parent chain, i.e. retrieving
@@ -15,9 +13,11 @@ use system_runtime_primitives::SystemDomainApi;
 ///
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
-pub(crate) trait ParentChainInterface<Hash> {
-    fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
-    fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
+pub(crate) trait ParentChainInterface<Block: BlockT> {
+    fn info(&self) -> Result<Info<Block>, sp_api::ApiError>;
+    fn head_receipt_number(&self, at: Block::Hash) -> Result<NumberFor<Block>, sp_api::ApiError>;
+    fn oldest_receipt_number(&self, at: Block::Hash) -> Result<NumberFor<Block>, sp_api::ApiError>;
+    fn maximum_receipt_drift(&self, at: Block::Hash) -> Result<NumberFor<Block>, sp_api::ApiError>;
     fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError>;
 }
 
@@ -49,7 +49,7 @@ impl<SBlock, PBlock, SClient> CoreDomainParentChain<SClient, SBlock, PBlock> {
     }
 }
 
-impl<SBlock, PBlock, SClient> ParentChainInterface<SBlock::Hash>
+impl<SBlock, PBlock, SClient> ParentChainInterface<SBlock>
     for CoreDomainParentChain<SClient, SBlock, PBlock>
 where
     SBlock: BlockT,
@@ -57,20 +57,38 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock>,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
-    fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+    fn info(&self) -> Result<Info<SBlock>, sp_api::ApiError> {
+        Ok(self.system_domain_client.info())
+    }
+
+    fn head_receipt_number(&self, at: SBlock::Hash) -> Result<NumberFor<SBlock>, sp_api::ApiError> {
         let head_receipt_number = self
             .system_domain_client
             .runtime_api()
             .head_receipt_number(&BlockId::Hash(at), self.domain_id)?;
-        Ok(to_number_primitive(head_receipt_number))
+        Ok(head_receipt_number)
     }
 
-    fn maximum_receipt_drift(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+    fn oldest_receipt_number(
+        &self,
+        at: SBlock::Hash,
+    ) -> Result<NumberFor<SBlock>, sp_api::ApiError> {
+        let oldest_receipt_number = self
+            .system_domain_client
+            .runtime_api()
+            .oldest_receipt_number(&BlockId::Hash(at), self.domain_id)?;
+        Ok(oldest_receipt_number)
+    }
+
+    fn maximum_receipt_drift(
+        &self,
+        at: SBlock::Hash,
+    ) -> Result<NumberFor<SBlock>, sp_api::ApiError> {
         let max_drift = self
             .system_domain_client
             .runtime_api()
             .maximum_receipt_drift(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(max_drift))
+        Ok(max_drift)
     }
 
     fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError> {
@@ -106,7 +124,7 @@ impl<PClient, Block, PBlock> SystemDomainParentChain<PClient, Block, PBlock> {
     }
 }
 
-impl<Block, PBlock, PClient> ParentChainInterface<PBlock::Hash>
+impl<Block, PBlock, PClient> ParentChainInterface<PBlock>
     for SystemDomainParentChain<PClient, Block, PBlock>
 where
     Block: BlockT,
@@ -114,20 +132,38 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
-    fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+    fn info(&self) -> Result<Info<PBlock>, sp_api::ApiError> {
+        Ok(self.primary_chain_client.info())
+    }
+
+    fn head_receipt_number(&self, at: PBlock::Hash) -> Result<NumberFor<PBlock>, sp_api::ApiError> {
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
             .head_receipt_number(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(head_receipt_number))
+        Ok(head_receipt_number)
     }
 
-    fn maximum_receipt_drift(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
+    fn oldest_receipt_number(
+        &self,
+        at: PBlock::Hash,
+    ) -> Result<NumberFor<PBlock>, sp_api::ApiError> {
+        let oldest_receipt_number = self
+            .primary_chain_client
+            .runtime_api()
+            .oldest_receipt_number(&BlockId::Hash(at))?;
+        Ok(oldest_receipt_number)
+    }
+
+    fn maximum_receipt_drift(
+        &self,
+        at: PBlock::Hash,
+    ) -> Result<NumberFor<PBlock>, sp_api::ApiError> {
         let max_drift = self
             .primary_chain_client
             .runtime_api()
             .maximum_receipt_drift(&BlockId::Hash(at))?;
-        Ok(to_number_primitive(max_drift))
+        Ok(max_drift)
     }
 
     fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError> {
