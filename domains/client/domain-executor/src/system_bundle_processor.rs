@@ -1,6 +1,7 @@
 use crate::domain_block_processor::{
     preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
 };
+use crate::parent_chain::{ParentChainInterface, SystemDomainParentChain};
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi, DomainExtrinsicApi};
@@ -10,11 +11,9 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
-use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
@@ -25,6 +24,7 @@ where
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
+    parent_chain: SystemDomainParentChain<PClient, Block, PBlock>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
     domain_block_processor:
@@ -40,6 +40,7 @@ where
         Self {
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
+            parent_chain: self.parent_chain.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
@@ -90,9 +91,11 @@ where
             E,
         >,
     ) -> Self {
+        let parent_chain = SystemDomainParentChain::new(primary_chain_client.clone());
         Self {
             primary_chain_client,
             client,
+            parent_chain,
             backend,
             keystore,
             domain_block_processor,
@@ -190,24 +193,20 @@ where
             )
             .await?;
 
-        let head_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(primary_hash))?;
-        let head_receipt_number =
-            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(head_receipt_number);
+        let head_receipt_number = {
+            let n = self.parent_chain.head_receipt_number(primary_hash)?;
+            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(n)
+        };
 
         assert!(
             domain_block_result.header_number > head_receipt_number,
             "Consensus chain number must larger than execution chain number by at least 1"
         );
 
-        let oldest_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
-        let oldest_receipt_number =
-            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(oldest_receipt_number);
+        let oldest_receipt_number = {
+            let n = self.parent_chain.oldest_receipt_number(primary_hash)?;
+            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(n)
+        };
 
         let built_block_info = (
             domain_block_result.header_hash,
@@ -220,12 +219,7 @@ where
             head_receipt_number,
             oldest_receipt_number,
         )? {
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
-                    fraud_proof,
-                )?;
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 
         Ok(built_block_info)

@@ -10,12 +10,9 @@ use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
-use sp_domain_digests::AsPredigest;
-use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::Digest;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -223,12 +220,10 @@ where
         // TODO: just make it compile for now, likely wrong, rethink about it.
         let system_domain_hash = self.system_domain_client.info().best_hash;
 
-        let head_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .head_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
-        let head_receipt_number =
-            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(head_receipt_number);
+        let head_receipt_number = {
+            let n = self.parent_chain.head_receipt_number(system_domain_hash)?;
+            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(n)
+        };
 
         // TODO: can be re-enabled once the TODO above is resolved
         // assert!(
@@ -236,12 +231,12 @@ where
         // "Consensus chain number must larger than execution chain number by at least 1"
         // );
 
-        let oldest_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
-        let oldest_receipt_number =
-            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(oldest_receipt_number);
+        let oldest_receipt_number = {
+            let n = self
+                .parent_chain
+                .oldest_receipt_number(system_domain_hash)?;
+            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(n)
+        };
 
         let built_block_info = (
             domain_block_result.header_hash,
