@@ -174,7 +174,7 @@ impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
     ///
     /// `Everything` is used here as we use the signed extension
-    /// [`DisablePallets`] as the actual call filter.
+    /// `DisablePallets` as the actual call filter.
     type BaseCallFilter = Everything;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = SubspaceBlockWeights;
