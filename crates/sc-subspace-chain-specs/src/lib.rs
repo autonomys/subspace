@@ -16,9 +16,10 @@
 
 //! Chain specification data structures tailored for Subspace.
 
-pub mod utils;
+mod utils;
 
-use crate::utils::SerializableChainSpec;
+pub use utils::SerializableChainSpec;
+
 use sc_chain_spec::{ChainSpecExtension, NoExtension, RuntimeGenesis};
 use sc_service::ChainSpecExtension;
 use serde::de::DeserializeOwned;
