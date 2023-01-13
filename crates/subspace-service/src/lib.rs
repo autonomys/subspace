@@ -68,7 +68,7 @@ use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::Node;
+use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::FullPool;
@@ -434,13 +434,14 @@ where
             config,
             piece_cache_size,
         } => {
-            let piece_cache = PieceCache::new(client.clone(), piece_cache_size);
+            let piece_cache =
+                PieceCache::new(client.clone(), piece_cache_size, peer_id(&config.keypair));
 
             // Start before archiver below, so we don't have potential race condition and miss pieces
             task_manager
                 .spawn_handle()
                 .spawn_blocking("subspace-piece-cache", None, {
-                    let piece_cache = piece_cache.clone();
+                    let mut piece_cache = piece_cache.clone();
                     let mut archived_segment_notification_stream = subspace_link
                         .archived_segment_notification_stream()
                         .subscribe();

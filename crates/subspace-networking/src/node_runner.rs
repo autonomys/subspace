@@ -1,8 +1,8 @@
-use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
-use crate::behavior::{Behavior, Event};
+use crate::behavior::{provider_storage, Behavior, Event};
 use crate::create::{
-    KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER, REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
+    ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
+    REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
@@ -14,10 +14,11 @@ use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
+use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent,
-    PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    PeerRecord, ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -34,6 +35,9 @@ use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
+
+// Channel size for provider records received from Kademlia.
+const PROVIDER_RECORD_BUFFER_SIZE: usize = 20000;
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -71,14 +75,14 @@ enum QueryResultSender {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<RecordStore = CustomRecordStore>
+pub struct NodeRunner<ProviderStorage>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior<RecordStore>>,
+    swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -102,16 +106,20 @@ where
     max_established_outgoing_connections: u32,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
+    /// ProviderRecord chanel receiver.
+    provider_records_receiver: Option<mpsc::Receiver<ProviderRecord>>,
+    /// ProviderRecord chanel sender.
+    provider_records_sender: mpsc::Sender<ProviderRecord>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
+pub(crate) struct NodeRunnerConfig<ProviderStorage>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
 {
     pub allow_non_global_addresses_in_dht: bool,
     pub command_receiver: mpsc::Receiver<Command>,
-    pub swarm: Swarm<Behavior<RecordStore>>,
+    pub swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
     pub shared_weak: Weak<Shared>,
     pub next_random_query_interval: Duration,
     pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
@@ -121,12 +129,12 @@ where
     pub metrics: Option<Metrics>,
 }
 
-impl<RecordStore> NodeRunner<RecordStore>
+impl<ProviderStorage> NodeRunner<ProviderStorage>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
 {
     pub(crate) fn new(
-        NodeRunnerConfig::<RecordStore> {
+        NodeRunnerConfig {
             allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
@@ -137,8 +145,11 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
-        }: NodeRunnerConfig<RecordStore>,
+        }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
+        let (provider_records_sender, provider_records_receiver) =
+            mpsc::channel(PROVIDER_RECORD_BUFFER_SIZE);
+
         Self {
             allow_non_global_addresses_in_dht,
             command_receiver,
@@ -157,7 +168,13 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
+            provider_records_receiver: Some(provider_records_receiver),
+            provider_records_sender,
         }
+    }
+
+    pub fn take_provider_records_receiver(&mut self) -> Option<mpsc::Receiver<ProviderRecord>> {
+        self.provider_records_receiver.take()
     }
 
     pub async fn run(&mut self) {
@@ -533,6 +550,11 @@ where
                     {
                         error!(?err, "Failed to add provider record: {:?}", record);
                     }
+
+                    let key = record.key.clone();
+                    if let Err(err) = self.provider_records_sender.try_send(record) {
+                        warn!(?err, ?key, "Failed to add provider record to the channel.");
+                    }
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
@@ -772,7 +794,7 @@ where
 
     // Returns `true` if query was cancelled
     fn unbounded_send_and_cancel_on_error<T>(
-        kademlia: &mut Kademlia<RecordStore>,
+        kademlia: &mut Kademlia<ProviderOnlyRecordStore<ProviderStorage>>,
         sender: &mut mpsc::UnboundedSender<T>,
         value: T,
         channel: &'static str,

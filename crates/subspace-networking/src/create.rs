@@ -1,33 +1,37 @@
 mod transport;
 
-pub use crate::behavior::custom_record_store::ValueGetter;
-use crate::behavior::custom_record_store::{
-    CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+use crate::behavior::persistent_parameters::{
+    BootstrappedNetworkingParameters, NetworkingParametersRegistry,
 };
-use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
-use crate::behavior::{Behavior, BehaviorConfig};
+use crate::behavior::provider_storage::MemoryProviderStorage;
+use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
 use crate::create::transport::build_transport;
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
-use crate::BootstrappedNetworkingParameters;
 use futures::channel::mpsc;
 use libp2p::gossipsub::{
     GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::Config as IdentifyConfig;
-use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
+use libp2p::kad::record::Key;
+use libp2p::kad::store::RecordStore;
+use libp2p::kad::{
+    store, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts, ProviderRecord, Record,
+};
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, TransportError};
+use std::borrow::Cow;
+use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{fmt, io};
+use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
 use tracing::{error, info};
@@ -46,12 +50,8 @@ const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs
 // Defines a republication interval for item providers in Kademlia network.
 const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
     Some(Duration::from_secs(3600)); /* 1 hour */
-// Object replication factor. It must consider different peer types with no record stores.
-const KADEMLIA_RECORD_REPLICATION_FACTOR: NonZeroUsize =
-    NonZeroUsize::new(10).expect("Manually set value should be > 0");
 // Defines a replication factor for Kademlia on get_record operation.
 // "Good citizen" supports the network health.
-const KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS: u16 = 3;
 const YAMUX_MAX_STREAMS: usize = 256;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
@@ -80,6 +80,60 @@ const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
 /// to be tweaked in the future.
 pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
 
+/// Record store that can't be created, only
+pub(crate) struct ProviderOnlyRecordStore<ProviderStorage> {
+    provider_storage: ProviderStorage,
+}
+
+impl<ProviderStorage> ProviderOnlyRecordStore<ProviderStorage> {
+    fn new(provider_storage: ProviderStorage) -> Self {
+        Self { provider_storage }
+    }
+}
+
+impl<ProviderStorage> RecordStore for ProviderOnlyRecordStore<ProviderStorage>
+where
+    ProviderStorage: provider_storage::ProviderStorage,
+{
+    type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
+    type ProvidedIter<'a> = ProviderStorage::ProvidedIter<'a> where Self: 'a;
+
+    fn get(&self, _key: &Key) -> Option<Cow<'_, Record>> {
+        // Not supported
+        None
+    }
+
+    fn put(&mut self, _record: Record) -> store::Result<()> {
+        // Not supported
+        Ok(())
+    }
+
+    fn remove(&mut self, _key: &Key) {
+        // Not supported
+    }
+
+    fn records(&self) -> Self::RecordsIter<'_> {
+        // We don't use Kademlia's periodic replication
+        iter::empty()
+    }
+
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
+        self.provider_storage.add_provider(record)
+    }
+
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
+        self.provider_storage.providers(key)
+    }
+
+    fn provided(&self) -> Self::ProvidedIter<'_> {
+        self.provider_storage.provided()
+    }
+
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
+        self.provider_storage.remove_provider(key, provider)
+    }
+}
+
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
 pub enum RelayMode {
@@ -102,7 +156,7 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-pub struct Config<RecordStore = CustomRecordStore> {
+pub struct Config<ProviderStorage> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -118,8 +172,8 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
     pub gossipsub: GossipsubConfig,
-    /// Externally provided implementation of the custom record store for Kademlia DHT,
-    pub record_store: RecordStore,
+    /// Externally provided implementation of the custom provider storage for Kademlia DHT,
+    pub provider_storage: ProviderStorage,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
@@ -140,30 +194,34 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub metrics: Option<Metrics>,
 }
 
-impl fmt::Debug for Config {
+impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }
 }
 
-impl Config {
-    pub fn with_generated_keypair() -> Self {
-        Self::with_keypair(identity::ed25519::Keypair::generate())
+impl Default for Config<MemoryProviderStorage> {
+    fn default() -> Self {
+        let keypair = identity::ed25519::Keypair::generate();
+        let peer_id = identity::PublicKey::Ed25519(keypair.public()).to_peer_id();
+        Self::with_keypair_and_provider_storage(keypair, MemoryProviderStorage::new(peer_id))
     }
+}
 
-    pub fn with_keypair(keypair: identity::ed25519::Keypair) -> Self {
+impl<ProviderStorage> Config<ProviderStorage>
+where
+    ProviderStorage: provider_storage::ProviderStorage,
+{
+    pub fn with_keypair_and_provider_storage(
+        keypair: identity::ed25519::Keypair,
+        provider_storage: ProviderStorage,
+    ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
             .set_max_packet_size(2 * PIECE_SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
-            .set_replication_factor(KADEMLIA_RECORD_REPLICATION_FACTOR)
-            .set_caching(KademliaCaching::Enabled {
-                max_peers: KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS,
-            })
-            // Ignore any puts
-            // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
-            .set_record_filtering(KademliaStoreInserts::Unfiltered)
+            .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Providers' settings
             .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
             .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)
@@ -197,7 +255,7 @@ impl Config {
             identify,
             kademlia,
             gossipsub,
-            record_store: CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::default()),
+            provider_storage,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
@@ -235,11 +293,11 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create<RecordStore>(
-    config: Config<RecordStore>,
-) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
+pub async fn create<ProviderStorage>(
+    config: Config<ProviderStorage>,
+) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: Send + Sync + provider_storage::ProviderStorage + 'static,
 {
     let Config {
         keypair,
@@ -249,7 +307,7 @@ where
         identify,
         kademlia,
         gossipsub,
-        record_store,
+        provider_storage,
         yamux_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
@@ -276,7 +334,7 @@ where
             identify,
             kademlia,
             gossipsub,
-            record_store,
+            record_store: ProviderOnlyRecordStore::new(provider_storage),
             request_response_protocols,
         });
 
@@ -318,7 +376,7 @@ where
         let shared_weak = Arc::downgrade(&shared);
 
         let node = Node::new(shared, kademlia_tasks_semaphore, regular_tasks_semaphore);
-        let node_runner = NodeRunner::<RecordStore>::new(NodeRunnerConfig::<RecordStore> {
+        let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
             allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,

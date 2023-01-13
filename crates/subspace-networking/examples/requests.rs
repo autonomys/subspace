@@ -39,7 +39,7 @@ async fn main() {
             Some(ExampleResponse)
         })],
         metrics: Some(metrics),
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
 
@@ -89,7 +89,7 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(|_| None)],
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
 
     let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();

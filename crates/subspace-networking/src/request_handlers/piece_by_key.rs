@@ -5,14 +5,13 @@
 
 use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndexHash};
 
 //TODO: rename all module names if we keep this enum
 #[derive(Debug, Clone, Eq, PartialEq, Copy, Encode, Decode)]
 pub enum PieceKey {
-    PieceIndex(PieceIndex),
-    PieceIndexHash(PieceIndexHash),
-    Sector(PieceIndexHash),
+    Cache(PieceIndexHash),
+    ArchivalStorage(PieceIndexHash),
 }
 
 /// Piece-by-hash protocol request.
