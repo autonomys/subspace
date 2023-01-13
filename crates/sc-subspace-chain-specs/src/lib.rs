@@ -16,27 +16,32 @@
 
 //! Chain specification data structures tailored for Subspace.
 
-mod utils;
+pub mod utils;
 
 use crate::utils::SerializableChainSpec;
-use sc_chain_spec::{ChainSpecExtension, RuntimeGenesis};
+use sc_chain_spec::{ChainSpecExtension, NoExtension, RuntimeGenesis};
+use sc_service::ChainSpecExtension;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 /// The extensions for the [`ConsensusChainSpec`].
 #[derive(Serialize, Deserialize, ChainSpecExtension)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[serde(bound = "")]
-pub struct ChainSpecExtensions<ExecutionGenesisConfig>
+pub struct ChainSpecExtensions<ExecutionGenesisConfig, Extensions = NoExtension>
 where
     ExecutionGenesisConfig: RuntimeGenesis + 'static,
+    Extensions: ChainSpecExtension + DeserializeOwned + Clone + Send + Sync + 'static,
 {
     /// Chain spec of execution chain.
-    pub execution_chain_spec: ExecutionChainSpec<ExecutionGenesisConfig>,
+    pub execution_chain_spec: ExecutionChainSpec<ExecutionGenesisConfig, Extensions>,
 }
 
-impl<ExecutionGenesisConfig> Clone for ChainSpecExtensions<ExecutionGenesisConfig>
+impl<ExecutionGenesisConfig, Extensions> Clone
+    for ChainSpecExtensions<ExecutionGenesisConfig, Extensions>
 where
     ExecutionGenesisConfig: RuntimeGenesis + 'static,
+    Extensions: ChainSpecExtension + DeserializeOwned + Clone + Send + Sync + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -50,4 +55,5 @@ pub type ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig> =
     SerializableChainSpec<GenesisConfig, ChainSpecExtensions<ExecutionGenesisConfig>>;
 
 /// Specialized `ChainSpec` for the execution runtime.
-pub type ExecutionChainSpec<ExecutionGenesisConfig> = SerializableChainSpec<ExecutionGenesisConfig>;
+pub type ExecutionChainSpec<ExecutionGenesisConfig, Ext = NoExtension> =
+    SerializableChainSpec<ExecutionGenesisConfig, Ext>;
