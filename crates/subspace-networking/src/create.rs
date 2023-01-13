@@ -204,11 +204,11 @@ impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
     }
 }
 
-impl Config<MemoryProviderStorage> {
-    pub fn with_generated_keypair() -> Config<MemoryProviderStorage> {
+impl Default for Config<MemoryProviderStorage> {
+    fn default() -> Self {
         let keypair = identity::ed25519::Keypair::generate();
         let peer_id = identity::PublicKey::Ed25519(keypair.public()).to_peer_id();
-        Self::with_keypair(keypair, MemoryProviderStorage::new(peer_id))
+        Self::with_keypair_and_provider_storage(keypair, MemoryProviderStorage::new(peer_id))
     }
 }
 
@@ -216,7 +216,7 @@ impl<ProviderStorage> Config<ProviderStorage>
 where
     ProviderStorage: provider_storage::ProviderStorage,
 {
-    pub fn with_keypair(
+    pub fn with_keypair_and_provider_storage(
         keypair: identity::ed25519::Keypair,
         provider_storage: ProviderStorage,
     ) -> Self {

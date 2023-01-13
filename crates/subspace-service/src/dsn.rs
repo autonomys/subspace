@@ -88,7 +88,7 @@ where
             Some(PieceByHashResponse { piece: result })
         })],
         provider_storage,
-        ..subspace_networking::Config::with_generated_keypair()
+        ..subspace_networking::Config::default()
     };
 
     subspace_networking::create(networking_config).await

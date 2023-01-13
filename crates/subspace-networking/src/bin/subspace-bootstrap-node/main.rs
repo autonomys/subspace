@@ -112,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
                 max_established_outgoing_connections: out_peers
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
-                ..Config::with_keypair(keypair, provider_storage)
+                ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
             let (node, mut node_runner) = subspace_networking::create(config)
                 .await

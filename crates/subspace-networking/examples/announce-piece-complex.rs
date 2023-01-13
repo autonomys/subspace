@@ -24,7 +24,7 @@ async fn main() {
             .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_global_addresses_in_dht: true,
-            ..Config::with_generated_keypair()
+            ..Config::default()
         };
 
         let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
@@ -67,7 +67,7 @@ async fn main() {
             bootstrap_nodes.clone(),
         )
         .boxed(),
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
 
     let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();

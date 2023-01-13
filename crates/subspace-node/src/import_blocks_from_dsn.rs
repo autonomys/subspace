@@ -150,7 +150,7 @@ where
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         allow_non_global_addresses_in_dht: true,
-        ..Config::with_generated_keypair()
+        ..Config::default()
     })
     .await
     .map_err(|error| sc_service::Error::Other(error.to_string()))?;

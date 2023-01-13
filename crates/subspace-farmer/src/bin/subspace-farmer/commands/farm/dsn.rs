@@ -62,7 +62,7 @@ pub(super) async fn configure_dsn(
     );
 
     let handle = Handle::current();
-    let default_config = Config::with_generated_keypair();
+    let default_config = Config::default();
     let peer_id = peer_id(&keypair);
 
     let db_provider_storage =
