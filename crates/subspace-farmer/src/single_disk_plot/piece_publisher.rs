@@ -2,8 +2,6 @@ use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use parity_scale_codec::Encode;
-use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -52,12 +50,12 @@ impl PieceSectorPublisher {
         &self,
         piece_indexes: Vec<PieceIndex>,
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        let mut pieces_receiving_futures = piece_indexes
+        let mut pieces_publishing_futures = piece_indexes
             .iter()
             .map(|piece_index| self.publish_single_piece_with_backoff(*piece_index))
             .collect::<FuturesUnordered<_>>();
 
-        while pieces_receiving_futures.next().await.is_some() {
+        while pieces_publishing_futures.next().await.is_some() {
             self.check_cancellation()?;
         }
 
@@ -109,11 +107,7 @@ impl PieceSectorPublisher {
         let key =
             PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
 
-        // TODO: rework to piece announcing (pull-model) after fixing
-        // https://github.com/libp2p/rust-libp2p/issues/3048
-        let set = BTreeSet::from_iter(vec![self.dsn_node.id().to_bytes()]);
-
-        let result = self.dsn_node.put_value(key, set.encode()).await;
+        let result = self.dsn_node.start_announcing(key).await;
 
         match result {
             Err(error) => {

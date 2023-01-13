@@ -1,6 +1,5 @@
 use futures::channel::oneshot;
 use futures::StreamExt;
-use libp2p::identity::ed25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -18,7 +17,6 @@ async fn main() {
 
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
-        let keypair = Keypair::generate();
         let config = Config {
             networking_parameters_registry: BootstrappedNetworkingParameters::new(
                 bootstrap_nodes.clone(),
@@ -26,7 +24,7 @@ async fn main() {
             .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_global_addresses_in_dht: true,
-            ..Config::with_keypair(keypair.clone())
+            ..Config::default()
         };
 
         let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
@@ -69,7 +67,7 @@ async fn main() {
             bootstrap_nodes.clone(),
         )
         .boxed(),
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
 
     let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();

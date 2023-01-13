@@ -15,8 +15,8 @@ use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
+    NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tokio::sync::Semaphore;
 use tokio::time::error::Elapsed;
@@ -52,24 +52,18 @@ pub struct DsnConfig {
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-) -> Result<
-    (
-        Node,
-        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
-    ),
-    CreationError,
->
+) -> Result<(Node, NodeRunner<MemoryProviderStorage>), CreationError>
 where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
 
-    let record_store =
-        CustomRecordStore::new(piece_cache.clone(), MemoryProviderStorage::default());
+    // TODO: This should be a wrapper that handles locally cached pieces
+    let provider_storage = MemoryProviderStorage::new(peer_id(&dsn_config.keypair));
 
     let networking_config = subspace_networking::Config {
-        keypair: dsn_config.keypair,
+        keypair: dsn_config.keypair.clone(),
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(
@@ -77,8 +71,8 @@ where
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::PieceIndex(piece_index) = req.key {
-                match piece_cache.get_piece(piece_index) {
+            let result = if let PieceKey::Cache(piece_index_hash) = req.key {
+                match piece_cache.get_piece(piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
                     Err(error) => {
                         error!(key=?req.key, %error, "Failed to get piece from cache");
@@ -93,8 +87,8 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store,
-        ..subspace_networking::Config::with_generated_keypair()
+        provider_storage,
+        ..subspace_networking::Config::default()
     };
 
     subspace_networking::create(networking_config).await
@@ -174,10 +168,7 @@ pub(crate) async fn publish_pieces(
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
 
     let mut pieces_publishing_futures = pieces_indexes
-        .zip(archived_segment.pieces.as_pieces())
-        .map(|(piece_index, piece)| {
-            publish_single_piece_with_backoff(node, piece_index, piece.to_vec())
-        })
+        .map(|piece_index| publish_single_piece_with_backoff(node, piece_index))
         .collect::<FuturesUnordered<_>>();
 
     while pieces_publishing_futures.next().await.is_some() {
@@ -190,7 +181,6 @@ pub(crate) async fn publish_pieces(
 async fn publish_single_piece_with_backoff(
     node: &Node,
     piece_index: PieceIndex,
-    piece: Vec<u8>,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let backoff = ExponentialBackoff {
         initial_interval: PUBLISH_PIECE_INITIAL_INTERVAL,
@@ -203,7 +193,7 @@ async fn publish_single_piece_with_backoff(
     retry(backoff, || async {
         let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
             PUBLISH_PIECE_TIMEOUT,
-            publish_single_piece(node, piece_index, piece.clone()),
+            publish_single_piece(node, piece_index),
         )
         .await;
 
@@ -225,35 +215,25 @@ async fn publish_single_piece_with_backoff(
 async fn publish_single_piece(
     node: &Node,
     piece_index: PieceIndex,
-    piece: Vec<u8>,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
-    //TODO: restore announcing after https://github.com/libp2p/rust-libp2p/issues/3048
-    // trace!(?key, ?piece_index, "Announcing key...");
-    //
-    // let announcing_result = node.start_announcing(key).await;
-    //
-    // trace!(?key, "Announcing result: {:?}", announcing_result);
-
-    let result = node.put_value(key, piece).await;
-
-    match result {
-        Err(error) => {
-            debug!(?error, %piece_index, ?key, "Piece publishing returned an error");
-
-            Err("Piece publishing failed".into())
-        }
+    match node.start_announcing(key).await {
         Ok(mut stream) => {
             if stream.next().await.is_some() {
-                trace!(%piece_index, ?key, "Piece publishing succeeded");
+                trace!(%piece_index, ?key, "Piece announcing succeeded");
 
                 Ok(())
             } else {
-                debug!(%piece_index, ?key, "Piece publishing failed");
+                warn!(%piece_index, ?key, "Piece announcing failed");
 
                 Err("Piece publishing was unsuccessful".into())
             }
+        }
+        Err(error) => {
+            error!( %piece_index, ?key, "Piece announcing failed with an error: {}", error);
+
+            Err("Piece publishing failed".into())
         }
     }
 }

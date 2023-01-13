@@ -1,11 +1,12 @@
 use libp2p::multihash::Multihash;
+use std::error::Error;
 use subspace_core_primitives::{Blake2b256Hash, PieceIndexHash};
 
 /// Start of Subspace Network multicodec namespace (+1000 to distinguish from future stable values):
 /// https://github.com/multiformats/multicodec/blob/master/table.csv
 const SUBSPACE_MULTICODEC_NAMESPACE_START: u64 = 0xb39910 + 1000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(u64)]
 pub enum MultihashCode {
     Piece = SUBSPACE_MULTICODEC_NAMESPACE_START,
@@ -16,6 +17,19 @@ pub enum MultihashCode {
 impl From<MultihashCode> for u64 {
     fn from(code: MultihashCode) -> Self {
         code as u64
+    }
+}
+
+impl TryFrom<u64> for MultihashCode {
+    type Error = Box<dyn Error>;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            x if x == MultihashCode::Piece as u64 => Ok(MultihashCode::Piece),
+            x if x == MultihashCode::PieceIndex as u64 => Ok(MultihashCode::PieceIndex),
+            x if x == MultihashCode::Sector as u64 => Ok(MultihashCode::Sector),
+            _ => Err("Unexpected multihash code".into()),
+        }
     }
 }
 

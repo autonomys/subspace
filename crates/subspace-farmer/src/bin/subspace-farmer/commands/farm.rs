@@ -1,11 +1,15 @@
+mod dsn;
+mod farmer_provider_storage;
+mod piece_storage;
+
+use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
-use crate::{DiskFarm, DsnArgs, FarmingArgs};
+use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
@@ -13,21 +17,7 @@ use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::{
-    create, peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeRecordStorageWrapper, MemoryProviderStorage, Node, NodeRunner,
-    ParityDbRecordStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
-};
-use tokio::runtime::Handle;
-use tracing::{debug, error, info, trace};
-
-const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
-
-// Type alias for currently configured Kademlia's custom record store.
-type ConfiguredRecordStore = CustomRecordStore<
-    LimitedSizeRecordStorageWrapper<ParityDbRecordStorage>,
-    MemoryProviderStorage,
->;
+use tracing::{debug, error, info};
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -37,7 +27,7 @@ struct PieceDetails {
 }
 
 #[derive(Debug)]
-struct ReadersAndPieces {
+pub(crate) struct ReadersAndPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndexHash, PieceDetails>,
 }
@@ -75,7 +65,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let (node, mut node_runner) = {
+    let (node, mut node_runner, wrapped_piece_storage) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -97,6 +87,7 @@ pub(crate) async fn farm_multi_disk(
         }
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
+
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -227,6 +218,12 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
+    let mut provider_records_receiver = node_runner
+        .take_provider_records_receiver()
+        .expect("Provider record receiver should exist on initiatialization.");
+    let mut provider_record_processor =
+        FarmerProviderRecordProcessor::new(node.clone(), wrapped_piece_storage);
+
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
@@ -247,116 +244,16 @@ pub(crate) async fn farm_multi_disk(
         _ = node_runner.run().fuse() => {
             info!("Node runner exited.")
         },
+
+        // Provider record processing future
+        _ = Box::pin(async move {
+            while let Some(provider_record) = provider_records_receiver.next().await {
+                provider_record_processor.process_provider_record(provider_record).await;
+            }
+        }).fuse() => {},
     );
 
     anyhow::Ok(())
-}
-
-async fn configure_dsn(
-    base_path: PathBuf,
-    keypair: Keypair,
-    DsnArgs {
-        listen_on,
-        bootstrap_nodes,
-        record_cache_size,
-        disable_private_ips,
-        reserved_peers,
-    }: DsnArgs,
-    readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
-) -> Result<(Node, NodeRunner<ConfiguredRecordStore>), anyhow::Error> {
-    let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
-        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
-            .expect("We don't expect an error on manually set value."),
-    );
-    let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
-
-    let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
-
-    info!(
-        ?record_cache_db_path,
-        ?record_cache_size,
-        "Record cache DB configured."
-    );
-
-    let handle = Handle::current();
-    let default_config = Config::with_generated_keypair();
-
-    let config = Config::<ConfiguredRecordStore> {
-        reserved_peers,
-        keypair,
-        listen_on,
-        allow_non_global_addresses_in_dht: !disable_private_ips,
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
-            .boxed(),
-        request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::Sector(piece_index_hash) = req.key {
-                let (mut reader, piece_details) = {
-                    let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                        Some(readers_and_pieces) => readers_and_pieces,
-                        None => {
-                            debug!("A readers and pieces are already dropped");
-                            return None;
-                        }
-                    };
-                    let readers_and_pieces = readers_and_pieces.lock();
-                    let readers_and_pieces = match readers_and_pieces.as_ref() {
-                        Some(readers_and_pieces) => readers_and_pieces,
-                        None => {
-                            debug!(
-                                ?piece_index_hash,
-                                "Readers and pieces are not initialized yet"
-                            );
-                            return None;
-                        }
-                    };
-                    let piece_details =
-                        match readers_and_pieces.pieces.get(&piece_index_hash).copied() {
-                            Some(piece_details) => piece_details,
-                            None => {
-                                trace!(
-                                    ?piece_index_hash,
-                                    "Piece is not stored in any of the local plots"
-                                );
-                                return None;
-                            }
-                        };
-                    let reader = readers_and_pieces
-                        .readers
-                        .get(piece_details.plot_offset)
-                        .cloned()
-                        .expect("Offsets strictly correspond to existing plots; qed");
-                    (reader, piece_details)
-                };
-
-                let handle = handle.clone();
-                tokio::task::block_in_place(move || {
-                    handle.block_on(
-                        reader.read_piece(piece_details.sector_index, piece_details.piece_offset),
-                    )
-                })
-            } else {
-                debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
-
-                None
-            };
-
-            Some(PieceByHashResponse { piece: result })
-        })],
-        record_store: CustomRecordStore::new(
-            LimitedSizeRecordStorageWrapper::new(
-                ParityDbRecordStorage::new(&record_cache_db_path)
-                    .map_err(|err| anyhow::anyhow!(err.to_string()))?,
-                record_cache_size,
-                peer_id(&default_config.keypair),
-            ),
-            MemoryProviderStorage::default(),
-        ),
-        ..default_config
-    };
-
-    create::<ConfiguredRecordStore>(config)
-        .await
-        .map_err(Into::into)
 }
 
 // TODO: implement proper conversion function with crypto entropy generator and zeroizing
