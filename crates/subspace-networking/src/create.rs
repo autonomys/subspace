@@ -284,6 +284,9 @@ pub enum CreationError {
     /// Transport error when attempting to listen on multiaddr.
     #[error("Transport error when attempting to listen on multiaddr: {0}")]
     TransportError(#[from] TransportError<io::Error>),
+    /// ParityDb storage error
+    #[error("ParityDb storage error: {0}")]
+    ParityDbStorageError(#[from] parity_db::Error),
 }
 
 /// Converts public key from keypair to PeerId.

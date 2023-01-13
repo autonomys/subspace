@@ -1,6 +1,10 @@
+mod node_provider_storage;
+
+use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
+use either::Either;
 use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
@@ -9,6 +13,7 @@ use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::error::Error;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
@@ -16,7 +21,8 @@ use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
-    NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
+    ToMultihash,
 };
 use tokio::sync::Semaphore;
 use tokio::time::error::Elapsed;
@@ -29,6 +35,8 @@ const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
 const PUBLISH_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between put_piece calls.
 const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
+/// Provider records cache size
+const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -47,20 +55,37 @@ pub struct DsnConfig {
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     pub allow_non_global_addresses_in_dht: bool,
+
+    /// System base path.
+    pub base_path: Option<PathBuf>,
 }
+
+type DsnProviderStorage<AS> =
+    NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
 
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-) -> Result<(Node, NodeRunner<MemoryProviderStorage>), CreationError>
+) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), CreationError>
 where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
 
-    // TODO: This should be a wrapper that handles locally cached pieces
-    let provider_storage = MemoryProviderStorage::new(peer_id(&dsn_config.keypair));
+    let peer_id = peer_id(&dsn_config.keypair);
+
+    let external_provider_storage = if let Some(path) = dsn_config.base_path {
+        let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
+        let cache_size: NonZeroUsize = NonZeroUsize::new(MAX_PROVIDER_RECORDS_LIMIT)
+            .expect("Manual value should be greater than zero.");
+
+        Either::Left(ParityDbProviderStorage::new(&db_path, cache_size, peer_id)?)
+    } else {
+        Either::Right(MemoryProviderStorage::new(peer_id))
+    };
+
+    let provider_storage = NodeProviderStorage::new(piece_cache.clone(), external_provider_storage);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
