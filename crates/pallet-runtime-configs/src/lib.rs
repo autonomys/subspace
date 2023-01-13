@@ -27,11 +27,15 @@ mod pallet {
     #[pallet::generate_store(pub trait Store)]
     pub struct Pallet<T>(_);
 
-    /// Sets this value to `true` to enable the signed extension `DisablePallets` which
-    /// disallowes the Call from pallet-executor.
+    /// Whether to disable the executor calls.
     #[pallet::storage]
     #[pallet::getter(fn enable_executor)]
     pub type EnableExecutor<T> = StorageValue<_, bool, ValueQuery>;
+
+    /// Whether to disable the normal balances transfer calls.
+    #[pallet::storage]
+    #[pallet::getter(fn enable_transfer)]
+    pub type EnableTransfer<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
@@ -40,14 +44,19 @@ mod pallet {
     #[derive(Default)]
     pub struct GenesisConfig {
         pub enable_executor: bool,
+        pub enable_transfer: bool,
     }
 
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
-            let Self { enable_executor } = self;
+            let Self {
+                enable_executor,
+                enable_transfer,
+            } = self;
 
             <EnableExecutor<T>>::put(enable_executor);
+            <EnableTransfer<T>>::put(enable_transfer);
         }
     }
 }
