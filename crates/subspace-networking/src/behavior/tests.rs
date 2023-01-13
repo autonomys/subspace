@@ -149,6 +149,26 @@ fn binary_heap_eviction_works() {
 }
 
 #[test]
+fn binary_heap_should_include_key_works() {
+    let peer_id =
+        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [2u8].as_slice()).unwrap())
+            .unwrap();
+    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+
+    // Limit not reached
+    let key1 = Key::from(vec![1]);
+    assert!(heap.should_include_key(&key1));
+
+    // Limit reached and key is not "less" than top key
+    heap.insert(key1.clone());
+    assert!(!heap.should_include_key(&key1));
+
+    // Limit reached and key is "less" than top key
+    let key2 = Key::from(vec![2]);
+    assert!(heap.should_include_key(&key2));
+}
+
+#[test]
 fn instant_conversion() {
     let inst1 = Instant::now();
     let ms = instant_to_micros(inst1);
