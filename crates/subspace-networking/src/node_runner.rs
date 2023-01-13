@@ -1071,6 +1071,9 @@ where
                     .remove_all_known_peer_addresses(peer_id)
                     .await;
             }
+            Command::Dial { address } => {
+                let _ = self.swarm.dial(address);
+            }
         }
     }
 

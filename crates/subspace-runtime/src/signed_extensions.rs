@@ -61,13 +61,37 @@ impl SignedExtension for DisablePallets {
         Ok(())
     }
 
-    fn pre_dispatch(
-        self,
+    fn validate(
+        &self,
         _who: &Self::AccountId,
-        _call: &Self::Call,
+        call: &Self::Call,
         _info: &DispatchInfoOf<Self::Call>,
         _len: usize,
+    ) -> TransactionValidity {
+        // Disable normal balance transfers.
+        if matches!(
+            call,
+            RuntimeCall::Balances(
+                pallet_balances::Call::transfer { .. }
+                    | pallet_balances::Call::transfer_keep_alive { .. }
+                    | pallet_balances::Call::transfer_all { .. }
+            )
+        ) && !RuntimeConfigs::enable_transfer()
+        {
+            InvalidTransaction::Call.into()
+        } else {
+            Ok(ValidTransaction::default())
+        }
+    }
+
+    fn pre_dispatch(
+        self,
+        who: &Self::AccountId,
+        call: &Self::Call,
+        info: &DispatchInfoOf<Self::Call>,
+        len: usize,
     ) -> Result<Self::Pre, TransactionValidityError> {
+        self.validate(who, call, info, len)?;
         Ok(())
     }
 

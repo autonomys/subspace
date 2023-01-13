@@ -67,6 +67,7 @@ struct GenesisParams {
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
+    enable_transfer: bool,
 }
 
 pub fn gemini_3b() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
@@ -137,6 +138,7 @@ pub fn gemini_3b_compiled(
                         )),
                     ),
                     enable_executor: true,
+                    enable_transfer: false,
                 },
             )
         },
@@ -224,6 +226,7 @@ pub fn x_net_2_config_compiled(
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
+                    enable_transfer: false,
                 },
             )
         },
@@ -274,6 +277,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
+                    enable_transfer: true,
                 },
             )
         },
@@ -329,6 +333,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
+                    enable_transfer: true,
                 },
             )
         },
@@ -362,6 +367,7 @@ fn subspace_genesis_config(
         enable_storage_access,
         allow_authoring_by,
         enable_executor,
+        enable_transfer,
     } = genesis_params;
 
     GenesisConfig {
@@ -381,6 +387,9 @@ fn subspace_genesis_config(
             allow_authoring_by,
         },
         vesting: VestingConfig { vesting },
-        runtime_configs: RuntimeConfigsConfig { enable_executor },
+        runtime_configs: RuntimeConfigsConfig {
+            enable_executor,
+            enable_transfer,
+        },
     }
 }

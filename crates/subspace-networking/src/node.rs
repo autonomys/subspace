@@ -521,6 +521,18 @@ impl Node {
             .await
     }
 
+    /// Dial multiaddress.
+    /// It could be used to test libp2p transports bypassing protocol checks for bootstrap
+    /// or listen-on addresses.
+    #[doc(hidden)]
+    pub async fn dial(&self, address: Multiaddr) -> Result<(), SendError> {
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::Dial { address })
+            .await
+    }
+
     /// Node's own addresses where it listens for incoming requests.
     pub fn listeners(&self) -> Vec<Multiaddr> {
         self.shared.listeners.lock().clone()

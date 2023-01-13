@@ -44,7 +44,7 @@ use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::num::NonZeroU64;
 use core::time::Duration;
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -170,25 +170,12 @@ pub type SS58Prefix = ConstU16<2254>;
 
 // Configure FRAME pallets to include in runtime.
 
-pub struct CallFilter;
-
-impl Contains<RuntimeCall> for CallFilter {
-    fn contains(c: &RuntimeCall) -> bool {
-        // Disable executor and all balance transfers
-        !matches!(
-            c,
-            RuntimeCall::Balances(
-                pallet_balances::Call::transfer { .. }
-                    | pallet_balances::Call::transfer_keep_alive { .. }
-                    | pallet_balances::Call::transfer_all { .. }
-            )
-        )
-    }
-}
-
 impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
-    type BaseCallFilter = CallFilter;
+    ///
+    /// `Everything` is used here as we use the signed extension
+    /// `DisablePallets` as the actual call filter.
+    type BaseCallFilter = Everything;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = SubspaceBlockWeights;
     /// The maximum length of a block (in bytes).
