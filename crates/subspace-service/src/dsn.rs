@@ -15,9 +15,8 @@ use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, CreationError, CustomRecordStore,
-    MemoryProviderStorage, Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse,
-    PieceKey, ToMultihash,
+    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
+    NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
 };
 use tokio::sync::Semaphore;
 use tokio::time::error::Elapsed;
@@ -53,23 +52,15 @@ pub struct DsnConfig {
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-) -> Result<
-    (
-        Node,
-        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
-    ),
-    CreationError,
->
+) -> Result<(Node, NodeRunner<MemoryProviderStorage>), CreationError>
 where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
 
-    let record_store = CustomRecordStore::new(
-        piece_cache.clone(),
-        MemoryProviderStorage::new(peer_id(&dsn_config.keypair)),
-    );
+    // TODO: This should be a wrapper that handles locally cached pieces
+    let provider_storage = MemoryProviderStorage::new(peer_id(&dsn_config.keypair));
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
@@ -96,8 +87,8 @@ where
 
             Some(PieceByHashResponse { piece: result })
         })],
-        record_store,
-        ..subspace_networking::Config::with_generated_keypair()
+        provider_storage,
+        ..subspace_networking::Config::default()
     };
 
     subspace_networking::create(networking_config).await

@@ -1,16 +1,11 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
-use crate::behavior::custom_record_store::{
-    instant_to_micros, micros_to_instant, CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
-};
+use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
 use crate::utils::record_binary_heap::RecordBinaryHeap;
 use libp2p::kad::record::Key;
-use libp2p::kad::store::RecordStore;
-use libp2p::kad::ProviderRecord;
 use libp2p::multiaddr::Protocol;
 use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
-use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
@@ -64,75 +59,6 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 
     // Check after the second run (clean cache)
     assert_eq!(peers_cache.len(), 0);
-}
-
-#[allow(clippy::mutable_key_type)] // we use hash set for sorting to compare collections
-#[test]
-fn check_custom_store_api() {
-    let local_peer_id = PeerId::random();
-    let mut store =
-        CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::new(local_peer_id));
-
-    let key1: Key = b"key1".to_vec().into();
-    let provider1 = PeerId::random();
-    let rec1 = ProviderRecord {
-        provider: provider1,
-        key: key1,
-        expires: None,
-        addresses: Vec::new(),
-    };
-
-    let key2: Key = b"key2".to_vec().into();
-    let provider2 = local_peer_id;
-    let rec2 = ProviderRecord {
-        provider: provider2,
-        key: key2.clone(),
-        expires: None,
-        addresses: Vec::new(),
-    };
-
-    let provider3 = PeerId::random();
-    let rec3 = ProviderRecord {
-        provider: provider3,
-        key: key2.clone(),
-        expires: None,
-        addresses: Vec::new(),
-    };
-
-    // Check adding
-    store.add_provider(rec1).unwrap();
-    store.add_provider(rec2.clone()).unwrap();
-    store.add_provider(rec3.clone()).unwrap();
-
-    // Check local providers retrieval
-    let provided_collection: HashSet<ProviderRecord> =
-        HashSet::from_iter(store.provided().map(|i| i.into_owned()));
-
-    println!("{:?}", store.provided());
-
-    assert_eq!(
-        HashSet::from_iter(vec![rec2.clone()].into_iter()),
-        provided_collection
-    );
-
-    // Check single provider retrieval
-    let provided_collection: HashSet<ProviderRecord> =
-        HashSet::from_iter(store.providers(&key2).into_iter());
-
-    assert_eq!(
-        HashSet::from_iter(vec![rec2.clone(), rec3].into_iter()),
-        provided_collection
-    );
-
-    // Remove provider
-    store.remove_provider(&key2, &provider3);
-    let provided_collection: HashSet<ProviderRecord> =
-        HashSet::from_iter(store.providers(&key2).into_iter());
-
-    assert_eq!(
-        HashSet::from_iter(vec![rec2].into_iter()),
-        provided_collection
-    );
 }
 
 #[test]
@@ -220,6 +146,26 @@ fn binary_heap_eviction_works() {
         assert!(!should_be_evicted);
         assert_eq!(evicted, key2);
     }
+}
+
+#[test]
+fn binary_heap_should_include_key_works() {
+    let peer_id =
+        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [2u8].as_slice()).unwrap())
+            .unwrap();
+    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+
+    // Limit not reached
+    let key1 = Key::from(vec![1]);
+    assert!(heap.should_include_key(&key1));
+
+    // Limit reached and key is not "less" than top key
+    heap.insert(key1.clone());
+    assert!(!heap.should_include_key(&key1));
+
+    // Limit reached and key is "less" than top key
+    let key2 = Key::from(vec![2]);
+    assert!(heap.should_include_key(&key2));
 }
 
 #[test]

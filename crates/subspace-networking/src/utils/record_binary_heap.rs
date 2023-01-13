@@ -91,7 +91,7 @@ impl RecordBinaryHeap {
 
     /// Checks whether we include the key
     pub fn should_include_key(&self, key: &Key) -> bool {
-        if !self.is_limit_exceeded() {
+        if !self.is_limit_reached() {
             return true;
         }
 
@@ -106,7 +106,11 @@ impl RecordBinaryHeap {
         }
     }
 
-    fn is_limit_exceeded(&self) -> bool {
+    fn is_limit_reached(&self) -> bool {
         self.size() >= self.limit
+    }
+
+    fn is_limit_exceeded(&self) -> bool {
+        self.size() > self.limit
     }
 }

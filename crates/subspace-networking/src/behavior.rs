@@ -1,12 +1,11 @@
-pub(crate) mod custom_record_store;
 pub(crate) mod persistent_parameters;
+pub(crate) mod provider_storage;
 #[cfg(test)]
 mod tests;
 
 use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
 };
-use custom_record_store::CustomRecordStore;
 use derive_more::From;
 use libp2p::gossipsub::{Gossipsub, GossipsubConfig, GossipsubEvent, MessageAuthenticity};
 use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
@@ -15,7 +14,7 @@ use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
 
-pub(crate) struct BehaviorConfig<RecordStore = CustomRecordStore> {
+pub(crate) struct BehaviorConfig<RecordStore> {
     /// Identity keypair of a node used for authenticated connections.
     pub(crate) peer_id: PeerId,
     /// The configuration for the [`Identify`] behaviour.

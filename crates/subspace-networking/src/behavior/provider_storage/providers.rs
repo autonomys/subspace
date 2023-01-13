@@ -1,6 +1,7 @@
+#[cfg(test)]
+mod tests;
+
 use super::ProviderStorage;
-use crate::deconstruct_record_key;
-use crate::utils::multihash::MultihashCode;
 use crate::utils::record_binary_heap::RecordBinaryHeap;
 use either::Either;
 use libp2p::kad::record::Key;
@@ -12,7 +13,6 @@ use parity_scale_codec::{Decode, Encode};
 use std::borrow::{Borrow, Cow};
 use std::collections::{hash_set, BTreeMap};
 use std::iter;
-use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
@@ -24,14 +24,6 @@ const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
 
 const PARITY_DB_ALL_PROVIDERS_COLUMN_NAME: u8 = 0;
 const PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME: u8 = 1;
-
-/// Defines operations for all known providers.
-pub trait EnumerableProviderStorage<'a> {
-    type ProvidedIter: Iterator<Item = Cow<'a, ProviderRecord>>;
-
-    /// Gets an iterator over all provider records currently stored.
-    fn known_providers(&'a self) -> Self::ProvidedIter;
-}
 
 /// Memory based provider records storage.
 pub struct MemoryProviderStorage {
@@ -184,15 +176,20 @@ impl From<ParityDbProviderRecord> for ProviderRecord {
 /// Defines provider record storage with DB persistence
 #[derive(Clone)]
 pub struct ParityDbProviderStorage {
-    // Parity DB instance
+    /// Parity DB instance
     db: Arc<Db>,
-
-    // Local provider PeerID
+    /// Maintains a heap to limit total item number.
+    heap: RecordBinaryHeap,
+    /// Local provider PeerID
     local_peer_id: PeerId,
 }
 
 impl ParityDbProviderStorage {
-    pub fn new(path: &Path, local_peer_id: PeerId) -> Result<Self, parity_db::Error> {
+    pub fn new(
+        path: &Path,
+        max_items_limit: NonZeroUsize,
+        local_peer_id: PeerId,
+    ) -> Result<Self, parity_db::Error> {
         let mut options = Options::with_columns(path, 2);
         options.columns = vec![
             ColumnOptions {
@@ -212,8 +209,41 @@ impl ParityDbProviderStorage {
 
         let db = Db::open_or_create(&options)?;
 
+        let mut heap = RecordBinaryHeap::new(local_peer_id, max_items_limit.get());
+
+        let known_providers = {
+            let rec_iter_result: Result<
+                ParityDbProviderRecordCollectionIterator,
+                parity_db::Error,
+            > = try {
+                let btree_iter = db.iter(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME)?;
+                ParityDbProviderRecordCollectionIterator::new(btree_iter)?
+            };
+
+            match rec_iter_result {
+                Ok(rec_iter) => rec_iter,
+                Err(err) => {
+                    error!(?err, "Can't create Parity DB record storage iterator.");
+
+                    ParityDbProviderRecordCollectionIterator::empty()
+                }
+            }
+        };
+
+        // Initial cache loading.
+        for rec in known_providers {
+            let _ = heap.insert(rec.key.clone());
+        }
+
+        if heap.size() > 0 {
+            info!(size = heap.size(), "Record cache loaded.");
+        } else {
+            info!("New record cache initialized.");
+        }
+
         Ok(Self {
             db: Arc::new(db),
+            heap,
             local_peer_id,
         })
     }
@@ -317,18 +347,27 @@ impl ProviderStorage for ParityDbProviderStorage {
     type ProvidedIter<'a> = ParityDbProviderRecordIterator<'a> where Self:'a;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
-        let key = record.key.clone();
+        let record_key = record.key.clone();
         let provider_peer_id = record.provider;
 
-        trace!(?key, provider=%record.provider, "Saving a provider to DB");
+        trace!(?record_key, provider=%record.provider, "Saving a provider to DB");
 
         let db_rec = ParityDbProviderRecord::from(record);
 
         if provider_peer_id == self.local_peer_id {
-            self.add_local_provider_to_db(&key, db_rec.clone());
+            self.add_local_provider_to_db(&record_key, db_rec.clone());
         }
 
-        self.add_provider_to_db(&key, db_rec);
+        self.add_provider_to_db(&record_key, db_rec);
+
+        let evicted_key = self.heap.insert(record_key);
+
+        if let Some(key) = evicted_key {
+            trace!(?key, "Record evicted from cache.");
+
+            let local_peer_id = self.local_peer_id;
+            self.remove_provider(&key, &local_peer_id);
+        }
 
         Ok(())
     }
@@ -341,6 +380,8 @@ impl ProviderStorage for ParityDbProviderStorage {
         }
 
         self.remove_provider_from_db(key, provider.to_bytes());
+
+        self.heap.remove(key);
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
@@ -427,26 +468,6 @@ impl<'a> Iterator for ParityDbProviderRecordIterator<'a> {
                 }
             }
         })
-    }
-}
-
-impl<'a> EnumerableProviderStorage<'a> for ParityDbProviderStorage {
-    type ProvidedIter = ParityDbProviderRecordCollectionIterator<'a>;
-
-    fn known_providers(&'a self) -> Self::ProvidedIter {
-        let rec_iter_result: Result<ParityDbProviderRecordCollectionIterator, parity_db::Error> = try {
-            let btree_iter = self.db.iter(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME)?;
-            ParityDbProviderRecordCollectionIterator::new(btree_iter)?
-        };
-
-        match rec_iter_result {
-            Ok(rec_iter) => rec_iter,
-            Err(err) => {
-                error!(?err, "Can't create Parity DB record storage iterator.");
-
-                ParityDbProviderRecordCollectionIterator::empty()
-            }
-        }
     }
 }
 
@@ -551,98 +572,6 @@ pub(crate) fn micros_to_instant(micros: u64) -> Instant {
     instant_now - duration
 }
 
-/// Provider record storage decorator. It wraps the inner provider storage and monitors items number.
-pub struct LimitedSizeProviderStorageWrapper<PS = MemoryProviderStorage, FPS = NoProviderStorage> {
-    // Wrapped provider storage implementation.
-    inner: PS,
-    // Fixed provider storage implementation.
-    fixed_provider_storage: FPS,
-    // Maintains a heap to limit total item number.
-    heap: RecordBinaryHeap,
-    // Local PeerId
-    peer_id: PeerId,
-}
-
-impl<PS: ProviderStorage + for<'a> EnumerableProviderStorage<'a>, FPS: ProviderStorage>
-    LimitedSizeProviderStorageWrapper<PS, FPS>
-{
-    pub fn new(
-        provider_storage: PS,
-        fixed_provider_storage: FPS,
-        max_items_limit: NonZeroUsize,
-        peer_id: PeerId,
-    ) -> Self {
-        let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
-
-        // Initial cache loading.
-        for rec in provider_storage.known_providers() {
-            let _ = heap.insert(rec.key.clone());
-        }
-
-        if heap.size() > 0 {
-            info!(size = heap.size(), "Record cache loaded.");
-        } else {
-            info!("New record cache initialized.");
-        }
-
-        Self {
-            inner: provider_storage,
-            fixed_provider_storage,
-            heap,
-            peer_id,
-        }
-    }
-}
-
-impl<PS: ProviderStorage, FPS: ProviderStorage> ProviderStorage
-    for LimitedSizeProviderStorageWrapper<PS, FPS>
-{
-    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
-
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
-        let record_key = record.key.clone();
-
-        // Skip adding local fixed provider records.
-        let (_, multihash_code) = deconstruct_record_key(&record_key);
-        if multihash_code == MultihashCode::Sector && record.provider == self.peer_id {
-            return Ok(());
-        }
-
-        self.inner.add_provider(record)?;
-
-        let evicted_key = self.heap.insert(record_key);
-
-        if let Some(key) = evicted_key {
-            trace!(?key, "Record evicted from cache.");
-
-            self.inner.remove_provider(&key, &self.peer_id);
-        }
-
-        Ok(())
-    }
-
-    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        let mut fixed_providers = self.fixed_provider_storage.providers(key);
-        let mut all_providers = self.inner.providers(key);
-
-        all_providers.append(&mut fixed_providers);
-
-        all_providers
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        self.fixed_provider_storage
-            .provided()
-            .chain(self.inner.provided())
-    }
-
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
-        self.inner.remove_provider(key, peer_id);
-
-        self.heap.remove(key);
-    }
-}
-
 /// Parity DB BTree ProviderRecordCollection iterator wrapper.
 pub struct ParityDbProviderRecordCollectionIterator<'a> {
     iter: Option<parity_db::BTreeIterator<'a>>,
@@ -731,23 +660,4 @@ impl<'a> Iterator for ParityDbProviderRecordCollectionIterator<'a> {
 
         result
     }
-}
-
-pub struct NoProviderStorage;
-impl ProviderStorage for NoProviderStorage {
-    type ProvidedIter<'a> = Empty<Cow<'a, ProviderRecord>> where Self:'a;
-
-    fn add_provider(&mut self, _: ProviderRecord) -> store::Result<()> {
-        Ok(())
-    }
-
-    fn providers(&self, _: &Key) -> Vec<ProviderRecord> {
-        Vec::new()
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        iter::empty()
-    }
-
-    fn remove_provider(&mut self, _: &Key, _: &PeerId) {}
 }

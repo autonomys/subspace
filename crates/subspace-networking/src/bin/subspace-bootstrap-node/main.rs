@@ -13,8 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, CustomRecordStore,
-    LimitedSizeProviderStorageWrapper, MemoryProviderStorage, NoProviderStorage, NoRecordStorage,
+    peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
     ParityDbProviderStorage,
 };
 use tracing::info;
@@ -92,17 +91,11 @@ async fn main() -> anyhow::Result<()> {
             let provider_storage = if let Some(path) = db_path {
                 let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
 
-                let db_provider_storage = ParityDbProviderStorage::new(&db_path, local_peer_id)
-                    .expect("Provider storage DB path should be valid.");
-
-                let limited_size_provider_storage = LimitedSizeProviderStorageWrapper::new(
-                    db_provider_storage,
-                    NoProviderStorage,
+                Either::Left(ParityDbProviderStorage::new(
+                    &db_path,
                     converted_cache_size,
                     local_peer_id,
-                );
-
-                Either::Left(limited_size_provider_storage)
+                )?)
             } else {
                 Either::Right(MemoryProviderStorage::new(local_peer_id))
             };
@@ -119,8 +112,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
                 max_established_outgoing_connections: out_peers
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
-                record_store: CustomRecordStore::new(NoRecordStorage, provider_storage),
-                ..Config::with_keypair(keypair)
+                ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
             let (node, mut node_runner) = subspace_networking::create(config)
                 .await

@@ -10,9 +10,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
 use subspace_networking::libp2p::kad::record::Key;
-use subspace_networking::libp2p::kad::{ProviderRecord, Record};
+use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{ProviderStorage, RecordStorage, ToMultihash};
+use subspace_networking::{ProviderStorage, ToMultihash};
 use tracing::{info, trace, warn};
 
 const LOCAL_PROVIDED_KEYS: &[u8] = b"LOCAL_PROVIDED_KEYS";
@@ -204,48 +204,6 @@ impl TryFrom<Vec<u8>> for ParityDbKeyCollection {
 
     fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
         ParityDbKeyCollection::decode(&mut data.as_slice()).map(Into::into)
-    }
-}
-
-impl<AS> RecordStorage for PieceCache<AS>
-where
-    AS: AuxStore,
-{
-    fn get(&self, key: &Key) -> Option<Cow<'_, Record>> {
-        let get_result = self.get_piece_by_index_multihash(key.as_ref());
-
-        match get_result {
-            Ok(result) => result.map(|piece| {
-                Cow::Owned(Record {
-                    key: key.clone(),
-                    value: piece.to_vec(),
-                    publisher: None,
-                    expires: None,
-                })
-            }),
-            Err(err) => {
-                warn!(
-                    ?err,
-                    ?key,
-                    "Couldn't get a piece by key from aux piece store."
-                );
-
-                None
-            }
-        }
-    }
-
-    fn put(&mut self, rec: Record) -> subspace_networking::libp2p::kad::store::Result<()> {
-        trace!(key=?rec.key, "Attempted to put a record to the aux piece record store.");
-
-        Ok(())
-    }
-
-    fn remove(&mut self, key: &Key) {
-        trace!(
-            ?key,
-            "Attempted to remove a record from the aux piece record store."
-        );
     }
 }
 
