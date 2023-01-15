@@ -1115,7 +1115,6 @@ impl SingleDiskPlot {
         let sector_count = self.metadata_header.lock().sector_count;
 
         (first_sector_index..)
-            .into_iter()
             .zip(
                 self.sector_metadata_mmap
                     .chunks_exact(SectorMetadata::encoded_size()),

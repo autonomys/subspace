@@ -134,8 +134,7 @@ where
                         )?
                         .ok_or_else(|| {
                             sp_blockchain::Error::Backend(format!(
-                                "Execution receipt not found for {:?}",
-                                local_block_hash
+                                "Execution receipt not found for {local_block_hash:?}"
                             ))
                         });
                         return tx

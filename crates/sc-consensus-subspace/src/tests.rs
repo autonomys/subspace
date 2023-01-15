@@ -593,7 +593,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
             net.poll(cx);
             for p in net.peers() {
                 for (h, e) in p.failed_verifications() {
-                    panic!("Verification failed for {:?}: {}", h, e);
+                    panic!("Verification failed for {h:?}: {e}");
                 }
             }
 

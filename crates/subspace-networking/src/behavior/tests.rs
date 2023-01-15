@@ -7,7 +7,7 @@ use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use std::num::NonZeroUsize;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -172,8 +172,21 @@ fn binary_heap_should_include_key_works() {
 fn instant_conversion() {
     let inst1 = Instant::now();
     let ms = instant_to_micros(inst1);
-    let inst2 = micros_to_instant(ms);
+    let inst2 = micros_to_instant(ms).unwrap();
 
     assert!(inst1.saturating_duration_since(inst2) < Duration::from_millis(1));
     assert!(inst2.saturating_duration_since(inst1) < Duration::from_millis(1));
+}
+
+#[test]
+fn instant_conversion_edge_cases() {
+    assert!(micros_to_instant(u64::MAX).is_none());
+    assert!(micros_to_instant(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64
+            * 2
+    )
+    .is_none());
 }

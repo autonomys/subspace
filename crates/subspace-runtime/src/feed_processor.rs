@@ -82,20 +82,15 @@ fn extract_substrate_object_mapping<C: Chain>(object: &[u8]) -> Vec<FeedObjectMa
 }
 
 /// FeedProcessorId represents the available FeedProcessor impls
-#[derive(Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum FeedProcessorKind {
     /// Content addressable Feed processor,
+    #[default]
     ContentAddressable,
     /// Polkadot like relay chain Feed processor that validates grandpa justifications and indexes the entire block
     PolkadotLike,
     /// Parachain Feed processor that just indexes the entire block
     ParachainLike,
-}
-
-impl Default for FeedProcessorKind {
-    fn default() -> Self {
-        FeedProcessorKind::ContentAddressable
-    }
 }
 
 pub(crate) fn feed_processor(

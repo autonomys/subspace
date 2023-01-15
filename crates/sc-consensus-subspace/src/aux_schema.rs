@@ -30,7 +30,7 @@ where
 {
     match backend.get_aux(key)? {
         Some(t) => T::decode(&mut &t[..]).map(Some).map_err(|e: codec::Error| {
-            ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {}", e))
+            ClientError::Backend(format!("Subspace DB is corrupted. Decode error: {e}"))
         }),
         None => Ok(None),
     }

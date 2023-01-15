@@ -348,9 +348,10 @@ where
                 })
             })?;
         let (hash, bytes) = self.pool().validated_pool().api().hash_and_length(&xt);
-        let block_number = self.api().block_id_to_number(at)?.ok_or_else(|| {
-            sc_transaction_pool::error::Error::BlockIdConversion(format!("{:?}", at))
-        })?;
+        let block_number = self
+            .api()
+            .block_id_to_number(at)?
+            .ok_or_else(|| sc_transaction_pool::error::Error::BlockIdConversion(at.to_string()))?;
         let validated = ValidatedTransaction::valid_at(
             block_number.saturated_into::<u64>(),
             hash,

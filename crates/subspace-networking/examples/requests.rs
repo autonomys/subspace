@@ -108,7 +108,7 @@ async fn main() {
             .await
             .unwrap();
 
-        println!("Response: {:?}", resp);
+        println!("Response: {resp:?}");
     });
 
     tokio::time::sleep(Duration::from_secs(50)).await;

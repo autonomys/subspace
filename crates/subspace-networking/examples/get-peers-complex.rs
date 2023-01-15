@@ -76,8 +76,8 @@ async fn main() {
         .into_boxed_path();
 
     println!(
-        "Networking parameters database path used (the app creates DB on the first run): {:?}",
-        db_path
+        "Networking parameters database path used (the app creates DB on the first run): \
+        {db_path:?}"
     );
 
     let config = Config {
@@ -95,7 +95,7 @@ async fn main() {
     let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
 
     println!("Source Node ID is {}", node.id());
-    println!("Expected Peer ID:{}", expected_node_id);
+    println!("Expected Peer ID:{expected_node_id}");
 
     tokio::spawn(async move {
         node_runner.run().await;

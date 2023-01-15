@@ -43,7 +43,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
         None => Ok(None),
         Some(t) => T::decode(&mut &t[..])
             .map_err(|e| {
-                ClientError::Backend(format!("Executor DB is corrupted. Decode error: {}", e))
+                ClientError::Backend(format!("Executor DB is corrupted. Decode error: {e}"))
             })
             .map(Some),
     }

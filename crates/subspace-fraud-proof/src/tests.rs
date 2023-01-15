@@ -218,10 +218,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         let storage_changes = create_block_builder()
             .prepare_storage_changes_before(target_extrinsic_index)
             .unwrap_or_else(|_| {
-                panic!(
-                    "Get StorageChanges before extrinsic #{}",
-                    target_extrinsic_index
-                )
+                panic!("Get StorageChanges before extrinsic #{target_extrinsic_index}")
             });
 
         let delta = storage_changes.transaction;
@@ -426,7 +423,7 @@ async fn invalid_execution_proof_should_not_work() {
     let create_extrinsic_proof = |extrinsic_index: usize| {
         let storage_changes = create_block_builder()
             .prepare_storage_changes_before(extrinsic_index)
-            .unwrap_or_else(|_| panic!("Get StorageChanges before extrinsic #{}", extrinsic_index));
+            .unwrap_or_else(|_| panic!("Get StorageChanges before extrinsic #{extrinsic_index}"));
 
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;

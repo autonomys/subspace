@@ -271,7 +271,7 @@ impl RpcServerImpl {
         };
 
         let Compact(data_length) = data_length_result.map_err(|error| {
-            let error_string = format!("Failed to read object data length: {}", error);
+            let error_string = format!("Failed to read object data length: {error}");
             error!(error = %error_string);
 
             Error::Custom(error_string)
@@ -328,8 +328,8 @@ impl RpcServerImpl {
                 })
                 .ok_or_else(|| {
                     let error_string = format!(
-                        "Failed to find item at offset {} in segment {} for object {}",
-                        offset_in_segment, segment_index, object_id
+                        "Failed to find item at offset {offset_in_segment} in segment \
+                        {segment_index} for object {object_id}"
                     );
                     error!(error = %error_string);
 
@@ -352,8 +352,8 @@ impl RpcServerImpl {
                     );
 
                     return Err(Error::Custom(format!(
-                        "Unexpected segment item at offset {} in segment {} for object {}",
-                        offset_in_segment, segment_index, object_id
+                        "Unexpected segment item at offset {offset_in_segment} in segment \
+                        {segment_index} for object {object_id}"
                     )));
                 }
             }
@@ -380,7 +380,7 @@ impl RpcServerImpl {
             }
         }
 
-        error!(object_id, "Read max object size for object without success",);
+        error!(object_id, "Read max object size for object without success");
 
         Err(Error::Custom(
             "Read max object size for object without success".to_string(),
@@ -406,8 +406,7 @@ impl RpcServerImpl {
             );
 
             Error::Custom(format!(
-                "Failed to decode segment {} of archival history on retrieval",
-                segment_index
+                "Failed to decode segment {segment_index} of archival history on retrieval"
             ))
         })?;
 

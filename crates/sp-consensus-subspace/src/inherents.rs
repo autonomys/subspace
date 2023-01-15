@@ -135,6 +135,6 @@ impl sp_inherents::InherentDataProvider for InherentDataProvider {
 
         let error = InherentError::decode(&mut &*error).ok()?;
 
-        Some(Err(Error::Application(Box::from(format!("{:?}", error)))))
+        Some(Err(Error::Application(Box::from(format!("{error:?}")))))
     }
 }
