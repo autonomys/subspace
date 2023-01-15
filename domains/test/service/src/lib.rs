@@ -427,7 +427,7 @@ pub fn node_config(
     let spec = Box::new(chain_spec::get_chain_spec());
 
     let mut network_config = NetworkConfiguration::new(
-        format!("{} (SystemDomain)", key_seed),
+        format!("{key_seed} (SystemDomain)"),
         "network/test/0.1",
         Default::default(),
         None,

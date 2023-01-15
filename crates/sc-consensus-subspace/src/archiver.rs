@@ -68,8 +68,8 @@ where
                 Err(error) => {
                     // TODO: Probably light client, can this even happen?
                     panic!(
-                        "Failed to make runtime API call during last archived block search: {:?}",
-                        error
+                        "Failed to make runtime API call during last archived block search: \
+                        {error:?}"
                     );
                 }
             }
@@ -240,22 +240,22 @@ where
             .last_archived_block_number()
             .map(|n| n + 1)
             .unwrap_or_default();
-        let blocks_to_archive_to = TryInto::<BlockNumber>::try_into(best_block_number)
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Best block number {} can't be converted into BlockNumber",
-                    best_block_number,
-                );
-            })
-            .checked_sub(confirmation_depth_k)
-            .or({
-                if have_last_root_block {
-                    None
-                } else {
-                    // If not continuation, archive genesis block
-                    Some(0)
-                }
-            });
+        let blocks_to_archive_to =
+            TryInto::<BlockNumber>::try_into(best_block_number)
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Best block number {best_block_number} can't be converted into BlockNumber",
+                    );
+                })
+                .checked_sub(confirmation_depth_k)
+                .or({
+                    if have_last_root_block {
+                        None
+                    } else {
+                        // If not continuation, archive genesis block
+                        Some(0)
+                    }
+                });
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(

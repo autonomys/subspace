@@ -75,5 +75,5 @@ pub(crate) fn test_keyring() -> Vec<(Account, AuthorityWeight)> {
 
 /// Get a list of "unique" accounts.
 pub(crate) fn accounts(len: u16) -> Vec<Account> {
-    (0..len).into_iter().map(Account).collect()
+    (0..len).map(Account).collect()
 }

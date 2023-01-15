@@ -29,7 +29,7 @@ pub(crate) fn info(disk_farms: Vec<DiskFarm>) {
             }
             SingleDiskPlotSummary::Error { directory, error } => {
                 println!("  Ddirectory: {}", directory.display());
-                println!("  Failed to open farm info: {}", error);
+                println!("  Failed to open farm info: {error}");
             }
         }
     }

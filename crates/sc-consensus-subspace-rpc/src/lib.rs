@@ -455,8 +455,7 @@ where
             );
 
             return Err(JsonRpseeError::Custom(format!(
-                "segment_indexes length exceed the limit {}",
-                MAX_SEGMENT_INDEXES_PER_REQUEST
+                "segment_indexes length exceed the limit {MAX_SEGMENT_INDEXES_PER_REQUEST}"
             )));
         };
 

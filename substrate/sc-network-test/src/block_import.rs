@@ -79,7 +79,7 @@ fn import_single_good_block_works() {
 	)) {
 		Ok(BlockImportStatus::ImportedUnknown(ref num, ref aux, ref org))
 		if *num == number && *aux == expected_aux && *org == Some(peer_id) => {},
-		r => panic!("{:?}", r),
+		r => panic!("{r:?}"),
 	}
 }
 

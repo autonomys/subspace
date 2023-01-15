@@ -254,7 +254,7 @@ where
             .hash(confirmed_block)?
             .and_then(|block_hash| system_domain_client.header(block_hash).transpose())
             .ok_or_else(|| {
-                sp_blockchain::Error::MissingHeader(format!("number: {:?}", confirmed_block))
+                sp_blockchain::Error::MissingHeader(format!("number: {confirmed_block:?}"))
             })??)
     }
 

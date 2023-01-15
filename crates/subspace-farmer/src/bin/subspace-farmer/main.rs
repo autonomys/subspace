@@ -255,10 +255,7 @@ async fn main() -> Result<()> {
             let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {
                     fs::create_dir_all(&base_path).unwrap_or_else(|error| {
-                        panic!(
-                            "Failed to create data directory {:?}: {:?}",
-                            base_path, error
-                        )
+                        panic!("Failed to create data directory {base_path:?}: {error:?}")
                     });
                 }
 

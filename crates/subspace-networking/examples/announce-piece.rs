@@ -68,7 +68,7 @@ async fn main() {
     };
 
     node_2.start_announcing(key).await.unwrap().next().await;
-    println!("Node 2 announced key: {:?}", key);
+    println!("Node 2 announced key: {key:?}");
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -77,7 +77,7 @@ async fn main() {
         Err(error) => Err(error),
     };
 
-    println!("Node 1 get_providers result: {:?}", providers_result);
+    println!("Node 1 get_providers result: {providers_result:?}");
 
     node_2.stop_announcing(key).await.unwrap();
 
@@ -88,7 +88,7 @@ async fn main() {
         Err(error) => Err(error),
     };
 
-    println!("Node 1 get_providers result: {:?}", providers_result);
+    println!("Node 1 get_providers result: {providers_result:?}");
 
     println!("Exiting..");
 }
