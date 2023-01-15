@@ -168,7 +168,7 @@ impl From<ParityDbProviderRecord> for ProviderRecord {
                         .expect("Multiaddr should be valid in bytes representation.")
                 })
                 .collect::<Vec<_>>(),
-            expires: rec.expires.map(micros_to_instant),
+            expires: rec.expires.map(micros_to_instant).unwrap_or_default(),
         }
     }
 }
@@ -552,24 +552,20 @@ pub(crate) fn instant_to_micros(instant: Instant) -> u64 {
     let system_time = system_now - (instant_now - instant);
     let duration = system_time
         .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("Cannot be earlier than the beginning of unix time.");
+        .expect("Cannot be earlier than the beginning of unix time; qed");
 
     duration.as_micros() as u64
 }
 
 // Microseconds to Instant conversion function.
-pub(crate) fn micros_to_instant(micros: u64) -> Instant {
-    let system_time = SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_micros(micros))
-        .expect("Cannot overflow here (system time).");
+pub(crate) fn micros_to_instant(micros: u64) -> Option<Instant> {
+    let system_time = SystemTime::UNIX_EPOCH.checked_add(Duration::from_micros(micros))?;
 
     let system_now = SystemTime::now();
     let instant_now = Instant::now();
-    let duration = system_now
-        .duration_since(system_time)
-        .expect("Cannot overflow here (duration).");
+    let duration = system_now.duration_since(system_time).ok()?;
 
-    instant_now - duration
+    instant_now.checked_sub(duration)
 }
 
 /// Parity DB BTree ProviderRecordCollection iterator wrapper.
