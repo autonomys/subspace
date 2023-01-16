@@ -4,9 +4,7 @@ use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, Essential
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{
-    AccountId, Balance, DomainCoreApi, DomainExtrinsicApi, Hash, RelayerId,
-};
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
 use futures::Stream;
 use jsonrpsee::tracing;
@@ -262,7 +260,6 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block, AccountId>
-        + DomainExtrinsicApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>

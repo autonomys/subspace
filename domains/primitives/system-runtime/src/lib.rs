@@ -27,6 +27,11 @@ use sp_std::vec::Vec;
 sp_api::decl_runtime_apis! {
     /// API necessary for system domain.
     pub trait SystemDomainApi<PNumber: Encode + Decode, PHash: Encode + Decode> {
+        /// Wrap the core domain bundles into extrinsics.
+        fn construct_submit_core_bundle_extrinsics(
+            signed_opaque_bundles: Vec<u8>,
+        ) -> Option<Vec<Vec<u8>>>;
+
         /// Returns the parameters for the bundle election.
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams;
 

@@ -18,7 +18,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use parity_scale_codec::{Decode, Encode};
-use sp_domains::SignedOpaqueBundle;
 use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
@@ -105,16 +104,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the storage root after applying the extrinsic.
         fn apply_extrinsic_with_post_state_root(extrinsic: <Block as BlockT>::Extrinsic) -> Vec<u8>;
-    }
 
-    /// API used to construct extrincsic.
-    pub trait DomainExtrinsicApi<PNumber: Encode + Decode, PHash: Encode + Decode> {
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
-
-        /// Wrap the core domain bundles into extrinsics.
-        fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<PNumber, PHash, <Block as BlockT>::Hash>>,
-        ) -> Vec<Vec<u8>>;
     }
 }

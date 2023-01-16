@@ -20,7 +20,7 @@ use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifi
 use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
-use domain_runtime_primitives::{AccountId, DomainCoreApi, DomainExtrinsicApi};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
@@ -82,7 +82,6 @@ pub(super) async fn start_worker<
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
-        + DomainExtrinsicApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<

@@ -494,9 +494,7 @@ impl_runtime_apis! {
             let _ = Executive::apply_extrinsic(extrinsic);
             Executive::storage_root()
         }
-    }
 
-    impl domain_runtime_primitives::DomainExtrinsicApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
             use codec::Encode;
             // Use `set_code_without_checks` instead of `set_code` in the test environment.
@@ -508,25 +506,32 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
-
-        fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
-        ) -> Vec<Vec<u8>> {
-            use codec::Encode;
-            signed_opaque_bundles
-                .into_iter()
-                .map(|signed_opaque_bundle| {
-                    UncheckedExtrinsic::new_unsigned(
-                        pallet_domain_registry::Call::submit_core_bundle {
-                            signed_opaque_bundle
-                        }.into()
-                    ).encode()
-                })
-                .collect()
-        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
+        fn construct_submit_core_bundle_extrinsics(
+            signed_opaque_bundles: Vec<u8>,
+        ) -> Option<Vec<Vec<u8>>> {
+            use codec::{Encode, Decode};
+            let res =
+                Vec::<SignedOpaqueBundle::<BlockNumber, Hash, <Block as BlockT>::Hash>>::decode(&mut signed_opaque_bundles.as_slice());
+            match res {
+                Ok(signed_opaque_bundles) => {
+                    Some(signed_opaque_bundles
+                        .into_iter()
+                        .map(|signed_opaque_bundle| {
+                            UncheckedExtrinsic::new_unsigned(
+                                pallet_domain_registry::Call::submit_core_bundle {
+                                    signed_opaque_bundle
+                                }.into()
+                            ).encode()
+                        })
+                        .collect())
+                }
+                Err(_) => None,
+            }
+        }
+
         fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
             if domain_id.is_system() {
                 BundleElectionParams {
