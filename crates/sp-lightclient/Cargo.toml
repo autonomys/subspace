@@ -25,6 +25,7 @@ sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace", 
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 

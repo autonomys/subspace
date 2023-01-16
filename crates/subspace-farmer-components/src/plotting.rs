@@ -1,27 +1,18 @@
 use crate::{FarmerProtocolInfo, SectorMetadata};
-use async_trait::async_trait;
 use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
-use std::error::Error;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
+use subspace_networking::PieceReceiver;
 use thiserror::Error;
 use tracing::{debug, info};
-
-#[async_trait]
-pub trait PieceReceiver {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
 
 /// Information about sector that was plotted
 #[derive(Debug, Clone)]

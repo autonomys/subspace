@@ -9,6 +9,7 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
+use crate::single_disk_plot::piece_receiver::RecordsRootPieceValidator;
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
@@ -21,7 +22,6 @@ use lru::LruCache;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use piece_receiver::MultiChannelPieceReceiver;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::OpenOptions;
@@ -42,7 +42,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
-use subspace_networking::Node;
+use subspace_networking::{Node, PieceProvider};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -683,11 +683,14 @@ impl SingleDiskPlot {
                         let records_roots_cache =
                             Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
 
-                        let piece_receiver = MultiChannelPieceReceiver::new(
+                        let piece_receiver = PieceProvider::new(
                             &dsn_node,
-                            &node_client,
-                            &kzg,
-                            &records_roots_cache,
+                            Some(RecordsRootPieceValidator::new(
+                                &dsn_node,
+                                &node_client,
+                                &kzg,
+                                &records_roots_cache,
+                            )),
                             &shutting_down,
                         );
 
