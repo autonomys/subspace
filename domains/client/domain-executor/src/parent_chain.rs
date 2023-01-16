@@ -1,6 +1,6 @@
 use crate::utils::to_number_primitive;
 use sp_api::{NumberFor, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HeaderBackend, Info};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
@@ -15,9 +15,10 @@ use system_runtime_primitives::SystemDomainApi;
 ///
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
-pub(crate) trait ParentChainInterface<Hash> {
-    fn head_receipt_number(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
-    fn maximum_receipt_drift(&self, at: Hash) -> Result<BlockNumber, sp_api::ApiError>;
+pub(crate) trait ParentChainInterface<Block: BlockT> {
+    fn info(&self) -> Info<Block>;
+    fn head_receipt_number(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
+    fn maximum_receipt_drift(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError>;
 }
 
@@ -49,7 +50,7 @@ impl<SBlock, PBlock, SClient> CoreDomainParentChain<SClient, SBlock, PBlock> {
     }
 }
 
-impl<SBlock, PBlock, SClient> ParentChainInterface<SBlock::Hash>
+impl<SBlock, PBlock, SClient> ParentChainInterface<SBlock>
     for CoreDomainParentChain<SClient, SBlock, PBlock>
 where
     SBlock: BlockT,
@@ -57,6 +58,10 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock>,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
+    fn info(&self) -> Info<SBlock> {
+        self.system_domain_client.info()
+    }
+
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
         let head_receipt_number = self
             .system_domain_client
@@ -106,7 +111,7 @@ impl<PClient, Block, PBlock> SystemDomainParentChain<PClient, Block, PBlock> {
     }
 }
 
-impl<Block, PBlock, PClient> ParentChainInterface<PBlock::Hash>
+impl<Block, PBlock, PClient> ParentChainInterface<PBlock>
     for SystemDomainParentChain<PClient, Block, PBlock>
 where
     Block: BlockT,
@@ -114,6 +119,10 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
+    fn info(&self) -> Info<PBlock> {
+        self.primary_chain_client.info()
+    }
+
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
         let head_receipt_number = self
             .primary_chain_client

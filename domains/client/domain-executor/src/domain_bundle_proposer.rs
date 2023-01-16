@@ -11,7 +11,6 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{Bundle, BundleHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -49,17 +48,17 @@ where
         }
     }
 
-    pub(crate) async fn propose_bundle_at<PBlock, ParentChain, ParentChainHash>(
+    pub(crate) async fn propose_bundle_at<PBlock, ParentChain, ParentChainBlock>(
         &self,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_chain: ParentChain,
-        parent_chain_block_hash: ParentChainHash,
+        parent_chain_block_hash: ParentChainBlock::Hash,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
         PBlock: BlockT,
-        ParentChain: ParentChainInterface<ParentChainHash>,
-        ParentChainHash: Copy + Debug,
+        ParentChainBlock: BlockT,
+        ParentChain: ParentChainInterface<ParentChainBlock>,
     {
         let parent_number = self.client.info().best_number;
 
@@ -131,16 +130,16 @@ where
     }
 
     /// Returns the receipts in the next domain bundle.
-    fn collect_bundle_receipts<PBlock, ParentChain, ParentChainHash>(
+    fn collect_bundle_receipts<PBlock, ParentChain, ParentChainBlock>(
         &self,
         header_number: NumberFor<Block>,
         parent_chain: ParentChain,
-        parent_chain_block_hash: ParentChainHash,
+        parent_chain_block_hash: ParentChainBlock::Hash,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
         PBlock: BlockT,
-        ParentChain: ParentChainInterface<ParentChainHash>,
-        ParentChainHash: Copy + Debug,
+        ParentChainBlock: BlockT,
+        ParentChain: ParentChainInterface<ParentChainBlock>,
     {
         let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
         let max_drift = parent_chain.maximum_receipt_drift(parent_chain_block_hash)?;
