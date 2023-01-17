@@ -44,9 +44,8 @@ use subspace_core_primitives::{
     RECORD_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::plot_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceReceiver};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
-use subspace_networking::PieceReceiver;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;

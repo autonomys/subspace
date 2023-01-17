@@ -34,9 +34,8 @@ use subspace_core_primitives::{
     Solution, SolutionRange, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::plot_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceReceiver};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
-use subspace_networking::PieceReceiver;
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{derive_audit_chunk, derive_randomness};
 

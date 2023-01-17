@@ -26,7 +26,7 @@ const GET_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// An abstraction for piece receiving.
 #[async_trait]
-pub trait PieceReceiver {
+pub trait PieceReceiver: Send + Sync {
     /// Returns optional piece from the DSN. None means - no piece was found.
     async fn get_piece(
         &self,

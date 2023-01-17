@@ -9023,7 +9023,6 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-farmer-components",
- "subspace-networking",
  "subspace-solving",
  "subspace-verification",
 ]
@@ -9590,7 +9589,6 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
- "subspace-networking",
  "subspace-solving",
  "subspace-verification",
  "thiserror",
@@ -9879,7 +9877,6 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-farmer-components",
- "subspace-networking",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-solving",
