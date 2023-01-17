@@ -9,8 +9,10 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
+use crate::single_disk_plot::piece_receiver::RecordsRootPieceValidator;
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
+use async_trait::async_trait;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -21,9 +23,9 @@ use lru::LruCache;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use piece_receiver::MultiChannelPieceReceiver;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
+use std::error::Error;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
@@ -38,11 +40,12 @@ use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR,
+    PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
-use subspace_networking::Node;
+use subspace_networking::{Node, PieceProvider};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -420,6 +423,26 @@ struct Handlers {
     solution: Handler<SolutionResponse>,
 }
 
+/// Adapter struct for the PieceReceiver trait for subspace-networking
+/// and subspace-farmer-components crates.
+struct PieceReceiverWrapper<PR>(PR);
+
+impl<PR: subspace_networking::PieceReceiver> PieceReceiverWrapper<PR> {
+    fn new(piece_getter: PR) -> Self {
+        Self(piece_getter)
+    }
+}
+
+#[async_trait]
+impl<PR: subspace_networking::PieceReceiver> plotting::PieceReceiver for PieceReceiverWrapper<PR> {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.0.get_piece(piece_index).await
+    }
+}
+
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 ///
@@ -683,13 +706,18 @@ impl SingleDiskPlot {
                         let records_roots_cache =
                             Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
 
-                        let piece_receiver = MultiChannelPieceReceiver::new(
+                        let piece_receiver = PieceProvider::new(
                             &dsn_node,
-                            &node_client,
-                            &kzg,
-                            &records_roots_cache,
+                            Some(RecordsRootPieceValidator::new(
+                                &dsn_node,
+                                &node_client,
+                                &kzg,
+                                &records_roots_cache,
+                            )),
                             &shutting_down,
                         );
+
+                        let piece_receiver_wrapper = PieceReceiverWrapper::new(piece_receiver);
 
                         // TODO: Concurrency
                         for (sector_index, sector, sector_metadata) in plot_initial_sector {
@@ -726,7 +754,7 @@ impl SingleDiskPlot {
                             let plot_sector_fut = plot_sector(
                                 &public_key,
                                 sector_index,
-                                &piece_receiver,
+                                &piece_receiver_wrapper,
                                 &shutting_down,
                                 &farmer_app_info.protocol_info,
                                 &kzg,

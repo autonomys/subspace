@@ -19,6 +19,7 @@ include = [
 actix-web = "4.2.1"
 anyhow = "1.0.66"
 async-trait = "0.1.58"
+backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.2.1"
 bytesize = "1.1.0"
 chrono = {version = "0.4.21", features = ["clock", "serde", "std",]}

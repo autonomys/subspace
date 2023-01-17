@@ -15,6 +15,8 @@ use subspace_core_primitives::{
 use thiserror::Error;
 use tracing::{debug, info};
 
+/// Duplicate trait for the subspace_networking::PieceReceiver. The goal of this trait is
+/// simplifying dependency graph.
 #[async_trait]
 pub trait PieceReceiver {
     async fn get_piece(

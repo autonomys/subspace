@@ -1,4 +1,5 @@
 pub mod multihash;
+pub mod piece_receiver;
 pub(crate) mod prometheus;
 pub(crate) mod record_binary_heap;
 #[cfg(test)]
