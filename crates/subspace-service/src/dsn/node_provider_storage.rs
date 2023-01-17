@@ -1,21 +1,20 @@
-use std::borrow::Cow;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::ProviderStorage;
 
-pub(crate) struct NodeProviderStorage<FixedProviderStorage, PersistentProviderStorage> {
+pub(crate) struct NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage> {
     /// Provider records from local cache
-    implicit_provider_storage: FixedProviderStorage,
+    implicit_provider_storage: ImplicitProviderStorage,
     /// External provider records
     persistent_provider_storage: PersistentProviderStorage,
 }
 
-impl<FixedProviderStorage, ExternalProviderStorage>
-    NodeProviderStorage<FixedProviderStorage, ExternalProviderStorage>
+impl<ImplicitProviderStorage, ExternalProviderStorage>
+    NodeProviderStorage<ImplicitProviderStorage, ExternalProviderStorage>
 {
     pub(crate) fn new(
-        implicit_provider_storage: FixedProviderStorage,
+        implicit_provider_storage: ImplicitProviderStorage,
         persistent_provider_storage: ExternalProviderStorage,
     ) -> Self {
         Self {
@@ -25,13 +24,13 @@ impl<FixedProviderStorage, ExternalProviderStorage>
     }
 }
 
-impl<FixedProviderStorage, PersistentProviderStorage> ProviderStorage
-    for NodeProviderStorage<FixedProviderStorage, PersistentProviderStorage>
+impl<ImplicitProviderStorage, PersistentProviderStorage> ProviderStorage
+    for NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage>
 where
-    FixedProviderStorage: ProviderStorage,
+    ImplicitProviderStorage: ProviderStorage,
     PersistentProviderStorage: ProviderStorage,
 {
-    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
+    type ProvidedIter<'a> = ImplicitProviderStorage::ProvidedIter<'a> where Self:'a;
 
     fn add_provider(
         &mut self,
