@@ -2,6 +2,7 @@
 mod tests;
 
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -25,7 +26,7 @@ pub struct PieceCache<AS> {
     /// Peer ID of the current node.
     local_peer_id: PeerId,
     /// Local provided keys
-    local_provided_keys: BTreeSet<PieceIndex>,
+    local_provided_keys: Arc<Mutex<BTreeSet<PieceIndex>>>,
 }
 
 impl<AS> Clone for PieceCache<AS> {
@@ -65,7 +66,7 @@ where
             aux_store,
             max_pieces_in_cache,
             local_peer_id,
-            local_provided_keys,
+            local_provided_keys: Arc::new(Mutex::new(local_provided_keys)),
         }
     }
 
@@ -80,14 +81,17 @@ where
         }))
     }
 
-    fn write_local_provided_keys(&self) -> Result<(), Box<dyn Error>> {
+    fn write_local_provided_keys(
+        &self,
+        local_provided_keys: BTreeSet<PieceIndex>,
+    ) -> Result<(), Box<dyn Error>> {
         // TODO: Could be a slow process. We need to optimize it ASAP!
         self.aux_store
             .insert_aux(
                 &vec![(
                     LOCAL_PROVIDED_KEYS,
                     ParityDbKeyCollection {
-                        set: self.local_provided_keys.clone(),
+                        set: local_provided_keys,
                     }
                     .encode()
                     .as_slice(),
@@ -150,15 +154,21 @@ where
                 .collect::<Vec<_>>(),
         )?;
 
-        for piece_index in delete_indexes {
-            self.local_provided_keys.remove(&piece_index);
-        }
+        let local_provided_keys = {
+            let mut local_provided_keys = self.local_provided_keys.lock();
 
-        for piece_index in insert_indexes {
-            self.local_provided_keys.insert(piece_index);
-        }
+            for piece_index in delete_indexes {
+                local_provided_keys.remove(&piece_index);
+            }
 
-        self.write_local_provided_keys()?;
+            for piece_index in insert_indexes {
+                local_provided_keys.insert(piece_index);
+            }
+
+            local_provided_keys.clone()
+        };
+
+        self.write_local_provided_keys(local_provided_keys)?;
 
         Ok(())
     }
@@ -249,7 +259,13 @@ where
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        let pieces_indexes = self.local_provided_keys.iter();
+        let pieces_indexes = {
+            self.local_provided_keys
+                .lock()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
 
         AuxStoreProviderRecordIterator::new(pieces_indexes, self.clone())
     }
@@ -264,18 +280,17 @@ where
 }
 
 pub struct AuxStoreProviderRecordIterator<'a, AS> {
-    piece_index_iter: std::collections::btree_set::Iter<'a, PieceIndex>,
+    piece_indexes: Vec<PieceIndex>,
+    piece_indexes_cursor: usize,
     piece_cache: PieceCache<AS>,
     marker: PhantomData<&'a ()>,
 }
 
 impl<'a, AS: AuxStore> AuxStoreProviderRecordIterator<'a, AS> {
-    pub fn new(
-        piece_index_iter: std::collections::btree_set::Iter<'a, PieceIndex>,
-        piece_cache: PieceCache<AS>,
-    ) -> Self {
+    pub fn new(piece_indexes: Vec<PieceIndex>, piece_cache: PieceCache<AS>) -> Self {
         Self {
-            piece_index_iter,
+            piece_indexes,
+            piece_indexes_cursor: 0,
             piece_cache,
             marker: PhantomData,
         }
@@ -286,23 +301,31 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
     type Item = Cow<'a, ProviderRecord>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.piece_indexes.len() == self.piece_indexes_cursor {
+            return None; // iterator finished
+        }
+
         let peer_id = self.piece_cache.local_peer_id;
+        let piece_index = self.piece_indexes[self.piece_indexes_cursor];
+        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let key = Key::from(piece_index_hash.to_multihash());
 
-        self.piece_index_iter.next().and_then(|piece_index| {
-            let piece_index_hash = PieceIndexHash::from_index(*piece_index);
-            let key = Key::from(piece_index_hash.to_multihash());
+        let result = self
+            .piece_cache
+            .get_piece(piece_index_hash)
+            .ok()
+            .flatten()
+            .map(move |_| ProviderRecord {
+                key: key.clone(),
+                provider: peer_id,
+                expires: None,
+                addresses: vec![], // TODO: add address hints
+            })
+            .map(Cow::Owned);
 
-            self.piece_cache
-                .get_piece(piece_index_hash)
-                .ok()
-                .flatten()
-                .map(move |_| ProviderRecord {
-                    key: key.clone(),
-                    provider: peer_id,
-                    expires: None,
-                    addresses: vec![], // TODO: add address hints
-                })
-                .map(Cow::Owned)
-        })
+        // Move iterator cursor forward
+        self.piece_indexes_cursor += 1;
+
+        result
     }
 }

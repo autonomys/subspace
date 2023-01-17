@@ -128,6 +128,7 @@ async fn run_executor(
             force_new_slot_notifications: true,
             subspace_networking: SubspaceNetworking::Create {
                 config: DsnConfig {
+                    base_path: None,
                     listen_on: vec!["/ip4/127.0.0.1/tcp/0"
                         .parse()
                         .expect("Correct multiaddr; qed")],
