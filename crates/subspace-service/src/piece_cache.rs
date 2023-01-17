@@ -323,7 +323,8 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
             })
             .map(Cow::Owned);
 
-        self.piece_indexes_cursor += 1; // increment iterator
+        // Move iterator cursor forward
+        self.piece_indexes_cursor += 1;
 
         result
     }

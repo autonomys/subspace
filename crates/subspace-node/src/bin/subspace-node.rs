@@ -421,7 +421,11 @@ fn main() -> Result<(), Error> {
 
                         DsnConfig {
                             keypair,
-                            base_path: cli.run.shared_params.base_path.clone(),
+                            base_path: cli.run.base_path()?.map(|base_path| {
+                                base_path
+                                    .config_dir(primary_chain_config.chain_spec.id())
+                                    .join("dsn")
+                            }),
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
