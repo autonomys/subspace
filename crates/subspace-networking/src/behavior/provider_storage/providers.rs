@@ -236,9 +236,9 @@ impl ParityDbProviderStorage {
         }
 
         if heap.size() > 0 {
-            info!(size = heap.size(), "Record cache loaded.");
+            info!(size = heap.size(), ?path, "Record cache loaded.");
         } else {
-            info!("New record cache initialized.");
+            info!(?path, "New record cache initialized.");
         }
 
         Ok(Self {
