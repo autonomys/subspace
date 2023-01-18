@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
-use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{Node, ToMultihash};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -104,8 +103,7 @@ impl PieceSectorPublisher {
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         self.check_cancellation()?;
 
-        let key =
-            PieceIndexHash::from_index(piece_index).to_multihash_by_code(MultihashCode::Sector);
+        let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
         let result = self.dsn_node.start_announcing(key).await;
 

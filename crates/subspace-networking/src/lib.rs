@@ -53,7 +53,7 @@ pub use request_handlers::peer_info::{
     PeerInfo, PeerInfoRequest, PeerInfoRequestHandler, PeerInfoResponse, PeerSyncStatus,
 };
 pub use request_handlers::piece_by_key::{
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
+    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
 };
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
