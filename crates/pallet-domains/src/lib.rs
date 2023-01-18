@@ -163,11 +163,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash: signed_opaque_bundle.hash(),
-                bundle_author: signed_opaque_bundle
-                    .bundle_solution
-                    .proof_of_election()
-                    .executor_public_key
-                    .clone(),
+                bundle_author: signed_opaque_bundle.into_executor_public_key(),
             });
 
             Ok(())

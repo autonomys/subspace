@@ -339,6 +339,18 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash>
     }
 }
 
+impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, DomainHash> {
+    /// Consumes [`SignedBundle`] to extract the inner executor public key.
+    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
+        match self.bundle_solution {
+            BundleSolution::System(proof_of_election)
+            | BundleSolution::Core {
+                proof_of_election, ..
+            } => proof_of_election.executor_public_key,
+        }
+    }
+}
+
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainHash> {
