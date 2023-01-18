@@ -94,7 +94,7 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
                             debug!(%provider_id, %piece_index, ?key, "Piece request returned empty piece.");
                         }
                         Err(error) => {
-                            warn!(%provider_id, %piece_index, ?key, ?error, "Piece request failed.");
+                            debug!(%provider_id, %piece_index, ?key, ?error, "Piece request failed.");
                         }
                     }
                 }
