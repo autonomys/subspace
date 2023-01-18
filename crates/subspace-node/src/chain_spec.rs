@@ -31,7 +31,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-const GEMINI_3B_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3b.json");
+// const GEMINI_3B_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3b.json");
 const X_NET_2_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-2.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
@@ -70,18 +70,18 @@ struct GenesisParams {
     enable_transfer: bool,
 }
 
-pub fn gemini_3b() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3B_CHAIN_SPEC)
+pub fn gemini_3c() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+    unimplemented!("please run gemini-3c compiled chain")
 }
 
-pub fn gemini_3b_compiled(
+pub fn gemini_3c_compiled(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3b",
+        "Subspace Gemini 3c",
         // ID
-        "subspace_gemini_3b",
-        ChainType::Custom("Subspace Gemini 3b".to_string()),
+        "subspace_gemini_3c",
+        ChainType::Custom("Subspace Gemini 3c".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
@@ -150,13 +150,13 @@ pub fn gemini_3b_compiled(
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3b"),
+        Some("subspace-gemini-3c"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::gemini_3b_config(),
+            execution_chain_spec: system_domain::chain_spec::gemini_3c_config(),
         },
     ))
 }

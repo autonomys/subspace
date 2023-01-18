@@ -44,7 +44,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
---chain gemini-3b `
+--chain gemini-3c `
 --execution wasm `
 --blocks-pruning archive `
 --state-pruning archive `
@@ -96,7 +96,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-3b \
+  --chain gemini-3c \
   --execution wasm \
   --blocks-pruning archive \
   --state-pruning archive \
@@ -151,7 +151,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-3b \
+  --chain gemini-3c \
   --execution wasm \
   --blocks-pruning archive \
   --state-pruning archive \
@@ -214,7 +214,7 @@ services:
       - "0.0.0.0:30433:30433"
     restart: unless-stopped
     command: [
-      "--chain", "gemini-3b",
+      "--chain", "gemini-3c",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
       "--blocks-pruning", "archive",
@@ -289,7 +289,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3b.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3c.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
 
 ## Switching from older/different versions of Subspace
 
@@ -300,7 +300,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain gemini-3b
+./NODE_FILE_NAME purge-chain --chain gemini-3c
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -322,8 +322,8 @@ Below are some helpful samples:
 
 - `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
 - `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
-- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-3b ...` : start node and store data in `/path/to/data` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-3b` : erases data related to the node if data were stored in `/path/to/data`
+- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-3c ...` : start node and store data in `/path/to/data` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-3c` : erases data related to the node if data were stored in `/path/to/data`
 
 Examples:
 ```bash
