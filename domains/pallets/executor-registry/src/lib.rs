@@ -706,12 +706,11 @@ mod pallet {
 
                         let stake_weight: T::StakeWeight = executor_config.stake.into();
 
-                        total_stake_weight = total_stake_weight.checked_add(&stake_weight).expect(
-                            "
-                            `total_stake_weight` is at least `u128` which ensures \
-                            the overflow never occurs in the real world even with \
-                            100K executor and each of them has 1_000_000_000 SSC at stake; qed",
-                        );
+                        total_stake_weight = total_stake_weight
+                            .checked_add(&stake_weight)
+                            .unwrap_or_else(|| {
+                                panic!("Domain bundle election can not work properly due to `total_stake_weight` overflow")
+                            });
 
                         executor_weights.insert(who, stake_weight);
 

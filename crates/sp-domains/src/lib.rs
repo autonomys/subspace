@@ -261,8 +261,8 @@ pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// Expected receipts by the primay chain when the bundle was created.
     ///
     /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
-    /// wrapped in an unsigned extrinsic, therefore the receipts in a bundle
-    /// is inherently contained by the max extrinsic size limit.
+    /// wrapped in an unsigned extrinsic, therefore the number of receipts
+    /// in a bundle is inherently constrained by the max extrinsic size limit.
     pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
