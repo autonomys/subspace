@@ -1,6 +1,6 @@
 use libp2p::multihash::Multihash;
 use std::error::Error;
-use subspace_core_primitives::{Blake2b256Hash, PieceIndexHash};
+use subspace_core_primitives::PieceIndexHash;
 
 /// Start of Subspace Network multicodec namespace (+1000 to distinguish from future stable values):
 /// https://github.com/multiformats/multicodec/blob/master/table.csv
@@ -9,9 +9,7 @@ const SUBSPACE_MULTICODEC_NAMESPACE_START: u64 = 0xb39910 + 1000;
 #[derive(Debug, Clone, PartialEq)]
 #[repr(u64)]
 pub enum MultihashCode {
-    Piece = SUBSPACE_MULTICODEC_NAMESPACE_START,
-    PieceIndex = SUBSPACE_MULTICODEC_NAMESPACE_START + 1,
-    Sector = SUBSPACE_MULTICODEC_NAMESPACE_START + 2,
+    PieceIndexHash = SUBSPACE_MULTICODEC_NAMESPACE_START,
 }
 
 impl From<MultihashCode> for u64 {
@@ -25,9 +23,7 @@ impl TryFrom<u64> for MultihashCode {
 
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         match value {
-            x if x == MultihashCode::Piece as u64 => Ok(MultihashCode::Piece),
-            x if x == MultihashCode::PieceIndex as u64 => Ok(MultihashCode::PieceIndex),
-            x if x == MultihashCode::Sector as u64 => Ok(MultihashCode::Sector),
+            x if x == MultihashCode::PieceIndexHash as u64 => Ok(MultihashCode::PieceIndexHash),
             _ => Err("Unexpected multihash code".into()),
         }
     }
@@ -39,15 +35,6 @@ pub fn create_multihash_by_piece_index(piece_index: u64) -> Multihash {
     piece_index_hash.to_multihash()
 }
 
-pub fn create_multihash_by_piece(records_root: &Blake2b256Hash, piece_index: u64) -> Multihash {
-    let piece_index_bytes = piece_index.to_le_bytes();
-    let mut input = Vec::with_capacity(records_root.len() + piece_index_bytes.len());
-    input.extend_from_slice(records_root);
-    input.extend_from_slice(&piece_index_bytes);
-    Multihash::wrap(u64::from(MultihashCode::Piece), &input)
-        .expect("Input never exceeds allocated size; qed")
-}
-
 pub trait ToMultihash {
     fn to_multihash(&self) -> Multihash;
     fn to_multihash_by_code(&self, code: MultihashCode) -> Multihash;
@@ -55,7 +42,7 @@ pub trait ToMultihash {
 
 impl ToMultihash for PieceIndexHash {
     fn to_multihash(&self) -> Multihash {
-        self.to_multihash_by_code(MultihashCode::PieceIndex)
+        self.to_multihash_by_code(MultihashCode::PieceIndexHash)
     }
 
     fn to_multihash_by_code(&self, code: MultihashCode) -> Multihash {
