@@ -53,7 +53,6 @@ where
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_chain: ParentChain,
-        parent_chain_block_hash: ParentChainBlock::Hash,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
         PBlock: BlockT,
@@ -107,11 +106,7 @@ where
         let receipts = if primary_number.is_zero() {
             Vec::new()
         } else {
-            self.collect_bundle_receipts::<PBlock, _, _>(
-                parent_number,
-                parent_chain,
-                parent_chain_block_hash,
-            )?
+            self.collect_bundle_receipts::<PBlock, _, _>(parent_number, parent_chain)?
         };
 
         receipts_sanity_check::<Block, PBlock>(&receipts)?;
@@ -134,13 +129,13 @@ where
         &self,
         header_number: NumberFor<Block>,
         parent_chain: ParentChain,
-        parent_chain_block_hash: ParentChainBlock::Hash,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
         PBlock: BlockT,
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<ParentChainBlock>,
     {
+        let parent_chain_block_hash = parent_chain.best_hash();
         let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
         let max_drift = parent_chain.maximum_receipt_drift(parent_chain_block_hash)?;
 

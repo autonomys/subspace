@@ -1,6 +1,6 @@
 use crate::utils::to_number_primitive;
 use sp_api::{NumberFor, ProvideRuntimeApi};
-use sp_blockchain::{HeaderBackend, Info};
+use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::generic::BlockId;
@@ -16,7 +16,7 @@ use system_runtime_primitives::SystemDomainApi;
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
 pub(crate) trait ParentChainInterface<Block: BlockT> {
-    fn info(&self) -> Info<Block>;
+    fn best_hash(&self) -> Block::Hash;
     fn head_receipt_number(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError>;
@@ -58,8 +58,8 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock>,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
-    fn info(&self) -> Info<SBlock> {
-        self.system_domain_client.info()
+    fn best_hash(&self) -> SBlock::Hash {
+        self.system_domain_client.info().best_hash
     }
 
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {
@@ -119,8 +119,8 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
-    fn info(&self) -> Info<PBlock> {
-        self.primary_chain_client.info()
+    fn best_hash(&self) -> PBlock::Hash {
+        self.primary_chain_client.info().best_hash
     }
 
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<BlockNumber, sp_api::ApiError> {

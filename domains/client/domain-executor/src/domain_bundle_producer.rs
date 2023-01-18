@@ -166,15 +166,9 @@ where
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
-            let parent_chain_best_hash = self.parent_chain.info().best_hash;
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(
-                    slot,
-                    primary_info,
-                    self.parent_chain.clone(),
-                    parent_chain_best_hash,
-                )
+                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, self.parent_chain.clone())
                 .await?;
 
             let bundle_solution = self.construct_bundle_solution(proof_of_election)?;
