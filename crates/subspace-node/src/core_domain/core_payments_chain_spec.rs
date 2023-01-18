@@ -110,12 +110,12 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3b Core Payments Domain",
+        "Subspace Gemini 3c Core Payments Domain",
         // ID
-        "subspace_gemini_3b_core_payments_domain",
+        "subspace_gemini_3c_core_payments_domain",
         ChainType::Local,
         move || {
             let sudo_account =
@@ -136,7 +136,7 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3b-core-payments-domain"),
+        Some("subspace-gemini-3c-core-payments-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
