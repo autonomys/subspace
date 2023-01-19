@@ -1,4 +1,4 @@
-use crate::utils::to_number_primitive;
+use crate::utils::{to_number_primitive, translate_block_hash_type};
 use sc_client_api::ProofProvider;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -48,13 +48,13 @@ where
         }
     }
 
-    pub(super) fn solve_bundle_election_challenge(
+    pub(super) fn solve_bundle_election_challenge<Block: BlockT>(
         &self,
         best_hash: SBlock::Hash,
         best_number: NumberFor<SBlock>,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection<SBlock::Hash>>> {
+    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
         let best_block_id = BlockId::Hash(best_hash);
 
         let BundleElectionParams {
@@ -137,6 +137,9 @@ where
                         .expect("Best block header must exist; qed")
                         .state_root();
 
+                    let block_hash = translate_block_hash_type::<SBlock, Block>(best_hash);
+                    let state_root = translate_block_hash_type::<SBlock, Block>(state_root);
+
                     let proof_of_election = ProofOfElection {
                         domain_id,
                         vrf_output: vrf_signature.output.to_bytes(),
@@ -146,7 +149,7 @@ where
                         state_root,
                         storage_proof,
                         block_number: to_number_primitive(best_number),
-                        block_hash: best_hash,
+                        block_hash,
                     };
 
                     return Ok(Some(proof_of_election));
