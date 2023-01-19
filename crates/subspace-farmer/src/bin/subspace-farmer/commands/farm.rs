@@ -87,6 +87,9 @@ pub(crate) async fn farm_multi_disk(
         }
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
+    let mut provider_records_receiver = node_runner
+        .take_provider_records_receiver()
+        .expect("Provider record receiver exists right after initialization; qed");
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
@@ -218,9 +221,6 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
-    let mut provider_records_receiver = node_runner
-        .take_provider_records_receiver()
-        .expect("Provider record receiver should exist on initiatialization.");
     let mut provider_record_processor =
         FarmerProviderRecordProcessor::new(node.clone(), wrapped_piece_storage);
 
