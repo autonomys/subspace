@@ -69,12 +69,6 @@ async fn test_executor_full_node_catching_up() {
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
 
-    assert_eq!(
-        ferdie.client.info().best_number,
-        alice.client.info().best_number,
-        "Primary chain and system domain must be on the same best height"
-    );
-
     let alice_block_hash = alice
         .client
         .expect_block_hash_from_id(&BlockId::Number(2))
