@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
+use subspace_core_primitives::{Blake2b256Hash, Piece, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
@@ -172,47 +172,52 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
         }
     }
 
-    //TODO: consider introducing get-piece helper
-    async fn get_piece(&self, piece_index_hash: PieceIndexHash) -> Option<Piece> {
-        let multihash = piece_index_hash.to_multihash();
+    async fn get_piece_from_announcer(
+        &self,
+        provider_record: &ProviderRecord,
+    ) -> Option<(Multihash, Piece)> {
+        let multihash = Multihash::from_bytes(provider_record.key.as_ref())
+            .expect("Key should represent a valid multihash");
 
-        let get_providers_result = self.node.get_providers(multihash).await;
+        let piece_index_hash =
+            Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
+                .expect("Multihash should be known 32 bytes size.")
+                .into();
 
-        match get_providers_result {
-            Ok(mut get_providers_stream) => {
-                while let Some(provider_id) = get_providers_stream.next().await {
-                    trace!(?multihash, %provider_id, "get_providers returned an item");
+        let request_result = self
+            .node
+            .send_generic_request(
+                provider_record.provider,
+                PieceByHashRequest { piece_index_hash },
+            )
+            .await;
 
-                    if provider_id == self.node.id() {
-                        trace!(?multihash, %provider_id, "Attempted to get a piece from itself.");
-                        continue;
-                    }
-
-                    let request_result = self
-                        .node
-                        .send_generic_request(provider_id, PieceByHashRequest { piece_index_hash })
-                        .await;
-
-                    match request_result {
-                        Ok(PieceByHashResponse { piece: Some(piece) }) => {
-                            trace!(%provider_id, ?multihash, ?piece_index_hash, "Piece request succeeded.");
-                            return Some(piece);
-                        }
-                        Ok(PieceByHashResponse { piece: None }) => {
-                            debug!(%provider_id, ?multihash, ?piece_index_hash, "Piece request returned empty piece.");
-                        }
-                        Err(error) => {
-                            warn!(%provider_id, ?multihash, ?piece_index_hash, ?error, "Piece request failed.");
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                warn!(
+        match request_result {
+            Ok(PieceByHashResponse { piece: Some(piece) }) => {
+                trace!(
+                    %provider_record.provider,
                     ?multihash,
                     ?piece_index_hash,
-                    ?err,
-                    "get_providers returned an error"
+                    "Piece request succeeded."
+                );
+
+                return Some((multihash, piece));
+            }
+            Ok(PieceByHashResponse { piece: None }) => {
+                debug!(
+                    %provider_record.provider,
+                    ?multihash,
+                    ?piece_index_hash,
+                    "Provider returned no piece right after announcement."
+                );
+            }
+            Err(error) => {
+                warn!(
+                    %provider_record.provider,
+                    ?multihash,
+                    ?piece_index_hash,
+                    ?error,
+                    "Piece request to announcer provider failed."
                 );
             }
         }
@@ -242,24 +247,22 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
         };
     }
 
-    pub async fn process_provider_record(&mut self, rec: ProviderRecord) {
-        trace!(key=?rec.key, "Starting processing provider record...");
+    pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
+        trace!(key=?provider_record.key, "Starting processing provider record...");
 
-        if self.piece_storage.should_include_in_storage(&rec.key) {
-            if self.piece_storage.get_piece(&rec.key).is_some() {
-                trace!(key=?rec.key, "Skipped processing local piece...");
+        if self
+            .piece_storage
+            .should_include_in_storage(&provider_record.key)
+        {
+            if self.piece_storage.get_piece(&provider_record.key).is_some() {
+                trace!(key=?provider_record.key, "Skipped processing local piece...");
                 return;
             }
 
-            let multihash = Multihash::from_bytes(rec.key.as_ref())
-                .expect("Key should represent a valid multihash");
-
-            let piece_index_hash: Blake2b256Hash = multihash.digest()[..BLAKE2B_256_HASH_SIZE]
-                .try_into()
-                .expect("Multihash should be known 32 bytes size.");
-
-            if let Some(piece) = self.get_piece(piece_index_hash.into()).await {
-                self.piece_storage.add_piece(rec.key.clone(), piece);
+            if let Some((multihash, piece)) = self.get_piece_from_announcer(&provider_record).await
+            {
+                self.piece_storage
+                    .add_piece(provider_record.key.clone(), piece);
                 self.announce_piece(multihash).await;
             }
         }
