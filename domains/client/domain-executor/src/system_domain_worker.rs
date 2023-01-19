@@ -14,9 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
+use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_processor::SystemBundleProcessor;
-use crate::system_bundle_producer::SystemBundleProducer;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -37,6 +38,7 @@ use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub(super) async fn start_worker<
     Block,
     PBlock,
@@ -50,7 +52,16 @@ pub(super) async fn start_worker<
 >(
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
-    bundle_producer: SystemBundleProducer<Block, PBlock, Client, PClient, TransactionPool>,
+    bundle_producer: DomainBundleProducer<
+        Block,
+        Block,
+        PBlock,
+        PBlock,
+        Client,
+        Client,
+        SystemDomainParentChain<PClient, Block, PBlock>,
+        TransactionPool,
+    >,
     bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
