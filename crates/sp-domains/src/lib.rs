@@ -259,6 +259,10 @@ pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
     pub header: BundleHeader<Hash>,
     /// Expected receipts by the primay chain when the bundle was created.
+    ///
+    /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
+    /// wrapped in an unsigned extrinsic, therefore the number of receipts
+    /// in a bundle is inherently constrained by the max extrinsic size limit.
     pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
@@ -335,6 +339,18 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash>
             bundle: self.bundle.into_opaque_bundle(),
             bundle_solution: self.bundle_solution,
             signature: self.signature,
+        }
+    }
+}
+
+impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, DomainHash> {
+    /// Consumes [`SignedBundle`] to extract the inner executor public key.
+    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
+        match self.bundle_solution {
+            BundleSolution::System(proof_of_election)
+            | BundleSolution::Core {
+                proof_of_election, ..
+            } => proof_of_election.executor_public_key,
         }
     }
 }

@@ -234,6 +234,11 @@ mod pallet {
         }
 
         /// Update the domain stake.
+        ///
+        /// NOTE: This has an _identical_ implementation to [`Call::register_domain_operator`],
+        /// which is intentional, otherwise, it can be confusing when an operator wants to update
+        /// the domain stake but has to call a API named `register_domain_operator` that usually
+        /// implies the caller is not yet an operator.
         // TODO: proper weight
         #[pallet::call_index(3)]
         #[pallet::weight(10_000)]

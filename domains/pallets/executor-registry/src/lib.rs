@@ -42,16 +42,29 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
+    use sp_arithmetic::traits::{BaseArithmetic, Unsigned};
     use sp_domains::ExecutorPublicKey;
     use sp_executor_registry::OnNewEpoch;
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
-        MaybeSerializeDeserialize, Zero,
+        BlockNumberProvider, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Zero,
     };
     use sp_runtime::FixedPointOperand;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
+
+    /// Same sematic as `AtLeast32Bit` but requires at least `u128`.
+    pub trait AtLeast128Bit:
+        BaseArithmetic + From<u16> + From<u32> + From<u64> + From<u128>
+    {
+    }
+
+    impl<T: BaseArithmetic + From<u16> + From<u32> + From<u64> + From<u128>> AtLeast128Bit for T {}
+
+    /// Same as `AtLeast128Bit` but bounded to be unsigned.
+    pub trait AtLeast128BitUnsigned: AtLeast128Bit + Unsigned {}
+
+    impl<T: AtLeast128Bit + Unsigned> AtLeast128BitUnsigned for T {}
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -62,7 +75,7 @@ mod pallet {
         /// The stake weight of an executor.
         type StakeWeight: Parameter
             + Member
-            + AtLeast32BitUnsigned
+            + AtLeast128BitUnsigned
             + Codec
             + Default
             + Copy
@@ -693,11 +706,11 @@ mod pallet {
 
                         let stake_weight: T::StakeWeight = executor_config.stake.into();
 
-                        total_stake_weight = total_stake_weight.checked_add(&stake_weight).expect(
-                            "
-                                `total_stake_weight` as u128 won't overflow even with 100K executor and \
-                                each of them has 1_000_000_000 SSC at stake; qed",
-                        );
+                        total_stake_weight = total_stake_weight
+                            .checked_add(&stake_weight)
+                            .unwrap_or_else(|| {
+                                panic!("Domain bundle election can not work properly due to `total_stake_weight` overflow")
+                            });
 
                         executor_weights.insert(who, stake_weight);
 
