@@ -172,81 +172,6 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
         }
     }
 
-    async fn get_piece_from_announcer(
-        &self,
-        provider_record: &ProviderRecord,
-    ) -> Option<(Multihash, Piece)> {
-        let multihash = Multihash::from_bytes(provider_record.key.as_ref())
-            .expect("Key should represent a valid multihash");
-
-        let piece_index_hash =
-            Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
-                .expect("Multihash should be known 32 bytes size.")
-                .into();
-
-        let request_result = self
-            .node
-            .send_generic_request(
-                provider_record.provider,
-                PieceByHashRequest { piece_index_hash },
-            )
-            .await;
-
-        match request_result {
-            Ok(PieceByHashResponse { piece: Some(piece) }) => {
-                trace!(
-                    %provider_record.provider,
-                    ?multihash,
-                    ?piece_index_hash,
-                    "Piece request succeeded."
-                );
-
-                return Some((multihash, piece));
-            }
-            Ok(PieceByHashResponse { piece: None }) => {
-                debug!(
-                    %provider_record.provider,
-                    ?multihash,
-                    ?piece_index_hash,
-                    "Provider returned no piece right after announcement."
-                );
-            }
-            Err(error) => {
-                warn!(
-                    %provider_record.provider,
-                    ?multihash,
-                    ?piece_index_hash,
-                    ?error,
-                    "Piece request to announcer provider failed."
-                );
-            }
-        }
-
-        None
-    }
-
-    //TODO: consider introducing publish-piece helper
-    async fn announce_piece(&self, key: Multihash) {
-        let result = self.node.start_announcing(key).await;
-
-        match result {
-            Err(error) => {
-                debug!(
-                    ?error,
-                    ?key,
-                    "Piece publishing for the cache returned an error"
-                );
-            }
-            Ok(mut stream) => {
-                if stream.next().await.is_some() {
-                    trace!(?key, "Piece publishing for the cache succeeded");
-                } else {
-                    debug!(?key, "Piece publishing for the cache failed");
-                }
-            }
-        };
-    }
-
     pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
         trace!(key=?provider_record.key, "Starting processing provider record...");
 
@@ -259,14 +184,88 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
                 return;
             }
 
-            if let Some((multihash, piece)) = self.get_piece_from_announcer(&provider_record).await
+            if let Some((multihash, piece)) =
+                get_piece_from_announcer(&self.node, &provider_record).await
             {
                 self.piece_storage
                     .add_piece(provider_record.key.clone(), piece);
-                self.announce_piece(multihash).await;
+                announce_piece(&self.node, multihash).await;
             }
         }
     }
+}
+
+async fn get_piece_from_announcer(
+    node: &Node,
+    provider_record: &ProviderRecord,
+) -> Option<(Multihash, Piece)> {
+    let multihash = Multihash::from_bytes(provider_record.key.as_ref())
+        .expect("Key should represent a valid multihash");
+
+    let piece_index_hash = Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
+        .expect("Multihash should be known 32 bytes size.")
+        .into();
+
+    let request_result = node
+        .send_generic_request(
+            provider_record.provider,
+            PieceByHashRequest { piece_index_hash },
+        )
+        .await;
+
+    match request_result {
+        Ok(PieceByHashResponse { piece: Some(piece) }) => {
+            trace!(
+                %provider_record.provider,
+                ?multihash,
+                ?piece_index_hash,
+                "Piece request succeeded."
+            );
+
+            return Some((multihash, piece));
+        }
+        Ok(PieceByHashResponse { piece: None }) => {
+            debug!(
+                %provider_record.provider,
+                ?multihash,
+                ?piece_index_hash,
+                "Provider returned no piece right after announcement."
+            );
+        }
+        Err(error) => {
+            warn!(
+                %provider_record.provider,
+                ?multihash,
+                ?piece_index_hash,
+                ?error,
+                "Piece request to announcer provider failed."
+            );
+        }
+    }
+
+    None
+}
+
+//TODO: consider introducing publish-piece helper
+async fn announce_piece(node: &Node, key: Multihash) {
+    let result = node.start_announcing(key).await;
+
+    match result {
+        Err(error) => {
+            debug!(
+                ?error,
+                ?key,
+                "Piece publishing for the cache returned an error"
+            );
+        }
+        Ok(mut stream) => {
+            if stream.next().await.is_some() {
+                trace!(?key, "Piece publishing for the cache succeeded");
+            } else {
+                debug!(?key, "Piece publishing for the cache failed");
+            }
+        }
+    };
 }
 
 /// Defines persistent piece storage interface.
