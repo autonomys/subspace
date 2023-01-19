@@ -8,15 +8,12 @@ use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
-use tokio::time::timeout;
 use tracing::{debug, trace, warn};
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
-/// Max time allocated for getting piece from DSN before attempt is considered to fail
-const GET_PIECE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// An abstraction for piece receiving.
 #[async_trait]
@@ -97,7 +94,7 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
                             debug!(%provider_id, %piece_index, ?key, "Piece request returned empty piece.");
                         }
                         Err(error) => {
-                            warn!(%provider_id, %piece_index, ?key, ?error, "Piece request failed.");
+                            debug!(%provider_id, %piece_index, ?key, ?error, "Piece request failed.");
                         }
                     }
                 }
@@ -131,9 +128,7 @@ impl<'a, PV: PieceValidator> PieceReceiver for PieceProvider<'a, PV> {
             self.check_cancellation()
                 .map_err(backoff::Error::Permanent)?;
 
-            let maybe_piece = timeout(GET_PIECE_TIMEOUT, self.get_piece_from_storage(piece_index));
-
-            if let Ok(Some(piece)) = maybe_piece.await {
+            if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, "Got piece");
                 return Ok(Some(piece));
             }

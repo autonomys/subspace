@@ -8,12 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::{Node, ToMultihash};
-use tokio::time::error::Elapsed;
-use tokio::time::timeout;
 use tracing::{debug, error, info, trace};
 
-/// Max time allocated for putting piece from DSN before attempt is considered to fail
-const PUT_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
 /// Defines initial duration between put_piece calls.
 const PUT_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between put_piece calls.
@@ -79,16 +75,14 @@ impl PieceSectorPublisher {
             self.check_cancellation()
                 .map_err(backoff::Error::Permanent)?;
 
-            let publish_timeout_result: Result<Result<(), _>, Elapsed> =
-                timeout(PUT_PIECE_TIMEOUT, self.publish_single_piece(piece_index)).await;
-
-            if let Ok(publish_result) = publish_timeout_result {
-                if publish_result.is_ok() {
+            match self.publish_single_piece(piece_index).await {
+                Ok(()) => {
                     return Ok(());
                 }
+                Err(error) => {
+                    error!(%piece_index, %error, "Couldn't publish a piece. Retrying...");
+                }
             }
-
-            error!(%piece_index, "Couldn't publish a piece. Retrying...");
 
             Err(backoff::Error::transient(
                 "Couldn't publish piece to DSN".into(),
