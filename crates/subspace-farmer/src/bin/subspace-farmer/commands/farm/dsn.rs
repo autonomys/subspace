@@ -243,18 +243,17 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
     }
 
     pub async fn process_provider_record(&mut self, rec: ProviderRecord) {
-        let multihash_bytes = rec.key.to_vec();
-        let multihash = Multihash::from_bytes(multihash_bytes.as_slice())
-            .expect("Key should represent a valid multihash");
-
-        if self.piece_storage.get_piece(&rec.key).is_some() {
-            trace!(key=?rec.key, "Skipped processing local piece...");
-            return;
-        }
-
         trace!(key=?rec.key, "Starting processing provider record...");
 
         if self.piece_storage.should_include_in_storage(&rec.key) {
+            if self.piece_storage.get_piece(&rec.key).is_some() {
+                trace!(key=?rec.key, "Skipped processing local piece...");
+                return;
+            }
+
+            let multihash = Multihash::from_bytes(rec.key.as_ref())
+                .expect("Key should represent a valid multihash");
+
             let piece_index_hash: Blake2b256Hash = multihash.digest()[..BLAKE2B_256_HASH_SIZE]
                 .try_into()
                 .expect("Multihash should be known 32 bytes size.");
@@ -269,7 +268,8 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
 
 /// Defines persistent piece storage interface.
 pub trait PieceStorage: Sync + Send + 'static {
-    /// Check whether key should be inserted into the storage with current storage size and key-to-peer-id distance.
+    /// Check whether key should be inserted into the storage with current storage size and
+    /// key-to-peer-id distance.
     fn should_include_in_storage(&self, key: &Key) -> bool;
 
     /// Add piece to the storage.
