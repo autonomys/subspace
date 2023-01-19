@@ -1,4 +1,4 @@
-#![feature(type_alias_impl_trait, type_changing_struct_update)]
+#![feature(const_option, type_alias_impl_trait, type_changing_struct_update)]
 
 mod commands;
 mod ss58;

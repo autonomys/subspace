@@ -18,6 +18,7 @@ use subspace_networking::{
     ToMultihash,
 };
 use tokio::runtime::Handle;
+use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn};
 
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
@@ -159,39 +160,64 @@ pub(super) async fn configure_dsn(
         .map_err(Into::into)
 }
 
-pub(crate) struct FarmerProviderRecordProcessor<PS: PieceStorage> {
+// TODO: This should probably moved into the library
+pub(crate) struct FarmerProviderRecordProcessor<PS> {
     node: Node,
-    piece_storage: PS,
+    piece_storage: Arc<tokio::sync::Mutex<PS>>,
+    semaphore: Arc<Semaphore>,
 }
 
-impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
-    pub fn new(node: Node, piece_storage: PS) -> Self {
+impl<PS> FarmerProviderRecordProcessor<PS>
+where
+    PS: PieceStorage + Send + 'static,
+{
+    pub fn new(node: Node, piece_storage: PS, max_concurrent_announcements: NonZeroUsize) -> Self {
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_announcements.get()));
         Self {
             node,
-            piece_storage,
+            piece_storage: Arc::new(tokio::sync::Mutex::new(piece_storage)),
+            semaphore,
         }
     }
 
     pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
         trace!(key=?provider_record.key, "Starting processing provider record...");
 
-        if self
-            .piece_storage
-            .should_include_in_storage(&provider_record.key)
-        {
-            if self.piece_storage.get_piece(&provider_record.key).is_some() {
-                trace!(key=?provider_record.key, "Skipped processing local piece...");
-                return;
+        let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
+            return;
+        };
+
+        let node = self.node.clone();
+        let piece_storage = Arc::clone(&self.piece_storage);
+
+        tokio::spawn(async move {
+            {
+                let piece_storage = piece_storage.lock().await;
+
+                if !piece_storage.should_include_in_storage(&provider_record.key) {
+                    return;
+                }
+
+                if piece_storage.get_piece(&provider_record.key).is_some() {
+                    trace!(key=?provider_record.key, "Skipped processing local piece...");
+                    return;
+                }
+
+                // TODO: Store local intent to cache a piece such that we don't try to pull the same piece again
             }
 
             if let Some((multihash, piece)) =
-                get_piece_from_announcer(&self.node, &provider_record).await
+                get_piece_from_announcer(&node, &provider_record).await
             {
-                self.piece_storage
+                piece_storage
+                    .lock()
+                    .await
                     .add_piece(provider_record.key.clone(), piece);
-                announce_piece(&self.node, multihash).await;
+                announce_piece(&node, multihash).await;
             }
-        }
+
+            drop(permit);
+        });
     }
 }
 
