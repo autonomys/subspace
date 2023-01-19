@@ -12,11 +12,10 @@ use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
-use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-    PieceKey, ToMultihash,
+    ToMultihash,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
@@ -86,9 +85,16 @@ pub(super) async fn configure_dsn(
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = match req.key {
-                PieceKey::ArchivalStorage(piece_index_hash) => {
-                    debug!(key=?req.key, "Archival storage piece request received.");
+            let result = {
+                debug!(piece_index_hash = ?req.piece_index_hash, "Piece request received. Trying cache...");
+                let multihash = req.piece_index_hash.to_multihash();
+
+                let piece_from_cache = piece_storage.get(&multihash.into());
+
+                if piece_from_cache.is_some() {
+                    piece_from_cache
+                } else {
+                    debug!(piece_index_hash = ?req.piece_index_hash, "No piece in the cache. Trying archival storage...");
 
                     let (mut reader, piece_details) = {
                         let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
@@ -103,23 +109,26 @@ pub(super) async fn configure_dsn(
                             Some(readers_and_pieces) => readers_and_pieces,
                             None => {
                                 debug!(
-                                    ?piece_index_hash,
+                                    ?req.piece_index_hash,
                                     "Readers and pieces are not initialized yet"
                                 );
                                 return None;
                             }
                         };
-                        let piece_details =
-                            match readers_and_pieces.pieces.get(&piece_index_hash).copied() {
-                                Some(piece_details) => piece_details,
-                                None => {
-                                    trace!(
-                                        ?piece_index_hash,
-                                        "Piece is not stored in any of the local plots"
-                                    );
-                                    return None;
-                                }
-                            };
+                        let piece_details = match readers_and_pieces
+                            .pieces
+                            .get(&req.piece_index_hash)
+                            .copied()
+                        {
+                            Some(piece_details) => piece_details,
+                            None => {
+                                trace!(
+                                    ?req.piece_index_hash,
+                                    "Piece is not stored in any of the local plots"
+                                );
+                                return None;
+                            }
+                        };
                         let reader = readers_and_pieces
                             .readers
                             .get(piece_details.plot_offset)
@@ -135,11 +144,6 @@ pub(super) async fn configure_dsn(
                                 .read_piece(piece_details.sector_index, piece_details.piece_offset),
                         )
                     })
-                }
-                PieceKey::Cache(piece_index_hash) => {
-                    debug!(key=?req.key, "Cache piece request received.");
-
-                    piece_storage.get(&piece_index_hash.to_multihash().into())
                 }
             };
 
@@ -171,7 +175,6 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
     //TODO: consider introducing get-piece helper
     async fn get_piece(&self, piece_index_hash: PieceIndexHash) -> Option<Piece> {
         let multihash = piece_index_hash.to_multihash();
-        let piece_key = PieceKey::Cache(piece_index_hash);
 
         let get_providers_result = self.node.get_providers(multihash).await;
 
@@ -180,21 +183,26 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
                 while let Some(provider_id) = get_providers_stream.next().await {
                     trace!(?multihash, %provider_id, "get_providers returned an item");
 
+                    if provider_id == self.node.id() {
+                        trace!(?multihash, %provider_id, "Attempted to get a piece from itself.");
+                        continue;
+                    }
+
                     let request_result = self
                         .node
-                        .send_generic_request(provider_id, PieceByHashRequest { key: piece_key })
+                        .send_generic_request(provider_id, PieceByHashRequest { piece_index_hash })
                         .await;
 
                     match request_result {
                         Ok(PieceByHashResponse { piece: Some(piece) }) => {
-                            trace!(%provider_id, ?multihash, ?piece_key, "Piece request succeeded.");
+                            trace!(%provider_id, ?multihash, ?piece_index_hash, "Piece request succeeded.");
                             return Some(piece);
                         }
                         Ok(PieceByHashResponse { piece: None }) => {
-                            debug!(%provider_id, ?multihash, ?piece_key, "Piece request returned empty piece.");
+                            debug!(%provider_id, ?multihash, ?piece_index_hash, "Piece request returned empty piece.");
                         }
                         Err(error) => {
-                            warn!(%provider_id, ?multihash, ?piece_key, ?error, "Piece request failed.");
+                            warn!(%provider_id, ?multihash, ?piece_index_hash, ?error, "Piece request failed.");
                         }
                     }
                 }
@@ -202,7 +210,7 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
             Err(err) => {
                 warn!(
                     ?multihash,
-                    ?piece_key,
+                    ?piece_index_hash,
                     ?err,
                     "get_providers returned an error"
                 );
@@ -244,21 +252,17 @@ impl<PS: PieceStorage> FarmerProviderRecordProcessor<PS> {
             return;
         }
 
-        if multihash.code() == u64::from(MultihashCode::PieceIndex) {
-            trace!(key=?rec.key, "Starting processing provider record...");
+        trace!(key=?rec.key, "Starting processing provider record...");
 
-            if self.piece_storage.should_include_in_storage(&rec.key) {
-                let piece_index_hash: Blake2b256Hash = multihash.digest()[..BLAKE2B_256_HASH_SIZE]
-                    .try_into()
-                    .expect("Multihash should be known 32 bytes size.");
+        if self.piece_storage.should_include_in_storage(&rec.key) {
+            let piece_index_hash: Blake2b256Hash = multihash.digest()[..BLAKE2B_256_HASH_SIZE]
+                .try_into()
+                .expect("Multihash should be known 32 bytes size.");
 
-                if let Some(piece) = self.get_piece(piece_index_hash.into()).await {
-                    self.piece_storage.add_piece(rec.key.clone(), piece);
-                    self.announce_piece(multihash).await;
-                }
+            if let Some(piece) = self.get_piece(piece_index_hash.into()).await {
+                self.piece_storage.add_piece(rec.key.clone(), piece);
+                self.announce_piece(multihash).await;
             }
-        } else {
-            trace!(key=?rec.key, "Processing of the provider record cancelled.");
         }
     }
 }

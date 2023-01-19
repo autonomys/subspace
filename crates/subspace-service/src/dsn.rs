@@ -21,7 +21,7 @@ use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
-    NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
+    NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
     ToMultihash,
 };
 use tokio::sync::Semaphore;
@@ -97,18 +97,12 @@ where
         )
         .boxed(),
         request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::Cache(piece_index_hash) = req.key {
-                match piece_cache.get_piece(piece_index_hash) {
-                    Ok(maybe_piece) => maybe_piece,
-                    Err(error) => {
-                        error!(key=?req.key, %error, "Failed to get piece from cache");
-                        None
-                    }
+            let result = match piece_cache.get_piece(req.piece_index_hash) {
+                Ok(maybe_piece) => maybe_piece,
+                Err(error) => {
+                    error!(piece_index_hash = ?req.piece_index_hash, %error, "Failed to get piece from cache");
+                    None
                 }
-            } else {
-                debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
-
-                None
             };
 
             Some(PieceByHashResponse { piece: result })

@@ -7,19 +7,11 @@ use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRe
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{Piece, PieceIndexHash};
 
-//TODO: rename all module names if we keep this enum
-#[derive(Debug, Clone, Eq, PartialEq, Copy, Encode, Decode)]
-pub enum PieceKey {
-    Cache(PieceIndexHash),
-    ArchivalStorage(PieceIndexHash),
-}
-
 /// Piece-by-hash protocol request.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct PieceByHashRequest {
-    //TODO: rename if we keep the enum
-    /// Piece index hash
-    pub key: PieceKey,
+    /// Request key - piece index hash
+    pub piece_index_hash: PieceIndexHash,
 }
 
 impl GenericRequest for PieceByHashRequest {

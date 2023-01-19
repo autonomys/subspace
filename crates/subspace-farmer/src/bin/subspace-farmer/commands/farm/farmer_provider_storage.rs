@@ -5,7 +5,6 @@ use std::sync::Arc;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{deconstruct_record_key, ProviderStorage, ToMultihash};
 
 pub(crate) struct FarmerProviderStorage<PersistentProviderStorage> {
@@ -44,21 +43,18 @@ where
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         let mut provider_records = self.persistent_provider_storage.providers(key);
 
-        let (piece_index_hash, multihash_code) = deconstruct_record_key(key);
+        let (piece_index_hash, _) = deconstruct_record_key(key);
 
-        if multihash_code == MultihashCode::Sector
-            && self
-                .readers_and_pieces
-                .lock()
-                .as_ref()
-                .expect("Should be populated at this point.")
-                .pieces
-                .contains_key(&piece_index_hash)
+        if self
+            .readers_and_pieces
+            .lock()
+            .as_ref()
+            .expect("Should be populated at this point.")
+            .pieces
+            .contains_key(&piece_index_hash)
         {
             provider_records.push(ProviderRecord {
-                key: piece_index_hash
-                    .to_multihash_by_code(MultihashCode::Sector)
-                    .into(),
+                key: piece_index_hash.to_multihash().into(),
                 provider: self.local_peer_id,
                 expires: None,
                 addresses: Vec::new(), // TODO: add address hints
@@ -77,7 +73,7 @@ where
             .keys()
             .map(|hash| {
                 ProviderRecord {
-                    key: hash.to_multihash_by_code(MultihashCode::Sector).into(),
+                    key: hash.to_multihash().into(),
                     provider: self.local_peer_id,
                     expires: None,
                     addresses: Vec::new(), // TODO: add address hints
