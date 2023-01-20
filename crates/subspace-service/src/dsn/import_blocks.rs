@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use futures::StreamExt;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
@@ -28,8 +27,8 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::utils::multihash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
+use subspace_networking::{BootstrappedNetworkingParameters, Config, PieceByHashRequestHandler};
 
 struct WaitLinkError<B: BlockT> {
     error: BlockImportError,
@@ -89,10 +88,13 @@ where
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         allow_non_global_addresses_in_dht: true,
+        request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| None)],
         ..Config::default()
     })
     .await
     .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+
+    let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None, false);
 
     spawner.spawn_essential(
         "node-runner",
@@ -127,12 +129,10 @@ where
         let mut found_one_piece = false;
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
-            let maybe_piece = node
-                .get_value(multihash::create_multihash_by_piece_index(piece_index))
+            let maybe_piece = piece_provider
+                .get_piece(piece_index)
                 .await
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?
-                .next()
-                .await;
+                .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
             trace!(
                 ?piece_index,
@@ -140,12 +140,12 @@ where
                 "Piece request completed.",
             );
 
-            if let Some(piece_vec) = maybe_piece {
+            if let Some(received_piece) = maybe_piece {
                 found_one_piece = true;
 
                 // TODO: We do not keep track of peers here and don't verify records, we probably
                 //  should though
-                piece.replace(piece_vec.record.value.as_slice().try_into()?);
+                piece.replace(received_piece);
             }
         }
 
