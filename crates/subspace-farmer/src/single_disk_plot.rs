@@ -1,4 +1,3 @@
-pub mod piece_publisher;
 pub mod piece_reader;
 pub(crate) mod piece_receiver;
 

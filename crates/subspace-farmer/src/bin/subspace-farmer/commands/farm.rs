@@ -15,11 +15,11 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
-use subspace_farmer::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::utils::pieces::PieceSectorPublisher;
 use tracing::{debug, error, info, warn};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =

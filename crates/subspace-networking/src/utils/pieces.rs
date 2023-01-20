@@ -1,3 +1,5 @@
+use crate::node::Node;
+use crate::utils::multihash::ToMultihash;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::stream::FuturesUnordered;
@@ -7,7 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
-use subspace_networking::{Node, ToMultihash};
 use tracing::{debug, error, info, trace};
 
 /// Defines initial duration between put_piece calls.
