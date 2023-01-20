@@ -9613,6 +9613,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-core",
+ "sp-domain-digests",
  "sp-domains",
  "sp-keyring",
  "sp-runtime",
