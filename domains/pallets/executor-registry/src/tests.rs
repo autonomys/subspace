@@ -1,9 +1,10 @@
 use crate::{
     self as pallet_executor_registry, Error, ExecutorConfig, Executors, KeyOwner,
-    TotalActiveExecutors, TotalActiveStake, Withdrawal,
+    TotalActiveExecutors, TotalActiveStake, TotalStakeWeight, Withdrawal,
 };
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, GenesisBuild, Hooks};
 use frame_support::{assert_noop, assert_ok, bounded_vec, parameter_types};
+use frame_system::RawOrigin;
 use pallet_balances::AccountData;
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
@@ -77,7 +78,7 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const MinExecutorStake: Balance = 10;
-    pub const MaxExecutorStake: Balance = 1000;
+    pub const MaxExecutorStake: Balance = StakeWeight::MAX - 1;
     pub const MinExecutors: u32 = 1;
     pub const MaxExecutors: u32 = 10;
     pub const EpochDuration: BlockNumber = 3;
@@ -149,7 +150,7 @@ fn register_should_work() {
                 public_key.clone(),
                 reward_address,
                 is_active,
-                100_000,
+                StakeWeight::MAX,
             ),
             Error::<Test>::StakeTooLarge
         );
@@ -428,5 +429,57 @@ fn update_reward_address_should_work() {
                 ..executor_config
             }
         );
+    });
+}
+
+#[test]
+fn test_total_stake_overflow() {
+    new_test_ext().execute_with(|| {
+        Balances::set_balance(RawOrigin::Root.into(), 2, StakeWeight::MAX / 2, 0).unwrap();
+        Balances::set_balance(RawOrigin::Root.into(), 3, StakeWeight::MAX / 2, 0).unwrap();
+
+        assert_eq!(TotalActiveStake::<Test>::get(), 100);
+        assert_eq!(TotalStakeWeight::<Test>::get(), 100);
+
+        // `register` trigger overflow error
+        assert_ok!(ExecutorRegistry::register(
+            RuntimeOrigin::signed(2),
+            ExecutorPair::from_seed(&U256::from(2u32).into()).public(),
+            2 + 10000,
+            true,
+            StakeWeight::MAX / 2,
+        ));
+        assert_noop!(
+            ExecutorRegistry::register(
+                RuntimeOrigin::signed(3),
+                ExecutorPair::from_seed(&U256::from(3u32).into()).public(),
+                3 + 10000,
+                true,
+                StakeWeight::MAX / 2,
+            ),
+            Error::<Test>::ArithmeticOverflow
+        );
+
+        // `increase_stake` trigger overflow error
+        Balances::set_balance(RawOrigin::Root.into(), 1, StakeWeight::MAX / 2, 0).unwrap();
+        assert_noop!(
+            ExecutorRegistry::increase_stake(RuntimeOrigin::signed(1), StakeWeight::MAX / 2),
+            Error::<Test>::ArithmeticOverflow
+        );
+
+        // `resume_execution` trigger overflow error
+        assert_ok!(ExecutorRegistry::pause_execution(RuntimeOrigin::signed(2)));
+        assert_ok!(ExecutorRegistry::increase_stake(
+            RuntimeOrigin::signed(1),
+            StakeWeight::MAX / 2
+        ));
+        assert_noop!(
+            ExecutorRegistry::resume_execution(RuntimeOrigin::signed(2),),
+            Error::<Test>::ArithmeticOverflow
+        );
+
+        // `TotalStakeWeight` should be updated correctly
+        ExecutorRegistry::on_initialize(0);
+        assert_eq!(TotalStakeWeight::<Test>::get(), StakeWeight::MAX / 2 + 100);
     });
 }
