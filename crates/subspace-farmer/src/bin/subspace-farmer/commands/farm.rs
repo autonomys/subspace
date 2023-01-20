@@ -12,13 +12,15 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
+use subspace_farmer::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
@@ -97,6 +99,9 @@ pub(crate) async fn farm_multi_disk(
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
+    let shutting_down = Arc::new(AtomicBool::new(false));
+    let piece_publisher = PieceSectorPublisher::new(node.clone(), shutting_down.clone());
+
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for disk_farm in disk_farms {
@@ -120,6 +125,7 @@ pub(crate) async fn farm_multi_disk(
             reward_address,
             dsn_node: node.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
+            shutting_down: Arc::clone(&shutting_down),
         });
 
         let single_disk_plot = single_disk_plot_fut.await?;
@@ -187,11 +193,17 @@ pub(crate) async fn farm_multi_disk(
         .enumerate()
         .map(|(plot_offset, single_disk_plot)| {
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
+            let piece_publisher = piece_publisher.clone();
 
             // Collect newly plotted pieces
             // TODO: Once we have replotting, this will have to be updated
             single_disk_plot
-                .on_sector_plotted(Arc::new(move |plotted_sector| {
+                .on_sector_plotted(Arc::new(move |(plotted_sector, plotting_permit)| {
+                    let plotting_permit = Arc::clone(plotting_permit);
+                    let piece_publisher = piece_publisher.clone();
+                    let sector_index = plotted_sector.sector_index;
+                    let piece_indexes = plotted_sector.piece_indexes.clone();
+
                     readers_and_pieces
                         .lock()
                         .as_mut()
@@ -208,12 +220,25 @@ pub(crate) async fn farm_multi_disk(
                                         PieceIndexHash::from_index(piece_index),
                                         PieceDetails {
                                             plot_offset,
-                                            sector_index: plotted_sector.sector_index,
+                                            sector_index,
                                             piece_offset: piece_offset as u64,
                                         },
                                     )
                                 }),
                         );
+
+                    tokio::spawn(async move {
+                        if let Err(error) = piece_publisher.publish_pieces(piece_indexes).await {
+                            warn!(
+                                %sector_index,
+                                %error,
+                                "Failed to publish pieces to DSN"
+                            );
+                        }
+
+                        // Release only after publishing is finished
+                        drop(plotting_permit);
+                    });
                 }))
                 .detach();
 

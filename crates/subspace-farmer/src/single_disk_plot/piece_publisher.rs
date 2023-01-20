@@ -17,13 +17,13 @@ const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 
 // Piece-by-sector DSN publishing helper.
 #[derive(Clone)]
-pub(crate) struct PieceSectorPublisher {
+pub struct PieceSectorPublisher {
     dsn_node: Node,
     cancelled: Arc<AtomicBool>,
 }
 
 impl PieceSectorPublisher {
-    pub(crate) fn new(dsn_node: Node, cancelled: Arc<AtomicBool>) -> Self {
+    pub fn new(dsn_node: Node, cancelled: Arc<AtomicBool>) -> Self {
         Self {
             dsn_node,
             cancelled,
@@ -41,7 +41,7 @@ impl PieceSectorPublisher {
     }
 
     // Publishes pieces-by-sector to DSN in bulk. Supports cancellation.
-    pub(crate) async fn publish_pieces(
+    pub async fn publish_pieces(
         &self,
         piece_indexes: Vec<PieceIndex>,
     ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
