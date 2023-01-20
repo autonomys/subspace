@@ -7,11 +7,13 @@ use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, Piece, BLAKE2B_256_HASH_SIZE};
+use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
+use subspace_networking::libp2p::PeerId;
+use subspace_networking::utils::multihash::MultihashCode;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
@@ -183,6 +185,35 @@ where
     pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
         trace!(?provider_record.key, "Starting processing provider record...");
 
+        let multihash = match Multihash::from_bytes(provider_record.key.as_ref()) {
+            Ok(multihash) => multihash,
+            Err(error) => {
+                trace!(
+                    ?provider_record.key,
+                    %error,
+                    "Record is not a correct multihash, ignoring"
+                );
+                return;
+            }
+        };
+
+        if multihash.code() != u64::from(MultihashCode::PieceIndexHash) {
+            trace!(
+                ?provider_record.key,
+                code = %multihash.code(),
+                "Record is not a piece, ignoring"
+            );
+            return;
+        }
+
+        let piece_index_hash =
+            Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
+                .expect(
+                    "Multihash has 64-byte digest, which is sufficient for 32-byte Blake2b \
+                    hash; qed",
+                )
+                .into();
+
         let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
             return;
         };
@@ -206,7 +237,9 @@ where
                 // TODO: Store local intent to cache a piece such that we don't try to pull the same piece again
             }
 
-            if let Some(piece) = get_piece_from_announcer(&node, &provider_record).await {
+            if let Some(piece) =
+                get_piece_from_announcer(&node, piece_index_hash, provider_record.provider).await
+            {
                 piece_storage
                     .lock()
                     .await
@@ -219,26 +252,19 @@ where
     }
 }
 
-async fn get_piece_from_announcer(node: &Node, provider_record: &ProviderRecord) -> Option<Piece> {
-    let multihash = Multihash::from_bytes(provider_record.key.as_ref())
-        .expect("Key should represent a valid multihash");
-
-    let piece_index_hash = Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
-        .expect("Multihash should be known 32 bytes size.")
-        .into();
-
+async fn get_piece_from_announcer(
+    node: &Node,
+    piece_index_hash: PieceIndexHash,
+    provider: PeerId,
+) -> Option<Piece> {
     let request_result = node
-        .send_generic_request(
-            provider_record.provider,
-            PieceByHashRequest { piece_index_hash },
-        )
+        .send_generic_request(provider, PieceByHashRequest { piece_index_hash })
         .await;
 
     match request_result {
         Ok(PieceByHashResponse { piece: Some(piece) }) => {
             trace!(
-                %provider_record.provider,
-                ?multihash,
+                %provider,
                 ?piece_index_hash,
                 "Piece request succeeded."
             );
@@ -247,16 +273,14 @@ async fn get_piece_from_announcer(node: &Node, provider_record: &ProviderRecord)
         }
         Ok(PieceByHashResponse { piece: None }) => {
             debug!(
-                %provider_record.provider,
-                ?multihash,
+                %provider,
                 ?piece_index_hash,
                 "Provider returned no piece right after announcement."
             );
         }
         Err(error) => {
             warn!(
-                %provider_record.provider,
-                ?multihash,
+                %provider,
                 ?piece_index_hash,
                 ?error,
                 "Piece request to announcer provider failed."
