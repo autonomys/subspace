@@ -1023,7 +1023,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .start_providing(key.into());
+                    .start_providing(key.clone());
 
                 match res {
                     Ok(query_id) => {

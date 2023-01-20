@@ -181,7 +181,7 @@ where
     }
 
     pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
-        trace!(key=?provider_record.key, "Starting processing provider record...");
+        trace!(?provider_record.key, "Starting processing provider record...");
 
         let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
             return;
@@ -206,14 +206,12 @@ where
                 // TODO: Store local intent to cache a piece such that we don't try to pull the same piece again
             }
 
-            if let Some((multihash, piece)) =
-                get_piece_from_announcer(&node, &provider_record).await
-            {
+            if let Some(piece) = get_piece_from_announcer(&node, &provider_record).await {
                 piece_storage
                     .lock()
                     .await
                     .add_piece(provider_record.key.clone(), piece);
-                announce_piece(&node, multihash).await;
+                announce_piece(&node, provider_record.key).await;
             }
 
             drop(permit);
@@ -221,10 +219,7 @@ where
     }
 }
 
-async fn get_piece_from_announcer(
-    node: &Node,
-    provider_record: &ProviderRecord,
-) -> Option<(Multihash, Piece)> {
+async fn get_piece_from_announcer(node: &Node, provider_record: &ProviderRecord) -> Option<Piece> {
     let multihash = Multihash::from_bytes(provider_record.key.as_ref())
         .expect("Key should represent a valid multihash");
 
@@ -248,7 +243,7 @@ async fn get_piece_from_announcer(
                 "Piece request succeeded."
             );
 
-            return Some((multihash, piece));
+            return Some(piece);
         }
         Ok(PieceByHashResponse { piece: None }) => {
             debug!(
@@ -273,8 +268,8 @@ async fn get_piece_from_announcer(
 }
 
 //TODO: consider introducing publish-piece helper
-async fn announce_piece(node: &Node, key: Multihash) {
-    let result = node.start_announcing(key).await;
+async fn announce_piece(node: &Node, key: Key) {
+    let result = node.start_announcing(key.clone()).await;
 
     match result {
         Err(error) => {
