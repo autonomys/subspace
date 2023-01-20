@@ -711,6 +711,7 @@ impl SingleDiskPlot {
                                 &records_roots_cache,
                             )),
                             &shutting_down,
+                            false,
                         );
 
                         let piece_receiver_wrapper = PieceReceiverWrapper::new(piece_receiver);
