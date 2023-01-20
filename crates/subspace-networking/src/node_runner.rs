@@ -174,9 +174,6 @@ where
     }
 
     pub fn take_provider_records_receiver(&mut self) -> Option<mpsc::Receiver<ProviderRecord>> {
-        // TODO: This should be handled by constructor, otherwise receiver that is not consumed will
-        //  cause message buffering and later printing of large amounts of warnings. API should be
-        //  clearer around this.
         self.provider_records_receiver.take()
     }
 
@@ -554,9 +551,12 @@ where
                         error!(?err, "Failed to add provider record: {:?}", record);
                     }
 
-                    let key = record.key.clone();
-                    if let Err(err) = self.provider_records_sender.try_send(record) {
-                        warn!(?err, ?key, "Failed to add provider record to the channel.");
+                    // There is an active receiver.
+                    if self.provider_records_receiver.is_none() {
+                        let key = record.key.clone();
+                        if let Err(err) = self.provider_records_sender.try_send(record) {
+                            warn!(?err, ?key, "Failed to add provider record to the channel.");
+                        }
                     }
                 }
             }
