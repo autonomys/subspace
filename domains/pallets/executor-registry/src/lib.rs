@@ -25,6 +25,7 @@ pub use pallet::*;
 use sp_arithmetic::Percent;
 use sp_domains::ExecutorPublicKey;
 use sp_executor_registry::ExecutorRegistry;
+use sp_runtime::traits::{CheckedAdd, CheckedSub};
 use sp_runtime::BoundedVec;
 use sp_std::vec::Vec;
 
@@ -209,7 +210,7 @@ mod pallet {
             );
 
             let executor_config =
-                Self::apply_register(&who, public_key, reward_address, is_active, stake);
+                Self::apply_register(&who, public_key, reward_address, is_active, stake)?;
 
             Self::deposit_event(Event::<T>::NewExecutor {
                 who,
@@ -268,9 +269,7 @@ mod pallet {
                     Self::lock_fund(&who, executor_config.stake);
 
                     if executor_config.is_active {
-                        TotalActiveStake::<T>::mutate(|total| {
-                            *total += amount;
-                        });
+                        Self::increase_total_active_stake(amount)?;
                     }
 
                     Ok(())
@@ -321,9 +320,7 @@ mod pallet {
                         .map_err(|_| Error::<T>::TooManyWithdrawals)?;
 
                     if executor_config.is_active {
-                        TotalActiveStake::<T>::mutate(|total| {
-                            *total -= amount;
-                        });
+                        Self::decrease_total_active_stake(amount)?;
                     }
 
                     Ok(())
@@ -412,9 +409,7 @@ mod pallet {
 
                     executor_config.is_active = false;
 
-                    TotalActiveStake::<T>::mutate(|total| {
-                        *total -= executor_config.stake;
-                    });
+                    Self::decrease_total_active_stake(executor_config.stake)?;
                     TotalActiveExecutors::<T>::mutate(|total| {
                         *total -= 1;
                     });
@@ -441,9 +436,7 @@ mod pallet {
                 if !executor_config.is_active {
                     executor_config.is_active = true;
 
-                    TotalActiveStake::<T>::mutate(|total| {
-                        *total += executor_config.stake;
-                    });
+                    Self::increase_total_active_stake(executor_config.stake)?;
                     TotalActiveExecutors::<T>::mutate(|total| {
                         *total += 1;
                     });
@@ -562,7 +555,8 @@ mod pallet {
                     reward_address,
                     true,
                     initial_stake,
-                );
+                )
+                .expect("Initial total stake weight can not be overflow");
 
                 let stake_weight: T::StakeWeight = initial_stake.into();
                 authorities.push((public_key, stake_weight));
@@ -613,11 +607,17 @@ mod pallet {
         /// The withdrawal entry is still undue.
         PrematureWithdrawal,
 
-        /// Foo few active executors.
+        /// Too few active executors.
         TooFewActiveExecutors,
 
         /// Executor public key is already occupied.
         DuplicatedKey,
+
+        /// An arithmetic overflow error.
+        ArithmeticOverflow,
+
+        /// An arithmetic underflow error.
+        ArithmeticUnderflow,
     }
 
     #[pallet::event]
@@ -675,8 +675,6 @@ mod pallet {
             if (block_number % T::EpochDuration::get()).is_zero() {
                 let mut executor_weights = BTreeMap::new();
 
-                let mut total_stake_weight = T::StakeWeight::zero();
-
                 // TODO: currently, we are iterating the Executors map, figure out how many executors
                 // we can support with this approach and optimize it when it does not satisfy our requirement.
                 let authorities = Executors::<T>::iter()
@@ -706,12 +704,6 @@ mod pallet {
 
                         let stake_weight: T::StakeWeight = executor_config.stake.into();
 
-                        total_stake_weight = total_stake_weight
-                            .checked_add(&stake_weight)
-                            .unwrap_or_else(|| {
-                                panic!("Domain bundle election can not work properly due to `total_stake_weight` overflow")
-                            });
-
                         executor_weights.insert(who, stake_weight);
 
                         (public_key, stake_weight)
@@ -724,6 +716,7 @@ mod pallet {
                     );
                 Authorities::<T>::put(bounded_authorities);
 
+                let total_stake_weight: T::StakeWeight = TotalActiveStake::<T>::get().into();
                 TotalStakeWeight::<T>::put(total_stake_weight);
 
                 T::OnNewEpoch::on_new_epoch(executor_weights);
@@ -832,7 +825,7 @@ impl<T: Config> Pallet<T> {
         reward_address: T::AccountId,
         is_active: bool,
         stake: BalanceOf<T>,
-    ) -> ExecutorConfig<T> {
+    ) -> Result<ExecutorConfig<T>, Error<T>> {
         Self::lock_fund(who, stake);
 
         KeyOwner::<T>::insert(&public_key, who);
@@ -847,14 +840,30 @@ impl<T: Config> Pallet<T> {
         Executors::<T>::insert(who, &executor_config);
 
         if is_active {
-            TotalActiveStake::<T>::mutate(|total| {
-                *total += stake;
-            });
+            Self::increase_total_active_stake(stake)?;
             TotalActiveExecutors::<T>::mutate(|total| {
                 *total += 1;
             });
         }
 
-        executor_config
+        Ok(executor_config)
+    }
+
+    fn increase_total_active_stake(value: BalanceOf<T>) -> Result<(), Error<T>> {
+        let old = TotalActiveStake::<T>::get();
+        let new = old
+            .checked_add(&value)
+            .ok_or(Error::<T>::ArithmeticOverflow)?;
+        TotalActiveStake::<T>::put(new);
+        Ok(())
+    }
+
+    fn decrease_total_active_stake(value: BalanceOf<T>) -> Result<(), Error<T>> {
+        let old = TotalActiveStake::<T>::get();
+        let new = old
+            .checked_sub(&value)
+            .ok_or(Error::<T>::ArithmeticUnderflow)?;
+        TotalActiveStake::<T>::put(new);
+        Ok(())
     }
 }
