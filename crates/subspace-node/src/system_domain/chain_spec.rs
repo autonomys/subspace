@@ -178,6 +178,8 @@ pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
                     // Genesis executor
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
+                    // Sudo account
+                    sudo_account.clone(),
                 ],
                 vec![(
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
