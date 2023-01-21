@@ -1,7 +1,8 @@
-use futures::{Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::PeerId;
+use sc_network_common::config::NonDefaultSetConfig;
 use sc_network_gossip::{
     GossipEngine, MessageIntent, ValidationResult, Validator, ValidatorContext,
 };
@@ -32,6 +33,13 @@ pub struct GossipWorker<Block: BlockT> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     gossip_validator: Arc<GossipValidator>,
     domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
+}
+
+/// Returns the network configuration for cross domain message gossip.
+pub fn cdm_gossip_peers_set_config() -> NonDefaultSetConfig {
+    let mut cfg = NonDefaultSetConfig::new(PROTOCOL_NAME.into(), 5 * 1024 * 1024);
+    cfg.allow_non_reserved(25, 25);
+    cfg
 }
 
 /// Cross domain message topic.
@@ -76,19 +84,27 @@ impl<Block: BlockT> GossipWorker<Block> {
         );
 
         loop {
+            let engine = self.gossip_engine.clone();
+            let gossip_engine = futures::future::poll_fn(|cx| engine.lock().poll_unpin(cx));
+
             futures::select! {
-                cross_domain_message = incoming_cross_domain_messages.next() => {
+                cross_domain_message = incoming_cross_domain_messages.next().fuse() => {
                     if let Some(msg) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);
                     }
                 },
 
-                cross_domain_message = gossip_msg_stream.next() => {
+                cross_domain_message = gossip_msg_stream.next().fuse() => {
                     if let Some(msg) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);
                     }
+                }
+
+                _ = gossip_engine.fuse() => {
+                    tracing::error!(target: LOG_TARGET, "Gossip engine has terminated.");
+                    return;
                 }
             }
         }
