@@ -2,7 +2,6 @@ use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
 use crate::commands::farm::piece_storage::{LimitedSizeParityDbKVStore, ParityDbKVStore};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
-use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -14,6 +13,7 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
+use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
@@ -244,7 +244,15 @@ where
                     .lock()
                     .await
                     .add_piece(provider_record.key.clone(), piece);
-                announce_piece(&node, provider_record.key).await;
+                if let Err(error) =
+                    announce_single_piece_index_hash_with_backoff(piece_index_hash, &node).await
+                {
+                    debug!(
+                        ?error,
+                        ?piece_index_hash,
+                        "Announcing cached piece index hash failed"
+                    );
+                }
             }
 
             drop(permit);
@@ -261,6 +269,8 @@ async fn get_piece_from_announcer(
         .send_generic_request(provider, PieceByHashRequest { piece_index_hash })
         .await;
 
+    // TODO: Nothing guarantees that piece index hash is real, response must also return piece index
+    //  that matches piece index hash and piece must be verified against blockchain after that
     match request_result {
         Ok(PieceByHashResponse { piece: Some(piece) }) => {
             trace!(
@@ -289,28 +299,6 @@ async fn get_piece_from_announcer(
     }
 
     None
-}
-
-//TODO: consider introducing publish-piece helper
-async fn announce_piece(node: &Node, key: Key) {
-    let result = node.start_announcing(key.clone()).await;
-
-    match result {
-        Err(error) => {
-            debug!(
-                ?error,
-                ?key,
-                "Piece publishing for the cache returned an error"
-            );
-        }
-        Ok(mut stream) => {
-            if stream.next().await.is_some() {
-                trace!(?key, "Piece publishing for the cache succeeded");
-            } else {
-                debug!(?key, "Piece publishing for the cache failed");
-            }
-        }
-    };
 }
 
 /// Defines persistent piece storage interface.

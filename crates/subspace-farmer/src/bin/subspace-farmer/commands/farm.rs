@@ -19,7 +19,7 @@ use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::utils::pieces::announce_single_piece_with_backoff;
+use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
@@ -255,7 +255,7 @@ pub(crate) async fn farm_multi_disk(
                         let mut pieces_publishing_futures = new_pieces
                             .into_iter()
                             .map(|piece_index| {
-                                announce_single_piece_with_backoff(piece_index, &node)
+                                announce_single_piece_index_with_backoff(piece_index, &node)
                             })
                             .collect::<FuturesUnordered<_>>();
 
