@@ -203,16 +203,29 @@ pub(crate) async fn farm_multi_disk(
                     let plotting_permit = Arc::clone(plotting_permit);
                     let node = node.clone();
                     let sector_index = plotted_sector.sector_index;
-                    let piece_indexes = plotted_sector.piece_indexes.clone();
 
                     let mut dropped_receiver = dropped_sender.subscribe();
 
-                    readers_and_pieces
-                        .lock()
-                        .as_mut()
-                        .expect("Initial value was populated above; qed")
-                        .pieces
-                        .extend(
+                    let new_pieces = {
+                        let mut readers_and_pieces = readers_and_pieces.lock();
+                        let readers_and_pieces = readers_and_pieces
+                            .as_mut()
+                            .expect("Initial value was populated above; qed");
+
+                        let new_pieces = plotted_sector
+                            .piece_indexes
+                            .iter()
+                            .filter(|&&piece_index| {
+                                // Skip pieces that are already plotted and thus were announced
+                                // before
+                                !readers_and_pieces
+                                    .pieces
+                                    .contains_key(&PieceIndexHash::from_index(piece_index))
+                            })
+                            .copied()
+                            .collect::<Vec<_>>();
+
+                        readers_and_pieces.pieces.extend(
                             plotted_sector
                                 .piece_indexes
                                 .iter()
@@ -230,8 +243,16 @@ pub(crate) async fn farm_multi_disk(
                                 }),
                         );
 
+                        new_pieces
+                    };
+
+                    if new_pieces.is_empty() {
+                        // None of the pieces are new, nothing left to do here
+                        return;
+                    }
+
                     let publish_fut = async move {
-                        let mut pieces_publishing_futures = piece_indexes
+                        let mut pieces_publishing_futures = new_pieces
                             .into_iter()
                             .map(|piece_index| {
                                 announce_single_piece_with_backoff(piece_index, &node)
