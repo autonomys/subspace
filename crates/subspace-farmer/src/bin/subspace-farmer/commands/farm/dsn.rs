@@ -173,7 +173,7 @@ pub(super) async fn configure_dsn(
 /// processing on drop.
 pub(crate) fn start_announcements_processor(
     node: Node,
-    piece_storage: LimitedSizeParityDbKVStore,
+    piece_storage: Arc<tokio::sync::Mutex<LimitedSizeParityDbKVStore>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
@@ -243,14 +243,14 @@ where
 {
     pub fn new(
         node: Node,
-        piece_storage: PS,
+        piece_storage: Arc<tokio::sync::Mutex<PS>>,
         weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
         max_concurrent_announcements: NonZeroUsize,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(max_concurrent_announcements.get()));
         Self {
             node,
-            piece_storage: Arc::new(tokio::sync::Mutex::new(piece_storage)),
+            piece_storage,
             weak_readers_and_pieces,
             semaphore,
         }
@@ -326,10 +326,15 @@ where
             if let Some(piece) =
                 get_piece_from_announcer(&node, piece_index_hash, provider_record.provider).await
             {
-                piece_storage
-                    .lock()
-                    .await
-                    .add_piece(provider_record.key.clone(), piece);
+                {
+                    let mut piece_storage = piece_storage.lock().await;
+
+                    if !piece_storage.should_include_in_storage(&provider_record.key) {
+                        return;
+                    }
+
+                    piece_storage.add_piece(provider_record.key.clone(), piece);
+                }
                 if let Err(error) =
                     announce_single_piece_index_hash_with_backoff(piece_index_hash, &node).await
                 {
