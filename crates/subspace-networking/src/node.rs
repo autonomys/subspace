@@ -1,7 +1,7 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_responses;
 use crate::shared::{Command, CreatedSubscription, Shared};
-use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
+use crate::utils::ResizableSemaphorePermit;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
@@ -259,21 +259,11 @@ impl From<oneshot::Canceled> for CircuitRelayClientError {
 #[must_use = "Node doesn't do anything if dropped"]
 pub struct Node {
     shared: Arc<Shared>,
-    kademlia_tasks_semaphore: ResizableSemaphore,
-    regular_tasks_semaphore: ResizableSemaphore,
 }
 
 impl Node {
-    pub(crate) fn new(
-        shared: Arc<Shared>,
-        kademlia_tasks_semaphore: ResizableSemaphore,
-        regular_tasks_semaphore: ResizableSemaphore,
-    ) -> Self {
-        Self {
-            shared,
-            kademlia_tasks_semaphore,
-            regular_tasks_semaphore,
-        }
+    pub(crate) fn new(shared: Arc<Shared>) -> Self {
+        Self { shared }
     }
 
     /// Node's own local ID.
@@ -285,7 +275,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
-        let permit = self.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -307,7 +297,7 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        let permit = self.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -326,7 +316,7 @@ impl Node {
     }
 
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        let permit = self.regular_tasks_semaphore.acquire().await;
+        let permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -353,7 +343,7 @@ impl Node {
     }
 
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        let _permit = self.regular_tasks_semaphore.acquire().await;
+        let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -378,7 +368,7 @@ impl Node {
     where
         Request: GenericRequest,
     {
-        let _permit = self.regular_tasks_semaphore.acquire().await;
+        let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,
@@ -399,7 +389,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
-        let permit = self.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
         let (result_sender, result_receiver) = mpsc::unbounded();
@@ -452,7 +442,7 @@ impl Node {
         &self,
         key: Key,
     ) -> Result<impl Stream<Item = ()>, AnnounceError> {
-        let permit = self.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'start_announcing' request.");
@@ -494,7 +484,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        let permit = self.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'get_providers' request.");
