@@ -91,8 +91,11 @@ pub(crate) async fn farm_multi_disk(
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
 
-    let _announcements_processing_handler =
-        start_announcements_processor(node.clone(), wrapped_piece_storage)?;
+    let _announcements_processing_handler = start_announcements_processor(
+        node.clone(),
+        wrapped_piece_storage,
+        Arc::downgrade(&readers_and_pieces),
+    )?;
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
