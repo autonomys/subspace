@@ -25,15 +25,18 @@ pub trait PieceValidator: Sync + Send {
 }
 
 /// Piece provider with cancellation and optional piece validator.
-pub struct PieceProvider<'a, PV> {
-    dsn_node: &'a Node,
+pub struct PieceProvider<PV> {
+    node: Node,
     piece_validator: Option<PV>,
 }
 
-impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
-    pub fn new(dsn_node: &'a Node, piece_validator: Option<PV>) -> Self {
+impl<PV> PieceProvider<PV>
+where
+    PV: PieceValidator,
+{
+    pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
         Self {
-            dsn_node,
+            node,
             piece_validator,
         }
     }
@@ -43,7 +46,7 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
         let key = piece_index_hash.to_multihash();
 
-        let get_providers_result = self.dsn_node.get_providers(key).await;
+        let get_providers_result = self.node.get_providers(key).await;
 
         match get_providers_result {
             Ok(mut get_providers_stream) => {
@@ -51,7 +54,7 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
                     trace!(%piece_index, %provider_id, "get_providers returned an item");
 
                     let request_result = self
-                        .dsn_node
+                        .node
                         .send_generic_request(provider_id, PieceByHashRequest { piece_index_hash })
                         .await;
 

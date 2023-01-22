@@ -5,6 +5,7 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
+use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
@@ -22,6 +23,19 @@ pub trait PieceReceiver {
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
+
+#[async_trait]
+impl<T> PieceReceiver for Arc<T>
+where
+    T: PieceReceiver + Send + Sync,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.as_ref().get_piece(piece_index).await
+    }
 }
 
 /// Information about sector that was plotted

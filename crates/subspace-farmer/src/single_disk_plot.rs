@@ -1,5 +1,4 @@
 pub mod piece_reader;
-pub(crate) mod piece_receiver;
 
 use crate::identity::Identity;
 use crate::node_client;
@@ -7,10 +6,8 @@ use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::farming::audit_sector;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
-use crate::single_disk_plot::piece_receiver::RecordsRootPieceValidator;
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
-use async_trait::async_trait;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -18,33 +15,29 @@ use futures::channel::{mpsc, oneshot};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use lru::LruCache;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
-use std::error::Error;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::{NonZeroU16, NonZeroUsize};
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR,
-    PLOT_SECTOR_SIZE,
+    PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
-use subspace_networking::{Node, PieceProvider};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
@@ -64,8 +57,6 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Only useful for initial network bootstrapping where due to initial plot size there might be too
 /// many solutions.
 const SOLUTIONS_LIMIT: usize = 10;
-
-const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -265,7 +256,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single dis plot
-pub struct SingleDiskPlotOptions<NC> {
+pub struct SingleDiskPlotOptions<NC, PR> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
     /// How much space in bytes can plot use for plot
@@ -274,8 +265,10 @@ pub struct SingleDiskPlotOptions<NC> {
     pub node_client: NC,
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
-    /// Optional DSN Node.
-    pub dsn_node: Node,
+    /// Piece receiver implementation for plotting purposes.
+    pub piece_receiver: PR,
+    /// Kzg instance to use.
+    pub kzg: Kzg,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
@@ -422,29 +415,6 @@ struct Handlers {
     solution: Handler<SolutionResponse>,
 }
 
-/// Adapter struct for the PieceReceiver trait for subspace-networking
-/// and subspace-farmer-components crates.
-struct PieceReceiverWrapper<'a, PV>(PieceProvider<'a, PV>);
-
-impl<'a, PV> PieceReceiverWrapper<'a, PV> {
-    fn new(piece_provider: PieceProvider<'a, PV>) -> Self {
-        Self(piece_provider)
-    }
-}
-
-#[async_trait]
-impl<'a, PV> PieceReceiver for PieceReceiverWrapper<'a, PV>
-where
-    PV: subspace_networking::PieceValidator,
-{
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.0.get_piece(piece_index).await
-    }
-}
-
 /// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
 /// disk plot.
 ///
@@ -485,9 +455,12 @@ impl SingleDiskPlot {
     /// Create new single disk plot instance
     ///
     /// NOTE: Thought this function is async, it will do some blocking I/O.
-    pub async fn new<NC>(options: SingleDiskPlotOptions<NC>) -> Result<Self, SingleDiskPlotError>
+    pub async fn new<NC, PR>(
+        options: SingleDiskPlotOptions<NC, PR>,
+    ) -> Result<Self, SingleDiskPlotError>
     where
         NC: NodeClient,
+        PR: PieceReceiver + Send + 'static,
     {
         let handle = Handle::current();
 
@@ -496,7 +469,8 @@ impl SingleDiskPlot {
             allocated_space,
             node_client,
             reward_address,
-            dsn_node,
+            piece_receiver,
+            kzg,
             concurrent_plotting_semaphore,
         } = options;
 
@@ -659,7 +633,6 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
-        let kzg = Kzg::new(test_public_parameters());
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize)
             .expect("Protocol constant must be correct; qed");
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
@@ -703,21 +676,6 @@ impl SingleDiskPlot {
                                 (sector_offset as u64 + first_sector_index, sector, metadata)
                             });
 
-                        let records_roots_cache =
-                            Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
-
-                        let piece_receiver = PieceProvider::new(
-                            &dsn_node,
-                            Some(RecordsRootPieceValidator::new(
-                                &dsn_node,
-                                &node_client,
-                                &kzg,
-                                &records_roots_cache,
-                            )),
-                        );
-
-                        let piece_receiver_wrapper = PieceReceiverWrapper::new(piece_receiver);
-
                         // TODO: Concurrency
                         for (sector_index, sector, sector_metadata) in plot_initial_sector {
                             trace!(%sector_index, "Preparing to plot sector");
@@ -745,7 +703,7 @@ impl SingleDiskPlot {
                             let plot_sector_fut = plot_sector(
                                 &public_key,
                                 sector_index,
-                                &piece_receiver_wrapper,
+                                &piece_receiver,
                                 &farmer_app_info.protocol_info,
                                 &kzg,
                                 &sector_codec,

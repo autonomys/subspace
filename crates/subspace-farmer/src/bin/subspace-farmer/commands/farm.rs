@@ -6,21 +6,53 @@ use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use lru::LruCache;
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::error::Error;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
+use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
+use subspace_networking::PieceProvider;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
+
+const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
+
+/// Adapter struct used to implement `PieceReceiver` trait for `PieceProvider`.
+struct PieceReceiverWrapper<PV>(PieceProvider<PV>);
+
+impl<PV> PieceReceiverWrapper<PV> {
+    fn new(piece_provider: PieceProvider<PV>) -> Self {
+        Self(piece_provider)
+    }
+}
+
+#[async_trait]
+impl<PV> PieceReceiver for PieceReceiverWrapper<PV>
+where
+    PV: subspace_networking::PieceValidator,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.0.get_piece(piece_index).await
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -97,6 +129,18 @@ pub(crate) async fn farm_multi_disk(
         Arc::downgrade(&readers_and_pieces),
     )?;
 
+    let kzg = Kzg::new(test_public_parameters());
+    let records_roots_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
+    let piece_receiver = Arc::new(PieceReceiverWrapper::new(PieceProvider::new(
+        node.clone(),
+        Some(RecordsRootPieceValidator::new(
+            node.clone(),
+            node_client.clone(),
+            kzg.clone(),
+            records_roots_cache,
+        )),
+    )));
+
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
@@ -120,7 +164,8 @@ pub(crate) async fn farm_multi_disk(
             allocated_space: disk_farm.allocated_plotting_space,
             node_client,
             reward_address,
-            dsn_node: node.clone(),
+            kzg: kzg.clone(),
+            piece_receiver: piece_receiver.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
         });
 
