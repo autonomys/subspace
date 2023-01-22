@@ -1,28 +1,28 @@
 //use crate::behavior::record_binary_heap::RecordBinaryHeap;
 use crate::commands::farm::dsn::PieceStorage;
 use parity_db::{ColumnOptions, Db, Options};
-use std::borrow::Borrow;
 use std::error::Error;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
-use std::vec;
+use std::{fmt, vec};
 use subspace_core_primitives::Piece;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::RecordBinaryHeap;
 use tracing::{debug, info, trace, warn};
 
-const PARITY_DB_COLUMN_NAME: u8 = 0;
-
 /// Defines record storage with DB persistence
 #[derive(Clone)]
-pub struct ParityDbPieceStorage {
+pub struct ParityDbKVStore {
     // Parity DB instance
     db: Arc<Db>,
 }
 
-impl ParityDbPieceStorage {
+impl ParityDbKVStore {
+    const COLUMN_ID: u8 = 0;
+
     pub fn new(path: &Path) -> Result<Self, parity_db::Error> {
         let mut options = Options::with_columns(path, 1);
         options.columns = vec![ColumnOptions {
@@ -37,23 +37,8 @@ impl ParityDbPieceStorage {
         Ok(Self { db: Arc::new(db) })
     }
 
-    fn save_data(&mut self, key: &Key, data: Option<Vec<u8>>) -> bool {
-        trace!(?key, "Saving a new record to DB");
-
-        let key: &[u8] = key.borrow();
-
-        let tx = [(PARITY_DB_COLUMN_NAME, key, data)];
-
-        let result = self.db.commit(tx);
-        if let Err(ref err) = result {
-            debug!(?key, ?err, "DB saving error.");
-        }
-
-        result.is_ok()
-    }
-
-    pub(crate) fn get(&self, key: &Key) -> Option<Piece> {
-        let result = self.db.get(PARITY_DB_COLUMN_NAME, key.borrow());
+    pub fn get(&self, key: &Key) -> Option<Piece> {
+        let result = self.db.get(Self::COLUMN_ID, key.as_ref());
 
         match result {
             Ok(Some(data)) => {
@@ -81,24 +66,52 @@ impl ParityDbPieceStorage {
         }
     }
 
-    fn pieces(&self) -> Result<impl Iterator<Item = (Key, Piece)> + '_, Box<dyn Error>> {
-        let btree_iter = self.db.iter(PARITY_DB_COLUMN_NAME)?;
+    pub fn update<'a, I>(&'a mut self, values: I) -> bool
+    where
+        I: IntoIterator<Item = (&'a Key, Option<Vec<u8>>)> + fmt::Debug,
+    {
+        trace!(?values, "Updating records in DB");
 
-        Ok(ParityDbRecordIterator::new(btree_iter)?)
+        let tx = values
+            .into_iter()
+            .map(|(key, value)| (Self::COLUMN_ID, key, value));
+
+        let result = self.db.commit(tx);
+        if let Err(error) = &result {
+            debug!(%error, "DB saving error.");
+        }
+
+        result.is_ok()
+    }
+
+    pub fn iter<'a, Value>(
+        &'a self,
+    ) -> Result<impl Iterator<Item = (Key, Value)> + 'a, Box<dyn Error>>
+    where
+        Value: TryFrom<Vec<u8>> + 'a,
+        Value::Error: fmt::Debug,
+    {
+        let btree_iter = self.db.iter(Self::COLUMN_ID)?;
+
+        Ok(ParityDbKVStoreIterator::new(btree_iter)?)
     }
 }
 
 /// Parity DB BTree iterator wrapper.
-pub struct ParityDbRecordIterator<'a> {
+struct ParityDbKVStoreIterator<'a, Value> {
     iter: parity_db::BTreeIterator<'a>,
+    _value: PhantomData<Value>,
 }
 
-impl<'a> ParityDbRecordIterator<'a> {
+impl<'a, Value> ParityDbKVStoreIterator<'a, Value> {
     /// Fallible iterator constructor. It requires inner DB BTreeIterator as a parameter.
-    pub fn new(mut iter: parity_db::BTreeIterator<'a>) -> parity_db::Result<Self> {
+    fn new(mut iter: parity_db::BTreeIterator<'a>) -> parity_db::Result<Self> {
         iter.seek_to_first()?;
 
-        Ok(Self { iter })
+        Ok(Self {
+            iter,
+            _value: PhantomData::default(),
+        })
     }
 
     fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
@@ -117,45 +130,51 @@ impl<'a> ParityDbRecordIterator<'a> {
     }
 }
 
-impl<'a> Iterator for ParityDbRecordIterator<'a> {
-    type Item = (Key, Piece);
+impl<'a, Value> Iterator for ParityDbKVStoreIterator<'a, Value>
+where
+    Value: TryFrom<Vec<u8>>,
+    Value::Error: fmt::Debug,
+{
+    type Item = (Key, Value);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_entry().and_then(|(k, v)| match v.try_into() {
-            Ok(piece) => match k.clone().try_into() {
+        let (key, value) = self.next_entry()?;
+
+        match Value::try_from(value) {
+            Ok(piece) => match key.clone().try_into() {
                 Ok(key) => Some((key, piece)),
                 Err(err) => {
-                    debug!(?k, ?err, "Parity DB key conversion error");
+                    debug!(?key, ?err, "Parity DB key conversion error");
 
                     None
                 }
             },
             Err(err) => {
-                warn!(?k, ?err, "Parity DB storage piece conversion error");
+                warn!(?key, ?err, "Parity DB storage piece conversion error");
 
                 None
             }
-        })
+        }
     }
 }
 
 /// Piece storage with limited size.
 pub struct LimitedSizePieceStorageWrapper {
     // Wrapped record storage implementation.
-    piece_store: ParityDbPieceStorage,
+    piece_store: ParityDbKVStore,
     // Maintains a heap to limit total item number.
     heap: RecordBinaryHeap,
 }
 
 impl LimitedSizePieceStorageWrapper {
     pub fn new(
-        piece_store: ParityDbPieceStorage,
+        piece_store: ParityDbKVStore,
         max_items_limit: NonZeroUsize,
         peer_id: PeerId,
     ) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
-        match piece_store.pieces() {
+        match piece_store.iter::<Vec<u8>>() {
             Ok(pieces_iter) => {
                 for (key, _) in pieces_iter {
                     let _ = heap.insert(key);
@@ -182,14 +201,14 @@ impl PieceStorage for LimitedSizePieceStorageWrapper {
     }
 
     fn add_piece(&mut self, key: Key, piece: Piece) {
-        self.piece_store.save_data(&key, Some(piece.into()));
+        self.piece_store.update([(&key, Some(piece.into()))]);
 
         let evicted_key = self.heap.insert(key);
 
         if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
 
-            self.piece_store.save_data(&key, None);
+            self.piece_store.update([(&key, None)]);
         }
     }
 

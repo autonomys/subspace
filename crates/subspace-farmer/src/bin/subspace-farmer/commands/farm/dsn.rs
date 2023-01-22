@@ -1,5 +1,5 @@
 use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::piece_storage::{LimitedSizePieceStorageWrapper, ParityDbPieceStorage};
+use crate::commands::farm::piece_storage::{LimitedSizePieceStorageWrapper, ParityDbKVStore};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
 use futures::StreamExt;
@@ -75,7 +75,7 @@ pub(super) async fn configure_dsn(
         FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
 
     //TODO: rename CLI parameters
-    let piece_storage = ParityDbPieceStorage::new(&record_cache_db_path)
+    let piece_storage = ParityDbKVStore::new(&record_cache_db_path)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let wrapped_piece_storage =
         LimitedSizePieceStorageWrapper::new(piece_storage.clone(), record_cache_size, peer_id);
