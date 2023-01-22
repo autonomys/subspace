@@ -14,16 +14,6 @@ const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
 
-/// An abstraction for piece receiving.
-#[async_trait]
-pub trait PieceReceiver: Send + Sync {
-    /// Returns optional piece from the DSN. None means - no piece was found.
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
-
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
     async fn validate_piece(
@@ -93,11 +83,8 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
 
         None
     }
-}
 
-#[async_trait]
-impl<'a, PV: PieceValidator> PieceReceiver for PieceProvider<'a, PV> {
-    async fn get_piece(
+    pub async fn get_piece(
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {

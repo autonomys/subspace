@@ -42,6 +42,7 @@ use subspace_core_primitives::{
     PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
 use subspace_networking::{Node, PieceProvider};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
@@ -423,16 +424,19 @@ struct Handlers {
 
 /// Adapter struct for the PieceReceiver trait for subspace-networking
 /// and subspace-farmer-components crates.
-struct PieceReceiverWrapper<PR>(PR);
+struct PieceReceiverWrapper<'a, PV>(PieceProvider<'a, PV>);
 
-impl<PR: subspace_networking::PieceReceiver> PieceReceiverWrapper<PR> {
-    fn new(piece_getter: PR) -> Self {
-        Self(piece_getter)
+impl<'a, PV> PieceReceiverWrapper<'a, PV> {
+    fn new(piece_provider: PieceProvider<'a, PV>) -> Self {
+        Self(piece_provider)
     }
 }
 
 #[async_trait]
-impl<PR: subspace_networking::PieceReceiver> plotting::PieceReceiver for PieceReceiverWrapper<PR> {
+impl<'a, PV> PieceReceiver for PieceReceiverWrapper<'a, PV>
+where
+    PV: subspace_networking::PieceValidator,
+{
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
