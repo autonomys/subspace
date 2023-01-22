@@ -5,7 +5,6 @@ use backoff::ExponentialBackoff;
 use futures::StreamExt;
 use libp2p::PeerId;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use tracing::{debug, trace, warn};
@@ -39,26 +38,14 @@ pub trait PieceValidator: Sync + Send {
 pub struct PieceProvider<'a, PV> {
     dsn_node: &'a Node,
     piece_validator: Option<PV>,
-    cancelled: &'a AtomicBool,
 }
 
 impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
-    pub fn new(dsn_node: &'a Node, piece_validator: Option<PV>, cancelled: &'a AtomicBool) -> Self {
+    pub fn new(dsn_node: &'a Node, piece_validator: Option<PV>) -> Self {
         Self {
             dsn_node,
             piece_validator,
-            cancelled,
         }
-    }
-
-    fn check_cancellation(&self) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        if self.cancelled.load(Ordering::Acquire) {
-            debug!("Getting a piece was cancelled.");
-
-            return Err("Getting a piece was cancelled.".into());
-        }
-
-        Ok(())
     }
 
     // Get from piece cache (L2) or archival storage (L1)
@@ -125,9 +112,6 @@ impl<'a, PV: PieceValidator> PieceReceiver for PieceProvider<'a, PV> {
         };
 
         retry(backoff, || async {
-            self.check_cancellation()
-                .map_err(backoff::Error::Permanent)?;
-
             if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, "Got piece");
                 return Ok(Some(piece));

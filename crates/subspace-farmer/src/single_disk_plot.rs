@@ -15,6 +15,7 @@ use bytesize::ByteSize;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
+use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use lru::LruCache;
@@ -30,7 +31,6 @@ use std::io::{Seek, SeekFrom};
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
@@ -460,16 +460,17 @@ pub struct SingleDiskPlot {
     _reading_join_handle: JoinOnDrop,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
-    shutting_down: Arc<AtomicBool>,
+    /// Sender that will be used to signal to background threads that they must stop
+    stop_sender: Option<broadcast::Sender<()>>,
 }
 
 impl Drop for SingleDiskPlot {
     fn drop(&mut self) {
         self.piece_reader.close_all_readers();
-        // Make background threads that are doing something exit as soon as possible
-        self.shutting_down.store(true, Ordering::SeqCst);
         // Make background threads that are waiting to do something exit immediately
         self.start_sender.take();
+        // Notify background tasks that they must stop
+        self.stop_sender.take();
     }
 }
 
@@ -654,11 +655,11 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
-        let shutting_down = Arc::new(AtomicBool::new(false));
         let kzg = Kzg::new(test_public_parameters());
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize)
             .expect("Protocol constant must be correct; qed");
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
+        let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
 
         let plotting_join_handle = thread::Builder::new()
             .name(format!("p-{single_disk_plot_id}"))
@@ -666,7 +667,6 @@ impl SingleDiskPlot {
                 let handle = handle.clone();
                 let metadata_header = Arc::clone(&metadata_header);
                 let handlers = Arc::clone(&handlers);
-                let shutting_down = Arc::clone(&shutting_down);
                 let node_client = node_client.clone();
                 let error_sender = Arc::clone(&error_sender);
 
@@ -710,7 +710,6 @@ impl SingleDiskPlot {
                                 &kzg,
                                 &records_roots_cache,
                             )),
-                            &shutting_down,
                         );
 
                         let piece_receiver_wrapper = PieceReceiverWrapper::new(piece_receiver);
@@ -732,14 +731,6 @@ impl SingleDiskPlot {
                                     }
                                 };
 
-                            if shutting_down.load(Ordering::Acquire) {
-                                debug!(
-                                    %sector_index,
-                                    "Instance is shutting down, interrupting plotting"
-                                );
-                                return Ok(());
-                            }
-
                             debug!(%sector_index, "Plotting sector");
 
                             let farmer_app_info = node_client
@@ -751,7 +742,6 @@ impl SingleDiskPlot {
                                 &public_key,
                                 sector_index,
                                 &piece_receiver_wrapper,
-                                &shutting_down,
                                 &farmer_app_info.protocol_info,
                                 &kzg,
                                 &sector_codec,
@@ -763,9 +753,6 @@ impl SingleDiskPlot {
                                     debug!(%sector_index, "Sector plotted");
 
                                     plotted_sector
-                                }
-                                Err(plotting::PlottingError::Cancelled) => {
-                                    return Ok(());
                                 }
                                 Err(error) => Err(PlottingError::LowLevel(error))?,
                             };
@@ -785,10 +772,12 @@ impl SingleDiskPlot {
                         Ok(())
                     };
 
-                    // TODO: Race this with shutdown signal
-                    let initial_plotting_result = handle.block_on(initial_plotting_fut);
+                    let initial_plotting_result = handle.block_on(select(
+                        Box::pin(initial_plotting_fut),
+                        Box::pin(stop_receiver.recv()),
+                    ));
 
-                    if let Err(error) = initial_plotting_result {
+                    if let Either::Left((Err(error), _)) = initial_plotting_result {
                         if let Some(error_sender) = error_sender.lock().take() {
                             if let Err(error) = error_sender.send(error) {
                                 error!(%error, "Plotting failed to send error to background task");
@@ -818,7 +807,6 @@ impl SingleDiskPlot {
             mpsc::channel::<SlotInfo>(0);
 
         tasks.push(Box::pin({
-            let shutting_down = Arc::clone(&shutting_down);
             let node_client = node_client.clone();
 
             async move {
@@ -830,11 +818,6 @@ impl SingleDiskPlot {
                     .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
 
                 while let Some(slot_info) = slot_info_notifications.next().await {
-                    if shutting_down.load(Ordering::Acquire) {
-                        debug!("Instance is shutting down, interrupting slot info forwarding");
-                        return Ok(());
-                    }
-
                     debug!(?slot_info, "New slot");
 
                     let slot = slot_info.slot_number;
@@ -857,7 +840,7 @@ impl SingleDiskPlot {
                 let handlers = Arc::clone(&handlers);
                 let metadata_header = Arc::clone(&metadata_header);
                 let mut start_receiver = start_sender.subscribe();
-                let shutting_down = Arc::clone(&shutting_down);
+                let mut stop_receiver = stop_sender.subscribe();
                 let identity = identity.clone();
                 let node_client = node_client.clone();
 
@@ -873,11 +856,6 @@ impl SingleDiskPlot {
                         }
 
                         while let Some(slot_info) = slot_info_forwarder_receiver.next().await {
-                            if shutting_down.load(Ordering::Acquire) {
-                                debug!("Instance is shutting down, interrupting farming");
-                                return Ok(());
-                            }
-
                             let slot = slot_info.slot_number;
                             let sector_count = metadata_header.lock().sector_count;
 
@@ -908,7 +886,6 @@ impl SingleDiskPlot {
                                     .advise(memmap2::Advice::Random)
                                     .map_err(FarmingError::Io)?;
                             }
-                            let shutting_down = Arc::clone(&shutting_down);
 
                             let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
@@ -920,14 +897,6 @@ impl SingleDiskPlot {
                                     (sector_index as u64 + first_sector_index, sector, metadata)
                                 })
                             {
-                                if shutting_down.load(Ordering::Acquire) {
-                                    debug!(
-                                        %sector_index,
-                                        "Instance is shutting down, interrupting plotting"
-                                    );
-                                    return Ok(());
-                                }
-
                                 trace!(%slot, %sector_index, "Auditing sector");
 
                                 let maybe_eligible_sector = audit_sector(
@@ -991,10 +960,12 @@ impl SingleDiskPlot {
                         Ok(())
                     };
 
-                    // TODO: Race this with shutdown signal
-                    let farming_result = handle.block_on(farming_fut);
+                    let farming_result = handle.block_on(select(
+                        Box::pin(farming_fut),
+                        Box::pin(stop_receiver.recv()),
+                    ));
 
-                    if let Err(error) = farming_result {
+                    if let Either::Left((Err(error), _)) = farming_result {
                         if let Some(error_sender) = error_sender.lock().take() {
                             if let Err(error) = error_sender.send(error) {
                                 error!(%error, "Farming failed to send error to background task");
@@ -1010,7 +981,7 @@ impl SingleDiskPlot {
             .name(format!("r-{single_disk_plot_id}"))
             .spawn({
                 let metadata_header = Arc::clone(&metadata_header);
-                let shutting_down = Arc::clone(&shutting_down);
+                let mut stop_receiver = stop_sender.subscribe();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -1024,15 +995,6 @@ impl SingleDiskPlot {
                                 piece_offset,
                                 response_sender,
                             } = read_piece_request;
-
-                            if shutting_down.load(Ordering::Acquire) {
-                                debug!(
-                                    %sector_index,
-                                    %piece_offset,
-                                    "Instance is shutting down, interrupting piece reading"
-                                );
-                                return;
-                            }
 
                             if response_sender.is_canceled() {
                                 continue;
@@ -1052,8 +1014,10 @@ impl SingleDiskPlot {
                         }
                     };
 
-                    // TODO: Race this with shutdown signal
-                    handle.block_on(reading_fut);
+                    handle.block_on(select(
+                        Box::pin(reading_fut),
+                        Box::pin(stop_receiver.recv()),
+                    ));
                 }
             })?;
 
@@ -1076,7 +1040,7 @@ impl SingleDiskPlot {
             _farming_join_handle: JoinOnDrop::new(farming_join_handle),
             _reading_join_handle: JoinOnDrop::new(reading_join_handle),
             start_sender: Some(start_sender),
-            shutting_down,
+            stop_sender: Some(stop_sender),
         };
 
         Ok(farm)
@@ -1176,10 +1140,6 @@ impl SingleDiskPlot {
         }
 
         while let Some(result) = self.tasks.next().instrument(self.span.clone()).await {
-            if result.is_err() {
-                // Nothing left to do after error
-                self.shutting_down.store(true, Ordering::SeqCst);
-            }
             result?;
         }
 

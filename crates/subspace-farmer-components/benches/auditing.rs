@@ -4,7 +4,6 @@ use memmap2::Mmap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use std::{env, fs, io};
 use subspace_archiving::archiver::Archiver;
@@ -54,7 +53,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
 
-    let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
@@ -71,7 +69,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &public_key,
             sector_index,
             &BenchPieceReceiver::new(piece),
-            &cancelled,
             &farmer_protocol_info,
             &kzg,
             &sector_codec,
