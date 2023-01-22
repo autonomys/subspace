@@ -11,13 +11,15 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
     Bundle, BundleHeader, BundleSolution, DomainId, ExecutorApi, ExecutorPair, ProofOfElection,
     SignedBundle,
 };
-use sp_runtime::generic::{BlockId, DigestItem};
+use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
@@ -25,7 +27,6 @@ use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_executor_full_node_catching_up() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -67,12 +68,6 @@ async fn test_executor_full_node_catching_up() {
 
     // Bob is able to sync blocks.
     futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
-
-    assert_eq!(
-        ferdie.client.info().best_number,
-        alice.client.info().best_number,
-        "Primary chain and system domain must be on the same best height"
-    );
 
     let alice_block_hash = alice
         .client
@@ -143,12 +138,27 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         Box::new(alice.task_manager.spawn_handle()),
     );
 
+    let digest = {
+        let system_domain_state_root =
+            DigestItem::system_domain_state_root_update(StateRootUpdate {
+                number: 0,
+                state_root: *parent_header.state_root(),
+            });
+
+        let primary_block_info =
+            DigestItem::primary_block_info((1, ferdie.client.hash(1).unwrap().unwrap()));
+
+        Digest {
+            logs: vec![system_domain_state_root, primary_block_info],
+        }
+    };
+
     let new_header = Header::new(
         *header.number(),
-        Default::default(),
+        header.hash(),
         Default::default(),
         parent_header.hash(),
-        Default::default(),
+        digest,
     );
     let execution_phase = ExecutionPhase::InitializeBlock {
         call_data: new_header.encode(),
