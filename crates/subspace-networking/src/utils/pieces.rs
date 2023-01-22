@@ -4,7 +4,6 @@ use backoff::future::retry;
 use backoff::ExponentialBackoff;
 use futures::StreamExt;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use tracing::{debug, trace};
@@ -17,7 +16,6 @@ const PUT_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 pub async fn announce_single_piece_with_backoff(
     piece_index: PieceIndex,
     node: &Node,
-    cancelled: &AtomicBool,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let backoff = ExponentialBackoff {
         initial_interval: PUT_PIECE_INITIAL_INTERVAL,
@@ -27,21 +25,13 @@ pub async fn announce_single_piece_with_backoff(
         ..ExponentialBackoff::default()
     };
 
-    retry(backoff, || {
-        announce_single_piece(piece_index, node, cancelled)
-    })
-    .await
+    retry(backoff, || announce_single_piece(piece_index, node)).await
 }
 
 async fn announce_single_piece(
     piece_index: PieceIndex,
     node: &Node,
-    cancelled: &AtomicBool,
 ) -> Result<(), backoff::Error<Box<dyn Error + Send + Sync + 'static>>> {
-    if cancelled.load(Ordering::Acquire) {
-        return Ok(());
-    }
-
     let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
     let result = node.start_announcing(key.into()).await;

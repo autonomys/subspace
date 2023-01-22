@@ -277,8 +277,6 @@ pub struct SingleDiskPlotOptions<NC> {
     pub dsn_node: Node,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
-    /// Boolean flag indicating that shutting down was initiated.
-    pub shutting_down: Arc<AtomicBool>,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -495,7 +493,6 @@ impl SingleDiskPlot {
             reward_address,
             dsn_node,
             concurrent_plotting_semaphore,
-            shutting_down,
         } = options;
 
         // TODO: Account for plot overhead
@@ -657,6 +654,7 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
+        let shutting_down = Arc::new(AtomicBool::new(false));
         let kzg = Kzg::new(test_public_parameters());
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize)
             .expect("Protocol constant must be correct; qed");

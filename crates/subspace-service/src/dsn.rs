@@ -11,7 +11,6 @@ use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{PieceIndex, PIECES_IN_SEGMENT};
@@ -176,10 +175,8 @@ pub(crate) async fn publish_pieces(
 ) {
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
 
-    let cancelled = AtomicBool::new(false);
-
     let mut pieces_publishing_futures = pieces_indexes
-        .map(|piece_index| announce_single_piece_with_backoff(piece_index, node, &cancelled))
+        .map(|piece_index| announce_single_piece_with_backoff(piece_index, node))
         .collect::<FuturesUnordered<_>>();
 
     while pieces_publishing_futures.next().await.is_some() {
