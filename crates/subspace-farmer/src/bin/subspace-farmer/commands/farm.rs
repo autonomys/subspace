@@ -2,17 +2,15 @@ mod dsn;
 mod farmer_provider_storage;
 mod piece_storage;
 
-use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
+use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
-use futures::channel::mpsc;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
@@ -22,11 +20,7 @@ use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, warn};
-
-const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
-const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
-    NonZeroUsize::new(20).expect("Not zero; qed");
+use tracing::{debug, error, info};
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -97,24 +91,8 @@ pub(crate) async fn farm_multi_disk(
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
 
-    let (provider_records_sender, mut provider_records_receiver) =
-        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE);
-
-    node.on_announcement(Arc::new({
-        let provider_records_sender = Mutex::new(provider_records_sender);
-
-        move |record| {
-            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
-                let record = error.into_inner();
-                warn!(
-                    ?record.key,
-                    ?record.provider,
-                    "Failed to add provider record to the channel."
-                );
-            };
-        }
-    }))
-    .detach();
+    let _announcements_processing_handler =
+        start_announcements_processor(node.clone(), wrapped_piece_storage)?;
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
@@ -305,12 +283,6 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
-    let mut provider_record_processor = FarmerProviderRecordProcessor::new(
-        node.clone(),
-        wrapped_piece_storage,
-        MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
-    );
-
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
@@ -331,13 +303,6 @@ pub(crate) async fn farm_multi_disk(
         _ = node_runner.run().fuse() => {
             info!("Node runner exited.")
         },
-
-        // Provider record processing future
-        _ = Box::pin(async move {
-            while let Some(provider_record) = provider_records_receiver.next().await {
-                provider_record_processor.process_provider_record(provider_record).await;
-            }
-        }).fuse() => {},
     );
 
     anyhow::Ok(())

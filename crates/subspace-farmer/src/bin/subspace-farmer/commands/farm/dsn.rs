@@ -2,10 +2,14 @@ use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
 use crate::commands::farm::piece_storage::{LimitedSizeParityDbKVStore, ParityDbKVStore};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
+use event_listener_primitives::HandlerId;
+use futures::channel::mpsc;
+use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{io, thread};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
@@ -21,9 +25,12 @@ use subspace_networking::{
 };
 use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Instrument, Span};
 
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
+const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
+const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
+    NonZeroUsize::new(20).expect("Not zero; qed");
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -160,6 +167,60 @@ pub(super) async fn configure_dsn(
         .await
         .map(|(node, node_runner)| (node, node_runner, wrapped_piece_storage))
         .map_err(Into::into)
+}
+
+/// Start processing announcements received by the network node, returns handle that will stop
+/// processing on drop.
+pub fn start_announcements_processor(
+    node: Node,
+    piece_storage: LimitedSizeParityDbKVStore,
+) -> io::Result<HandlerId> {
+    let (provider_records_sender, mut provider_records_receiver) =
+        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE);
+
+    let handler_id = node.on_announcement(Arc::new({
+        let provider_records_sender = Mutex::new(provider_records_sender);
+
+        move |record| {
+            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
+                if error.is_disconnected() {
+                    // Receiver exited, nothing left to be done
+                    return;
+                }
+                let record = error.into_inner();
+                warn!(
+                    ?record.key,
+                    ?record.provider,
+                    "Failed to add provider record to the channel."
+                );
+            };
+        }
+    }));
+
+    let handle = Handle::current();
+    let span = Span::current();
+    let mut provider_record_processor = FarmerProviderRecordProcessor::new(
+        node,
+        piece_storage,
+        MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
+    );
+
+    // We are working with database internally, better to run in a separate thread
+    thread::Builder::new()
+        .name("ann-processor".to_string())
+        .spawn(move || {
+            let processor_fut = async {
+                while let Some(provider_record) = provider_records_receiver.next().await {
+                    provider_record_processor
+                        .process_provider_record(provider_record)
+                        .await;
+                }
+            };
+
+            handle.block_on(processor_fut.instrument(span));
+        })?;
+
+    Ok(handler_id)
 }
 
 // TODO: This should probably moved into the library
