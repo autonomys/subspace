@@ -159,22 +159,18 @@ where
 }
 
 /// Piece storage with limited size.
-pub struct LimitedSizePieceStorageWrapper {
-    // Wrapped record storage implementation.
-    piece_store: ParityDbKVStore,
-    // Maintains a heap to limit total item number.
+pub struct LimitedSizeParityDbKVStore {
+    // Underlying unbounded store.
+    store: ParityDbKVStore,
+    // Maintains a heap to limit total number of entries.
     heap: RecordBinaryHeap,
 }
 
-impl LimitedSizePieceStorageWrapper {
-    pub fn new(
-        piece_store: ParityDbKVStore,
-        max_items_limit: NonZeroUsize,
-        peer_id: PeerId,
-    ) -> Self {
+impl LimitedSizeParityDbKVStore {
+    pub fn new(store: ParityDbKVStore, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
-        match piece_store.iter::<Vec<u8>>() {
+        match store.iter::<Vec<u8>>() {
             Ok(pieces_iter) => {
                 for (key, _) in pieces_iter {
                     let _ = heap.insert(key);
@@ -191,28 +187,28 @@ impl LimitedSizePieceStorageWrapper {
             }
         }
 
-        Self { piece_store, heap }
+        Self { store, heap }
     }
 }
 
-impl PieceStorage for LimitedSizePieceStorageWrapper {
+impl PieceStorage for LimitedSizeParityDbKVStore {
     fn should_include_in_storage(&self, key: &Key) -> bool {
         self.heap.should_include_key(key)
     }
 
     fn add_piece(&mut self, key: Key, piece: Piece) {
-        self.piece_store.update([(&key, Some(piece.into()))]);
+        self.store.update([(&key, Some(piece.into()))]);
 
         let evicted_key = self.heap.insert(key);
 
         if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
 
-            self.piece_store.update([(&key, None)]);
+            self.store.update([(&key, None)]);
         }
     }
 
     fn get_piece(&self, key: &Key) -> Option<Piece> {
-        self.piece_store.get(key)
+        self.store.get(key)
     }
 }
