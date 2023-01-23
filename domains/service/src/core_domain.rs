@@ -1,12 +1,12 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::DomainTxPoolSink;
+use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, ProofProvider, StateBackendFor};
@@ -18,6 +18,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -25,6 +26,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
+use sp_core::Encode;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::RelayerApi;
 use sp_offchain::OffchainWorkerApi;
@@ -385,7 +387,7 @@ where
             system_domain_client,
             system_domain_network,
             network.clone(),
-            gossip_message_sink,
+            gossip_message_sink.clone(),
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -410,6 +412,32 @@ where
         None,
         Box::pin(core_domain_listener),
     );
+
+    spawn_essential.spawn_blocking("core-domain-transaction-gossip", None, {
+        Box::pin(async move {
+            while let Some(hash) = transaction_pool.import_notification_stream().next().await {
+                let maybe_transaction = transaction_pool.ready_transaction(&hash).and_then(
+                    // Only propagable transactions should be resolved for network service.
+                    |tx| {
+                        if tx.is_propagable() {
+                            Some(tx.data().clone())
+                        } else {
+                            None
+                        }
+                    },
+                );
+                if let Some(tx) = maybe_transaction {
+                    let msg = GossipMessage {
+                        domain_id,
+                        encoded_data: tx.encode(),
+                    };
+                    if let Err(_e) = gossip_message_sink.unbounded_send(msg) {
+                        return;
+                    }
+                }
+            }
+        })
+    });
 
     let new_full = NewFullCore {
         task_manager,
