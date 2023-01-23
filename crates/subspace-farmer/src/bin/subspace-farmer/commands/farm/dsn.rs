@@ -37,7 +37,7 @@ pub(super) async fn configure_dsn(
     DsnArgs {
         listen_on,
         bootstrap_nodes,
-        record_cache_size,
+        piece_cache_size,
         disable_private_ips,
         reserved_peers,
     }: DsnArgs,
@@ -62,11 +62,11 @@ pub(super) async fn configure_dsn(
     }
     let provider_cache_db_path = base_path.join("provider_cache_db");
     let provider_cache_size =
-        record_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
+        piece_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
 
     info!(
         ?piece_cache_db_path,
-        ?record_cache_size,
+        ?piece_cache_size,
         ?provider_cache_db_path,
         ?provider_cache_size,
         "Record cache DB configured."
@@ -83,10 +83,9 @@ pub(super) async fn configure_dsn(
     let farmer_provider_storage =
         FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
 
-    //TODO: rename CLI parameters
     let piece_store =
         ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    let piece_cache = FarmerPieceCache::new(piece_store.clone(), record_cache_size, peer_id);
+    let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
 
     let config = Config {
         reserved_peers,
