@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
             let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
 
             let provider_storage = if let Some(path) = db_path {
-                let db_path = path.join("subspace_storage_providers_db").into_boxed_path();
+                let db_path = path.join("subspace_storage_providers_db");
 
                 Either::Left(ParityDbProviderStorage::new(
                     &db_path,

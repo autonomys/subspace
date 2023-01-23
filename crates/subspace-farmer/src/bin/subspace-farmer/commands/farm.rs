@@ -1,6 +1,6 @@
 mod dsn;
+mod farmer_piece_cache;
 mod farmer_piece_getter;
-mod farmer_piece_storage;
 mod farmer_provider_storage;
 mod node_piece_getter;
 
@@ -80,7 +80,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let (node, mut node_runner, piece_storage) = {
+    let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -103,11 +103,11 @@ pub(crate) async fn farm_multi_disk(
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
 
-    let piece_storage = Arc::new(tokio::sync::Mutex::new(piece_storage));
+    let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
 
     let _announcements_processing_handler = start_announcements_processor(
         node.clone(),
-        Arc::clone(&piece_storage),
+        Arc::clone(&piece_cache),
         Arc::downgrade(&readers_and_pieces),
     )?;
 
@@ -124,7 +124,7 @@ pub(crate) async fn farm_multi_disk(
     );
     let piece_getter = Arc::new(FarmerPieceGetter::new(
         NodePieceGetter::new(piece_provider),
-        piece_storage,
+        piece_cache,
         node.clone(),
     ));
 

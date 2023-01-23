@@ -1,4 +1,4 @@
-use crate::commands::farm::dsn::PieceStorage;
+use crate::commands::farm::dsn::PieceCache;
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
@@ -9,31 +9,31 @@ use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_ba
 use subspace_networking::Node;
 use tracing::debug;
 
-pub(super) struct FarmerPieceGetter<PG, PS> {
+pub(super) struct FarmerPieceGetter<PG, PC> {
     base_piece_getter: PG,
-    piece_storage: Arc<tokio::sync::Mutex<PS>>,
+    piece_cache: Arc<tokio::sync::Mutex<PC>>,
     node: Node,
 }
 
-impl<PG, PS> FarmerPieceGetter<PG, PS> {
+impl<PG, PC> FarmerPieceGetter<PG, PC> {
     pub(super) fn new(
         base_piece_getter: PG,
-        piece_storage: Arc<tokio::sync::Mutex<PS>>,
+        piece_cache: Arc<tokio::sync::Mutex<PC>>,
         node: Node,
     ) -> Self {
         Self {
             base_piece_getter,
-            piece_storage,
+            piece_cache,
             node,
         }
     }
 }
 
 #[async_trait]
-impl<PG, PS> PieceGetter for FarmerPieceGetter<PG, PS>
+impl<PG, PC> PieceGetter for FarmerPieceGetter<PG, PC>
 where
     PG: PieceGetter + Send + Sync,
-    PS: PieceStorage + Send + 'static,
+    PC: PieceCache + Send + 'static,
 {
     async fn get_piece(
         &self,
@@ -43,23 +43,21 @@ where
         let key = piece_index_hash.to_multihash().into();
 
         let maybe_should_store = {
-            let piece_storage = self.piece_storage.lock().await;
-            if let Some(piece) = piece_storage.get_piece(&key) {
+            let piece_cache = self.piece_cache.lock().await;
+            if let Some(piece) = piece_cache.get_piece(&key) {
                 return Ok(Some(piece));
             }
 
-            piece_storage.should_include_in_storage(&key)
+            piece_cache.should_cache(&key)
         };
 
         let maybe_piece = self.base_piece_getter.get_piece(piece_index).await?;
 
         if let Some(piece) = &maybe_piece {
             if maybe_should_store {
-                let mut piece_storage = self.piece_storage.lock().await;
-                if piece_storage.should_include_in_storage(&key)
-                    && piece_storage.get_piece(&key).is_none()
-                {
-                    piece_storage.add_piece(key, piece.clone());
+                let mut piece_cache = self.piece_cache.lock().await;
+                if piece_cache.should_cache(&key) && piece_cache.get_piece(&key).is_none() {
+                    piece_cache.add_piece(key, piece.clone());
                     if let Err(error) =
                         announce_single_piece_index_hash_with_backoff(piece_index_hash, &self.node)
                             .await
