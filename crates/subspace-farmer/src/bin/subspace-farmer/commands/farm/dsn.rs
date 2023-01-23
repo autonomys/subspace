@@ -1,12 +1,15 @@
 use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::piece_storage::{LimitedSizePieceStorageWrapper, ParityDbPieceStorage};
+use crate::commands::farm::piece_storage::{LimitedSizeParityDbStore, ParityDbStore};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
+use event_listener_primitives::HandlerId;
+use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{io, thread};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
@@ -14,6 +17,7 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
+use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
@@ -21,9 +25,12 @@ use subspace_networking::{
 };
 use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Instrument, Span};
 
 const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
+const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
+const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
+    NonZeroUsize::new(20).expect("Not zero; qed");
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -40,7 +47,7 @@ pub(super) async fn configure_dsn(
     (
         Node,
         NodeRunner<FarmerProviderStorage<ParityDbProviderStorage>>,
-        LimitedSizePieceStorageWrapper,
+        LimitedSizeParityDbStore,
     ),
     anyhow::Error,
 > {
@@ -75,10 +82,10 @@ pub(super) async fn configure_dsn(
         FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
 
     //TODO: rename CLI parameters
-    let piece_storage = ParityDbPieceStorage::new(&record_cache_db_path)
+    let piece_storage = ParityDbStore::new(&record_cache_db_path)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let wrapped_piece_storage =
-        LimitedSizePieceStorageWrapper::new(piece_storage.clone(), record_cache_size, peer_id);
+        LimitedSizeParityDbStore::new(piece_storage.clone(), record_cache_size, peer_id);
 
     let config = Config {
         reserved_peers,
@@ -160,6 +167,60 @@ pub(super) async fn configure_dsn(
         .await
         .map(|(node, node_runner)| (node, node_runner, wrapped_piece_storage))
         .map_err(Into::into)
+}
+
+/// Start processing announcements received by the network node, returns handle that will stop
+/// processing on drop.
+pub fn start_announcements_processor(
+    node: Node,
+    piece_storage: LimitedSizeParityDbStore,
+) -> io::Result<HandlerId> {
+    let (provider_records_sender, mut provider_records_receiver) =
+        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE);
+
+    let handler_id = node.on_announcement(Arc::new({
+        let provider_records_sender = Mutex::new(provider_records_sender);
+
+        move |record| {
+            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
+                if error.is_disconnected() {
+                    // Receiver exited, nothing left to be done
+                    return;
+                }
+                let record = error.into_inner();
+                warn!(
+                    ?record.key,
+                    ?record.provider,
+                    "Failed to add provider record to the channel."
+                );
+            };
+        }
+    }));
+
+    let handle = Handle::current();
+    let span = Span::current();
+    let mut provider_record_processor = FarmerProviderRecordProcessor::new(
+        node,
+        piece_storage,
+        MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
+    );
+
+    // We are working with database internally, better to run in a separate thread
+    thread::Builder::new()
+        .name("ann-processor".to_string())
+        .spawn(move || {
+            let processor_fut = async {
+                while let Some(provider_record) = provider_records_receiver.next().await {
+                    provider_record_processor
+                        .process_provider_record(provider_record)
+                        .await;
+                }
+            };
+
+            handle.block_on(processor_fut.instrument(span));
+        })?;
+
+    Ok(handler_id)
 }
 
 // TODO: This should probably moved into the library
@@ -244,7 +305,15 @@ where
                     .lock()
                     .await
                     .add_piece(provider_record.key.clone(), piece);
-                announce_piece(&node, provider_record.key).await;
+                if let Err(error) =
+                    announce_single_piece_index_hash_with_backoff(piece_index_hash, &node).await
+                {
+                    debug!(
+                        ?error,
+                        ?piece_index_hash,
+                        "Announcing cached piece index hash failed"
+                    );
+                }
             }
 
             drop(permit);
@@ -261,6 +330,8 @@ async fn get_piece_from_announcer(
         .send_generic_request(provider, PieceByHashRequest { piece_index_hash })
         .await;
 
+    // TODO: Nothing guarantees that piece index hash is real, response must also return piece index
+    //  that matches piece index hash and piece must be verified against blockchain after that
     match request_result {
         Ok(PieceByHashResponse { piece: Some(piece) }) => {
             trace!(
@@ -289,28 +360,6 @@ async fn get_piece_from_announcer(
     }
 
     None
-}
-
-//TODO: consider introducing publish-piece helper
-async fn announce_piece(node: &Node, key: Key) {
-    let result = node.start_announcing(key.clone()).await;
-
-    match result {
-        Err(error) => {
-            debug!(
-                ?error,
-                ?key,
-                "Piece publishing for the cache returned an error"
-            );
-        }
-        Ok(mut stream) => {
-            if stream.next().await.is_some() {
-                trace!(?key, "Piece publishing for the cache succeeded");
-            } else {
-                debug!(?key, "Piece publishing for the cache failed");
-            }
-        }
-    };
 }
 
 /// Defines persistent piece storage interface.

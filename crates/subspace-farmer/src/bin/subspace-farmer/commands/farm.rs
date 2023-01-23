@@ -2,7 +2,7 @@ mod dsn;
 mod farmer_provider_storage;
 mod piece_storage;
 
-use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
+use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
@@ -11,7 +11,6 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
@@ -19,13 +18,10 @@ use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::utils::pieces::announce_single_piece_with_backoff;
+use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 use zeroize::Zeroizing;
-
-const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
-    NonZeroUsize::new(20).expect("Not zero; qed");
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -95,9 +91,9 @@ pub(crate) async fn farm_multi_disk(
         }
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
-    let mut provider_records_receiver = node_runner
-        .take_provider_records_receiver()
-        .expect("Provider record receiver exists right after initialization; qed");
+
+    let _announcements_processing_handler =
+        start_announcements_processor(node.clone(), wrapped_piece_storage)?;
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
@@ -256,7 +252,7 @@ pub(crate) async fn farm_multi_disk(
                         let mut pieces_publishing_futures = new_pieces
                             .into_iter()
                             .map(|piece_index| {
-                                announce_single_piece_with_backoff(piece_index, &node)
+                                announce_single_piece_index_with_backoff(piece_index, &node)
                             })
                             .collect::<FuturesUnordered<_>>();
 
@@ -288,12 +284,6 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
-    let mut provider_record_processor = FarmerProviderRecordProcessor::new(
-        node.clone(),
-        wrapped_piece_storage,
-        MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
-    );
-
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
@@ -314,13 +304,6 @@ pub(crate) async fn farm_multi_disk(
         _ = node_runner.run().fuse() => {
             info!("Node runner exited.")
         },
-
-        // Provider record processing future
-        _ = Box::pin(async move {
-            while let Some(provider_record) = provider_records_receiver.next().await {
-                provider_record_processor.process_provider_record(provider_record).await;
-            }
-        }).fuse() => {},
     );
 
     anyhow::Ok(())
