@@ -3,10 +3,12 @@ mod farmer_piece_cache;
 mod farmer_piece_getter;
 mod farmer_provider_storage;
 mod node_piece_getter;
+mod readers_and_pieces;
 
 use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
 use crate::commands::farm::farmer_piece_getter::FarmerPieceGetter;
 use crate::commands::farm::node_piece_getter::NodePieceGetter;
+use crate::commands::farm::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
@@ -20,8 +22,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
-use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
-use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
+use subspace_core_primitives::{PieceIndexHash, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
@@ -33,19 +34,6 @@ use tracing::{debug, error, info};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
-
-#[derive(Debug, Copy, Clone)]
-struct PieceDetails {
-    plot_offset: usize,
-    sector_index: SectorIndex,
-    piece_offset: u64,
-}
-
-#[derive(Debug)]
-pub(crate) struct ReadersAndPieces {
-    readers: Vec<PieceReader>,
-    pieces: HashMap<PieceIndexHash, PieceDetails>,
-}
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -211,10 +199,9 @@ pub(crate) async fn farm_multi_disk(
 
     debug!("Finished collecting already plotted pieces");
 
-    readers_and_pieces.lock().replace(ReadersAndPieces {
-        readers: piece_readers,
-        pieces: plotted_pieces,
-    });
+    readers_and_pieces
+        .lock()
+        .replace(ReadersAndPieces::new(piece_readers, plotted_pieces));
 
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
@@ -250,13 +237,12 @@ pub(crate) async fn farm_multi_disk(
                                 // Skip pieces that are already plotted and thus were announced
                                 // before
                                 !readers_and_pieces
-                                    .pieces
-                                    .contains_key(&PieceIndexHash::from_index(piece_index))
+                                    .contains_piece(&PieceIndexHash::from_index(piece_index))
                             })
                             .copied()
                             .collect::<Vec<_>>();
 
-                        readers_and_pieces.pieces.extend(
+                        readers_and_pieces.add_pieces(
                             plotted_sector
                                 .piece_indexes
                                 .iter()

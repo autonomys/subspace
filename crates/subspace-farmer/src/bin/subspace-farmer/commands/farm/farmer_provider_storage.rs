@@ -1,4 +1,4 @@
-use crate::commands::farm::ReadersAndPieces;
+use crate::commands::farm::readers_and_pieces::ReadersAndPieces;
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -82,8 +82,7 @@ where
             .lock()
             .as_ref()
             .expect("Should be populated at this point.")
-            .pieces
-            .contains_key(&piece_index_hash)
+            .contains_piece(&piece_index_hash)
         {
             provider_records.push(ProviderRecord {
                 key: piece_index_hash.to_multihash().into(),
@@ -100,19 +99,21 @@ where
         self.readers_and_pieces
             .lock()
             .as_ref()
-            .expect("Should be populated at this point.")
-            .pieces
-            .keys()
-            .map(|hash| {
-                ProviderRecord {
-                    key: hash.to_multihash().into(),
-                    provider: self.local_peer_id,
-                    expires: None,
-                    addresses: Vec::new(), // TODO: add address hints
-                }
+            .map(|readers_and_pieces| {
+                readers_and_pieces
+                    .piece_index_hashes()
+                    .map(|hash| {
+                        ProviderRecord {
+                            key: hash.to_multihash().into(),
+                            provider: self.local_peer_id,
+                            expires: None,
+                            addresses: Vec::new(), // TODO: add address hints
+                        }
+                    })
+                    .map(Cow::Owned)
+                    .collect::<Vec<_>>()
             })
-            .map(Cow::Owned)
-            .collect::<Vec<_>>()
+            .unwrap_or_default()
             .into_iter()
             .chain(self.persistent_provider_storage.provided())
     }

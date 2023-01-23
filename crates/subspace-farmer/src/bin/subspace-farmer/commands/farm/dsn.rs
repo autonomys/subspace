@@ -1,6 +1,6 @@
 use crate::commands::farm::farmer_piece_cache::FarmerPieceCache;
 use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::ReadersAndPieces;
+use crate::commands::farm::readers_and_pieces::ReadersAndPieces;
 use crate::DsnArgs;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
@@ -106,7 +106,7 @@ pub(super) async fn configure_dsn(
                 } else {
                     debug!(piece_index_hash = ?req.piece_index_hash, "No piece in the cache. Trying archival storage...");
 
-                    let (mut reader, piece_details) = {
+                    let read_piece_fut = {
                         let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
                             Some(readers_and_pieces) => readers_and_pieces,
                             None => {
@@ -125,35 +125,12 @@ pub(super) async fn configure_dsn(
                                 return None;
                             }
                         };
-                        let piece_details = match readers_and_pieces
-                            .pieces
-                            .get(&req.piece_index_hash)
-                            .copied()
-                        {
-                            Some(piece_details) => piece_details,
-                            None => {
-                                trace!(
-                                    ?req.piece_index_hash,
-                                    "Piece is not stored in any of the local plots"
-                                );
-                                return None;
-                            }
-                        };
-                        let reader = readers_and_pieces
-                            .readers
-                            .get(piece_details.plot_offset)
-                            .cloned()
-                            .expect("Offsets strictly correspond to existing plots; qed");
-                        (reader, piece_details)
+
+                        readers_and_pieces.read_piece(&req.piece_index_hash)?
                     };
 
                     let handle = handle.clone();
-                    tokio::task::block_in_place(move || {
-                        handle.block_on(
-                            reader
-                                .read_piece(piece_details.sector_index, piece_details.piece_offset),
-                        )
-                    })
+                    tokio::task::block_in_place(move || handle.block_on(read_piece_fut))
                 }
             };
 
@@ -290,7 +267,7 @@ where
 
         if let Some(readers_and_pieces) = self.weak_readers_and_pieces.upgrade() {
             if let Some(readers_and_pieces) = readers_and_pieces.lock().as_ref() {
-                if readers_and_pieces.pieces.contains_key(&piece_index_hash) {
+                if readers_and_pieces.contains_piece(&piece_index_hash) {
                     // Piece is already plotted, hence it was also already announced
                     return;
                 }
