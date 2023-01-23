@@ -5,7 +5,8 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PieceIndexHash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config, ToMultihash};
+use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 #[tokio::main]
 async fn main() {

@@ -17,12 +17,11 @@ use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::utils::multihash::MultihashCode;
+use subspace_networking::utils::multihash::{MultihashCode, ToMultihash};
 use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-    ToMultihash,
 };
 use tokio::runtime::Handle;
 use tokio::sync::Semaphore;

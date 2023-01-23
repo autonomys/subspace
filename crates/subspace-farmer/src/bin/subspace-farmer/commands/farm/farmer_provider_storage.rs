@@ -7,8 +7,9 @@ use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::{ProviderStorage, ToMultihash};
+use subspace_networking::utils::multihash::{MultihashCode, ToMultihash};
+use subspace_networking::ProviderStorage;
+
 use tracing::trace;
 
 pub(crate) struct FarmerProviderStorage<PersistentProviderStorage> {

@@ -1,5 +1,5 @@
 pub mod multihash;
-pub mod piece_receiver;
+pub mod piece_provider;
 pub mod pieces;
 pub(crate) mod prometheus;
 pub(crate) mod record_binary_heap;
