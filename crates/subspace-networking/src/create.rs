@@ -373,12 +373,12 @@ where
         let shared = Arc::new(Shared::new(
             local_peer_id,
             command_sender,
-            kademlia_tasks_semaphore.clone(),
-            regular_tasks_semaphore.clone(),
+            kademlia_tasks_semaphore,
+            regular_tasks_semaphore,
         ));
         let shared_weak = Arc::downgrade(&shared);
 
-        let node = Node::new(shared, kademlia_tasks_semaphore, regular_tasks_semaphore);
+        let node = Node::new(shared);
         let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
             allow_non_global_addresses_in_dht,
             command_receiver,

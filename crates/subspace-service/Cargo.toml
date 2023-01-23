@@ -16,7 +16,6 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 derive_more = "0.99.17"
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 either = "1.8.0"

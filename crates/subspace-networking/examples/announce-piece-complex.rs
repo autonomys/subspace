@@ -84,7 +84,11 @@ async fn main() {
         piece_index_hash.to_multihash()
     };
 
-    node.start_announcing(key).await.unwrap().next().await;
+    node.start_announcing(key.into())
+        .await
+        .unwrap()
+        .next()
+        .await;
     println!("Node announced key: {key:?}");
 
     tokio::time::sleep(Duration::from_secs(15)).await;

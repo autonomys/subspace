@@ -24,7 +24,6 @@ use sp_runtime::{Digest, DigestItem};
 use std::error::Error;
 use std::io::Cursor;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::AtomicBool;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -111,7 +110,6 @@ impl Farmer {
             &public_key,
             sector_index,
             &piece_receiver,
-            &AtomicBool::new(false),
             &farmer_protocol_info,
             &kzg,
             &sector_codec,

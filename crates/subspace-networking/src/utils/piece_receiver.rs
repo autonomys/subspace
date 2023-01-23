@@ -5,7 +5,6 @@ use backoff::ExponentialBackoff;
 use futures::StreamExt;
 use libp2p::PeerId;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use tracing::{debug, trace, warn};
@@ -14,16 +13,6 @@ use tracing::{debug, trace, warn};
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
-
-/// An abstraction for piece receiving.
-#[async_trait]
-pub trait PieceReceiver: Send + Sync {
-    /// Returns optional piece from the DSN. None means - no piece was found.
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
 
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
@@ -36,29 +25,20 @@ pub trait PieceValidator: Sync + Send {
 }
 
 /// Piece provider with cancellation and optional piece validator.
-pub struct PieceProvider<'a, PV> {
-    dsn_node: &'a Node,
+pub struct PieceProvider<PV> {
+    node: Node,
     piece_validator: Option<PV>,
-    cancelled: &'a AtomicBool,
 }
 
-impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
-    pub fn new(dsn_node: &'a Node, piece_validator: Option<PV>, cancelled: &'a AtomicBool) -> Self {
+impl<PV> PieceProvider<PV>
+where
+    PV: PieceValidator,
+{
+    pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
         Self {
-            dsn_node,
+            node,
             piece_validator,
-            cancelled,
         }
-    }
-
-    fn check_cancellation(&self) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-        if self.cancelled.load(Ordering::Acquire) {
-            debug!("Getting a piece was cancelled.");
-
-            return Err("Getting a piece was cancelled.".into());
-        }
-
-        Ok(())
     }
 
     // Get from piece cache (L2) or archival storage (L1)
@@ -66,7 +46,7 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
         let key = piece_index_hash.to_multihash();
 
-        let get_providers_result = self.dsn_node.get_providers(key).await;
+        let get_providers_result = self.node.get_providers(key).await;
 
         match get_providers_result {
             Ok(mut get_providers_stream) => {
@@ -74,7 +54,7 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
                     trace!(%piece_index, %provider_id, "get_providers returned an item");
 
                     let request_result = self
-                        .dsn_node
+                        .node
                         .send_generic_request(provider_id, PieceByHashRequest { piece_index_hash })
                         .await;
 
@@ -106,11 +86,8 @@ impl<'a, PV: PieceValidator> PieceProvider<'a, PV> {
 
         None
     }
-}
 
-#[async_trait]
-impl<'a, PV: PieceValidator> PieceReceiver for PieceProvider<'a, PV> {
-    async fn get_piece(
+    pub async fn get_piece(
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
@@ -125,9 +102,6 @@ impl<'a, PV: PieceValidator> PieceReceiver for PieceProvider<'a, PV> {
         };
 
         retry(backoff, || async {
-            self.check_cancellation()
-                .map_err(backoff::Error::Permanent)?;
-
             if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, "Got piece");
                 return Ok(Some(piece));

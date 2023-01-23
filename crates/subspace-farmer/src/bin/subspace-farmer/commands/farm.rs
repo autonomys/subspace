@@ -2,22 +2,107 @@ mod dsn;
 mod farmer_provider_storage;
 mod piece_storage;
 
-use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
+use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor, PieceStorage};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use lru::LruCache;
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::error::Error;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
+use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::utils::pieces::{
+    announce_single_piece_index_hash_with_backoff, announce_single_piece_index_with_backoff,
+};
+use subspace_networking::{Node, PieceProvider, ToMultihash};
+use tokio::sync::broadcast;
 use tracing::{debug, error, info};
+use zeroize::Zeroizing;
+
+const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
+
+struct FarmerPieceReceiver<PV, PS> {
+    piece_provider: PieceProvider<PV>,
+    piece_storage: Arc<tokio::sync::Mutex<PS>>,
+    node: Node,
+}
+
+impl<PV, PS> FarmerPieceReceiver<PV, PS> {
+    fn new(
+        piece_provider: PieceProvider<PV>,
+        piece_storage: Arc<tokio::sync::Mutex<PS>>,
+        node: Node,
+    ) -> Self {
+        Self {
+            piece_provider,
+            piece_storage,
+            node,
+        }
+    }
+}
+
+#[async_trait]
+impl<PV, PS> PieceReceiver for FarmerPieceReceiver<PV, PS>
+where
+    PV: subspace_networking::PieceValidator,
+    PS: PieceStorage + Send + 'static,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let key = piece_index_hash.to_multihash().into();
+
+        let maybe_should_store = {
+            let piece_storage = self.piece_storage.lock().await;
+            if let Some(piece) = piece_storage.get_piece(&key) {
+                return Ok(Some(piece));
+            }
+
+            piece_storage.should_include_in_storage(&key)
+        };
+
+        let maybe_piece = self.piece_provider.get_piece(piece_index).await?;
+
+        if let Some(piece) = &maybe_piece {
+            if maybe_should_store {
+                let mut piece_storage = self.piece_storage.lock().await;
+                if piece_storage.should_include_in_storage(&key)
+                    && piece_storage.get_piece(&key).is_none()
+                {
+                    piece_storage.add_piece(key, piece.clone());
+                    if let Err(error) =
+                        announce_single_piece_index_hash_with_backoff(piece_index_hash, &self.node)
+                            .await
+                    {
+                        debug!(
+                            ?error,
+                            ?piece_index_hash,
+                            "Announcing retrieved and cached piece index hash failed"
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(maybe_piece)
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -65,7 +150,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let (node, mut node_runner, wrapped_piece_storage) = {
+    let (node, mut node_runner, piece_storage) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -87,6 +172,31 @@ pub(crate) async fn farm_multi_disk(
         }
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
+
+    let piece_storage = Arc::new(tokio::sync::Mutex::new(piece_storage));
+
+    let _announcements_processing_handler = start_announcements_processor(
+        node.clone(),
+        Arc::clone(&piece_storage),
+        Arc::downgrade(&readers_and_pieces),
+    )?;
+
+    let kzg = Kzg::new(test_public_parameters());
+    let records_roots_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
+    let piece_provider = PieceProvider::new(
+        node.clone(),
+        Some(RecordsRootPieceValidator::new(
+            node.clone(),
+            node_client.clone(),
+            kzg.clone(),
+            records_roots_cache,
+        )),
+    );
+    let piece_receiver = Arc::new(FarmerPieceReceiver::new(
+        piece_provider,
+        piece_storage,
+        node.clone(),
+    ));
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
@@ -111,7 +221,8 @@ pub(crate) async fn farm_multi_disk(
             allocated_space: disk_farm.allocated_plotting_space,
             node_client,
             reward_address,
-            dsn_node: node.clone(),
+            kzg: kzg.clone(),
+            piece_receiver: piece_receiver.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
         });
 
@@ -180,17 +291,42 @@ pub(crate) async fn farm_multi_disk(
         .enumerate()
         .map(|(plot_offset, single_disk_plot)| {
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
+            let node = node.clone();
+
+            // We are not going to send anything here, but dropping of sender on dropping of
+            // corresponding `SingleDiskPlot` will allow us to stop background tasks.
+            let (dropped_sender, _dropped_receiver) = broadcast::channel::<()>(1);
 
             // Collect newly plotted pieces
             // TODO: Once we have replotting, this will have to be updated
             single_disk_plot
-                .on_sector_plotted(Arc::new(move |plotted_sector| {
-                    readers_and_pieces
-                        .lock()
-                        .as_mut()
-                        .expect("Initial value was populated above; qed")
-                        .pieces
-                        .extend(
+                .on_sector_plotted(Arc::new(move |(plotted_sector, plotting_permit)| {
+                    let plotting_permit = Arc::clone(plotting_permit);
+                    let node = node.clone();
+                    let sector_index = plotted_sector.sector_index;
+
+                    let mut dropped_receiver = dropped_sender.subscribe();
+
+                    let new_pieces = {
+                        let mut readers_and_pieces = readers_and_pieces.lock();
+                        let readers_and_pieces = readers_and_pieces
+                            .as_mut()
+                            .expect("Initial value was populated above; qed");
+
+                        let new_pieces = plotted_sector
+                            .piece_indexes
+                            .iter()
+                            .filter(|&&piece_index| {
+                                // Skip pieces that are already plotted and thus were announced
+                                // before
+                                !readers_and_pieces
+                                    .pieces
+                                    .contains_key(&PieceIndexHash::from_index(piece_index))
+                            })
+                            .copied()
+                            .collect::<Vec<_>>();
+
+                        readers_and_pieces.pieces.extend(
                             plotted_sector
                                 .piece_indexes
                                 .iter()
@@ -201,12 +337,46 @@ pub(crate) async fn farm_multi_disk(
                                         PieceIndexHash::from_index(piece_index),
                                         PieceDetails {
                                             plot_offset,
-                                            sector_index: plotted_sector.sector_index,
+                                            sector_index,
                                             piece_offset: piece_offset as u64,
                                         },
                                     )
                                 }),
                         );
+
+                        new_pieces
+                    };
+
+                    if new_pieces.is_empty() {
+                        // None of the pieces are new, nothing left to do here
+                        return;
+                    }
+
+                    let publish_fut = async move {
+                        let mut pieces_publishing_futures = new_pieces
+                            .into_iter()
+                            .map(|piece_index| {
+                                announce_single_piece_index_with_backoff(piece_index, &node)
+                            })
+                            .collect::<FuturesUnordered<_>>();
+
+                        while pieces_publishing_futures.next().await.is_some() {
+                            // Nothing is needed here, just driving all futures to completion
+                        }
+
+                        info!("Piece publishing was successful.");
+
+                        // Release only after publishing is finished
+                        drop(plotting_permit);
+                    };
+
+                    tokio::spawn(async move {
+                        let result =
+                            select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
+                        if !matches!(result, Either::Right(_)) {
+                            debug!("Piece publishing was cancelled due to shutdown.");
+                        }
+                    });
                 }))
                 .detach();
 
@@ -217,12 +387,6 @@ pub(crate) async fn farm_multi_disk(
     // Drop original instance such that the only remaining instances are in `SingleDiskPlot`
     // event handlers
     drop(readers_and_pieces);
-
-    let mut provider_records_receiver = node_runner
-        .take_provider_records_receiver()
-        .expect("Provider record receiver should exist on initiatialization.");
-    let mut provider_record_processor =
-        FarmerProviderRecordProcessor::new(node.clone(), wrapped_piece_storage);
 
     futures::select!(
         // Signal future
@@ -244,30 +408,17 @@ pub(crate) async fn farm_multi_disk(
         _ = node_runner.run().fuse() => {
             info!("Node runner exited.")
         },
-
-        // Provider record processing future
-        _ = Box::pin(async move {
-            while let Some(provider_record) = provider_records_receiver.next().await {
-                provider_record_processor.process_provider_record(provider_record).await;
-            }
-        }).fuse() => {},
     );
 
     anyhow::Ok(())
 }
 
-// TODO: implement proper conversion function with crypto entropy generator and zeroizing
 fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
-    const SECRET_KEY_LENGTH: usize = 32;
+    let mut secret_bytes = Zeroizing::new(schnorrkel_sk.to_ed25519_bytes());
 
-    let schnorrkel_sk_bytes: [u8; SECRET_KEY_LENGTH] = schnorrkel_sk.to_bytes()
-        [..SECRET_KEY_LENGTH]
-        .try_into()
-        .expect("Should be correct array length here.");
-
-    let sk = ed25519::SecretKey::from_bytes(schnorrkel_sk_bytes)
-        .expect("Bytes array length should be compatible");
-    let ed25519_keypair: ed25519::Keypair = sk.into();
-
-    Keypair::Ed25519(ed25519_keypair)
+    Keypair::Ed25519(
+        ed25519::SecretKey::from_bytes(&mut secret_bytes.as_mut()[..32])
+            .expect("Secret key is exactly 32 bytes in size; qed")
+            .into(),
+    )
 }

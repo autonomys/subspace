@@ -11,19 +11,19 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, PieceValidator};
 use tracing::error;
 
-pub(crate) struct RecordsRootPieceValidator<'a, NC> {
-    dsn_node: &'a Node,
-    node_client: &'a NC,
-    kzg: &'a Kzg,
-    records_root_cache: &'a Mutex<LruCache<SegmentIndex, RecordsRoot>>,
+pub struct RecordsRootPieceValidator<NC> {
+    dsn_node: Node,
+    node_client: NC,
+    kzg: Kzg,
+    records_root_cache: Mutex<LruCache<SegmentIndex, RecordsRoot>>,
 }
 
-impl<'a, NC> RecordsRootPieceValidator<'a, NC> {
-    pub(crate) fn new(
-        dsn_node: &'a Node,
-        node_client: &'a NC,
-        kzg: &'a Kzg,
-        records_root_cache: &'a Mutex<LruCache<SegmentIndex, RecordsRoot>>,
+impl<NC> RecordsRootPieceValidator<NC> {
+    pub fn new(
+        dsn_node: Node,
+        node_client: NC,
+        kzg: Kzg,
+        records_root_cache: Mutex<LruCache<SegmentIndex, RecordsRoot>>,
     ) -> Self {
         Self {
             dsn_node,
@@ -35,7 +35,7 @@ impl<'a, NC> RecordsRootPieceValidator<'a, NC> {
 }
 
 #[async_trait]
-impl<'a, NC> PieceValidator for RecordsRootPieceValidator<'a, NC>
+impl<NC> PieceValidator for RecordsRootPieceValidator<NC>
 where
     NC: NodeClient,
 {
@@ -86,7 +86,7 @@ where
             };
 
             if !is_piece_valid(
-                self.kzg,
+                &self.kzg,
                 PIECES_IN_SEGMENT,
                 &piece,
                 records_root,
