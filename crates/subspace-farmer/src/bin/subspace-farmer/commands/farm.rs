@@ -2,9 +2,11 @@ mod dsn;
 mod farmer_piece_getter;
 mod farmer_piece_storage;
 mod farmer_provider_storage;
+mod node_piece_getter;
 
 use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
 use crate::commands::farm::farmer_piece_getter::FarmerPieceGetter;
+use crate::commands::farm::node_piece_getter::NodePieceGetter;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
@@ -121,7 +123,7 @@ pub(crate) async fn farm_multi_disk(
         )),
     );
     let piece_getter = Arc::new(FarmerPieceGetter::new(
-        piece_provider,
+        NodePieceGetter::new(piece_provider),
         piece_storage,
         node.clone(),
     ));

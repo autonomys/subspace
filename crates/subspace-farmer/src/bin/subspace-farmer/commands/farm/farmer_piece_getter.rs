@@ -5,25 +5,24 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use subspace_farmer_components::plotting::PieceGetter;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::Node;
 use tracing::debug;
 
-pub(super) struct FarmerPieceGetter<PV, PS> {
-    piece_provider: PieceProvider<PV>,
+pub(super) struct FarmerPieceGetter<PG, PS> {
+    base_piece_getter: PG,
     piece_storage: Arc<tokio::sync::Mutex<PS>>,
     node: Node,
 }
 
-impl<PV, PS> FarmerPieceGetter<PV, PS> {
+impl<PG, PS> FarmerPieceGetter<PG, PS> {
     pub(super) fn new(
-        piece_provider: PieceProvider<PV>,
+        base_piece_getter: PG,
         piece_storage: Arc<tokio::sync::Mutex<PS>>,
         node: Node,
     ) -> Self {
         Self {
-            piece_provider,
+            base_piece_getter,
             piece_storage,
             node,
         }
@@ -31,9 +30,9 @@ impl<PV, PS> FarmerPieceGetter<PV, PS> {
 }
 
 #[async_trait]
-impl<PV, PS> PieceGetter for FarmerPieceGetter<PV, PS>
+impl<PG, PS> PieceGetter for FarmerPieceGetter<PG, PS>
 where
-    PV: PieceValidator,
+    PG: PieceGetter + Send + Sync,
     PS: PieceStorage + Send + 'static,
 {
     async fn get_piece(
@@ -52,7 +51,7 @@ where
             piece_storage.should_include_in_storage(&key)
         };
 
-        let maybe_piece = self.piece_provider.get_piece(piece_index).await?;
+        let maybe_piece = self.base_piece_getter.get_piece(piece_index).await?;
 
         if let Some(piece) = &maybe_piece {
             if maybe_should_store {
