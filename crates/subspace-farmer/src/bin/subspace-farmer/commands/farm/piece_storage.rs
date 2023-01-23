@@ -13,14 +13,14 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::RecordBinaryHeap;
 use tracing::{debug, info, trace, warn};
 
-/// Defines record storage with DB persistence
+/// Key value store with ParityDB backend
 #[derive(Clone)]
-pub struct ParityDbKVStore {
+pub struct ParityDbStore {
     // Parity DB instance
     db: Arc<Db>,
 }
 
-impl ParityDbKVStore {
+impl ParityDbStore {
     const COLUMN_ID: u8 = 0;
 
     pub fn new(path: &Path) -> Result<Self, parity_db::Error> {
@@ -93,17 +93,17 @@ impl ParityDbKVStore {
     {
         let btree_iter = self.db.iter(Self::COLUMN_ID)?;
 
-        Ok(ParityDbKVStoreIterator::new(btree_iter)?)
+        Ok(ParityDbStoreIterator::new(btree_iter)?)
     }
 }
 
 /// Parity DB BTree iterator wrapper.
-struct ParityDbKVStoreIterator<'a, Value> {
+struct ParityDbStoreIterator<'a, Value> {
     iter: parity_db::BTreeIterator<'a>,
     _value: PhantomData<Value>,
 }
 
-impl<'a, Value> ParityDbKVStoreIterator<'a, Value> {
+impl<'a, Value> ParityDbStoreIterator<'a, Value> {
     /// Fallible iterator constructor. It requires inner DB BTreeIterator as a parameter.
     fn new(mut iter: parity_db::BTreeIterator<'a>) -> parity_db::Result<Self> {
         iter.seek_to_first()?;
@@ -130,7 +130,7 @@ impl<'a, Value> ParityDbKVStoreIterator<'a, Value> {
     }
 }
 
-impl<'a, Value> Iterator for ParityDbKVStoreIterator<'a, Value>
+impl<'a, Value> Iterator for ParityDbStoreIterator<'a, Value>
 where
     Value: TryFrom<Vec<u8>>,
     Value::Error: fmt::Debug,
@@ -159,15 +159,15 @@ where
 }
 
 /// Piece storage with limited size.
-pub struct LimitedSizeParityDbKVStore {
+pub struct LimitedSizeParityDbStore {
     // Underlying unbounded store.
-    store: ParityDbKVStore,
+    store: ParityDbStore,
     // Maintains a heap to limit total number of entries.
     heap: RecordBinaryHeap,
 }
 
-impl LimitedSizeParityDbKVStore {
-    pub fn new(store: ParityDbKVStore, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
+impl LimitedSizeParityDbStore {
+    pub fn new(store: ParityDbStore, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
         match store.iter::<Vec<u8>>() {
@@ -191,7 +191,7 @@ impl LimitedSizeParityDbKVStore {
     }
 }
 
-impl PieceStorage for LimitedSizeParityDbKVStore {
+impl PieceStorage for LimitedSizeParityDbStore {
     fn should_include_in_storage(&self, key: &Key) -> bool {
         self.heap.should_include_key(key)
     }

@@ -1,5 +1,5 @@
 use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::piece_storage::{LimitedSizeParityDbKVStore, ParityDbKVStore};
+use crate::commands::farm::piece_storage::{LimitedSizeParityDbStore, ParityDbStore};
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
 use event_listener_primitives::HandlerId;
@@ -46,7 +46,7 @@ pub(super) async fn configure_dsn(
     (
         Node,
         NodeRunner<FarmerProviderStorage<ParityDbProviderStorage>>,
-        LimitedSizeParityDbKVStore,
+        LimitedSizeParityDbStore,
     ),
     anyhow::Error,
 > {
@@ -77,10 +77,10 @@ pub(super) async fn configure_dsn(
         FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
 
     //TODO: rename CLI parameters
-    let piece_storage = ParityDbKVStore::new(&record_cache_db_path)
+    let piece_storage = ParityDbStore::new(&record_cache_db_path)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let wrapped_piece_storage =
-        LimitedSizeParityDbKVStore::new(piece_storage.clone(), record_cache_size, peer_id);
+        LimitedSizeParityDbStore::new(piece_storage.clone(), record_cache_size, peer_id);
 
     let config = Config {
         reserved_peers,
@@ -168,7 +168,7 @@ pub(super) async fn configure_dsn(
 /// processing on drop.
 pub(crate) fn start_announcements_processor(
     node: Node,
-    piece_storage: Arc<tokio::sync::Mutex<LimitedSizeParityDbKVStore>>,
+    piece_storage: Arc<tokio::sync::Mutex<LimitedSizeParityDbStore>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
