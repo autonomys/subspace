@@ -1,13 +1,11 @@
-pub mod piece_publisher;
 pub mod piece_reader;
-pub mod piece_receiver;
+pub(crate) mod piece_receiver;
 
 use crate::identity::Identity;
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::farming::audit_sector;
-use crate::single_disk_plot::piece_publisher::PieceSectorPublisher;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
 use crate::single_disk_plot::piece_receiver::RecordsRootPieceValidator;
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
@@ -49,7 +47,7 @@ use subspace_networking::{Node, PieceProvider};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, OwnedSemaphorePermit};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -419,7 +417,7 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotted: Handler<PlottedSector>,
+    sector_plotted: Handler<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
     solution: Handler<SolutionResponse>,
 }
 
@@ -671,8 +669,6 @@ impl SingleDiskPlot {
                 let shutting_down = Arc::clone(&shutting_down);
                 let node_client = node_client.clone();
                 let error_sender = Arc::clone(&error_sender);
-                let piece_publisher =
-                    PieceSectorPublisher::new(dsn_node.clone(), shutting_down.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
@@ -781,29 +777,9 @@ impl SingleDiskPlot {
                                     .copy_from_slice(metadata_header.encode().as_slice());
                             }
 
-                            handlers.sector_plotted.call_simple(&plotted_sector);
-
-                            // TODO: Migrate this over to using `on_sector_plotted` instead
-                            // Publish pieces-by-sector if we use DSN
-                            tokio::spawn({
-                                let piece_publisher = piece_publisher.clone();
-
-                                async move {
-                                    if let Err(error) = piece_publisher
-                                        .publish_pieces(plotted_sector.piece_indexes)
-                                        .await
-                                    {
-                                        warn!(
-                                            %sector_index,
-                                            %error,
-                                            "Failed to publish pieces to DSN"
-                                        );
-                                    }
-
-                                    // Release only after publishing is finished
-                                    drop(plotting_permit);
-                                }
-                            });
+                            handlers
+                                .sector_plotted
+                                .call_simple(&(plotted_sector, Arc::new(plotting_permit)));
                         }
 
                         Ok(())
@@ -1177,7 +1153,13 @@ impl SingleDiskPlot {
     }
 
     /// Subscribe to sector plotting notification
-    pub fn on_sector_plotted(&self, callback: HandlerFn<PlottedSector>) -> HandlerId {
+    ///
+    /// Plotting permit is given such that it can be dropped later by the implementation is
+    /// throttling of the plotting process is desired.
+    pub fn on_sector_plotted(
+        &self,
+        callback: HandlerFn<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
+    ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
     }
 

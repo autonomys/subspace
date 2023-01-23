@@ -2,8 +2,6 @@ mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
-use backoff::future::retry;
-use backoff::ExponentialBackoff;
 use either::Either;
 use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
@@ -11,30 +9,20 @@ use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
-use std::error::Error;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndex, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::utils::pieces::announce_single_piece_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
     NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
-    ToMultihash,
 };
 use tokio::sync::Semaphore;
-use tokio::time::error::Elapsed;
-use tokio::time::timeout;
-use tracing::{debug, error, info, trace, warn, Instrument};
+use tracing::{error, info, trace, warn, Instrument};
 
-/// Max time allocated for putting piece from DSN before attempt is considered to fail
-const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
-/// Defines initial duration between put_piece calls.
-const PUBLISH_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
-/// Defines max duration between put_piece calls.
-const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
 /// Provider records cache size
 const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
 
@@ -188,7 +176,7 @@ pub(crate) async fn publish_pieces(
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
 
     let mut pieces_publishing_futures = pieces_indexes
-        .map(|piece_index| publish_single_piece_with_backoff(node, piece_index))
+        .map(|piece_index| announce_single_piece_with_backoff(piece_index, node))
         .collect::<FuturesUnordered<_>>();
 
     while pieces_publishing_futures.next().await.is_some() {
@@ -196,64 +184,4 @@ pub(crate) async fn publish_pieces(
     }
 
     info!(%segment_index, "Piece publishing was successful.");
-}
-
-async fn publish_single_piece_with_backoff(
-    node: &Node,
-    piece_index: PieceIndex,
-) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let backoff = ExponentialBackoff {
-        initial_interval: PUBLISH_PIECE_INITIAL_INTERVAL,
-        max_interval: PUBLISH_PIECE_MAX_INTERVAL,
-        // Try until we get a valid piece
-        max_elapsed_time: None,
-        ..ExponentialBackoff::default()
-    };
-
-    retry(backoff, || async {
-        let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
-            PUBLISH_PIECE_TIMEOUT,
-            publish_single_piece(node, piece_index),
-        )
-        .await;
-
-        if let Ok(publish_result) = publish_timeout_result {
-            if publish_result.is_ok() {
-                return Ok(());
-            }
-        }
-
-        debug!(%piece_index, "Couldn't publish a piece. Retrying...");
-
-        Err(backoff::Error::transient(
-            "Couldn't publish piece to DSN".into(),
-        ))
-    })
-    .await
-}
-
-async fn publish_single_piece(
-    node: &Node,
-    piece_index: PieceIndex,
-) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let key = PieceIndexHash::from_index(piece_index).to_multihash();
-
-    match node.start_announcing(key.into()).await {
-        Ok(mut stream) => {
-            if stream.next().await.is_some() {
-                trace!(%piece_index, ?key, "Piece announcing succeeded");
-
-                Ok(())
-            } else {
-                warn!(%piece_index, ?key, "Piece announcing failed");
-
-                Err("Piece publishing was unsuccessful".into())
-            }
-        }
-        Err(error) => {
-            error!( %piece_index, ?key, "Piece announcing failed with an error: {}", error);
-
-            Err("Piece publishing failed".into())
-        }
-    }
 }

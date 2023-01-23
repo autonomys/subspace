@@ -6,6 +6,7 @@ use crate::commands::farm::dsn::{configure_dsn, FarmerProviderRecordProcessor};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
@@ -18,6 +19,8 @@ use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::utils::pieces::announce_single_piece_with_backoff;
+use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
@@ -187,17 +190,42 @@ pub(crate) async fn farm_multi_disk(
         .enumerate()
         .map(|(plot_offset, single_disk_plot)| {
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
+            let node = node.clone();
+
+            // We are not going to send anything here, but dropping of sender on dropping of
+            // corresponding `SingleDiskPlot` will allow us to stop background tasks.
+            let (dropped_sender, _dropped_receiver) = broadcast::channel::<()>(1);
 
             // Collect newly plotted pieces
             // TODO: Once we have replotting, this will have to be updated
             single_disk_plot
-                .on_sector_plotted(Arc::new(move |plotted_sector| {
-                    readers_and_pieces
-                        .lock()
-                        .as_mut()
-                        .expect("Initial value was populated above; qed")
-                        .pieces
-                        .extend(
+                .on_sector_plotted(Arc::new(move |(plotted_sector, plotting_permit)| {
+                    let plotting_permit = Arc::clone(plotting_permit);
+                    let node = node.clone();
+                    let sector_index = plotted_sector.sector_index;
+
+                    let mut dropped_receiver = dropped_sender.subscribe();
+
+                    let new_pieces = {
+                        let mut readers_and_pieces = readers_and_pieces.lock();
+                        let readers_and_pieces = readers_and_pieces
+                            .as_mut()
+                            .expect("Initial value was populated above; qed");
+
+                        let new_pieces = plotted_sector
+                            .piece_indexes
+                            .iter()
+                            .filter(|&&piece_index| {
+                                // Skip pieces that are already plotted and thus were announced
+                                // before
+                                !readers_and_pieces
+                                    .pieces
+                                    .contains_key(&PieceIndexHash::from_index(piece_index))
+                            })
+                            .copied()
+                            .collect::<Vec<_>>();
+
+                        readers_and_pieces.pieces.extend(
                             plotted_sector
                                 .piece_indexes
                                 .iter()
@@ -208,12 +236,46 @@ pub(crate) async fn farm_multi_disk(
                                         PieceIndexHash::from_index(piece_index),
                                         PieceDetails {
                                             plot_offset,
-                                            sector_index: plotted_sector.sector_index,
+                                            sector_index,
                                             piece_offset: piece_offset as u64,
                                         },
                                     )
                                 }),
                         );
+
+                        new_pieces
+                    };
+
+                    if new_pieces.is_empty() {
+                        // None of the pieces are new, nothing left to do here
+                        return;
+                    }
+
+                    let publish_fut = async move {
+                        let mut pieces_publishing_futures = new_pieces
+                            .into_iter()
+                            .map(|piece_index| {
+                                announce_single_piece_with_backoff(piece_index, &node)
+                            })
+                            .collect::<FuturesUnordered<_>>();
+
+                        while pieces_publishing_futures.next().await.is_some() {
+                            // Nothing is needed here, just driving all futures to completion
+                        }
+
+                        info!("Piece publishing was successful.");
+
+                        // Release only after publishing is finished
+                        drop(plotting_permit);
+                    };
+
+                    tokio::spawn(async move {
+                        let result =
+                            select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
+                        if !matches!(result, Either::Right(_)) {
+                            debug!("Piece publishing was cancelled due to shutdown.");
+                        }
+                    });
                 }))
                 .detach();
 
