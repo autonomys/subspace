@@ -238,7 +238,7 @@ async fn publish_single_piece(
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
-    match node.start_announcing(key).await {
+    match node.start_announcing(key.into()).await {
         Ok(mut stream) => {
             if stream.next().await.is_some() {
                 trace!(%piece_index, ?key, "Piece announcing succeeded");

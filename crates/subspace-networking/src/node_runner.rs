@@ -174,6 +174,9 @@ where
     }
 
     pub fn take_provider_records_receiver(&mut self) -> Option<mpsc::Receiver<ProviderRecord>> {
+        // TODO: This should be handled by constructor, otherwise receiver that is not consumed will
+        //  cause message buffering and later printing of large amounts of warnings. API should be
+        //  clearer around this.
         self.provider_records_receiver.take()
     }
 
@@ -1020,7 +1023,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .start_providing(key.into());
+                    .start_providing(key.clone());
 
                 match res {
                     Ok(query_id) => {

@@ -9,6 +9,7 @@ use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
@@ -64,7 +65,7 @@ pub(crate) enum Command {
         result_sender: oneshot::Sender<bool>,
     },
     StartAnnouncing {
-        key: Multihash,
+        key: Key,
         result_sender: mpsc::UnboundedSender<()>,
         permit: ResizableSemaphorePermit,
     },

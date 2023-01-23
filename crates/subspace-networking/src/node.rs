@@ -10,6 +10,7 @@ use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
@@ -449,7 +450,7 @@ impl Node {
     /// Start announcing item by its key. Initiate 'start_providing' Kademlia operation.
     pub async fn start_announcing(
         &self,
-        key: Multihash,
+        key: Key,
     ) -> Result<impl Stream<Item = ()>, AnnounceError> {
         let permit = self.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();

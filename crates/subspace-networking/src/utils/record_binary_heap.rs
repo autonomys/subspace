@@ -9,17 +9,18 @@ type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
 // Helper structure. It wraps Kademlia distance to a given peer for heap-metrics.
 #[derive(Debug, Clone)]
 struct RecordHeapKey {
-    peer_key: KademliaBucketKey<PeerId>,
+    peer_distance: Distance,
     key: KademliaBucketKey<Key>,
 }
 
 impl RecordHeapKey {
     fn peer_distance(&self) -> Distance {
-        self.key.distance(&self.peer_key)
+        self.peer_distance
     }
 
-    fn new(peer_key: KademliaBucketKey<PeerId>, key: KademliaBucketKey<Key>) -> Self {
-        Self { peer_key, key }
+    fn new(peer_key: &KademliaBucketKey<PeerId>, key: KademliaBucketKey<Key>) -> Self {
+        let peer_distance = key.distance(peer_key);
+        Self { peer_distance, key }
     }
 }
 
@@ -70,7 +71,7 @@ impl RecordBinaryHeap {
 
     /// Insert a key in the heap evicting (popping) if the size limit is exceeded.
     pub fn insert(&mut self, key: Key) -> Option<Key> {
-        let heap_key = RecordHeapKey::new(self.peer_key.clone(), KademliaBucketKey::new(key));
+        let heap_key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key));
         self.max_heap.push(heap_key);
 
         if self.is_limit_exceeded() {
@@ -85,7 +86,7 @@ impl RecordBinaryHeap {
     /// Removes a key from the heap.
     pub fn remove(&mut self, key: &Key) {
         self.max_heap.retain(|k| {
-            *k != RecordHeapKey::new(self.peer_key.clone(), KademliaBucketKey::new(key.clone()))
+            *k != RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()))
         });
     }
 
@@ -95,8 +96,7 @@ impl RecordBinaryHeap {
             return true;
         }
 
-        let new_key =
-            RecordHeapKey::new(self.peer_key.clone(), KademliaBucketKey::new(key.clone()));
+        let new_key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()));
         let top_key = self.max_heap.peek().cloned();
 
         if let Some(top_key) = top_key {

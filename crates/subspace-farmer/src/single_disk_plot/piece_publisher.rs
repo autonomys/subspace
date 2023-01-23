@@ -99,7 +99,7 @@ impl PieceSectorPublisher {
 
         let key = PieceIndexHash::from_index(piece_index).to_multihash();
 
-        let result = self.dsn_node.start_announcing(key).await;
+        let result = self.dsn_node.start_announcing(key.into()).await;
 
         match result {
             Err(error) => {
