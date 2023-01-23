@@ -44,10 +44,10 @@ impl Ord for RecordHeapKey {
     }
 }
 
-#[derive(Debug, Clone)]
 /// Limited-size max binary heap for Kademlia records' keys.
 /// The heap metrics depends on the Kademlia distance to the provided PeerId.
 /// It maintains limited size and evicts (pops) items when this limited is exceeded.
+#[derive(Debug, Clone)]
 pub struct RecordBinaryHeap {
     peer_key: KademliaBucketKey<PeerId>,
     max_heap: BinaryHeap<RecordHeapKey>,

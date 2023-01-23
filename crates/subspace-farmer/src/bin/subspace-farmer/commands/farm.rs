@@ -1,6 +1,6 @@
 mod dsn;
+mod farmer_piece_storage;
 mod farmer_provider_storage;
-mod piece_storage;
 
 use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor, PieceStorage};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};

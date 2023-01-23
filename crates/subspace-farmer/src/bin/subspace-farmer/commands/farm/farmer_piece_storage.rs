@@ -7,15 +7,15 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::RecordBinaryHeap;
 use tracing::{info, trace, warn};
 
-/// Piece storage with limited size.
-pub struct LimitedSizeParityDbStore {
+/// Piece storage with limited size where pieces closer to provided peer ID are retained.
+pub struct FarmerPieceStorage {
     // Underlying unbounded store.
     store: ParityDbStore,
     // Maintains a heap to limit total number of entries.
     heap: RecordBinaryHeap,
 }
 
-impl LimitedSizeParityDbStore {
+impl FarmerPieceStorage {
     pub fn new(store: ParityDbStore, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
@@ -40,7 +40,7 @@ impl LimitedSizeParityDbStore {
     }
 }
 
-impl PieceStorage for LimitedSizeParityDbStore {
+impl PieceStorage for FarmerPieceStorage {
     fn should_include_in_storage(&self, key: &Key) -> bool {
         self.heap.should_include_key(key)
     }

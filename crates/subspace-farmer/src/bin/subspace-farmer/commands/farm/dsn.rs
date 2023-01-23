@@ -1,5 +1,5 @@
+use crate::commands::farm::farmer_piece_storage::FarmerPieceStorage;
 use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::piece_storage::LimitedSizeParityDbStore;
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
 use event_listener_primitives::HandlerId;
@@ -47,7 +47,7 @@ pub(super) async fn configure_dsn(
     (
         Node,
         NodeRunner<FarmerProviderStorage<ParityDbProviderStorage>>,
-        LimitedSizeParityDbStore,
+        FarmerPieceStorage,
     ),
     anyhow::Error,
 > {
@@ -81,7 +81,7 @@ pub(super) async fn configure_dsn(
     let piece_storage = ParityDbStore::new(&record_cache_db_path)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let wrapped_piece_storage =
-        LimitedSizeParityDbStore::new(piece_storage.clone(), record_cache_size, peer_id);
+        FarmerPieceStorage::new(piece_storage.clone(), record_cache_size, peer_id);
 
     let config = Config {
         reserved_peers,
@@ -169,7 +169,7 @@ pub(super) async fn configure_dsn(
 /// processing on drop.
 pub(crate) fn start_announcements_processor(
     node: Node,
-    piece_storage: Arc<tokio::sync::Mutex<LimitedSizeParityDbStore>>,
+    piece_storage: Arc<tokio::sync::Mutex<FarmerPieceStorage>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
