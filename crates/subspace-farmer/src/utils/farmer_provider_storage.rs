@@ -95,7 +95,8 @@ where
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        self.readers_and_pieces
+        let provided_by_plots = self
+            .readers_and_pieces
             .lock()
             .as_ref()
             .map(|readers_and_pieces| {
@@ -112,7 +113,9 @@ where
                     .map(Cow::Owned)
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        provided_by_plots
             .into_iter()
             .chain(self.persistent_provider_storage.provided())
     }
