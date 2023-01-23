@@ -2,10 +2,14 @@ use crate::commands::farm::ReadersAndPieces;
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::sync::Arc;
+use subspace_core_primitives::{Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
+use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{deconstruct_record_key, ProviderStorage, ToMultihash};
+use subspace_networking::utils::multihash::MultihashCode;
+use subspace_networking::{ProviderStorage, ToMultihash};
+use tracing::trace;
 
 pub(crate) struct FarmerProviderStorage<PersistentProviderStorage> {
     local_peer_id: PeerId,
@@ -41,9 +45,36 @@ where
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        let mut provider_records = self.persistent_provider_storage.providers(key);
+        let multihash = match Multihash::from_bytes(key.as_ref()) {
+            Ok(multihash) => multihash,
+            Err(error) => {
+                trace!(
+                    ?key,
+                    %error,
+                    "Record is not a correct multihash, ignoring"
+                );
+                return Vec::new();
+            }
+        };
 
-        let (piece_index_hash, _) = deconstruct_record_key(key);
+        if multihash.code() != u64::from(MultihashCode::PieceIndexHash) {
+            trace!(
+                ?key,
+                code = %multihash.code(),
+                "Record is not a piece, ignoring"
+            );
+            return Vec::new();
+        }
+
+        let piece_index_hash =
+            Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
+                .expect(
+                    "Multihash has 64-byte digest, which is sufficient for 32-byte Blake2b \
+                    hash; qed",
+                )
+                .into();
+
+        let mut provider_records = self.persistent_provider_storage.providers(key);
 
         if self
             .readers_and_pieces
