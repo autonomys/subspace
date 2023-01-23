@@ -273,49 +273,24 @@ where
                 );
             }
             (false, false) => {
-                if retracted.len() <= enacted.len() {
-                    // Assuming the latest primary block processed by executor is A, the primary
-                    // chain switches to a fork [C, A1, B], the incoming block import
-                    // notification is B.
-                    //
-                    // From A to B, the common block is C, [retracted] = [A], [enacted] = [A1, B]
-                    //
-                    //    A1 -> B
-                    //   /
-                    //  C
-                    //   \
-                    //    A
-                    //
-                    // It's also possible to trigger re-org to a fork on the same height,
-                    //
-                    // From A to A1, the common block is C, [retracted] = [A], [enacted] = [A1]
-                    //
-                    //    A1
-                    //   /
-                    //  C
-                    //   \
-                    //    A
-                    let common_block_number = translate_number_type(route.common_block().number);
-                    let parent_header = self
-                        .client
-                        .header(self.client.hash(common_block_number)?.ok_or_else(|| {
-                            sp_blockchain::Error::Backend(format!(
-                                "Header for #{common_block_number} not found"
-                            ))
-                        })?)?
-                        .ok_or_else(|| {
-                            sp_blockchain::Error::Backend(format!(
-                                "Header for #{common_block_number} not found"
-                            ))
-                        })?;
+                let common_block_number = translate_number_type(route.common_block().number);
+                let parent_header = self
+                    .client
+                    .header(self.client.hash(common_block_number)?.ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Header for #{common_block_number} not found"
+                        ))
+                    })?)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Header for #{common_block_number} not found"
+                        ))
+                    })?;
 
-                    Ok(Some(PendingPrimaryBlocks {
-                        initial_parent: (parent_header.hash(), *parent_header.number()),
-                        primary_imports: enacted.to_vec(),
-                    }))
-                } else {
-                    unreachable!("This must not happen as re-org never occurs on a lower fork.");
-                }
+                Ok(Some(PendingPrimaryBlocks {
+                    initial_parent: (parent_header.hash(), *parent_header.number()),
+                    primary_imports: enacted.to_vec(),
+                }))
             }
         }
     }
