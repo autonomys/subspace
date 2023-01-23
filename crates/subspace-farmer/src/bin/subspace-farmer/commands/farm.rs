@@ -2,26 +2,107 @@ mod dsn;
 mod farmer_provider_storage;
 mod piece_storage;
 
-use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
+use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor, PieceStorage};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use lru::LruCache;
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::error::Error;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash, SectorIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
+use subspace_farmer_components::plotting::PieceReceiver;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
+use subspace_networking::utils::pieces::{
+    announce_single_piece_index_hash_with_backoff, announce_single_piece_index_with_backoff,
+};
+use subspace_networking::{Node, PieceProvider, ToMultihash};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 use zeroize::Zeroizing;
+
+const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
+
+struct FarmerPieceReceiver<PV, PS> {
+    piece_provider: PieceProvider<PV>,
+    piece_storage: Arc<tokio::sync::Mutex<PS>>,
+    node: Node,
+}
+
+impl<PV, PS> FarmerPieceReceiver<PV, PS> {
+    fn new(
+        piece_provider: PieceProvider<PV>,
+        piece_storage: Arc<tokio::sync::Mutex<PS>>,
+        node: Node,
+    ) -> Self {
+        Self {
+            piece_provider,
+            piece_storage,
+            node,
+        }
+    }
+}
+
+#[async_trait]
+impl<PV, PS> PieceReceiver for FarmerPieceReceiver<PV, PS>
+where
+    PV: subspace_networking::PieceValidator,
+    PS: PieceStorage + Send + 'static,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let key = piece_index_hash.to_multihash().into();
+
+        let maybe_should_store = {
+            let piece_storage = self.piece_storage.lock().await;
+            if let Some(piece) = piece_storage.get_piece(&key) {
+                return Ok(Some(piece));
+            }
+
+            piece_storage.should_include_in_storage(&key)
+        };
+
+        let maybe_piece = self.piece_provider.get_piece(piece_index).await?;
+
+        if let Some(piece) = &maybe_piece {
+            if maybe_should_store {
+                let mut piece_storage = self.piece_storage.lock().await;
+                if piece_storage.should_include_in_storage(&key)
+                    && piece_storage.get_piece(&key).is_none()
+                {
+                    piece_storage.add_piece(key, piece.clone());
+                    if let Err(error) =
+                        announce_single_piece_index_hash_with_backoff(piece_index_hash, &self.node)
+                            .await
+                    {
+                        debug!(
+                            ?error,
+                            ?piece_index_hash,
+                            "Announcing retrieved and cached piece index hash failed"
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(maybe_piece)
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 struct PieceDetails {
@@ -69,7 +150,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let (node, mut node_runner, wrapped_piece_storage) = {
+    let (node, mut node_runner, piece_storage) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
             .first()
@@ -92,8 +173,30 @@ pub(crate) async fn farm_multi_disk(
         configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
     };
 
-    let _announcements_processing_handler =
-        start_announcements_processor(node.clone(), wrapped_piece_storage)?;
+    let piece_storage = Arc::new(tokio::sync::Mutex::new(piece_storage));
+
+    let _announcements_processing_handler = start_announcements_processor(
+        node.clone(),
+        Arc::clone(&piece_storage),
+        Arc::downgrade(&readers_and_pieces),
+    )?;
+
+    let kzg = Kzg::new(test_public_parameters());
+    let records_roots_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
+    let piece_provider = PieceProvider::new(
+        node.clone(),
+        Some(RecordsRootPieceValidator::new(
+            node.clone(),
+            node_client.clone(),
+            kzg.clone(),
+            records_roots_cache,
+        )),
+    );
+    let piece_receiver = Arc::new(FarmerPieceReceiver::new(
+        piece_provider,
+        piece_storage,
+        node.clone(),
+    ));
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
 
@@ -118,7 +221,8 @@ pub(crate) async fn farm_multi_disk(
             allocated_space: disk_farm.allocated_plotting_space,
             node_client,
             reward_address,
-            dsn_node: node.clone(),
+            kzg: kzg.clone(),
+            piece_receiver: piece_receiver.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
         });
 

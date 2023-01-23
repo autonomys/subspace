@@ -1,3 +1,5 @@
+pub mod piece_validator;
+
 use std::ops::Deref;
 
 /// Joins synchronous join handle on drop

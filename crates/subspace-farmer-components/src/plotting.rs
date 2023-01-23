@@ -5,7 +5,7 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
@@ -13,7 +13,7 @@ use subspace_core_primitives::{
     Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::info;
 
 /// Duplicate trait for the subspace_networking::PieceReceiver. The goal of this trait is
 /// simplifying dependency graph.
@@ -23,6 +23,19 @@ pub trait PieceReceiver {
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
+
+#[async_trait]
+impl<T> PieceReceiver for Arc<T>
+where
+    T: PieceReceiver + Send + Sync,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.as_ref().get_piece(piece_index).await
+    }
 }
 
 /// Information about sector that was plotted
@@ -41,9 +54,6 @@ pub struct PlottedSector {
 /// Plotting status
 #[derive(Debug, Error)]
 pub enum PlottingError {
-    /// Plotting was cancelled
-    #[error("Plotting was cancelled")]
-    Cancelled,
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
     PieceNotFound {
@@ -79,7 +89,6 @@ pub async fn plot_sector<PR, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
     piece_receiver: &PR,
-    cancelled: &AtomicBool,
     farmer_protocol_info: &FarmerProtocolInfo,
     kzg: &Kzg,
     sector_codec: &SectorCodec,
@@ -119,7 +128,6 @@ where
         sector_index,
         piece_receiver,
         &piece_indexes,
-        cancelled,
     )
     .await?;
 
@@ -181,22 +189,16 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     sector_index: u64,
     piece_receiver: &PR,
     piece_indexes: &[PieceIndex],
-    cancelled: &AtomicBool,
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| async {
-            let piece_result = match check_cancellation(cancelled, sector_index) {
-                Ok(()) => piece_receiver.get_piece(*piece_index).await,
-                Err(error) => Err(error.into()),
-            };
+            let piece_result = piece_receiver.get_piece(*piece_index).await;
             (*piece_index, piece_result)
         })
         .collect::<FuturesOrdered<_>>();
 
     while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
-        check_cancellation(cancelled, sector_index)?;
-
         let piece = piece_result
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
@@ -210,18 +212,6 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
     }
 
     info!(%sector_index, "Plotting was successful.");
-
-    Ok(())
-}
-
-fn check_cancellation(cancelled: &AtomicBool, sector_index: u64) -> Result<(), PlottingError> {
-    if cancelled.load(Ordering::Acquire) {
-        debug!(
-            %sector_index,
-            "Plotting was cancelled, interrupting plotting"
-        );
-        return Err(PlottingError::Cancelled);
-    }
 
     Ok(())
 }
