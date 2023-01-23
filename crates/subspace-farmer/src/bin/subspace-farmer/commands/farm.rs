@@ -23,7 +23,7 @@ use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
-use subspace_farmer_components::plotting::PieceReceiver;
+use subspace_farmer_components::plotting::PieceGetter;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::pieces::{
     announce_single_piece_index_hash_with_backoff, announce_single_piece_index_with_backoff,
@@ -35,13 +35,13 @@ use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
-struct FarmerPieceReceiver<PV, PS> {
+struct FarmerPieceGetter<PV, PS> {
     piece_provider: PieceProvider<PV>,
     piece_storage: Arc<tokio::sync::Mutex<PS>>,
     node: Node,
 }
 
-impl<PV, PS> FarmerPieceReceiver<PV, PS> {
+impl<PV, PS> FarmerPieceGetter<PV, PS> {
     fn new(
         piece_provider: PieceProvider<PV>,
         piece_storage: Arc<tokio::sync::Mutex<PS>>,
@@ -56,7 +56,7 @@ impl<PV, PS> FarmerPieceReceiver<PV, PS> {
 }
 
 #[async_trait]
-impl<PV, PS> PieceReceiver for FarmerPieceReceiver<PV, PS>
+impl<PV, PS> PieceGetter for FarmerPieceGetter<PV, PS>
 where
     PV: subspace_networking::PieceValidator,
     PS: PieceStorage + Send + 'static,
@@ -192,7 +192,7 @@ pub(crate) async fn farm_multi_disk(
             records_roots_cache,
         )),
     );
-    let piece_receiver = Arc::new(FarmerPieceReceiver::new(
+    let piece_getter = Arc::new(FarmerPieceGetter::new(
         piece_provider,
         piece_storage,
         node.clone(),
@@ -222,7 +222,7 @@ pub(crate) async fn farm_multi_disk(
             node_client,
             reward_address,
             kzg: kzg.clone(),
-            piece_receiver: piece_receiver.clone(),
+            piece_getter: piece_getter.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
         });
 

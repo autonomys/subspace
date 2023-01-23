@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use std::error::Error;
 use subspace_core_primitives::{Piece, PieceIndex};
-use subspace_farmer_components::plotting::PieceReceiver;
+use subspace_farmer_components::plotting::PieceGetter;
 
-pub struct BenchPieceReceiver {
+pub struct BenchPieceGetter {
     piece: Piece,
 }
 
 #[async_trait]
-impl PieceReceiver for BenchPieceReceiver {
+impl PieceGetter for BenchPieceGetter {
     async fn get_piece(
         &self,
         _piece_index: PieceIndex,
@@ -17,7 +17,7 @@ impl PieceReceiver for BenchPieceReceiver {
     }
 }
 
-impl BenchPieceReceiver {
+impl BenchPieceGetter {
     pub fn new(piece: Piece) -> Self {
         Self { piece }
     }

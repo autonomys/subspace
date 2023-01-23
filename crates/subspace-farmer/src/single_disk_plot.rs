@@ -36,7 +36,7 @@ use subspace_core_primitives::{
     PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::plotting::PieceReceiver;
+use subspace_farmer_components::plotting::PieceGetter;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -256,7 +256,7 @@ impl PlotMetadataHeader {
 }
 
 /// Options used to open single dis plot
-pub struct SingleDiskPlotOptions<NC, PR> {
+pub struct SingleDiskPlotOptions<NC, PG> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
     /// How much space in bytes can plot use for plot
@@ -266,7 +266,7 @@ pub struct SingleDiskPlotOptions<NC, PR> {
     /// Address where farming rewards should go
     pub reward_address: PublicKey,
     /// Piece receiver implementation for plotting purposes.
-    pub piece_receiver: PR,
+    pub piece_getter: PG,
     /// Kzg instance to use.
     pub kzg: Kzg,
     /// Semaphore to limit concurrency of plotting process.
@@ -455,12 +455,12 @@ impl SingleDiskPlot {
     /// Create new single disk plot instance
     ///
     /// NOTE: Thought this function is async, it will do some blocking I/O.
-    pub async fn new<NC, PR>(
-        options: SingleDiskPlotOptions<NC, PR>,
+    pub async fn new<NC, PG>(
+        options: SingleDiskPlotOptions<NC, PG>,
     ) -> Result<Self, SingleDiskPlotError>
     where
         NC: NodeClient,
-        PR: PieceReceiver + Send + 'static,
+        PG: PieceGetter + Send + 'static,
     {
         let handle = Handle::current();
 
@@ -469,7 +469,7 @@ impl SingleDiskPlot {
             allocated_space,
             node_client,
             reward_address,
-            piece_receiver,
+            piece_getter,
             kzg,
             concurrent_plotting_semaphore,
         } = options;
@@ -703,7 +703,7 @@ impl SingleDiskPlot {
                             let plot_sector_fut = plot_sector(
                                 &public_key,
                                 sector_index,
-                                &piece_receiver,
+                                &piece_getter,
                                 &farmer_app_info.protocol_info,
                                 &kzg,
                                 &sector_codec,
