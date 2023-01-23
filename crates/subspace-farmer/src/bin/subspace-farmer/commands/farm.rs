@@ -22,6 +22,7 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::pieces::announce_single_piece_with_backoff;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
+use zeroize::Zeroizing;
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
@@ -325,18 +326,12 @@ pub(crate) async fn farm_multi_disk(
     anyhow::Ok(())
 }
 
-// TODO: implement proper conversion function with crypto entropy generator and zeroizing
 fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
-    const SECRET_KEY_LENGTH: usize = 32;
+    let mut secret_bytes = Zeroizing::new(schnorrkel_sk.to_ed25519_bytes());
 
-    let schnorrkel_sk_bytes: [u8; SECRET_KEY_LENGTH] = schnorrkel_sk.to_bytes()
-        [..SECRET_KEY_LENGTH]
-        .try_into()
-        .expect("Should be correct array length here.");
-
-    let sk = ed25519::SecretKey::from_bytes(schnorrkel_sk_bytes)
-        .expect("Bytes array length should be compatible");
-    let ed25519_keypair: ed25519::Keypair = sk.into();
-
-    Keypair::Ed25519(ed25519_keypair)
+    Keypair::Ed25519(
+        ed25519::SecretKey::from_bytes(&mut secret_bytes.as_mut()[..32])
+            .expect("Secret key is exactly 32 bytes in size; qed")
+            .into(),
+    )
 }
