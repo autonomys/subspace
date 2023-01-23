@@ -2,6 +2,7 @@ use subspace_core_primitives::Piece;
 use subspace_networking::libp2p::kad::record::Key;
 
 /// Defines persistent piece cache interface.
+// TODO: This should be elsewhere, like in `subspace-dsn`
 pub trait PieceCache: Sync + Send + 'static {
     /// Check whether key should be cached based on current cache size and key-to-peer-id distance.
     fn should_cache(&self, key: &Key) -> bool;

@@ -1,5 +1,6 @@
 pub mod farmer_piece_cache;
 pub mod farmer_piece_getter;
+pub mod farmer_provider_record_processor;
 pub mod farmer_provider_storage;
 pub mod node_piece_getter;
 pub mod parity_db_store;
