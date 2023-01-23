@@ -27,7 +27,6 @@ use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn, Instrument, Span};
 
-const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
@@ -51,10 +50,6 @@ pub(super) async fn configure_dsn(
     ),
     anyhow::Error,
 > {
-    let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
-        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
-            .expect("We don't expect an error on manually set value."),
-    );
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
     let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
