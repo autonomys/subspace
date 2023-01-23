@@ -5,7 +5,6 @@ use rayon::current_num_threads;
 use rayon::prelude::*;
 use std::io;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
@@ -45,7 +44,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
 
-    let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
@@ -62,7 +60,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&public_key),
                 black_box(sector_index),
                 black_box(&piece_receiver),
-                black_box(&cancelled),
                 black_box(&farmer_protocol_info),
                 black_box(&kzg),
                 black_box(&sector_codec),
@@ -85,7 +82,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                         black_box(&public_key),
                         black_box(sector_index),
                         black_box(&piece_receiver),
-                        black_box(&cancelled),
                         black_box(&farmer_protocol_info),
                         black_box(&kzg),
                         black_box(&sector_codec),

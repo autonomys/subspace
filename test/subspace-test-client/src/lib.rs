@@ -32,7 +32,6 @@ use sp_core::{Decode, Encode};
 use std::error::Error;
 use std::io::Cursor;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::crypto::kzg;
@@ -254,7 +253,6 @@ where
         &public_key,
         sector_index,
         &piece_receiver,
-        &AtomicBool::new(false),
         &farmer_protocol_info,
         &kzg,
         sector_codec,

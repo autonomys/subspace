@@ -9,7 +9,8 @@ use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::Sha256Topic;
-use libp2p::kad::PeerRecord;
+use libp2p::kad::record::Key;
+use libp2p::kad::{PeerRecord, ProviderRecord};
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -64,7 +65,7 @@ pub(crate) enum Command {
         result_sender: oneshot::Sender<bool>,
     },
     StartAnnouncing {
-        key: Multihash,
+        key: Key,
         result_sender: mpsc::UnboundedSender<()>,
         permit: ResizableSemaphorePermit,
     },
@@ -85,10 +86,13 @@ pub(crate) enum Command {
     },
 }
 
+pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+type Handler<A> = Bag<HandlerFn<A>, A>;
+
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
-    #[allow(clippy::type_complexity)]
-    pub(crate) new_listener: Bag<Arc<dyn Fn(&Multiaddr) + Send + Sync + 'static>, Multiaddr>,
+    pub(crate) new_listener: Handler<Multiaddr>,
+    pub(crate) announcement: Handler<ProviderRecord>,
 }
 
 #[derive(Debug)]

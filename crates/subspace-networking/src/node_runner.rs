@@ -18,7 +18,7 @@ use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent,
-    PeerRecord, ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
@@ -35,9 +35,6 @@ use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
-
-// Channel size for provider records received from Kademlia.
-const PROVIDER_RECORD_BUFFER_SIZE: usize = 20000;
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -106,10 +103,6 @@ where
     max_established_outgoing_connections: u32,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
-    /// ProviderRecord chanel receiver.
-    provider_records_receiver: Option<mpsc::Receiver<ProviderRecord>>,
-    /// ProviderRecord chanel sender.
-    provider_records_sender: mpsc::Sender<ProviderRecord>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -147,9 +140,6 @@ where
             metrics,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
-        let (provider_records_sender, provider_records_receiver) =
-            mpsc::channel(PROVIDER_RECORD_BUFFER_SIZE);
-
         Self {
             allow_non_global_addresses_in_dht,
             command_receiver,
@@ -168,13 +158,7 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
-            provider_records_receiver: Some(provider_records_receiver),
-            provider_records_sender,
         }
-    }
-
-    pub fn take_provider_records_receiver(&mut self) -> Option<mpsc::Receiver<ProviderRecord>> {
-        self.provider_records_receiver.take()
     }
 
     pub async fn run(&mut self) {
@@ -551,10 +535,14 @@ where
                         error!(?err, "Failed to add provider record: {:?}", record);
                     }
 
-                    let key = record.key.clone();
-                    if let Err(err) = self.provider_records_sender.try_send(record) {
-                        warn!(?err, ?key, "Failed to add provider record to the channel.");
-                    }
+                    let shared = match self.shared_weak.upgrade() {
+                        Some(shared) => shared,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    shared.handlers.announcement.call_simple(&record);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
@@ -1020,7 +1008,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .start_providing(key.into());
+                    .start_providing(key.clone());
 
                 match res {
                     Ok(query_id) => {
