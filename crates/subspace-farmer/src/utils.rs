@@ -1,3 +1,4 @@
+pub mod parity_db_store;
 pub mod piece_validator;
 
 use std::ops::Deref;

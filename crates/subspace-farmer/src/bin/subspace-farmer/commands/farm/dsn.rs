@@ -1,5 +1,5 @@
 use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::piece_storage::{LimitedSizeParityDbStore, ParityDbStore};
+use crate::commands::farm::piece_storage::LimitedSizeParityDbStore;
 use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
 use event_listener_primitives::HandlerId;
@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::{io, thread};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
+use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
