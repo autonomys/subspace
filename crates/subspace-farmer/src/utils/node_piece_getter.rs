@@ -4,12 +4,12 @@ use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::plotting::PieceGetter;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 
-pub(super) struct NodePieceGetter<RV> {
+pub struct NodePieceGetter<RV> {
     piece_provider: PieceProvider<RV>,
 }
 
 impl<RV> NodePieceGetter<RV> {
-    pub(super) fn new(piece_provider: PieceProvider<RV>) -> Self {
+    pub fn new(piece_provider: PieceProvider<RV>) -> Self {
         Self { piece_provider }
     }
 }

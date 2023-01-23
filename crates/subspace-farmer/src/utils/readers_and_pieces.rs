@@ -1,7 +1,7 @@
+use crate::single_disk_plot::piece_reader::PieceReader;
 use std::collections::HashMap;
 use std::future::Future;
 use subspace_core_primitives::{Piece, PieceIndexHash, SectorIndex};
-use subspace_farmer::single_disk_plot::piece_reader::PieceReader;
 use tracing::{trace, warn};
 
 #[derive(Debug, Copy, Clone)]
@@ -13,22 +13,19 @@ pub struct PieceDetails {
 
 /// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers.
 #[derive(Debug)]
-pub(crate) struct ReadersAndPieces {
+pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndexHash, PieceDetails>,
 }
 
 impl ReadersAndPieces {
-    pub(crate) fn new(
-        readers: Vec<PieceReader>,
-        pieces: HashMap<PieceIndexHash, PieceDetails>,
-    ) -> Self {
+    pub fn new(readers: Vec<PieceReader>, pieces: HashMap<PieceIndexHash, PieceDetails>) -> Self {
         // TODO: Verify that plot offset and piece offset are correct
         Self { readers, pieces }
     }
 
     /// Check if piece is known and can be retrieved
-    pub(crate) fn contains_piece(&self, piece_index_hash: &PieceIndexHash) -> bool {
+    pub fn contains_piece(&self, piece_index_hash: &PieceIndexHash) -> bool {
         self.pieces.contains_key(piece_index_hash)
     }
 
@@ -36,7 +33,7 @@ impl ReadersAndPieces {
     ///
     /// If piece doesn't exist `None` is returned, if by the time future is polled piece is no
     /// longer in the plot, future will resolve with `None`.
-    pub(crate) fn read_piece(
+    pub fn read_piece(
         &self,
         piece_index_hash: &PieceIndexHash,
     ) -> Option<impl Future<Output = Option<Piece>> + 'static> {
@@ -68,7 +65,7 @@ impl ReadersAndPieces {
     /// Add more pieces from iterator.
     ///
     /// [`PieceDetails`] containing plot offset or piece offset will be silently ignored.
-    pub(crate) fn add_pieces<I>(&mut self, pieces: I)
+    pub fn add_pieces<I>(&mut self, pieces: I)
     where
         I: Iterator<Item = (PieceIndexHash, PieceDetails)>,
     {
@@ -76,7 +73,7 @@ impl ReadersAndPieces {
         self.pieces.extend(pieces)
     }
 
-    pub(crate) fn piece_index_hashes(&self) -> impl Iterator<Item = &PieceIndexHash> {
+    pub fn piece_index_hashes(&self) -> impl Iterator<Item = &PieceIndexHash> {
         self.pieces.keys()
     }
 }

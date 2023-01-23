@@ -1,4 +1,4 @@
-use crate::commands::farm::readers_and_pieces::ReadersAndPieces;
+use crate::utils::readers_and_pieces::ReadersAndPieces;
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -9,17 +9,16 @@ use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::{MultihashCode, ToMultihash};
 use subspace_networking::ProviderStorage;
-
 use tracing::trace;
 
-pub(crate) struct FarmerProviderStorage<PersistentProviderStorage> {
+pub struct FarmerProviderStorage<PersistentProviderStorage> {
     local_peer_id: PeerId,
     readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
     persistent_provider_storage: PersistentProviderStorage,
 }
 
 impl<PersistentProviderStorage> FarmerProviderStorage<PersistentProviderStorage> {
-    pub(crate) fn new(
+    pub fn new(
         local_peer_id: PeerId,
         readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
         persistent_provider_storage: PersistentProviderStorage,

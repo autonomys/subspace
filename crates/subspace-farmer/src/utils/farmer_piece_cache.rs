@@ -1,7 +1,7 @@
-use crate::commands::farm::dsn::PieceCache;
+use crate::utils::parity_db_store::ParityDbStore;
+use crate::utils::piece_cache::PieceCache;
 use std::num::NonZeroUsize;
 use subspace_core_primitives::Piece;
-use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::RecordBinaryHeap;

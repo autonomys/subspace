@@ -6,6 +6,7 @@
     let_chains,
     trait_alias,
     try_blocks,
+    type_alias_impl_trait,
     type_changing_struct_update
 )]
 

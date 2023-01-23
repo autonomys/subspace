@@ -1,6 +1,3 @@
-use crate::commands::farm::farmer_piece_cache::FarmerPieceCache;
-use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::readers_and_pieces::ReadersAndPieces;
 use crate::DsnArgs;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
@@ -11,9 +8,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::{fs, io, thread};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
+use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
+use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
+use subspace_farmer::utils::piece_cache::PieceCache;
+use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_networking::libp2p::identity::Keypair;
-use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
@@ -367,16 +367,4 @@ async fn get_piece_from_announcer(
     }
 
     None
-}
-
-/// Defines persistent piece cache interface.
-pub trait PieceCache: Sync + Send + 'static {
-    /// Check whether key should be cached based on current cache size and key-to-peer-id distance.
-    fn should_cache(&self, key: &Key) -> bool;
-
-    /// Add piece to the cache.
-    fn add_piece(&mut self, key: Key, piece: Piece);
-
-    /// Get piece from the cache.
-    fn get_piece(&self, key: &Key) -> Option<Piece>;
 }

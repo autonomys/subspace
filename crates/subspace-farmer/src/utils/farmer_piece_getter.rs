@@ -1,4 +1,4 @@
-use crate::commands::farm::dsn::PieceCache;
+use crate::utils::piece_cache::PieceCache;
 use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
@@ -9,14 +9,14 @@ use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_ba
 use subspace_networking::Node;
 use tracing::debug;
 
-pub(super) struct FarmerPieceGetter<PG, PC> {
+pub struct FarmerPieceGetter<PG, PC> {
     base_piece_getter: PG,
     piece_cache: Arc<tokio::sync::Mutex<PC>>,
     node: Node,
 }
 
 impl<PG, PC> FarmerPieceGetter<PG, PC> {
-    pub(super) fn new(
+    pub fn new(
         base_piece_getter: PG,
         piece_cache: Arc<tokio::sync::Mutex<PC>>,
         node: Node,

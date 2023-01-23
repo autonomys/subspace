@@ -1,14 +1,6 @@
 mod dsn;
-mod farmer_piece_cache;
-mod farmer_piece_getter;
-mod farmer_provider_storage;
-mod node_piece_getter;
-mod readers_and_pieces;
 
 use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
-use crate::commands::farm::farmer_piece_getter::FarmerPieceGetter;
-use crate::commands::farm::node_piece_getter::NodePieceGetter;
-use crate::commands::farm::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
@@ -24,7 +16,10 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::{PieceIndexHash, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
+use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
+use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
