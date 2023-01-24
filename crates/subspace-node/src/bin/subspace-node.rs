@@ -16,7 +16,7 @@
 
 //! Subspace node implementation.
 
-use cross_domain_message_gossip::GossipWorker;
+use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -432,6 +432,12 @@ fn main() -> Result<(), Error> {
                             allow_non_global_addresses_in_dht: !cli.dsn_disable_private_ips,
                         }
                     };
+
+                    let mut primary_chain_config = primary_chain_config;
+                    primary_chain_config
+                        .network
+                        .extra_sets
+                        .push(cdm_gossip_peers_set_config());
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,

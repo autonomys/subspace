@@ -60,6 +60,6 @@ pub use request_handlers::pieces_by_range::{
 };
 pub use utils::deconstruct_record_key;
 pub use utils::multihash::ToMultihash;
-pub use utils::piece_receiver::{NoPieceValidator, PieceProvider, PieceReceiver, PieceValidator};
+pub use utils::piece_receiver::{PieceProvider, PieceValidator};
 pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::record_binary_heap::RecordBinaryHeap;

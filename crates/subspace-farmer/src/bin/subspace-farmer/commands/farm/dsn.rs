@@ -8,7 +8,7 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::{io, thread};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
@@ -27,7 +27,6 @@ use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn, Instrument, Span};
 
-const MAX_KADEMLIA_RECORDS_NUMBER: usize = 32768;
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
@@ -51,10 +50,6 @@ pub(super) async fn configure_dsn(
     ),
     anyhow::Error,
 > {
-    let record_cache_size = NonZeroUsize::new(record_cache_size).unwrap_or(
-        NonZeroUsize::new(MAX_KADEMLIA_RECORDS_NUMBER)
-            .expect("We don't expect an error on manually set value."),
-    );
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
     let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
@@ -171,9 +166,10 @@ pub(super) async fn configure_dsn(
 
 /// Start processing announcements received by the network node, returns handle that will stop
 /// processing on drop.
-pub fn start_announcements_processor(
+pub(crate) fn start_announcements_processor(
     node: Node,
-    piece_storage: LimitedSizeParityDbStore,
+    piece_storage: Arc<tokio::sync::Mutex<LimitedSizeParityDbStore>>,
+    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
         mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE);
@@ -202,6 +198,7 @@ pub fn start_announcements_processor(
     let mut provider_record_processor = FarmerProviderRecordProcessor::new(
         node,
         piece_storage,
+        weak_readers_and_pieces.clone(),
         MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
     );
 
@@ -211,6 +208,10 @@ pub fn start_announcements_processor(
         .spawn(move || {
             let processor_fut = async {
                 while let Some(provider_record) = provider_records_receiver.next().await {
+                    if weak_readers_and_pieces.upgrade().is_none() {
+                        // `ReadersAndPieces` was dropped, nothing left to be done
+                        return;
+                    }
                     provider_record_processor
                         .process_provider_record(provider_record)
                         .await;
@@ -227,6 +228,7 @@ pub fn start_announcements_processor(
 pub(crate) struct FarmerProviderRecordProcessor<PS> {
     node: Node,
     piece_storage: Arc<tokio::sync::Mutex<PS>>,
+    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -234,11 +236,17 @@ impl<PS> FarmerProviderRecordProcessor<PS>
 where
     PS: PieceStorage + Send + 'static,
 {
-    pub fn new(node: Node, piece_storage: PS, max_concurrent_announcements: NonZeroUsize) -> Self {
+    pub fn new(
+        node: Node,
+        piece_storage: Arc<tokio::sync::Mutex<PS>>,
+        weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
+        max_concurrent_announcements: NonZeroUsize,
+    ) -> Self {
         let semaphore = Arc::new(Semaphore::new(max_concurrent_announcements.get()));
         Self {
             node,
-            piece_storage: Arc::new(tokio::sync::Mutex::new(piece_storage)),
+            piece_storage,
+            weak_readers_and_pieces,
             semaphore,
         }
     }
@@ -275,6 +283,18 @@ where
                 )
                 .into();
 
+        if let Some(readers_and_pieces) = self.weak_readers_and_pieces.upgrade() {
+            if let Some(readers_and_pieces) = readers_and_pieces.lock().as_ref() {
+                if readers_and_pieces.pieces.contains_key(&piece_index_hash) {
+                    // Piece is already plotted, hence it was also already announced
+                    return;
+                }
+            }
+        } else {
+            // `ReadersAndPieces` was dropped, nothing left to be done
+            return;
+        }
+
         let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
             return;
         };
@@ -301,10 +321,15 @@ where
             if let Some(piece) =
                 get_piece_from_announcer(&node, piece_index_hash, provider_record.provider).await
             {
-                piece_storage
-                    .lock()
-                    .await
-                    .add_piece(provider_record.key.clone(), piece);
+                {
+                    let mut piece_storage = piece_storage.lock().await;
+
+                    if !piece_storage.should_include_in_storage(&provider_record.key) {
+                        return;
+                    }
+
+                    piece_storage.add_piece(provider_record.key.clone(), piece);
+                }
                 if let Err(error) =
                     announce_single_piece_index_hash_with_backoff(piece_index_hash, &node).await
                 {

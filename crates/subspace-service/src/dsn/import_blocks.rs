@@ -28,9 +28,9 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::utils::piece_receiver::NoPieceValidator;
 use subspace_networking::{
     BootstrappedNetworkingParameters, Config, Node, PieceByHashRequestHandler, PieceProvider,
-    PieceReceiver,
 };
 
 struct WaitLinkError<B: BlockT> {
@@ -120,7 +120,8 @@ where
     };
 
     let cancelled = AtomicBool::default();
-    let piece_provider: PieceProvider = PieceProvider::new(&node, None, &cancelled, true);
+    let piece_provider: PieceProvider<NoPieceValidator> =
+        PieceProvider::new(node.clone(), None, true);
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;
