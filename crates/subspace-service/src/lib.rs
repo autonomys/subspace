@@ -22,6 +22,7 @@ pub mod piece_cache;
 pub mod rpc;
 
 use crate::dsn::create_dsn_instance;
+use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::piece_cache::PieceCache;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
@@ -161,6 +162,8 @@ pub struct SubspaceConfiguration {
     pub subspace_networking: SubspaceNetworking,
     /// Max number of segments that can be published concurrently.
     pub segment_publish_concurrency: NonZeroUsize,
+    /// Enables DSN-sync on startup.
+    pub sync_from_dsn: bool,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -418,7 +421,7 @@ where
         client,
         backend,
         mut task_manager,
-        import_queue,
+        mut import_queue,
         keystore_container,
         select_chain,
         transaction_pool,
@@ -559,6 +562,14 @@ where
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
         &task_manager.spawn_essential_handle(),
     );
+
+    if config.sync_from_dsn {
+        import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
+            .await
+            .map_err(|error| {
+                sc_service::Error::Other(format!("Failed to import blocks from DSN: {error:?}"))
+            })?;
+    }
 
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {

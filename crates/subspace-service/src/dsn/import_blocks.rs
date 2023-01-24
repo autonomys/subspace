@@ -20,15 +20,13 @@ use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
 use sc_service::ImportQueue;
 use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
-use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
-use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
-use subspace_networking::{BootstrappedNetworkingParameters, Config, PieceByHashRequestHandler};
+use subspace_networking::Node;
 
 struct WaitLinkError<B: BlockT> {
     error: BlockImportError,
@@ -73,10 +71,9 @@ impl<B: BlockT> Link<B> for WaitLink<B> {
 
 /// Starts the process of importing blocks.
 pub async fn import_blocks<B, IQ, C>(
-    bootstrap_nodes: Vec<Multiaddr>,
+    node: &Node,
     client: Arc<C>,
-    mut import_queue: IQ,
-    spawner: &impl SpawnEssentialNamed,
+    import_queue: &mut IQ,
     force: bool,
 ) -> Result<(), sc_service::Error>
 where
@@ -84,25 +81,7 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    let (node, mut node_runner) = subspace_networking::create(Config {
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
-            .boxed(),
-        allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| None)],
-        ..Config::default()
-    })
-    .await
-    .map_err(|error| sc_service::Error::Other(error.to_string()))?;
-
     let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None, false);
-
-    spawner.spawn_essential(
-        "node-runner",
-        Some("subspace-networking"),
-        Box::pin(async move {
-            node_runner.run().await;
-        }),
-    );
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;

@@ -21,6 +21,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::{BootstrappedNetworkingParameters, Config, PieceByHashRequestHandler};
 use subspace_service::dsn::import_blocks::import_blocks;
 
 /// The `import-blocks-from-network` command used to import blocks from Subspace Network DSN.
@@ -50,7 +51,7 @@ impl ImportBlocksFromDsnCmd {
     pub async fn run<B, C, IQ>(
         &self,
         client: Arc<C>,
-        import_queue: IQ,
+        mut import_queue: IQ,
         spawner: impl SpawnEssentialNamed,
     ) -> sc_cli::Result<()>
     where
@@ -58,15 +59,29 @@ impl ImportBlocksFromDsnCmd {
         B: BlockT + for<'de> serde::Deserialize<'de>,
         IQ: sc_service::ImportQueue<B> + 'static,
     {
-        import_blocks(
-            self.bootstrap_node.clone(),
-            client,
-            import_queue,
-            &spawner,
-            false,
-        )
+        let (node, mut node_runner) = subspace_networking::create(Config {
+            networking_parameters_registry: BootstrappedNetworkingParameters::new(
+                self.bootstrap_node.clone(),
+            )
+            .boxed(),
+            allow_non_global_addresses_in_dht: true,
+            request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| None)],
+            ..Config::default()
+        })
         .await
-        .map_err(Into::into)
+        .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+
+        spawner.spawn_essential(
+            "node-runner",
+            Some("subspace-networking"),
+            Box::pin(async move {
+                node_runner.run().await;
+            }),
+        );
+
+        import_blocks(&node, client, &mut import_queue, false)
+            .await
+            .map_err(Into::into)
     }
 }
 

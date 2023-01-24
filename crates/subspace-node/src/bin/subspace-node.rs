@@ -448,6 +448,7 @@ fn main() -> Result<(), Error> {
                             piece_cache_size: cli.piece_cache_size.as_u64(),
                         },
                         segment_publish_concurrency: cli.segment_publish_concurrency,
+                        sync_from_dsn: cli.sync_from_dsn,
                     };
 
                     let partial_components = subspace_service::new_partial::<
