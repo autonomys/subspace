@@ -43,6 +43,7 @@ sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/subst
 sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+serde = "1.0.147"
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-authorship = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }

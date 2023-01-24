@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
+// Copyright (C) 2023 Subspace Labs, Inc.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This program is free software: you can redistribute it and/or modify
@@ -14,85 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use clap::Parser;
 use parity_scale_codec::Encode;
-use sc_cli::{CliConfiguration, ImportParams, SharedParams};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
 use sc_service::ImportQueue;
 use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::{Piece, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
+use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, PieceByHashRequestHandler, PieceProvider,
+    BootstrappedNetworkingParameters, Config, Node, PieceByHashRequestHandler, PieceProvider,
     PieceReceiver,
 };
-
-type PieceIndex = u64;
-
-/// The `import-blocks-from-network` command used to import blocks from Subspace Network DSN.
-#[derive(Debug, Parser)]
-pub struct ImportBlocksFromDsnCmd {
-    /// Multiaddrs of bootstrap nodes to connect to on startup, multiple are supported
-    #[arg(long)]
-    pub bootstrap_node: Vec<Multiaddr>,
-
-    /// The default number of 64KB pages to ever allocate for Wasm execution.
-    ///
-    /// Don't alter this unless you know what you're doing.
-    #[arg(long, value_name = "COUNT")]
-    pub default_heap_pages: Option<u32>,
-
-    #[allow(missing_docs)]
-    #[clap(flatten)]
-    pub shared_params: SharedParams,
-
-    #[allow(missing_docs)]
-    #[clap(flatten)]
-    pub import_params: ImportParams,
-}
-
-impl ImportBlocksFromDsnCmd {
-    /// Run the import-blocks command
-    pub async fn run<B, C, IQ>(
-        &self,
-        client: Arc<C>,
-        import_queue: IQ,
-        spawner: impl SpawnEssentialNamed,
-    ) -> sc_cli::Result<()>
-        where
-            C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
-            B: BlockT + for<'de> serde::Deserialize<'de>,
-            IQ: sc_service::ImportQueue<B> + 'static,
-    {
-        import_blocks(
-            self.bootstrap_node.clone(),
-            client,
-            import_queue,
-            &spawner,
-            false,
-        )
-            .await
-            .map_err(Into::into)
-    }
-}
-
-impl CliConfiguration for ImportBlocksFromDsnCmd {
-    fn shared_params(&self) -> &SharedParams {
-        &self.shared_params
-    }
-
-    fn import_params(&self) -> Option<&ImportParams> {
-        Some(&self.import_params)
-    }
-}
 
 struct WaitLinkError<B: BlockT> {
     error: BlockImportError,
@@ -135,39 +74,53 @@ impl<B: BlockT> Link<B> for WaitLink<B> {
     }
 }
 
+pub enum BlockImportDsnConfig {
+    Create { bootstrap_nodes: Vec<Multiaddr> },
+    Reuse { node: Node },
+}
+
 /// Starts the process of importing blocks.
-async fn import_blocks<B, IQ, C>(
-    bootstrap_nodes: Vec<Multiaddr>,
+pub async fn import_blocks_from_dsn<B, IQ, C>(
+    dsn_config: BlockImportDsnConfig,
     client: Arc<C>,
-    mut import_queue: IQ,
-    spawner: &impl SpawnEssentialNamed,
+    import_queue: &mut IQ,
+    spawner: &impl SpawnNamed,
     force: bool,
 ) -> Result<(), sc_service::Error>
-    where
-        C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
-        B: BlockT + for<'de> serde::Deserialize<'de>,
-        IQ: ImportQueue<B> + 'static,
+where
+    C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
+    B: BlockT + for<'de> serde::Deserialize<'de>,
+    IQ: ImportQueue<B> + 'static,
 {
-    let (node, mut node_runner) = subspace_networking::create(Config {
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
-            .boxed(),
-        allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| None)],
-        ..Config::default()
-    })
-        .await
-        .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+    let node = match dsn_config {
+        BlockImportDsnConfig::Create { bootstrap_nodes } => {
+            let (node, mut node_runner) = subspace_networking::create(Config {
+                networking_parameters_registry: BootstrappedNetworkingParameters::new(
+                    bootstrap_nodes,
+                )
+                .boxed(),
+                allow_non_global_addresses_in_dht: true,
+                request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| None)],
+                ..Config::default()
+            })
+            .await
+            .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+
+            spawner.spawn(
+                "node-runner",
+                Some("subspace-networking"),
+                Box::pin(async move {
+                    node_runner.run().await;
+                }),
+            );
+
+            node
+        }
+        BlockImportDsnConfig::Reuse { node } => node,
+    };
 
     let cancelled = AtomicBool::default();
     let piece_provider: PieceProvider = PieceProvider::new(&node, None, &cancelled, true);
-
-    spawner.spawn_essential(
-        "node-runner",
-        Some("subspace-networking"),
-        Box::pin(async move {
-            node_runner.run().await;
-        }),
-    );
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;
@@ -281,7 +234,7 @@ async fn import_blocks<B, IQ, C>(
 
             Poll::Ready(())
         })
-            .await;
+        .await;
 
         if let Some(WaitLinkError { error, hash }) = &link.error {
             return Err(sc_service::Error::Other(format!(
@@ -297,7 +250,7 @@ async fn import_blocks<B, IQ, C>(
 
             Poll::Ready(())
         })
-            .await;
+        .await;
 
         if let Some(WaitLinkError { error, hash }) = &link.error {
             return Err(sc_service::Error::Other(format!(

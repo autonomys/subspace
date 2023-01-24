@@ -211,7 +211,7 @@ fn main() -> Result<(), Error> {
                 );
 
                 Ok((
-                    cmd.run(client, import_queue, task_manager.spawn_essential_handle())
+                    cmd.run(client, import_queue, task_manager.spawn_handle())
                         .map_err(Error::SubstrateCli),
                     task_manager,
                 ))
@@ -442,6 +442,7 @@ fn main() -> Result<(), Error> {
                             piece_cache_size: cli.piece_cache_size.as_u64(),
                         },
                         segment_publish_concurrency: cli.segment_publish_concurrency,
+                        sync_from_dsn: cli.sync_from_dsn,
                     };
 
                     let partial_components = subspace_service::new_partial::<
