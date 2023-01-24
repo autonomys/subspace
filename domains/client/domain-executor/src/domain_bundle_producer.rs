@@ -25,6 +25,7 @@ type SignedOpaqueBundle<Block, PBlock> = sp_domains::SignedOpaqueBundle<
     <PBlock as BlockT>::Hash,
     <Block as BlockT>::Hash,
 >;
+
 pub(super) struct DomainBundleProducer<
     Block,
     SBlock,
@@ -44,7 +45,6 @@ pub(super) struct DomainBundleProducer<
     client: Arc<Client>,
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
-    is_authority: bool,
     keystore: SyncCryptoStorePtr,
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, TransactionPool>,
@@ -75,7 +75,6 @@ where
             client: self.client.clone(),
             parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
-            is_authority: self.is_authority,
             keystore: self.keystore.clone(),
             bundle_election_solver: self.bundle_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
@@ -116,7 +115,6 @@ where
         parent_chain: ParentChain,
         transaction_pool: Arc<TransactionPool>,
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
-        is_authority: bool,
         keystore: SyncCryptoStorePtr,
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
@@ -130,7 +128,6 @@ where
             client,
             parent_chain,
             bundle_sender,
-            is_authority,
             keystore,
             bundle_election_solver,
             domain_bundle_proposer,
@@ -143,10 +140,6 @@ where
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
     ) -> Result<Option<SignedOpaqueBundle<Block, PBlock>>, sp_blockchain::Error> {
-        if !self.is_authority {
-            return Ok(None);
-        }
-
         let ExecutorSlotInfo {
             slot,
             global_challenge,
