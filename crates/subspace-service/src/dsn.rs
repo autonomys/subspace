@@ -1,3 +1,4 @@
+pub mod import_blocks;
 mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;

@@ -17,7 +17,7 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 #![feature(type_alias_impl_trait, type_changing_struct_update)]
 
-mod dsn;
+pub mod dsn;
 pub mod piece_cache;
 pub mod rpc;
 
