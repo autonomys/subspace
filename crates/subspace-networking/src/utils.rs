@@ -1,21 +1,17 @@
 pub mod multihash;
-pub mod piece_receiver;
+pub mod piece_provider;
 pub mod pieces;
 pub(crate) mod prometheus;
 pub(crate) mod record_binary_heap;
 #[cfg(test)]
 mod tests;
 
-use crate::utils::multihash::MultihashCode;
-use libp2p::kad::record;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::Multihash;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
 use tokio::sync::Notify;
 use tracing::warn;
 
@@ -252,23 +248,4 @@ impl Drop for ResizableSemaphorePermit {
             self.0.notify.notify_waiters();
         }
     }
-}
-
-/// Deconstruct record::Key to PieceIndexHash and MultihashCode tuple. It treats key as Multihash
-/// from PieceIndexHash and panics if the key was generated differently.
-pub fn deconstruct_record_key(key: &record::Key) -> (PieceIndexHash, MultihashCode) {
-    let multihash =
-        Multihash::from_bytes(key.as_ref()).expect("Key should represent a valid multihash");
-
-    let multihash_code: MultihashCode = multihash
-        .code()
-        .try_into()
-        .expect("Should be correct multihash code.");
-
-    let blake_hash: Blake2b256Hash = multihash.digest()[..BLAKE2B_256_HASH_SIZE]
-        .try_into()
-        .expect("Multihash should be known 32 bytes size.");
-    let piece_index_hash = blake_hash.into();
-
-    (piece_index_hash, multihash_code)
 }

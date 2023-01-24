@@ -18,7 +18,7 @@ use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::plot_sector;
 use subspace_farmer_components::FarmerProtocolInfo;
-use utils::BenchPieceReceiver;
+use utils::BenchPieceGetter;
 
 mod utils;
 
@@ -68,7 +68,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         block_on(plot_sector(
             &public_key,
             sector_index,
-            &BenchPieceReceiver::new(piece),
+            &BenchPieceGetter::new(piece),
             &farmer_protocol_info,
             &kzg,
             &sector_codec,

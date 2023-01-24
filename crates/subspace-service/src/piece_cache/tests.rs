@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE};
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::ToMultihash;
+use subspace_networking::utils::multihash::ToMultihash;
 
 #[derive(Default)]
 pub struct TestAuxStore {

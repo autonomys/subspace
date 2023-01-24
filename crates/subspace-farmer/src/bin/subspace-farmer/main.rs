@@ -1,4 +1,4 @@
-#![feature(const_option, type_alias_impl_trait, type_changing_struct_update)]
+#![feature(const_option, type_changing_struct_update)]
 
 mod commands;
 mod ss58;
@@ -68,9 +68,9 @@ struct DsnArgs {
     /// multiple are supported.
     #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
-    /// Record cache size in items.
+    /// Piece cache size in pieces.
     #[arg(long, default_value = "65536")]
-    record_cache_size: NonZeroUsize,
+    piece_cache_size: NonZeroUsize,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     disable_private_ips: bool,

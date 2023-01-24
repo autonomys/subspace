@@ -13,7 +13,8 @@ use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PI
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{ProviderStorage, ToMultihash};
+use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::ProviderStorage;
 use tracing::{info, trace, warn};
 
 const LOCAL_PROVIDED_KEYS: &[u8] = b"LOCAL_PROVIDED_KEYS";

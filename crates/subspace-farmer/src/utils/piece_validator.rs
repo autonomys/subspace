@@ -8,7 +8,8 @@ use subspace_core_primitives::{
     Piece, PieceIndex, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
 };
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{Node, PieceValidator};
+use subspace_networking::utils::piece_provider::PieceValidator;
+use subspace_networking::Node;
 use tracing::error;
 
 pub struct RecordsRootPieceValidator<NC> {

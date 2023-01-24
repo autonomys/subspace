@@ -1,4 +1,5 @@
-use crate::{Node, PieceByHashRequest, PieceByHashResponse, ToMultihash};
+use crate::utils::multihash::ToMultihash;
+use crate::{Node, PieceByHashRequest, PieceByHashResponse};
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;

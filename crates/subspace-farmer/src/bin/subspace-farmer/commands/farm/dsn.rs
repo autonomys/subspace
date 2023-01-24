@@ -1,6 +1,3 @@
-use crate::commands::farm::farmer_provider_storage::FarmerProviderStorage;
-use crate::commands::farm::piece_storage::{LimitedSizeParityDbStore, ParityDbStore};
-use crate::commands::farm::ReadersAndPieces;
 use crate::DsnArgs;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
@@ -9,23 +6,20 @@ use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
-use std::{io, thread};
-use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
+use std::{fs, io, thread};
+use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
+use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderRecordProcessor;
+use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
+use subspace_farmer::utils::parity_db_store::ParityDbStore;
+use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_networking::libp2p::identity::Keypair;
-use subspace_networking::libp2p::kad::record::Key;
-use subspace_networking::libp2p::kad::ProviderRecord;
-use subspace_networking::libp2p::multihash::Multihash;
-use subspace_networking::libp2p::PeerId;
-use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
+use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
-    ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-    ToMultihash,
+    ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
 };
 use tokio::runtime::Handle;
-use tokio::sync::Semaphore;
-use tracing::{debug, info, trace, warn, Instrument, Span};
+use tracing::{debug, info, warn, Instrument, Span};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
@@ -37,7 +31,7 @@ pub(super) async fn configure_dsn(
     DsnArgs {
         listen_on,
         bootstrap_nodes,
-        record_cache_size,
+        piece_cache_size,
         disable_private_ips,
         reserved_peers,
     }: DsnArgs,
@@ -46,20 +40,27 @@ pub(super) async fn configure_dsn(
     (
         Node,
         NodeRunner<FarmerProviderStorage<ParityDbProviderStorage>>,
-        LimitedSizeParityDbStore,
+        FarmerPieceCache,
     ),
     anyhow::Error,
 > {
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
-    let record_cache_db_path = base_path.join("records_cache_db").into_boxed_path();
-    let provider_cache_db_path = base_path.join("provider_cache_db").into_boxed_path();
+    let piece_cache_db_path = base_path.join("piece_cache_db");
+    // TODO: Remove this migration code in the future
+    {
+        let records_cache_db_path = base_path.join("records_cache_db");
+        if records_cache_db_path.exists() {
+            fs::rename(&records_cache_db_path, &piece_cache_db_path)?;
+        }
+    }
+    let provider_cache_db_path = base_path.join("provider_cache_db");
     let provider_cache_size =
-        record_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
+        piece_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
 
     info!(
-        ?record_cache_db_path,
-        ?record_cache_size,
+        ?piece_cache_db_path,
+        ?piece_cache_size,
         ?provider_cache_db_path,
         ?provider_cache_size,
         "Record cache DB configured."
@@ -76,11 +77,9 @@ pub(super) async fn configure_dsn(
     let farmer_provider_storage =
         FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
 
-    //TODO: rename CLI parameters
-    let piece_storage = ParityDbStore::new(&record_cache_db_path)
-        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    let wrapped_piece_storage =
-        LimitedSizeParityDbStore::new(piece_storage.clone(), record_cache_size, peer_id);
+    let piece_store =
+        ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
 
     let config = Config {
         reserved_peers,
@@ -94,14 +93,14 @@ pub(super) async fn configure_dsn(
                 debug!(piece_index_hash = ?req.piece_index_hash, "Piece request received. Trying cache...");
                 let multihash = req.piece_index_hash.to_multihash();
 
-                let piece_from_cache = piece_storage.get(&multihash.into());
+                let piece_from_cache = piece_store.get(&multihash.into());
 
                 if piece_from_cache.is_some() {
                     piece_from_cache
                 } else {
                     debug!(piece_index_hash = ?req.piece_index_hash, "No piece in the cache. Trying archival storage...");
 
-                    let (mut reader, piece_details) = {
+                    let read_piece_fut = {
                         let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
                             Some(readers_and_pieces) => readers_and_pieces,
                             None => {
@@ -120,35 +119,12 @@ pub(super) async fn configure_dsn(
                                 return None;
                             }
                         };
-                        let piece_details = match readers_and_pieces
-                            .pieces
-                            .get(&req.piece_index_hash)
-                            .copied()
-                        {
-                            Some(piece_details) => piece_details,
-                            None => {
-                                trace!(
-                                    ?req.piece_index_hash,
-                                    "Piece is not stored in any of the local plots"
-                                );
-                                return None;
-                            }
-                        };
-                        let reader = readers_and_pieces
-                            .readers
-                            .get(piece_details.plot_offset)
-                            .cloned()
-                            .expect("Offsets strictly correspond to existing plots; qed");
-                        (reader, piece_details)
+
+                        readers_and_pieces.read_piece(&req.piece_index_hash)?
                     };
 
                     let handle = handle.clone();
-                    tokio::task::block_in_place(move || {
-                        handle.block_on(
-                            reader
-                                .read_piece(piece_details.sector_index, piece_details.piece_offset),
-                        )
-                    })
+                    tokio::task::block_in_place(move || handle.block_on(read_piece_fut))
                 }
             };
 
@@ -160,7 +136,7 @@ pub(super) async fn configure_dsn(
 
     create(config)
         .await
-        .map(|(node, node_runner)| (node, node_runner, wrapped_piece_storage))
+        .map(|(node, node_runner)| (node, node_runner, piece_cache))
         .map_err(Into::into)
 }
 
@@ -168,7 +144,7 @@ pub(super) async fn configure_dsn(
 /// processing on drop.
 pub(crate) fn start_announcements_processor(
     node: Node,
-    piece_storage: Arc<tokio::sync::Mutex<LimitedSizeParityDbStore>>,
+    piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
@@ -197,7 +173,7 @@ pub(crate) fn start_announcements_processor(
     let span = Span::current();
     let mut provider_record_processor = FarmerProviderRecordProcessor::new(
         node,
-        piece_storage,
+        piece_cache,
         weak_readers_and_pieces.clone(),
         MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
     );
@@ -222,180 +198,4 @@ pub(crate) fn start_announcements_processor(
         })?;
 
     Ok(handler_id)
-}
-
-// TODO: This should probably moved into the library
-pub(crate) struct FarmerProviderRecordProcessor<PS> {
-    node: Node,
-    piece_storage: Arc<tokio::sync::Mutex<PS>>,
-    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-    semaphore: Arc<Semaphore>,
-}
-
-impl<PS> FarmerProviderRecordProcessor<PS>
-where
-    PS: PieceStorage + Send + 'static,
-{
-    pub fn new(
-        node: Node,
-        piece_storage: Arc<tokio::sync::Mutex<PS>>,
-        weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-        max_concurrent_announcements: NonZeroUsize,
-    ) -> Self {
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_announcements.get()));
-        Self {
-            node,
-            piece_storage,
-            weak_readers_and_pieces,
-            semaphore,
-        }
-    }
-
-    pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
-        trace!(?provider_record.key, "Starting processing provider record...");
-
-        let multihash = match Multihash::from_bytes(provider_record.key.as_ref()) {
-            Ok(multihash) => multihash,
-            Err(error) => {
-                trace!(
-                    ?provider_record.key,
-                    %error,
-                    "Record is not a correct multihash, ignoring"
-                );
-                return;
-            }
-        };
-
-        if multihash.code() != u64::from(MultihashCode::PieceIndexHash) {
-            trace!(
-                ?provider_record.key,
-                code = %multihash.code(),
-                "Record is not a piece, ignoring"
-            );
-            return;
-        }
-
-        let piece_index_hash =
-            Blake2b256Hash::try_from(&multihash.digest()[..BLAKE2B_256_HASH_SIZE])
-                .expect(
-                    "Multihash has 64-byte digest, which is sufficient for 32-byte Blake2b \
-                    hash; qed",
-                )
-                .into();
-
-        if let Some(readers_and_pieces) = self.weak_readers_and_pieces.upgrade() {
-            if let Some(readers_and_pieces) = readers_and_pieces.lock().as_ref() {
-                if readers_and_pieces.pieces.contains_key(&piece_index_hash) {
-                    // Piece is already plotted, hence it was also already announced
-                    return;
-                }
-            }
-        } else {
-            // `ReadersAndPieces` was dropped, nothing left to be done
-            return;
-        }
-
-        let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
-            return;
-        };
-
-        let node = self.node.clone();
-        let piece_storage = Arc::clone(&self.piece_storage);
-
-        tokio::spawn(async move {
-            {
-                let piece_storage = piece_storage.lock().await;
-
-                if !piece_storage.should_include_in_storage(&provider_record.key) {
-                    return;
-                }
-
-                if piece_storage.get_piece(&provider_record.key).is_some() {
-                    trace!(key=?provider_record.key, "Skipped processing local piece...");
-                    return;
-                }
-
-                // TODO: Store local intent to cache a piece such that we don't try to pull the same piece again
-            }
-
-            if let Some(piece) =
-                get_piece_from_announcer(&node, piece_index_hash, provider_record.provider).await
-            {
-                {
-                    let mut piece_storage = piece_storage.lock().await;
-
-                    if !piece_storage.should_include_in_storage(&provider_record.key) {
-                        return;
-                    }
-
-                    piece_storage.add_piece(provider_record.key.clone(), piece);
-                }
-                if let Err(error) =
-                    announce_single_piece_index_hash_with_backoff(piece_index_hash, &node).await
-                {
-                    debug!(
-                        ?error,
-                        ?piece_index_hash,
-                        "Announcing cached piece index hash failed"
-                    );
-                }
-            }
-
-            drop(permit);
-        });
-    }
-}
-
-async fn get_piece_from_announcer(
-    node: &Node,
-    piece_index_hash: PieceIndexHash,
-    provider: PeerId,
-) -> Option<Piece> {
-    let request_result = node
-        .send_generic_request(provider, PieceByHashRequest { piece_index_hash })
-        .await;
-
-    // TODO: Nothing guarantees that piece index hash is real, response must also return piece index
-    //  that matches piece index hash and piece must be verified against blockchain after that
-    match request_result {
-        Ok(PieceByHashResponse { piece: Some(piece) }) => {
-            trace!(
-                %provider,
-                ?piece_index_hash,
-                "Piece request succeeded."
-            );
-
-            return Some(piece);
-        }
-        Ok(PieceByHashResponse { piece: None }) => {
-            debug!(
-                %provider,
-                ?piece_index_hash,
-                "Provider returned no piece right after announcement."
-            );
-        }
-        Err(error) => {
-            warn!(
-                %provider,
-                ?piece_index_hash,
-                ?error,
-                "Piece request to announcer provider failed."
-            );
-        }
-    }
-
-    None
-}
-
-/// Defines persistent piece storage interface.
-pub trait PieceStorage: Sync + Send + 'static {
-    /// Check whether key should be inserted into the storage with current storage size and
-    /// key-to-peer-id distance.
-    fn should_include_in_storage(&self, key: &Key) -> bool;
-
-    /// Add piece to the storage.
-    fn add_piece(&mut self, key: Key, piece: Piece);
-
-    /// Get piece from the storage.
-    fn get_piece(&self, key: &Key) -> Option<Piece>;
 }
