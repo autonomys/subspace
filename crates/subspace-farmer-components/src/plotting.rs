@@ -18,7 +18,7 @@ use tracing::info;
 /// Duplicate trait for the subspace_networking::PieceReceiver. The goal of this trait is
 /// simplifying dependency graph.
 #[async_trait]
-pub trait PieceReceiver {
+pub trait PieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
@@ -26,9 +26,9 @@ pub trait PieceReceiver {
 }
 
 #[async_trait]
-impl<T> PieceReceiver for Arc<T>
+impl<T> PieceGetter for Arc<T>
 where
-    T: PieceReceiver + Send + Sync,
+    T: PieceGetter + Send + Sync,
 {
     async fn get_piece(
         &self,
@@ -85,10 +85,10 @@ pub enum PlottingError {
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
 #[allow(clippy::too_many_arguments)]
-pub async fn plot_sector<PR, S, SM>(
+pub async fn plot_sector<PG, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
-    piece_receiver: &PR,
+    piece_getter: &PG,
     farmer_protocol_info: &FarmerProtocolInfo,
     kzg: &Kzg,
     sector_codec: &SectorCodec,
@@ -96,7 +96,7 @@ pub async fn plot_sector<PR, S, SM>(
     mut sector_metadata_output: SM,
 ) -> Result<PlottedSector, PlottingError>
 where
-    PR: PieceReceiver,
+    PG: PieceGetter,
     S: io::Write,
     SM: io::Write,
 {
@@ -126,7 +126,7 @@ where
     plot_pieces_in_batches_non_blocking(
         &mut in_memory_sector_scalars,
         sector_index,
-        piece_receiver,
+        piece_getter,
         &piece_indexes,
     )
     .await?;
@@ -184,16 +184,16 @@ where
     })
 }
 
-async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
+async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
     in_memory_sector_scalars: &mut Vec<Scalar>,
     sector_index: u64,
-    piece_receiver: &PR,
+    piece_getter: &PG,
     piece_indexes: &[PieceIndex],
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| async {
-            let piece_result = piece_receiver.get_piece(*piece_index).await;
+            let piece_result = piece_getter.get_piece(*piece_index).await;
             (*piece_index, piece_result)
         })
         .collect::<FuturesOrdered<_>>();

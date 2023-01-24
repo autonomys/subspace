@@ -15,7 +15,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::plotting::plot_sector;
 use subspace_farmer_components::FarmerProtocolInfo;
-use utils::BenchPieceReceiver;
+use utils::BenchPieceGetter;
 
 mod utils;
 
@@ -50,7 +50,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         total_pieces: NonZeroU64::new(1).unwrap(),
         sector_expiration: 1,
     };
-    let piece_receiver = BenchPieceReceiver::new(piece);
+    let piece_getter = BenchPieceGetter::new(piece);
 
     let mut group = c.benchmark_group("sector-plotting");
     group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE));
@@ -59,7 +59,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             block_on(plot_sector(
                 black_box(&public_key),
                 black_box(sector_index),
-                black_box(&piece_receiver),
+                black_box(&piece_getter),
                 black_box(&farmer_protocol_info),
                 black_box(&kzg),
                 black_box(&sector_codec),
@@ -81,7 +81,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     block_on(plot_sector(
                         black_box(&public_key),
                         black_box(sector_index),
-                        black_box(&piece_receiver),
+                        black_box(&piece_getter),
                         black_box(&farmer_protocol_info),
                         black_box(&kzg),
                         black_box(&sector_codec),

@@ -1,19 +1,14 @@
-//use crate::behavior::record_binary_heap::RecordBinaryHeap;
-use crate::commands::farm::dsn::PieceStorage;
 use parity_db::{ColumnOptions, Db, Options};
 use std::error::Error;
+use std::fmt;
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
-use std::{fmt, vec};
 use subspace_core_primitives::Piece;
 use subspace_networking::libp2p::kad::record::Key;
-use subspace_networking::libp2p::PeerId;
-use subspace_networking::RecordBinaryHeap;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
-/// Key value store with ParityDB backend
+/// Generic key value store with ParityDB backend and iteration support
 #[derive(Clone)]
 pub struct ParityDbStore {
     // Parity DB instance
@@ -117,12 +112,12 @@ impl<'a, Value> ParityDbStoreIterator<'a, Value> {
     fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
         match self.iter.next() {
             Ok(value) => {
-                trace!("Parity DB provider iterator succeeded");
+                trace!("Parity DB store iterator succeeded");
 
                 value
             }
             Err(err) => {
-                warn!(?err, "Parity DB provider iterator error");
+                warn!(?err, "Parity DB store iterator error");
 
                 None
             }
@@ -144,71 +139,16 @@ where
             Ok(piece) => match key.clone().try_into() {
                 Ok(key) => Some((key, piece)),
                 Err(err) => {
-                    debug!(?key, ?err, "Parity DB key conversion error");
+                    debug!(?key, ?err, "Parity DB store key conversion error");
 
                     None
                 }
             },
             Err(err) => {
-                warn!(?key, ?err, "Parity DB storage piece conversion error");
+                warn!(?key, ?err, "Parity DB store value conversion error");
 
                 None
             }
         }
-    }
-}
-
-/// Piece storage with limited size.
-pub struct LimitedSizeParityDbStore {
-    // Underlying unbounded store.
-    store: ParityDbStore,
-    // Maintains a heap to limit total number of entries.
-    heap: RecordBinaryHeap,
-}
-
-impl LimitedSizeParityDbStore {
-    pub fn new(store: ParityDbStore, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
-        let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
-
-        match store.iter::<Vec<u8>>() {
-            Ok(pieces_iter) => {
-                for (key, _) in pieces_iter {
-                    let _ = heap.insert(key);
-                }
-
-                if heap.size() > 0 {
-                    info!(size = heap.size(), "Local piece cache loaded.");
-                } else {
-                    info!("New local piece cache initialized.");
-                }
-            }
-            Err(err) => {
-                warn!(?err, "Local pieces from Parity DB iterator failed.");
-            }
-        }
-
-        Self { store, heap }
-    }
-}
-
-impl PieceStorage for LimitedSizeParityDbStore {
-    fn should_include_in_storage(&self, key: &Key) -> bool {
-        self.heap.should_include_key(key)
-    }
-
-    fn add_piece(&mut self, key: Key, piece: Piece) {
-        self.store.update([(&key, Some(piece.into()))]);
-
-        let evicted_key = self.heap.insert(key);
-
-        if let Some(key) = evicted_key {
-            trace!(?key, "Record evicted from cache.");
-
-            self.store.update([(&key, None)]);
-        }
-    }
-
-    fn get_piece(&self, key: &Key) -> Option<Piece> {
-        self.store.get(key)
     }
 }

@@ -43,7 +43,7 @@ use subspace_core_primitives::{
     RECORD_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceReceiver};
+use subspace_farmer_components::plotting::{plot_sector, PieceGetter};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
@@ -194,12 +194,12 @@ async fn start_farming<Client>(
     }
 }
 
-struct TestPieceReceiver {
+struct TestPieceGetter {
     archived_segment: ArchivedSegment,
 }
 
 #[async_trait]
-impl PieceReceiver for TestPieceReceiver {
+impl PieceGetter for TestPieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
@@ -239,7 +239,7 @@ where
     let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;
-    let piece_receiver = TestPieceReceiver { archived_segment };
+    let piece_getter = TestPieceGetter { archived_segment };
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
@@ -252,7 +252,7 @@ where
     plot_sector(
         &public_key,
         sector_index,
-        &piece_receiver,
+        &piece_getter,
         &farmer_protocol_info,
         &kzg,
         sector_codec,

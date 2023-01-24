@@ -28,9 +28,9 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::utils::piece_receiver::NoPieceValidator;
+use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
 use subspace_networking::{
-    BootstrappedNetworkingParameters, Config, Node, PieceByHashRequestHandler, PieceProvider,
+    BootstrappedNetworkingParameters, Config, Node, PieceByHashRequestHandler,
 };
 
 struct WaitLinkError<B: BlockT> {

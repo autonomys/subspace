@@ -65,7 +65,7 @@ where
     let peer_id = peer_id(&dsn_config.keypair);
 
     let external_provider_storage = if let Some(path) = dsn_config.base_path {
-        let db_path = path.join("storage_providers_db").into_boxed_path();
+        let db_path = path.join("storage_providers_db");
 
         let cache_size: NonZeroUsize = NonZeroUsize::new(MAX_PROVIDER_RECORDS_LIMIT)
             .expect("Manual value should be greater than zero.");
