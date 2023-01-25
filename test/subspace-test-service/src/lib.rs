@@ -205,6 +205,7 @@ pub async fn run_validator_node(
                 piece_cache_size: 1024 * 1024 * 1024,
             },
             segment_publish_concurrency: NonZeroUsize::new(10).unwrap(),
+            sync_from_dsn: false,
         };
 
         let partial_components = subspace_service::new_partial::<RuntimeApi, TestExecutorDispatch>(

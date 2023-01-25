@@ -25,20 +25,32 @@ pub trait PieceValidator: Sync + Send {
     ) -> Option<Piece>;
 }
 
+/// Stub implementation for piece validation.
+pub struct NoPieceValidator;
+
+#[async_trait]
+impl PieceValidator for NoPieceValidator {
+    async fn validate_piece(&self, _: PeerId, _: PieceIndex, piece: Piece) -> Option<Piece> {
+        Some(piece)
+    }
+}
+
 /// Piece provider with cancellation and optional piece validator.
 pub struct PieceProvider<PV> {
     node: Node,
     piece_validator: Option<PV>,
+    retry: bool,
 }
 
 impl<PV> PieceProvider<PV>
 where
     PV: PieceValidator,
 {
-    pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
+    pub fn new(node: Node, piece_validator: Option<PV>, retry: bool) -> Self {
         Self {
             node,
             piece_validator,
+            retry,
         }
     }
 
@@ -106,6 +118,10 @@ where
             if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, "Got piece");
                 return Ok(Some(piece));
+            }
+
+            if !self.retry {
+                return Ok(None);
             }
 
             warn!(%piece_index, "Couldn't get a piece from DSN. Retrying...");
