@@ -318,7 +318,8 @@ mod pallet {
             log::trace!(target: "runtime::domain-registry", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id.is_core() {
-                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof);
+                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
+                    .map_err(Error::<T>::from)?;
             }
 
             // TODO: slash the executor accordingly.
@@ -455,6 +456,9 @@ mod pallet {
             match error {
                 PalletReceiptError::MissingParent => Self::Receipt(ReceiptError::MissingParent),
                 PalletReceiptError::FraudProof(err) => Self::FraudProof(err),
+                PalletReceiptError::UnavailablePrimaryBlockHash => {
+                    Self::UnavailablePrimaryBlockHash
+                }
             }
         }
     }
@@ -503,6 +507,9 @@ mod pallet {
 
         /// Not a core domain bundle.
         NotCoreDomainBundle,
+
+        /// Can not find the block hash of given primary block number.
+        UnavailablePrimaryBlockHash,
 
         /// Receipt error.
         Receipt(ReceiptError),
