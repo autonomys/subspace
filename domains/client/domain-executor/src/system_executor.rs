@@ -121,7 +121,6 @@ where
             parent_chain,
             params.transaction_pool.clone(),
             params.bundle_sender,
-            params.is_authority,
             params.keystore.clone(),
         );
 
@@ -155,6 +154,7 @@ where
             crate::system_domain_worker::start_worker(
                 params.primary_chain_client.clone(),
                 params.client.clone(),
+                params.is_authority,
                 bundle_producer,
                 bundle_processor.clone(),
                 params.imported_block_notification_stream,

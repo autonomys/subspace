@@ -52,6 +52,7 @@ pub(super) async fn start_worker<
 >(
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
+    is_authority: bool,
     bundle_producer: DomainBundleProducer<
         Block,
         Block,
@@ -150,9 +151,13 @@ pub(super) async fn start_worker<
         ),
     );
 
-    let _ = future::select(
-        Box::pin(handle_block_import_notifications_fut),
-        Box::pin(handle_slot_notifications_fut),
-    )
-    .await;
+    if is_authority {
+        let _ = future::select(
+            Box::pin(handle_block_import_notifications_fut),
+            Box::pin(handle_slot_notifications_fut),
+        )
+        .await;
+    } else {
+        handle_block_import_notifications_fut.await
+    }
 }
