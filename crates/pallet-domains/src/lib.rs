@@ -109,12 +109,15 @@ mod pallet {
                     Self::Bundle(BundleError::Receipt(ExecutionReceiptError::MissingParent))
                 }
                 ReceiptError::FraudProof(err) => Self::FraudProof(err),
+                ReceiptError::UnavailablePrimaryBlockHash => Self::UnavailablePrimaryBlockHash,
             }
         }
     }
 
     #[pallet::error]
     pub enum Error<T> {
+        /// Can not find the block hash of given primary block number.
+        UnavailablePrimaryBlockHash,
         /// Invalid bundle.
         Bundle(BundleError),
         /// Invalid fraud proof.
@@ -178,7 +181,8 @@ mod pallet {
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id.is_system() {
-                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof);
+                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
+                    .map_err(Error::<T>::from)?;
             }
 
             // TODO: slash the executor accordingly.

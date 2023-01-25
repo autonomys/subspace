@@ -99,7 +99,7 @@ mod pallet {
         Twox64Concat,
         T::BlockNumber,
         T::Hash,
-        ValueQuery,
+        OptionQuery,
     >;
 
     /// A pair of (block_hash, block_number) of the latest execution receipt of a domain.
@@ -194,6 +194,8 @@ mod pallet {
 pub enum Error {
     /// The parent execution receipt is missing.
     MissingParent,
+    /// Can not find the block hash of given primary block number.
+    UnavailablePrimaryBlockHash,
     /// Invalid fraud proof.
     FraudProof(FraudProofError),
 }
@@ -227,7 +229,9 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
         receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> bool {
-        Self::primary_hash(domain_id, receipt.primary_number) == receipt.primary_hash
+        Self::primary_hash(domain_id, receipt.primary_number)
+            .map(|hash| hash == receipt.primary_hash)
+            .unwrap_or(false)
     }
 
     /// Initialize the genesis execution receipt
@@ -276,18 +280,20 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Process a verified fraud proof.
-    pub fn process_fraud_proof(fraud_proof: FraudProof) {
+    pub fn process_fraud_proof(fraud_proof: FraudProof) -> Result<(), Error> {
         // Revert the execution chain.
         let domain_id = fraud_proof.domain_id;
         let (_, mut to_remove) = <ReceiptHead<T>>::get(domain_id);
 
         let new_best_number: T::BlockNumber = fraud_proof.parent_number.into();
-        let new_best_hash = BlockHash::<T>::get(domain_id, new_best_number);
+        let new_best_hash = BlockHash::<T>::get(domain_id, new_best_number)
+            .ok_or(Error::UnavailablePrimaryBlockHash)?;
 
         <ReceiptHead<T>>::insert(domain_id, (new_best_hash, new_best_number));
 
         while to_remove > new_best_number {
-            let block_hash = BlockHash::<T>::get(domain_id, to_remove);
+            let block_hash = BlockHash::<T>::get(domain_id, to_remove)
+                .ok_or(Error::UnavailablePrimaryBlockHash)?;
             for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix((domain_id, block_hash)) {
                 <Receipts<T>>::remove(domain_id, receipt_hash);
             }
@@ -299,6 +305,7 @@ impl<T: Config> Pallet<T> {
             new_best_number,
             new_best_hash,
         });
+        Ok(())
     }
 
     pub fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error> {
@@ -318,7 +325,7 @@ impl<T: Config> Pallet<T> {
             .map_err(|_| FraudProofError::WrongHashType)?;
         let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
         ensure!(
-            Self::primary_hash(fraud_proof.domain_id, parent_number) == parent_hash,
+            Self::primary_hash(fraud_proof.domain_id, parent_number) == Some(parent_hash),
             FraudProofError::UnknownBlock
         );
 
