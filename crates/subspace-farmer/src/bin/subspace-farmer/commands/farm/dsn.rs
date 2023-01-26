@@ -93,7 +93,7 @@ pub(super) async fn configure_dsn(
                 debug!(piece_index_hash = ?req.piece_index_hash, "Piece request received. Trying cache...");
                 let multihash = req.piece_index_hash.to_multihash();
 
-                let piece_from_cache = piece_store.get(&multihash.into());
+                let piece_from_cache = piece_store.get(multihash.into());
 
                 if piece_from_cache.is_some() {
                     piece_from_cache

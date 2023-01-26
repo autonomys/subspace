@@ -10,16 +10,20 @@ use tracing::{info, trace, warn};
 /// Piece cache with limited size where pieces closer to provided peer ID are retained.
 pub struct FarmerPieceCache {
     // Underlying unbounded store.
-    store: ParityDbStore,
+    store: ParityDbStore<Key, Piece>,
     // Maintains a heap to limit total number of entries.
     heap: RecordBinaryHeap,
 }
 
 impl FarmerPieceCache {
-    pub fn new(store: ParityDbStore, max_items_limit: NonZeroUsize, peer_id: PeerId) -> Self {
+    pub fn new(
+        store: ParityDbStore<Key, Piece>,
+        max_items_limit: NonZeroUsize,
+        peer_id: PeerId,
+    ) -> Self {
         let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
 
-        match store.iter::<Vec<u8>>() {
+        match store.iter() {
             Ok(pieces_iter) => {
                 for (key, _) in pieces_iter {
                     let _ = heap.insert(key);
@@ -58,6 +62,6 @@ impl PieceCache for FarmerPieceCache {
     }
 
     fn get_piece(&self, key: &Key) -> Option<Piece> {
-        self.store.get(key)
+        self.store.get(key.clone())
     }
 }
