@@ -155,6 +155,7 @@ impl SubstrateCli for CoreDomainCli {
             DomainId::CORE_PAYMENTS => match id {
                 "dev" => core_payments_chain_spec::development_config(),
                 "gemini-3c" => core_payments_chain_spec::gemini_3c_config(),
+                "devnet" => core_payments_chain_spec::devnet_config(),
                 "" | "local" => core_payments_chain_spec::local_testnet_config(),
                 path => core_payments_chain_spec::ChainSpec::from_json_file(
                     std::path::PathBuf::from(path),
