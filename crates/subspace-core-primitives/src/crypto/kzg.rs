@@ -64,53 +64,56 @@ impl TryFrom<&[u8]> for Polynomial {
     }
 }
 
+/// Commitment size in bytes.
+pub const COMMITMENT_SIZE: usize = 48;
+
 /// Commitment to polynomial
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Commitment(G1Affine);
 
 impl Commitment {
     /// Convert commitment to raw bytes
-    pub fn to_bytes(&self) -> [u8; 48] {
+    pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
         self.0.to_bytes()
     }
 
     /// Try to deserialize commitment from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; 48]) -> Result<Self, dusk_bytes::Error> {
+    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, dusk_bytes::Error> {
         Ok(Commitment(G1Affine::from_bytes(bytes)?))
     }
 }
 
-impl From<Commitment> for [u8; 48] {
+impl From<Commitment> for [u8; COMMITMENT_SIZE] {
     fn from(commitment: Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
-impl From<&Commitment> for [u8; 48] {
+impl From<&Commitment> for [u8; COMMITMENT_SIZE] {
     fn from(commitment: &Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
-impl TryFrom<&[u8; 48]> for Commitment {
+impl TryFrom<&[u8; COMMITMENT_SIZE]> for Commitment {
     type Error = dusk_bytes::Error;
 
-    fn try_from(bytes: &[u8; 48]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
 }
 
-impl TryFrom<[u8; 48]> for Commitment {
+impl TryFrom<[u8; COMMITMENT_SIZE]> for Commitment {
     type Error = dusk_bytes::Error;
 
-    fn try_from(bytes: [u8; 48]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Commitment {
     fn size_hint(&self) -> usize {
-        48
+        COMMITMENT_SIZE
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -118,7 +121,7 @@ impl Encode for Commitment {
     }
 
     fn encoded_size(&self) -> usize {
-        48
+        COMMITMENT_SIZE
     }
 }
 
@@ -133,7 +136,7 @@ impl Decode for Commitment {
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(48)
+        Some(COMMITMENT_SIZE)
     }
 }
 
@@ -148,7 +151,7 @@ impl TypeInfo for Commitment {
             ))
             .docs(&["Commitment to polynomial"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; 48]>()
+                f.ty::<[u8; COMMITMENT_SIZE]>()
                     .name(stringify!(inner))
                     .type_name("G1Affine")
             }))
@@ -161,47 +164,47 @@ pub struct Witness(G1Affine);
 
 impl Witness {
     /// Convert witness to raw bytes
-    pub fn to_bytes(&self) -> [u8; 48] {
+    pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
         self.0.to_bytes()
     }
 
     /// Try to deserialize witness from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; 48]) -> Result<Self, dusk_bytes::Error> {
+    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, dusk_bytes::Error> {
         Ok(Witness(G1Affine::from_bytes(bytes)?))
     }
 }
 
-impl From<Witness> for [u8; 48] {
+impl From<Witness> for [u8; COMMITMENT_SIZE] {
     fn from(witness: Witness) -> Self {
         witness.to_bytes()
     }
 }
 
-impl From<&Witness> for [u8; 48] {
+impl From<&Witness> for [u8; COMMITMENT_SIZE] {
     fn from(witness: &Witness) -> Self {
         witness.to_bytes()
     }
 }
 
-impl TryFrom<&[u8; 48]> for Witness {
+impl TryFrom<&[u8; COMMITMENT_SIZE]> for Witness {
     type Error = dusk_bytes::Error;
 
-    fn try_from(bytes: &[u8; 48]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
 }
 
-impl TryFrom<[u8; 48]> for Witness {
+impl TryFrom<[u8; COMMITMENT_SIZE]> for Witness {
     type Error = dusk_bytes::Error;
 
-    fn try_from(bytes: [u8; 48]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Witness {
     fn size_hint(&self) -> usize {
-        48
+        COMMITMENT_SIZE
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -209,7 +212,7 @@ impl Encode for Witness {
     }
 
     fn encoded_size(&self) -> usize {
-        48
+        COMMITMENT_SIZE
     }
 }
 
@@ -224,7 +227,7 @@ impl Decode for Witness {
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(48)
+        Some(COMMITMENT_SIZE)
     }
 }
 
@@ -236,7 +239,7 @@ impl TypeInfo for Witness {
             .path(scale_info::Path::new(stringify!(Witness), module_path!()))
             .docs(&["Witness for polynomial evaluation"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; 48]>()
+                f.ty::<[u8; COMMITMENT_SIZE]>()
                     .name(stringify!(inner))
                     .type_name("G1Affine")
             }))
