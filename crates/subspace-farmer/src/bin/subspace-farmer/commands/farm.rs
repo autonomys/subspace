@@ -10,16 +10,19 @@ use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::error::Error;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
-use subspace_core_primitives::{PieceIndexHash, PLOT_SECTOR_SIZE};
-use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_core_primitives::{PieceIndexHash, SegmentIndex, PLOT_SECTOR_SIZE};
+use subspace_farmer::single_disk_plot::{FarmingError, SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
+use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
+use subspace_farmer::utils::records_root::{RecordsRootValue, SegmentIndexKey};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
@@ -83,7 +86,7 @@ pub(crate) async fn farm_multi_disk(
                     .dsn_bootstrap_nodes
             };
         }
-        configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
+        configure_dsn(base_path.clone(), keypair, dsn, &readers_and_pieces).await?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
@@ -300,6 +303,18 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
+    // Records root cache
+    let mut archived_segments_notifications = node_client
+        .subscribe_archived_segments()
+        .await
+        .map_err(|error| FarmingError::FailedToSubscribeArchivedSegments { error })?;
+
+    let records_root_db_path = base_path.join("records_root_db");
+    let records_root_db =
+        ParityDbStore::<SegmentIndexKey, RecordsRootValue>::new(&records_root_db_path)?;
+
+    run_records_root_update_task(node_client.clone(), records_root_db.clone());
+
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
@@ -320,9 +335,135 @@ pub(crate) async fn farm_multi_disk(
         _ = node_runner.run().fuse() => {
             info!("Node runner exited.")
         },
+
+        // Records root
+        result = Box::pin(async move {
+            let mut records_root_cache = records_root_db.clone();
+
+            while let Some(archived_segment) = archived_segments_notifications.next().await {
+                let segment_index = archived_segment.root_block.segment_index();
+                info!(%segment_index, "Root block archived");
+
+                let (segment_index_key, records_root_value) = (
+                        SegmentIndexKey::from(segment_index),
+                        archived_segment.root_block.records_root().to_bytes().to_vec()
+                );
+
+                records_root_cache
+                    .update([(&segment_index_key, Some(records_root_value))]);
+            }
+
+            anyhow::Ok(())
+        }).fuse() => {
+            result?;
+        },
     );
 
     anyhow::Ok(())
+}
+
+fn run_records_root_update_task(
+    node_client: NodeRpcClient,
+    mut records_root_cache: ParityDbStore<SegmentIndexKey, RecordsRootValue>,
+) {
+    // Local helper-function. Returns whether it got the result from the node.
+    // TODO: optimize for batches
+    async fn update_records_root(
+        node_client: NodeRpcClient,
+        records_root_cache: &mut ParityDbStore<SegmentIndexKey, RecordsRootValue>,
+        segment_index: SegmentIndex,
+    ) -> Result<bool, Box<dyn Error>> {
+        let records_root_result = node_client.records_roots(vec![segment_index]).await;
+
+        match records_root_result {
+            Ok(records_roots_vec) => {
+                let records_roots = records_roots_vec.first().cloned();
+                match records_roots {
+                    None => Err("Received empty records root vector from the node.".into()),
+                    Some(None) => Ok(false),
+                    Some(Some(records_roots)) => {
+                        let (segment_index_key, records_root_value) = (
+                            SegmentIndexKey::from(segment_index),
+                            records_roots.to_bytes().to_vec(),
+                        );
+                        records_root_cache.update([(&segment_index_key, Some(records_root_value))]);
+
+                        Ok(true)
+                    }
+                }
+            }
+            Err(err) => Err(format!("Cannot get records root from the node: {err:?}").into()),
+        }
+    }
+
+    tokio::spawn(async move {
+        // TODO: The current implementation assumes there is no gaps in between of min and max
+        // segment indexes in the local cache. This is not generally the case.
+        let segment_indexes = {
+            let iter = records_root_cache.iter();
+
+            if let Ok(iter) = iter {
+                let segment_ids = iter
+                .map(|(k, _)| k.try_into().expect("SegmentIndex must be correct because of the previous conversion from valid u64"))
+                .collect::<Vec<SegmentIndex>>();
+
+                segment_ids.clone()
+            } else {
+                Vec::new()
+            }
+        };
+        let min_segment_index = segment_indexes.iter().min().cloned().unwrap_or(u64::MAX);
+        let max_segment_index = segment_indexes.iter().max().cloned();
+
+        // Fill the starting gap
+        let mut segment_index = 0;
+        while segment_index < min_segment_index {
+            match update_records_root(node_client.clone(), &mut records_root_cache, segment_index)
+                .await
+            {
+                Ok(result_received) => {
+                    if !result_received {
+                        break;
+                    } else {
+                        segment_index += 1;
+                    }
+                }
+                Err(err) => {
+                    error!(?err, %segment_index, "Couln't update records_root.");
+                    break;
+                }
+            }
+        }
+
+        // Catch up with the rest
+        if let Some(max_segment_index) = max_segment_index {
+            segment_index = max_segment_index;
+
+            loop {
+                match update_records_root(
+                    node_client.clone(),
+                    &mut records_root_cache,
+                    segment_index,
+                )
+                .await
+                {
+                    Ok(result_received) => {
+                        if !result_received {
+                            break;
+                        } else {
+                            segment_index += 1;
+                        }
+                    }
+                    Err(err) => {
+                        error!(?err, %segment_index, "Couln't update records_root.");
+                        break;
+                    }
+                }
+            }
+        }
+
+        info!("Records root cache was updated.");
+    });
 }
 
 fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {

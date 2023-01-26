@@ -361,6 +361,12 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
+    /// Failed to subscribe to archived segment notifications
+    #[error("Failed to subscribe to slot info notifications: {error}")]
+    FailedToSubscribeArchivedSegments {
+        /// Lower-level error
+        error: node_client::Error,
+    },
     /// Failed to retrieve farmer info
     #[error("Failed to retrieve farmer info: {error}")]
     FailedToGetFarmerInfo {

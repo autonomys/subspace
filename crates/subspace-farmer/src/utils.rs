@@ -7,6 +7,7 @@ pub mod parity_db_store;
 pub mod piece_cache;
 pub mod piece_validator;
 pub mod readers_and_pieces;
+pub mod records_root;
 
 use std::ops::Deref;
 
