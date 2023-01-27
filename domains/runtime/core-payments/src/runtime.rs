@@ -461,11 +461,11 @@ impl_runtime_apis! {
             Messenger::relayer_assigned_messages(relayer_id)
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

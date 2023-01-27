@@ -114,21 +114,34 @@ pub struct Message<Balance> {
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
+/// Domain block info used as part of the Cross domain message proof.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct DomainBlockInfo<Number, Hash> {
+    /// Block number of the domain.
+    pub block_number: Number,
+    /// Block hash of the system domain.
+    pub block_hash: Hash,
+}
+
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Proof<BlockNumber, StateRoot> {
-    pub state_root: StateRoot,
-    /// Storage proof that src_domain state_root is registered on System domain.
+pub struct Proof<BlockNumber, BlockHash, StateRoot> {
+    /// System domain block info when proof was constructed
+    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
+    /// State root of System domain at above number and block hash.
+    /// This is the used to extract the message from proof.
+    pub system_domain_state_root: StateRoot,
+    /// Storage proof that src core domain state_root is registered on System domain.
     /// This is optional when the src_domain is the system domain.
-    /// BlockNumber is used with storage proof to validate and fetch its state root.
-    pub core_domain_proof: Option<(BlockNumber, StorageProof)>,
+    /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
+    pub core_domain_proof: Option<(DomainBlockInfo<BlockNumber, BlockHash>, StorageProof)>,
     /// Storage proof that message is processed on src_domain.
     pub message_proof: StorageProof,
 }
 
 /// Cross Domain message contains Message and its proof on src_domain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<StateRoot, BlockNumber> {
+pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -138,7 +151,7 @@ pub struct CrossDomainMessage<StateRoot, BlockNumber> {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
-    pub proof: Proof<BlockNumber, StateRoot>,
+    pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
 }
 
 /// Relayer message with storage key to generate storage proof using the backend.
@@ -163,10 +176,10 @@ pub struct RelayerMessagesWithStorageKey {
     pub inbox_responses: Vec<RelayerMessageWithStorageKey>,
 }
 
-impl<StateRoot, BlockNumber> CrossDomainMessage<StateRoot, BlockNumber> {
+impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub fn from_relayer_msg_with_proof(
         r_msg: RelayerMessageWithStorageKey,
-        proof: Proof<BlockNumber, StateRoot>,
+        proof: Proof<BlockNumber, BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {
             src_domain_id: r_msg.src_domain_id,

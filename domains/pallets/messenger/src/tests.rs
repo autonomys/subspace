@@ -16,11 +16,11 @@ use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
-use sp_core::Blake2Hasher;
+use sp_core::{Blake2Hasher, H256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
+    CrossDomainMessage, DomainBlockInfo, ExecutionFee, InitiateChannelParams, Payload, Proof,
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_runtime::traits::ValidateUnsigned;
@@ -190,14 +190,15 @@ fn test_storage_proof_verification_invalid() {
 
     let (_, _, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
-    let proof: Proof<u64, _> = Proof {
-        state_root: Default::default(),
+    let proof: Proof<u64, H256, _> = Proof {
+        system_domain_block_info: DomainBlockInfo::default(),
+        system_domain_state_root: Default::default(),
         core_domain_proof: None,
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
-            &proof.state_root,
+            &proof.system_domain_state_root,
             proof.message_proof,
             StorageKey(vec![]),
         );
@@ -216,14 +217,15 @@ fn test_storage_proof_verification_missing_value() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, U256::one());
-    let proof: Proof<u64, _> = Proof {
-        state_root,
+    let proof: Proof<u64, H256, _> = Proof {
+        system_domain_block_info: DomainBlockInfo::default(),
+        system_domain_state_root: state_root,
         core_domain_proof: None,
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
-            &proof.state_root,
+            &proof.system_domain_state_root,
             proof.message_proof,
             storage_key,
         );
@@ -244,14 +246,15 @@ fn test_storage_proof_verification() {
 
     let (state_root, storage_key, storage_proof) =
         crate::mock::storage_proof_of_channels::<Runtime>(t.as_backend(), domain_id, channel_id);
-    let proof: Proof<u64, _> = Proof {
-        state_root,
+    let proof: Proof<u64, H256, _> = Proof {
+        system_domain_block_info: DomainBlockInfo::default(),
+        system_domain_state_root: state_root,
         core_domain_proof: None,
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
         StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
-            &proof.state_root,
+            &proof.system_domain_state_root,
             proof.message_proof,
             storage_key,
         );
@@ -499,14 +502,15 @@ fn channel_relay_request_and_response(
         channel_id,
         nonce,
         proof: Proof {
-            state_root,
+            system_domain_block_info: DomainBlockInfo::default(),
+            system_domain_state_root: state_root,
             core_domain_proof: None,
             message_proof,
         },
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
-        domain_b::DomainTracker::set_state_root(xdm.proof.state_root);
+        domain_b::DomainTracker::set_state_root(xdm.proof.system_domain_state_root);
 
         // validate the message
         let pre_check =
@@ -563,13 +567,14 @@ fn channel_relay_request_and_response(
         channel_id,
         nonce,
         proof: Proof {
-            state_root,
+            system_domain_block_info: DomainBlockInfo::default(),
+            system_domain_state_root: state_root,
             core_domain_proof: None,
             message_proof,
         },
     };
     domain_a_test_ext.execute_with(|| {
-        domain_a::DomainTracker::set_state_root(xdm.proof.state_root);
+        domain_a::DomainTracker::set_state_root(xdm.proof.system_domain_state_root);
 
         // validate message response
         let pre_check = crate::Pallet::<domain_a::Runtime>::pre_dispatch(
@@ -700,7 +705,7 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
         );
         assert!(domain_a::Transporter::outgoing_transfers(
             domain_b::SelfDomainId::get(),
-            (U256::zero(), U256::one())
+            (U256::zero(), U256::one()),
         )
         .is_some())
     })
@@ -739,7 +744,7 @@ fn verify_transfer_on_domain(
         assert_eq!(relayer_a_balance, 1);
         assert!(domain_a::Transporter::outgoing_transfers(
             domain_b::SelfDomainId::get(),
-            (U256::zero(), U256::one())
+            (U256::zero(), U256::one()),
         )
         .is_none())
     });
@@ -904,7 +909,7 @@ fn test_join_relayer_set() {
             domain_a::Messenger::relayers_info(relayer_id).unwrap(),
             RelayerInfo {
                 owner: account_id,
-                deposit_reserved: RelayerDeposit::get()
+                deposit_reserved: RelayerDeposit::get(),
             }
         );
         assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
@@ -955,7 +960,7 @@ fn test_exit_relayer_set() {
                 domain_a::Messenger::relayers_info(relayer).unwrap(),
                 RelayerInfo {
                     owner: account_id,
-                    deposit_reserved: RelayerDeposit::get()
+                    deposit_reserved: RelayerDeposit::get(),
                 }
             );
         }

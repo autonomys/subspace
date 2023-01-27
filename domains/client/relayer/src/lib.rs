@@ -12,7 +12,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_domains::state_root_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
-    CrossDomainMessage, Proof, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
+    CrossDomainMessage, DomainBlockInfo, Proof, RelayerMessageWithStorageKey,
+    RelayerMessagesWithStorageKey,
 };
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
@@ -77,6 +78,8 @@ impl From<sp_api::ApiError> for Error {
     }
 }
 
+type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
+
 impl<Client, Block> Relayer<Client, Block>
 where
     Block: BlockT,
@@ -108,16 +111,20 @@ where
         system_domain_client: &Arc<Client>,
         block_hash: Block::Hash,
         key: &[u8],
-    ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error> {
+    ) -> Result<ProofOf<Block>, Error> {
         system_domain_client
             .header(block_hash)?
-            .map(|header| *header.state_root())
-            .and_then(|state_root| {
+            .map(|header| (*header.number(), header.hash(), *header.state_root()))
+            .and_then(|(block_number, block_hash, state_root)| {
                 let proof = system_domain_client
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
-                    state_root,
+                    system_domain_block_info: DomainBlockInfo {
+                        block_number,
+                        block_hash,
+                    },
+                    system_domain_state_root: state_root,
                     core_domain_proof: None,
                     message_proof: proof,
                 })
@@ -126,26 +133,38 @@ where
     }
 
     /// Constructs the proof for the given key using the core domain backend.
-    fn construct_core_domain_storage_proof_for_key_at<SHash>(
+    fn construct_core_domain_storage_proof_for_key_at<SNumber, SHash>(
+        system_domain_info: DomainBlockInfo<SNumber, SHash>,
         core_domain_client: &Arc<Client>,
         block_hash: Block::Hash,
         key: &[u8],
         system_domain_state_root: SHash,
         core_domain_proof: StorageProof,
-    ) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>
+    ) -> Result<ProofOf<Block>, Error>
     where
+        SNumber: Into<NumberFor<Block>>,
         SHash: Into<Block::Hash>,
     {
         core_domain_client
             .header(block_hash)?
-            .map(|header| *header.number())
-            .and_then(|number| {
+            .map(|header| (*header.number(), header.hash()))
+            .and_then(|(number, hash)| {
                 let proof = core_domain_client
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
-                    state_root: system_domain_state_root.into(),
-                    core_domain_proof: Some((number, core_domain_proof)),
+                    system_domain_block_info: DomainBlockInfo {
+                        block_number: system_domain_info.block_number.into(),
+                        block_hash: system_domain_info.block_hash.into(),
+                    },
+                    system_domain_state_root: system_domain_state_root.into(),
+                    core_domain_proof: Some((
+                        DomainBlockInfo {
+                            block_number: number,
+                            block_hash: hash,
+                        },
+                        core_domain_proof,
+                    )),
                     message_proof: proof,
                 })
             })
@@ -153,8 +172,8 @@ where
     }
 
     fn construct_cross_domain_message_and_submit<
-        Submitter: Fn(CrossDomainMessage<Block::Hash, NumberFor<Block>>) -> Result<(), Error>,
-        ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash>, Error>,
+        Submitter: Fn(CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>) -> Result<(), Error>,
+        ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
         msgs: Vec<RelayerMessageWithStorageKey>,
@@ -317,7 +336,7 @@ where
     ) -> Result<(), Error>
     where
         SBlock: BlockT,
-        NumberFor<SBlock>: From<NumberFor<Block>>,
+        NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
         SBlock::Hash: Into<Block::Hash>,
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
         SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>
@@ -339,7 +358,7 @@ where
 
         // check if this block state root is confirmed on system domain
         // and generate proof
-        let (system_domain_state_root, core_domain_state_root_proof) = {
+        let (system_domain_info, system_domain_state_root, core_domain_state_root_proof) = {
             let system_domain_api = system_domain_client.runtime_api();
             let confirmed_system_domain_block_header =
                 Self::confirmed_system_domain_block_id(system_domain_client)?;
@@ -366,7 +385,14 @@ where
                         "Confirmed system domain block number: {:?}",
                         confirmed_system_domain_block_header.number()
                     );
-                    (*confirmed_system_domain_block_header.state_root(), proof)
+                    (
+                        DomainBlockInfo {
+                            block_number: *confirmed_system_domain_block_header.number(),
+                            block_hash: confirmed_system_domain_block_header.hash(),
+                        },
+                        *confirmed_system_domain_block_header.state_root(),
+                        proof,
+                    )
                 }
                 None => return Err(Error::CoreDomainNonConfirmedOnSystemDomain),
             }
@@ -377,6 +403,7 @@ where
             filtered_messages.outbox,
             |block_hash, key| {
                 Self::construct_core_domain_storage_proof_for_key_at(
+                    system_domain_info.clone(),
                     core_domain_client,
                     block_hash,
                     key,
@@ -392,6 +419,7 @@ where
             filtered_messages.inbox_responses,
             |block_id, key| {
                 Self::construct_core_domain_storage_proof_for_key_at(
+                    system_domain_info.clone(),
                     core_domain_client,
                     block_id,
                     key,
@@ -408,7 +436,7 @@ where
     /// Sends an Outbox message from src_domain to dst_domain.
     fn gossip_outbox_message(
         client: &Arc<Client>,
-        msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
+        msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let best_block_id = BlockId::Hash(client.info().best_hash);
@@ -430,7 +458,7 @@ where
     /// this message is the response of the Inbox message execution.
     fn gossip_inbox_message_response(
         client: &Arc<Client>,
-        msg: CrossDomainMessage<Block::Hash, NumberFor<Block>>,
+        msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let best_block_id = BlockId::Hash(client.info().best_hash);

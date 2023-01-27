@@ -222,6 +222,7 @@ pub(crate) mod mock_domain_tracker {
         fn storage_key_for_core_domain_state_root(
             _domain_id: DomainId,
             _block_number: u64,
+            _block_hash: H256,
         ) -> StorageKey {
             StorageKey(StateRoot::<T>::hashed_key_for(0))
         }

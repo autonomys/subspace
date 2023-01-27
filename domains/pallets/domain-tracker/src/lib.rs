@@ -116,10 +116,11 @@ mod pallet {
         }
     }
 
-    impl<T: Config> DomainTracker<T::BlockNumber, StateRootOf<T>> for Pallet<T> {
+    impl<T: Config> DomainTracker<T::BlockNumber, T::Hash> for Pallet<T> {
         fn storage_key_for_core_domain_state_root(
             domain_id: DomainId,
             block_number: T::BlockNumber,
+            _block_hash: T::Hash,
         ) -> StorageKey {
             StorageKey(ConfirmedDomainStateRoots::<T>::hashed_key_for(
                 domain_id,

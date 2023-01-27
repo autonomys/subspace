@@ -64,7 +64,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
 ) where
     Block: BlockT,
     SBlock: BlockT,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     SBlock::Hash: Into<Block::Hash>,
     CDC: BlockchainEvents<Block>
         + HeaderBackend<Block>

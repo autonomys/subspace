@@ -33,7 +33,7 @@ use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -236,6 +236,7 @@ where
     PBlock: BlockT,
     SBlock: BlockT,
     SBlock::Hash: Into<Hash>,
+    NumberFor<SBlock>: Into<BlockNumber>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
