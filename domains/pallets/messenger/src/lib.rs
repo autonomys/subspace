@@ -816,20 +816,6 @@ mod pallet {
             storage_key: StorageKey,
             xdm: &CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
-            // fetch state roots from System domain tracker
-            let state_roots = T::DomainTracker::system_domain_state_roots();
-            if !state_roots.contains(&xdm.proof.state_root) {
-                log::error!(
-                    target: "runtime::messenger",
-                    "XDM state root: {:?} is not in the confirmed state roots: {:?}",
-                    xdm.proof,
-                    state_roots,
-                );
-                return Err(TransactionValidityError::Invalid(
-                    InvalidTransaction::BadProof,
-                ));
-            }
-
             // verify intermediate core domain proof and retrieve state root of the message.
             let core_domain_state_root_proof = xdm.proof.core_domain_proof.clone();
             let state_root = {

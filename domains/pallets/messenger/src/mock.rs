@@ -172,6 +172,7 @@ macro_rules! impl_runtime {
 pub(crate) type MessageId = (ChannelId, Nonce);
 
 pub struct MockEndpoint {}
+
 impl EndpointHandler<MessageId> for MockEndpoint {
     fn message(
         &self,
@@ -218,10 +219,6 @@ pub(crate) mod mock_domain_tracker {
     pub(super) type StateRoot<T: Config> = StorageMap<_, Identity, u64, H256, ValueQuery>;
 
     impl<T: Config> DomainTracker<u64, H256> for Pallet<T> {
-        fn system_domain_state_roots() -> Vec<H256> {
-            vec![StateRoot::<T>::get(0)]
-        }
-
         fn storage_key_for_core_domain_state_root(
             _domain_id: DomainId,
             _block_number: u64,

@@ -24,17 +24,12 @@ use codec::{Decode, Encode};
 use messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::storage::StorageKey;
-use sp_runtime::sp_std;
-use sp_std::vec::Vec;
 
 /// Implemented by domain registry on system domain or system domain tracker on core domains.
 /// This trait supports utilities to verify the message coming from src_domain to system domain.
 /// If the message is sent to another core domain, then dst_domain can use this trait and verify the message
 /// using System domain as trusted third party.
 pub trait DomainTracker<BlockNumber, StateRoot> {
-    /// Returns a list of state roots of system domain.
-    fn system_domain_state_roots() -> Vec<StateRoot>;
-
     /// Returns the storage key that maps to the state root of the core domain for a specific block.
     fn storage_key_for_core_domain_state_root(
         domain_id: DomainId,

@@ -55,7 +55,7 @@ mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -117,12 +117,6 @@ mod pallet {
     }
 
     impl<T: Config> DomainTracker<T::BlockNumber, StateRootOf<T>> for Pallet<T> {
-        fn system_domain_state_roots() -> Vec<StateRootOf<T>> {
-            let confirmed_state_roots: Vec<StateRootOf<T>> =
-                ConfirmedDomainStateRoots::<T>::iter_prefix_values(DomainId::SYSTEM).collect();
-            confirmed_state_roots
-        }
-
         fn storage_key_for_core_domain_state_root(
             domain_id: DomainId,
             block_number: T::BlockNumber,
