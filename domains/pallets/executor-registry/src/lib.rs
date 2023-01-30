@@ -549,14 +549,17 @@ mod pallet {
                     "Genesis executor does not have enough balance to stake."
                 );
 
-                Pallet::<T>::apply_register(
-                    &executor,
-                    public_key.clone(),
-                    reward_address,
-                    true,
-                    initial_stake,
-                )
-                .expect("Initial total stake weight can not be overflow");
+                assert!(
+                    Pallet::<T>::apply_register(
+                        &executor,
+                        public_key.clone(),
+                        reward_address,
+                        true,
+                        initial_stake,
+                    )
+                    .is_ok(),
+                    "Initial total stake weight can not be overflow"
+                );
 
                 let stake_weight: T::StakeWeight = initial_stake.into();
                 authorities.push((public_key, stake_weight));
