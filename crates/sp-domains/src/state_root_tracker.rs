@@ -27,26 +27,6 @@ pub struct StateRootUpdate<Number, StateRoot> {
     pub state_root: StateRoot,
 }
 
-/// Implemented by the Domain tracker and used by the domain registry on System domain to
-/// add the new state roots of the core domain.
-pub trait CoreDomainTracker<BlockNumber, StateRoot> {
-    /// Adds the latest state root for a given domain.
-    fn add_core_domain_state_root(
-        domain_id: DomainId,
-        block_number: BlockNumber,
-        state_root: StateRoot,
-    );
-}
-
-impl<BlockNumber, StateRoot> CoreDomainTracker<BlockNumber, StateRoot> for () {
-    fn add_core_domain_state_root(
-        _domain_id: DomainId,
-        _block_number: BlockNumber,
-        _state_root: StateRoot,
-    ) {
-    }
-}
-
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait DomainTrackerApi<BlockNumber>

@@ -253,7 +253,6 @@ parameter_types! {
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = CorePaymentsDomainId;
-    type DomainTracker = DomainTracker;
 
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,

@@ -481,7 +481,6 @@ impl pallet_receipts::Config for Runtime {
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = ();
 }
 
 parameter_types! {
@@ -501,6 +500,7 @@ impl pallet_rewards::Config for Runtime {
 
 /// Polkadot-like chain.
 struct PolkadotLike;
+
 impl Chain for PolkadotLike {
     type BlockNumber = u32;
     type Hash = <BlakeTwo256 as Hasher>::Out;
@@ -510,6 +510,7 @@ impl Chain for PolkadotLike {
 
 /// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
+
 pub struct GrandpaValidator<C>(PhantomData<C>);
 
 impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {

@@ -23,20 +23,6 @@ pub mod messages;
 use codec::{Decode, Encode};
 use messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
 use sp_domains::DomainId;
-use sp_runtime::app_crypto::sp_core::storage::StorageKey;
-
-/// Implemented by domain registry on system domain or system domain tracker on core domains.
-/// This trait supports utilities to verify the message coming from src_domain to system domain.
-/// If the message is sent to another core domain, then dst_domain can use this trait and verify the message
-/// using System domain as trusted third party.
-pub trait DomainTracker<BlockNumber, BlockHash> {
-    /// Returns the storage key that maps to the state root of the core domain for a specific block.
-    fn storage_key_for_core_domain_state_root(
-        domain_id: DomainId,
-        block_number: BlockNumber,
-        block_hash: BlockHash,
-    ) -> StorageKey;
-}
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.

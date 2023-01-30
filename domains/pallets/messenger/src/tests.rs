@@ -510,7 +510,12 @@ fn channel_relay_request_and_response(
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
-        domain_b::DomainTracker::set_state_root(xdm.proof.system_domain_state_root);
+        domain_b::Receipts::set_state_root(
+            xdm.src_domain_id,
+            xdm.proof.system_domain_block_info.block_number,
+            xdm.proof.system_domain_block_info.block_hash,
+            xdm.proof.system_domain_state_root,
+        );
 
         // validate the message
         let pre_check =
@@ -574,7 +579,12 @@ fn channel_relay_request_and_response(
         },
     };
     domain_a_test_ext.execute_with(|| {
-        domain_a::DomainTracker::set_state_root(xdm.proof.system_domain_state_root);
+        domain_a::Receipts::set_state_root(
+            xdm.src_domain_id,
+            xdm.proof.system_domain_block_info.block_number,
+            xdm.proof.system_domain_block_info.block_hash,
+            xdm.proof.system_domain_state_root,
+        );
 
         // validate message response
         let pre_check = crate::Pallet::<domain_a::Runtime>::pre_dispatch(

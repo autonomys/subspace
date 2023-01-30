@@ -140,7 +140,6 @@ impl pallet_receipts::Config for Test {
     type DomainHash = Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = DomainTracker;
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -267,7 +266,7 @@ fn create_domain_should_work() {
                 free: 2000,
                 reserved: 0,
                 misc_frozen: deposit,
-                fee_frozen: deposit
+                fee_frozen: deposit,
             }
         );
 
@@ -419,7 +418,7 @@ fn rotate_domain_authorities_should_work() {
             vec![
                 (genesis_core_domain_id, 3, 90),
                 (genesis_core_domain_id, 1, 80),
-                (genesis_core_domain_id, 2, 40)
+                (genesis_core_domain_id, 2, 40),
             ]
         );
         assert_eq!(

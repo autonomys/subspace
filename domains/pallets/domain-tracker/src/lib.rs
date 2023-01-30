@@ -34,11 +34,8 @@ mod pallet {
     use crate::StateRootOf;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::BlockNumberFor;
-    use sp_core::storage::StorageKey;
     use sp_domain_digests::AsPredigest;
-    use sp_domains::state_root_tracker::CoreDomainTracker;
     use sp_domains::DomainId;
-    use sp_messenger::DomainTracker;
     use sp_runtime::traits::{CheckedAdd, CheckedSub, One};
     use sp_std::vec::Vec;
 
@@ -113,29 +110,6 @@ mod pallet {
             }
 
             Weight::zero()
-        }
-    }
-
-    impl<T: Config> DomainTracker<T::BlockNumber, T::Hash> for Pallet<T> {
-        fn storage_key_for_core_domain_state_root(
-            domain_id: DomainId,
-            block_number: T::BlockNumber,
-            _block_hash: T::Hash,
-        ) -> StorageKey {
-            StorageKey(ConfirmedDomainStateRoots::<T>::hashed_key_for(
-                domain_id,
-                block_number,
-            ))
-        }
-    }
-
-    impl<T: Config> CoreDomainTracker<T::BlockNumber, StateRootOf<T>> for Pallet<T> {
-        fn add_core_domain_state_root(
-            domain_id: DomainId,
-            block_number: T::BlockNumber,
-            state_root: StateRootOf<T>,
-        ) {
-            let _ = Self::add_and_confirm_domain_state_root(domain_id, block_number, state_root);
         }
     }
 

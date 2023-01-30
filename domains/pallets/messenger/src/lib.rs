@@ -90,7 +90,9 @@ pub(crate) struct ValidatedRelayMessage<Balance> {
 #[frame_support::pallet]
 mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
-    use crate::verification::{StorageProofVerifier, VerificationError};
+    use crate::verification::{
+        CoreDomainStateRootStorage, StorageProofVerifier, VerificationError,
+    };
     use crate::{
         relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
@@ -105,7 +107,6 @@ mod pallet {
         CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::DomainTracker as DomainTrackerT;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
 
@@ -114,8 +115,6 @@ mod pallet {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// Gets the domain_id that is treated as src_domain for outgoing messages.
         type SelfDomainId: Get<DomainId>;
-        /// System domain tracker.
-        type DomainTracker: DomainTrackerT<Self::BlockNumber, StateRootOf<Self>>;
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_response_handler(
             endpoint: &Endpoint,
@@ -828,11 +827,11 @@ mod pallet {
                     let (domain_info, proof) =
                         core_domain_state_root_proof.expect("checked for existence value above");
                     let core_domain_state_root_key =
-                        T::DomainTracker::storage_key_for_core_domain_state_root(
+                        CoreDomainStateRootStorage::<T>::storage_key((
                             xdm.src_domain_id,
                             domain_info.block_number,
                             domain_info.block_hash,
-                        );
+                        ));
                     StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
                         &xdm.proof.system_domain_state_root,
                         proof,
