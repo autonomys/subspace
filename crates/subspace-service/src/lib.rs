@@ -513,8 +513,10 @@ where
         Box::pin(dsn_archiving_fut.in_current_span()),
     );
 
+    let root_block_cache = RootBlockCache::new(client.clone());
+
     let root_block_archiving_fut = start_root_block_archiver(
-        RootBlockCache::new(client.clone()),
+        root_block_cache.clone(),
         subspace_link
             .archived_segment_notification_stream()
             .subscribe(),
@@ -704,6 +706,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     subspace_link: subspace_link.clone(),
+                    root_blocks_provider: root_block_cache.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

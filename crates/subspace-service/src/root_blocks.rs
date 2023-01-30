@@ -2,6 +2,7 @@ use futures::{Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
+use sc_consensus_subspace_rpc::RootBlockProvider;
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::{RootBlock, SegmentIndex};
@@ -34,6 +35,14 @@ pub struct RootBlockCache<AS> {
     aux_store: Arc<AS>,
 }
 
+impl<AS> Clone for RootBlockCache<AS> {
+    fn clone(&self) -> Self {
+        Self {
+            aux_store: self.aux_store.clone(),
+        }
+    }
+}
+
 impl<AS> RootBlockCache<AS>
 where
     AS: AuxStore,
@@ -43,20 +52,6 @@ where
     /// Create new instance.
     pub fn new(aux_store: Arc<AS>) -> Self {
         Self { aux_store }
-    }
-
-    /// Get root block from storage
-    pub fn get_root_block(
-        &self,
-        segment_index: SegmentIndex,
-    ) -> Result<Option<RootBlock>, Box<dyn Error>> {
-        Ok(self
-            .aux_store
-            .get_aux(&Self::key(segment_index))?
-            .map(|root_block| {
-                RootBlock::decode(&mut root_block.as_slice())
-                    .expect("Always correct root block unless DB is corrupted; qed")
-            }))
     }
 
     /// Add root block to cache (likely as the result of archiving)
@@ -76,5 +71,21 @@ where
 
     fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {
         (Self::KEY_PREFIX, bytes).encode()
+    }
+}
+
+impl<AS: AuxStore> RootBlockProvider for RootBlockCache<AS> {
+    /// Get root block from storage
+    fn get_root_block(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<Option<RootBlock>, Box<dyn Error>> {
+        Ok(self
+            .aux_store
+            .get_aux(&Self::key(segment_index))?
+            .map(|root_block| {
+                RootBlock::decode(&mut root_block.as_slice())
+                    .expect("Always correct root block unless DB is corrupted; qed")
+            }))
     }
 }
