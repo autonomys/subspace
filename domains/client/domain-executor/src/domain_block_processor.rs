@@ -518,8 +518,6 @@ where
         Ok((header_hash, header_number, state_root))
     }
 
-    // TODO: remove once fraud-proof is enabled again.
-    #[allow(unreachable_code, unused_variables)]
     pub(crate) fn on_domain_block_processed(
         &self,
         primary_hash: PBlock::Hash,
@@ -541,10 +539,6 @@ where
         )?;
 
         // TODO: The applied txs can be fully removed from the transaction pool
-
-        // TODO: Skip fraud-proof processing until
-        // https://github.com/subspace/subspace/issues/1020 is resolved.
-        return Ok(None);
 
         self.check_receipts_in_primary_block(primary_hash)?;
 
