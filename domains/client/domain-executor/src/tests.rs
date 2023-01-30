@@ -13,7 +13,6 @@ use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
-use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
     Bundle, BundleHeader, BundleSolution, DomainId, ExecutorApi, ExecutorPair, ProofOfElection,
@@ -139,17 +138,11 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     );
 
     let digest = {
-        let system_domain_state_root =
-            DigestItem::system_domain_state_root_update(StateRootUpdate {
-                number: 0,
-                state_root: *parent_header.state_root(),
-            });
-
         let primary_block_info =
             DigestItem::primary_block_info((1, ferdie.client.hash(1).unwrap().unwrap()));
 
         Digest {
-            logs: vec![system_domain_state_root, primary_block_info],
+            logs: vec![primary_block_info],
         }
     };
 

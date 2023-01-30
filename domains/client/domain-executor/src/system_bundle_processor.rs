@@ -11,11 +11,10 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
-use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -152,24 +151,10 @@ where
 
         let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
-        let digests = self
-            .client
-            .header(parent_hash)?
-            .map(|header| {
-                let system_domain_state_root =
-                    DigestItem::system_domain_state_root_update(StateRootUpdate {
-                        number: parent_number,
-                        state_root: *header.state_root(),
-                    });
-
-                let primary_block_info =
-                    DigestItem::primary_block_info((primary_number, primary_hash));
-
-                Digest {
-                    logs: vec![system_domain_state_root, primary_block_info],
-                }
-            })
-            .unwrap_or_default();
+        let primary_block_info = DigestItem::primary_block_info((primary_number, primary_hash));
+        let digests = Digest {
+            logs: vec![primary_block_info],
+        };
 
         let domain_block_result = self
             .domain_block_processor
@@ -235,7 +220,7 @@ where
             DomainBundles::Core(_) => {
                 return Err(sp_blockchain::Error::Application(Box::from(
                     "System bundle processor can not process core bundles.",
-                )))
+                )));
             }
         };
 

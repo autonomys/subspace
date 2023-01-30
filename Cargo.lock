@@ -1315,7 +1315,6 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-domain-registry",
- "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
  "pallet-sudo",
@@ -2277,7 +2276,6 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-domain-registry",
- "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
  "pallet-receipts",
@@ -5717,7 +5715,6 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-balances",
- "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-receipts",
  "parity-scale-codec",
@@ -5731,25 +5728,6 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-trie",
-]
-
-[[package]]
-name = "pallet-domain-tracker"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-balances",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-domain-digests",
- "sp-domains",
- "sp-io",
- "sp-messenger",
- "sp-runtime",
- "sp-std",
- "system-runtime-primitives",
 ]
 
 [[package]]
@@ -5837,7 +5815,6 @@ dependencies = [
  "hex",
  "log",
  "pallet-balances",
- "pallet-domain-tracker",
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
@@ -10280,7 +10257,6 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-domain-registry",
- "pallet-domain-tracker",
  "pallet-executor-registry",
  "pallet-messenger",
  "pallet-receipts",

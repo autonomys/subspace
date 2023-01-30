@@ -295,28 +295,11 @@ parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 7;
 }
 
-impl pallet_domain_tracker::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type ConfirmedStateRootsBound = StateRootsBound;
-    type RelayerConfirmationDepth = RelayConfirmationDepth;
-}
-
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
     pub const SystemDomainId: DomainId = DomainId::SYSTEM;
 }
-
-// struct CoreDomainStateRootStorage;
-//
-// impl CoreDomainStateRootStorageT<BlockNumber, Hash> for CoreDomainStateRootStorage {
-//     fn storage_key_for_core_domain(
-//         domain_id: DomainId,
-//         block_number: BlockNumber,
-//         block_hash: Hash,
-//     ) -> StorageKey {
-//     }
-// }
 
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -386,9 +369,8 @@ construct_runtime!(
         ExecutorRegistry: pallet_executor_registry = 4,
         Receipts: pallet_receipts = 9,
         DomainRegistry: pallet_domain_registry = 5,
-        DomainTracker: pallet_domain_tracker = 6,
-        Messenger: pallet_messenger = 7,
-        Transporter: pallet_transporter = 8,
+        Messenger: pallet_messenger = 6,
+        Transporter: pallet_transporter = 7,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -594,15 +576,6 @@ impl_runtime_apis! {
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
-        }
-    }
-
-    impl sp_domains::state_root_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
-        fn storage_key_for_core_domain_state_root(
-            domain_id: DomainId,
-            block_number: BlockNumber,
-        ) -> Option<Vec<u8>> {
-            DomainTracker::storage_key_for_core_domain_state_root(domain_id, block_number)
         }
     }
 

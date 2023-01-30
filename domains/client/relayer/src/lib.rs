@@ -5,18 +5,18 @@ pub mod worker;
 use cross_domain_message_gossip::Message as GossipMessage;
 use domain_runtime_primitives::RelayerId;
 use futures::channel::mpsc::TrySendError;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
-use sp_domains::state_root_tracker::DomainTrackerApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
-    CrossDomainMessage, DomainBlockInfo, Proof, RelayerMessageWithStorageKey,
-    RelayerMessagesWithStorageKey,
+    CoreDomainStateRootStorage, CrossDomainMessage, DomainBlockInfo, Proof,
+    RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
+use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
@@ -336,11 +336,12 @@ where
     ) -> Result<(), Error>
     where
         SBlock: BlockT,
+        Block::Hash: FullCodec,
+        NumberFor<Block>: FullCodec + TypeInfo,
         NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
         SBlock::Hash: Into<Block::Hash>,
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-        SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>
-            + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
+        SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     {
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
@@ -359,43 +360,43 @@ where
         // check if this block state root is confirmed on system domain
         // and generate proof
         let (system_domain_info, system_domain_state_root, core_domain_state_root_proof) = {
-            let system_domain_api = system_domain_client.runtime_api();
             let confirmed_system_domain_block_header =
                 Self::confirmed_system_domain_block_id(system_domain_client)?;
             let confirmed_system_domain_hash = confirmed_system_domain_block_header.hash();
             let core_domain_id = Self::domain_id(core_domain_client)?;
-            let confirmed_block_number = *core_domain_client
+            let confirmed_block_header = core_domain_client
                 .header(confirmed_block_hash)?
-                .ok_or(Error::UnableToFetchBlockNumber)?
-                .number();
-            match system_domain_api.storage_key_for_core_domain_state_root(
-                &BlockId::Hash(confirmed_system_domain_hash),
-                core_domain_id,
-                confirmed_block_number.into(),
-            )? {
-                Some(storage_key) => {
-                    // construct storage proof for the core domain state root using system domain backend.
-                    let proof = system_domain_client.read_proof(
-                        confirmed_system_domain_hash,
-                        &mut [storage_key.as_ref()].into_iter(),
-                    )?;
+                .ok_or(Error::UnableToFetchBlockNumber)?;
 
-                    tracing::debug!(
-                        target: LOG_TARGET,
-                        "Confirmed system domain block number: {:?}",
-                        confirmed_system_domain_block_header.number()
-                    );
-                    (
-                        DomainBlockInfo {
-                            block_number: *confirmed_system_domain_block_header.number(),
-                            block_hash: confirmed_system_domain_block_header.hash(),
-                        },
-                        *confirmed_system_domain_block_header.state_root(),
-                        proof,
-                    )
-                }
-                None => return Err(Error::CoreDomainNonConfirmedOnSystemDomain),
-            }
+            let storage_key = CoreDomainStateRootStorage::<
+                NumberFor<Block>,
+                Block::Hash,
+                Block::Hash,
+            >::storage_key(
+                core_domain_id,
+                *confirmed_block_header.number(),
+                confirmed_block_header.hash(),
+            );
+
+            // construct storage proof for the core domain state root using system domain backend.
+            let proof = system_domain_client.read_proof(
+                confirmed_system_domain_hash,
+                &mut [storage_key.as_ref()].into_iter(),
+            )?;
+
+            tracing::debug!(
+                target: LOG_TARGET,
+                "Confirmed system domain block number: {:?}",
+                confirmed_system_domain_block_header.number()
+            );
+            (
+                DomainBlockInfo {
+                    block_number: *confirmed_system_domain_block_header.number(),
+                    block_hash: confirmed_system_domain_block_header.hash(),
+                },
+                *confirmed_system_domain_block_header.state_root(),
+                proof,
+            )
         };
 
         Self::construct_cross_domain_message_and_submit(

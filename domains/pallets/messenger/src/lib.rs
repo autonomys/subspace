@@ -90,9 +90,7 @@ pub(crate) struct ValidatedRelayMessage<Balance> {
 #[frame_support::pallet]
 mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
-    use crate::verification::{
-        CoreDomainStateRootStorage, StorageProofVerifier, VerificationError,
-    };
+    use crate::verification::{StorageProofVerifier, VerificationError};
     use crate::{
         relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
@@ -104,8 +102,8 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
-        ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        CoreDomainStateRootStorage, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
+        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
@@ -827,11 +825,11 @@ mod pallet {
                     let (domain_info, proof) =
                         core_domain_state_root_proof.expect("checked for existence value above");
                     let core_domain_state_root_key =
-                        CoreDomainStateRootStorage::<T>::storage_key((
+                        CoreDomainStateRootStorage::<_, _, StateRootOf<T>>::storage_key(
                             xdm.src_domain_id,
                             domain_info.block_number,
                             domain_info.block_hash,
-                        ));
+                        );
                     StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
                         &xdm.proof.system_domain_state_root,
                         proof,

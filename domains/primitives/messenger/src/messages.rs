@@ -1,10 +1,15 @@
 use crate::endpoint::{EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, FullCodec};
+use frame_support::pallet_prelude::NMapKey;
+use frame_support::storage::generator::StorageNMap;
+use frame_support::Twox64Concat;
 use scale_info::TypeInfo;
+use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::traits::CheckedAdd;
 use sp_runtime::{sp_std, DispatchError};
+use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 
@@ -188,5 +193,58 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
             nonce: r_msg.nonce,
             proof,
         }
+    }
+}
+
+type KeyGenerator<Number, Hash> = (
+    NMapKey<Twox64Concat, DomainId>,
+    NMapKey<Twox64Concat, Number>,
+    NMapKey<Twox64Concat, Hash>,
+);
+
+/// This is a representation of actual StateRoots storage in pallet-receipts.
+/// Any change in key or value there should be changed here accordingly.
+pub struct CoreDomainStateRootStorage<Number, Hash, StateRoot>(
+    PhantomData<(Number, Hash, StateRoot)>,
+);
+
+impl<Number, Hash, StateRoot> StorageNMap<KeyGenerator<Number, Hash>, StateRoot>
+    for CoreDomainStateRootStorage<Number, Hash, StateRoot>
+where
+    Number: FullCodec + TypeInfo + 'static,
+    Hash: FullCodec + TypeInfo + 'static,
+    StateRoot: FullCodec + TypeInfo + 'static,
+{
+    type Query = Option<StateRoot>;
+
+    fn module_prefix() -> &'static [u8] {
+        "Receipts".as_ref()
+    }
+
+    fn storage_prefix() -> &'static [u8] {
+        "StateRoots".as_ref()
+    }
+
+    fn from_optional_value_to_query(v: Option<StateRoot>) -> Self::Query {
+        v
+    }
+
+    fn from_query_to_optional_value(v: Self::Query) -> Option<StateRoot> {
+        v
+    }
+}
+
+impl<Number, Hash, StateRoot> CoreDomainStateRootStorage<Number, Hash, StateRoot>
+where
+    Number: FullCodec + TypeInfo + 'static,
+    Hash: FullCodec + TypeInfo + 'static,
+    StateRoot: FullCodec + TypeInfo + 'static,
+{
+    pub fn storage_key(domain_id: DomainId, number: Number, hash: Hash) -> StorageKey {
+        StorageKey(
+            Self::storage_n_map_final_key::<KeyGenerator<Number, Hash>, _>((
+                domain_id, number, hash,
+            )),
+        )
     }
 }

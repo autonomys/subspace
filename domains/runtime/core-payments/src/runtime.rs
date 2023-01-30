@@ -238,12 +238,6 @@ parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 7;
 }
 
-impl pallet_domain_tracker::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type ConfirmedStateRootsBound = StateRootsBound;
-    type RelayerConfirmationDepth = RelayConfirmationDepth;
-}
-
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
@@ -312,7 +306,6 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment = 3,
 
         // messenger stuff
-        DomainTracker: pallet_domain_tracker = 6,
         Messenger: pallet_messenger = 7,
         Transporter: pallet_transporter = 8,
 

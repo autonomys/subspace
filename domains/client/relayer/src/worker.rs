@@ -1,11 +1,12 @@
 use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use domain_runtime_primitives::RelayerId;
 use futures::StreamExt;
+use parity_scale_codec::FullCodec;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
-use sp_domains::state_root_tracker::DomainTrackerApi;
 use sp_messenger::RelayerApi;
+use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::sync::Arc;
@@ -64,6 +65,8 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
 ) where
     Block: BlockT,
     SBlock: BlockT,
+    Block::Hash: FullCodec,
+    NumberFor<Block>: FullCodec + TypeInfo,
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     SBlock::Hash: Into<Block::Hash>,
     CDC: BlockchainEvents<Block>
@@ -73,8 +76,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
         + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SDC::Api: DomainTrackerApi<SBlock, NumberFor<SBlock>>
-        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
+    SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
 {

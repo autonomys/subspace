@@ -10,13 +10,10 @@ use sc_consensus::{BlockImport, ForkChoiceStrategy};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
-use sp_domain_digests::AsPredigest;
-use sp_domains::state_root_tracker::StateRootUpdate;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
-use sp_runtime::Digest;
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -181,21 +178,6 @@ where
 
         let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
-        // include the latest state root of the system domain
-        let system_domain_hash = self.system_domain_client.info().best_hash;
-        let digests = self
-            .system_domain_client
-            .header(system_domain_hash)?
-            .map(|header| {
-                let item = AsPredigest::system_domain_state_root_update(StateRootUpdate {
-                    number: *header.number(),
-                    state_root: *header.state_root(),
-                });
-
-                Digest { logs: vec![item] }
-            })
-            .unwrap_or_default();
-
         let domain_block_result = self
             .domain_block_processor
             .process_domain_block(
@@ -204,7 +186,7 @@ where
                 extrinsics,
                 maybe_new_runtime,
                 fork_choice,
-                digests,
+                Default::default(),
             )
             .await?;
 
@@ -258,7 +240,7 @@ where
             DomainBundles::System(..) => {
                 return Err(sp_blockchain::Error::Application(Box::from(
                     "Core bundle processor can not process system bundles.",
-                )))
+                )));
             }
             DomainBundles::Core(bundles) => bundles,
         };

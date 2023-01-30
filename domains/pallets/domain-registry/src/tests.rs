@@ -28,7 +28,6 @@ frame_support::construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         ExecutorRegistry: pallet_executor_registry,
-        DomainTracker: pallet_domain_tracker,
         Receipts: pallet_receipts,
         DomainRegistry: pallet_domain_registry,
     }
@@ -95,12 +94,6 @@ parameter_types! {
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
     pub const RelayConfirmationDepth: BlockNumber = 7;
-}
-
-impl pallet_domain_tracker::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type ConfirmedStateRootsBound = StateRootsBound;
-    type RelayerConfirmationDepth = RelayConfirmationDepth;
 }
 
 impl pallet_executor_registry::Config for Test {

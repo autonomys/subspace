@@ -24,7 +24,6 @@ frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, o
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-registry", default-features = false }
-pallet-domain-tracker = { version = "0.1.0", path = "../../pallets/domain-tracker", default-features = false }
 pallet-executor-registry = { version = "0.1.0", path = "../../pallets/executor-registry", default-features = false }
 pallet-receipts = { version = "0.1.0", path = "../../../crates/pallet-receipts", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger", default-features = false }
@@ -70,7 +69,6 @@ std = [
 	"frame-system-rpc-runtime-api/std",
 	"pallet-balances/std",
 	"pallet-domain-registry/std",
-	"pallet-domain-tracker/std",
 	"pallet-executor-registry/std",
 	"pallet-receipts/std",
 	"pallet-messenger/std",
