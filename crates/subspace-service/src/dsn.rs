@@ -3,23 +3,26 @@ mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
+use crate::RootBlockCache;
 use either::Either;
 use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
+use sc_consensus_subspace_rpc::RootBlockProvider;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{PieceIndex, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndex, RootBlock, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
     NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
 use tokio::sync::Semaphore;
 use tracing::{error, info, trace, warn, Instrument};
@@ -55,6 +58,7 @@ type DsnProviderStorage<AS> =
 pub(crate) async fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
+    root_block_cache: RootBlockCache<AS>,
 ) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), CreationError>
 where
     Block: BlockT,
@@ -85,17 +89,39 @@ where
             dsn_config.bootstrap_nodes,
         )
         .boxed(),
-        request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = match piece_cache.get_piece(req.piece_index_hash) {
-                Ok(maybe_piece) => maybe_piece,
-                Err(error) => {
-                    error!(piece_index_hash = ?req.piece_index_hash, %error, "Failed to get piece from cache");
-                    None
-                }
-            };
+        request_response_protocols: vec![
+            PieceByHashRequestHandler::create(move |req| {
+                let result = match piece_cache.get_piece(req.piece_index_hash) {
+                    Ok(maybe_piece) => maybe_piece,
+                    Err(error) => {
+                        error!(piece_index_hash = ?req.piece_index_hash, %error, "Failed to get piece from cache");
+                        None
+                    }
+                };
 
-            Some(PieceByHashResponse { piece: result })
-        })],
+                Some(PieceByHashResponse { piece: result })
+            }),
+            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
+                let internal_result = req
+                    .segment_indexes
+                    .iter()
+                    .map(|segment_index| root_block_cache.get_root_block(*segment_index))
+                    .collect::<Result<Vec<Option<RootBlock>>, _>>();
+
+                let result = match internal_result {
+                    Ok(root_blocks) => root_blocks,
+                    Err(error) => {
+                        error!(%error, "Failed to get root blocks from cache");
+
+                        Vec::new()
+                    }
+                };
+
+                Some(RootBlockResponse {
+                    root_blocks: result,
+                })
+            }),
+        ],
         provider_storage,
         ..subspace_networking::Config::default()
     };
