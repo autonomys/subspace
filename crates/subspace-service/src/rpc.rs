@@ -28,7 +28,7 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
-use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
+use sc_consensus_subspace_rpc::{RootBlockProvider, SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
@@ -44,7 +44,7 @@ use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
-pub struct FullDeps<C, P> {
+pub struct FullDeps<C, P, RBP> {
     /// The client instance to use.
     pub client: Arc<C>,
     /// Transaction pool instance.
@@ -67,11 +67,13 @@ pub struct FullDeps<C, P> {
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
     /// SubspaceLink shared state.
     pub subspace_link: SubspaceLink<Block>,
+    /// Root block provider.
+    pub root_blocks_provider: RBP,
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P>(
-    deps: FullDeps<C, P>,
+pub fn create_full<C, P, RPB>(
+    deps: FullDeps<C, P, RPB>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
@@ -86,6 +88,7 @@ where
         + BlockBuilder<Block>
         + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
+    RPB: RootBlockProvider + Send + Sync + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -99,6 +102,7 @@ where
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
         subspace_link,
+        root_blocks_provider,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -118,6 +122,7 @@ where
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
             subspace_link,
+            root_blocks_provider,
         )
         .into_rpc(),
     )?;

@@ -24,7 +24,6 @@ use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::SubscriptionResult;
 use jsonrpsee::SubscriptionSink;
-use log::{error, warn};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::BlockBackend;
@@ -41,13 +40,13 @@ use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Zero};
-use std::marker::PhantomData;
+use std::error::Error;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::{
-    RecordsRoot, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RecordsRoot, RootBlock, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -55,6 +54,7 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
+use tracing::{error, warn};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
@@ -101,6 +101,12 @@ pub trait SubspaceRpcApi {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<RecordsRoot>>>;
+
+    #[method(name = "subspace_rootBlocks")]
+    async fn root_blocks(
+        &self,
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> RpcResult<Vec<Option<RootBlock>>>;
 }
 
 #[derive(Default)]
@@ -115,8 +121,15 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
+pub trait RootBlockProvider {
+    fn get_root_block(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<Option<RootBlock>, Box<dyn Error>>;
+}
+
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block: BlockT, Client> {
+pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -126,7 +139,7 @@ pub struct SubspaceRpc<Block: BlockT, Client> {
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     subspace_link: SubspaceLink<Block>,
-    _phantom: PhantomData<Block>,
+    root_block_provider: RBP,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -136,7 +149,8 @@ pub struct SubspaceRpc<Block: BlockT, Client> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block: BlockT, Client> SubspaceRpc<Block, Client> {
+impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, RBP> {
+    #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
         client: Arc<Client>,
@@ -148,6 +162,7 @@ impl<Block: BlockT, Client> SubspaceRpc<Block, Client> {
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         subspace_link: SubspaceLink<Block>,
+        root_block_provider: RBP,
     ) -> Self {
         Self {
             client,
@@ -159,13 +174,13 @@ impl<Block: BlockT, Client> SubspaceRpc<Block, Client> {
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
             subspace_link,
-            _phantom: PhantomData::default(),
+            root_block_provider,
         }
     }
 }
 
 #[async_trait]
-impl<Block, Client> SubspaceRpcApiServer for SubspaceRpc<Block, Client>
+impl<Block, Client, RBP> SubspaceRpcApiServer for SubspaceRpc<Block, Client, RBP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -175,6 +190,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    RBP: RootBlockProvider + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_block_id = BlockId::Hash(self.client.info().best_hash);
@@ -492,6 +508,44 @@ where
                 "Failed to get data from runtime API (records_root): {}",
                 err
             );
+        }
+
+        records_root_result
+    }
+
+    async fn root_blocks(
+        &self,
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> RpcResult<Vec<Option<RootBlock>>> {
+        if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
+            error!(
+                "segment_indexes length exceed the limit: {} ",
+                segment_indexes.len()
+            );
+
+            return Err(JsonRpseeError::Custom(format!(
+                "segment_indexes length exceed the limit {MAX_SEGMENT_INDEXES_PER_REQUEST}"
+            )));
+        };
+
+        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+            .into_iter()
+            .map(|segment_index| {
+                let api_result = self
+                    .root_block_provider
+                    .get_root_block(segment_index)
+                    .map_err(|_| {
+                        JsonRpseeError::Custom(
+                            "Internal error during `root_blocks` call".to_string(),
+                        )
+                    });
+
+                api_result
+            })
+            .collect();
+
+        if let Err(err) = &records_root_result {
+            error!(?err, "Failed to get root blocks.");
         }
 
         records_root_result
