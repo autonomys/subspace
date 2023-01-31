@@ -556,7 +556,7 @@ mod pallet {
                     true,
                     initial_stake,
                 )
-                .expect("Initial executor register can not fail");
+                .expect("Genesis executor registration can not fail");
 
                 let stake_weight: T::StakeWeight = initial_stake.into();
                 authorities.push((public_key, stake_weight));
