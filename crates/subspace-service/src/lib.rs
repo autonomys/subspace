@@ -19,11 +19,13 @@
 
 pub mod dsn;
 pub mod piece_cache;
+pub mod root_blocks;
 pub mod rpc;
 
 use crate::dsn::create_dsn_instance;
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::piece_cache::PieceCache;
+use crate::root_blocks::{start_root_block_archiver, RootBlockCache};
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -506,9 +508,24 @@ where
     );
 
     task_manager.spawn_essential_handle().spawn_essential(
-        "archiver",
+        "dsn-archiver",
         Some("subspace-networking"),
         Box::pin(dsn_archiving_fut.in_current_span()),
+    );
+
+    let root_block_cache = RootBlockCache::new(client.clone());
+
+    let root_block_archiving_fut = start_root_block_archiver(
+        root_block_cache.clone(),
+        subspace_link
+            .archived_segment_notification_stream()
+            .subscribe(),
+    );
+
+    task_manager.spawn_essential_handle().spawn_essential(
+        "root-block-archiver",
+        Some("subspace-networking"),
+        Box::pin(root_block_archiving_fut.in_current_span()),
     );
 
     let dsn_bootstrap_nodes = {
@@ -689,6 +706,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     subspace_link: subspace_link.clone(),
+                    root_blocks_provider: root_block_cache.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)
