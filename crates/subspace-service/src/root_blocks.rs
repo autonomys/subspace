@@ -47,7 +47,7 @@ impl<AS> RootBlockCache<AS>
 where
     AS: AuxStore,
 {
-    const KEY_PREFIX: &[u8] = b"root-block-cache";
+    const KEY_PREFIX: &[u8] = b"segment-headers-cache";
 
     /// Create new instance.
     pub fn new(aux_store: Arc<AS>) -> Self {
