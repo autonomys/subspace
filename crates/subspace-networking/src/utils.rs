@@ -141,7 +141,7 @@ impl SemState {
         if let Some(dec) = self.usage.checked_sub(1) {
             self.usage = dec;
         } else {
-            warn!(state = ?self, "SemState::free_one(): invalid free");
+            unreachable!("Dropping semaphore twice is not possible");
         }
 
         // Notify if we did a full -> available transition.
