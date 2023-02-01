@@ -128,8 +128,8 @@ where
                 // Re-announcement is the slowest part of the process, we're moving it into a
                 // separate background task with its own limit. Not re-announcing is not as bad as
                 // not storing data in the first place.
-                tokio::spawn(async move {
-                    if let Ok(_permit) = re_announcements_semaphore.try_acquire() {
+                if let Ok(permit) = re_announcements_semaphore.try_acquire_owned() {
+                    tokio::spawn(async move {
                         if let Err(error) =
                             announce_single_piece_index_hash_with_backoff(piece_index_hash, &node)
                                 .await
@@ -140,14 +140,16 @@ where
                                 "Re-announcing cached piece index hash failed"
                             );
                         };
-                    } else {
-                        debug!(
-                            ?piece_index_hash,
-                            "Re-announcing cached piece index hash skipped due to reaching \
-                            re-announcements limit"
-                        );
-                    }
-                });
+
+                        drop(permit);
+                    });
+                } else {
+                    debug!(
+                        ?piece_index_hash,
+                        "Re-announcing cached piece index hash skipped due to reaching \
+                        re-announcements limit"
+                    );
+                }
             }
 
             drop(permit);
