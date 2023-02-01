@@ -341,9 +341,14 @@ where
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
                 debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
-                if shared.connected_peers_count.fetch_add(1, Ordering::SeqCst)
-                    >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
-                {
+                let connected_peers_count =
+                    shared.connected_peers_count.fetch_add(1, Ordering::SeqCst);
+                if connected_peers_count >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get() {
+                    warn!(
+                        "handle_swarm_event(): expanding quota, connected_peers_count = {}/{}",
+                        connected_peers_count,
+                        CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
+                    );
                     // The peer count exceeded the threshold, bump up the quota.
                     shared
                         .kademlia_tasks_semaphore
@@ -411,9 +416,14 @@ where
                 };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
-                if shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst)
-                    > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
-                {
+                let connected_peers_count =
+                    shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst);
+                if connected_peers_count > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get() {
+                    warn!(
+                        "handle_swarm_event(): shrinking quota, connected_peers_count = {}/{}",
+                        connected_peers_count,
+                        CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
+                    );
                     // The previous peer count was over the threshold, reclaim the quota.
                     shared
                         .kademlia_tasks_semaphore

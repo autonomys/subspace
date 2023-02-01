@@ -115,6 +115,9 @@ struct SemShared {
 /// The semaphore state.
 #[derive(Debug)]
 struct SemState {
+    /// Sem identifier
+    id: String,
+
     /// The current capacity
     capacity: usize,
 
@@ -153,6 +156,10 @@ impl SemState {
     fn expand(&mut self, delta: usize) -> bool {
         let prev_is_full = self.is_full();
         self.capacity += delta;
+        warn!(
+            "SemState::expand(): id = {}, capacity = {}",
+            self.id, self.capacity
+        );
 
         // Notify if we did a full -> available transition.
         prev_is_full && !self.is_full()
@@ -162,6 +169,10 @@ impl SemState {
     fn shrink(&mut self, delta: usize) {
         if let Some(dec) = self.capacity.checked_sub(delta) {
             self.capacity = dec;
+            warn!(
+                "SemState::shrink(): id = {}, capacity = {}",
+                self.id, self.capacity
+            );
         } else {
             panic!("SemState::shrink(): invalid shrink, state = {self:?}");
         }
@@ -179,9 +190,14 @@ impl SemState {
 pub(crate) struct ResizableSemaphore(Arc<SemShared>);
 
 impl ResizableSemaphore {
-    pub(crate) fn new(capacity: NonZeroUsize) -> Self {
+    pub(crate) fn new(id: String, capacity: NonZeroUsize) -> Self {
+        warn!(
+            "ResizableSemaphore::new(): id = {}, capacity = {}",
+            id, capacity
+        );
         let shared = SemShared {
             state: Mutex::new(SemState {
+                id,
                 capacity: capacity.get(),
                 usage: 0,
             }),

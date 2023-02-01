@@ -367,8 +367,14 @@ where
         // Create final structs
         let (command_sender, command_receiver) = mpsc::channel(1);
 
-        let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
-        let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
+        let kademlia_tasks_semaphore = ResizableSemaphore::new(
+            "kademlia_tasks_semaphore".to_string(),
+            KADEMLIA_BASE_CONCURRENT_TASKS,
+        );
+        let regular_tasks_semaphore = ResizableSemaphore::new(
+            "regular_tasks_semaphore".to_string(),
+            REGULAR_BASE_CONCURRENT_TASKS,
+        );
 
         let shared = Arc::new(Shared::new(
             local_peer_id,
