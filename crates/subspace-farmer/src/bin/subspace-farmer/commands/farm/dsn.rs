@@ -144,18 +144,14 @@ pub(super) async fn configure_dsn(
                     handle.block_on(node_client.root_blocks(req.segment_indexes.clone()))
                 });
 
-                let result = match internal_result {
-                    Ok(root_blocks) => root_blocks,
+                match internal_result {
+                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 
-                        Vec::new()
+                        None
                     }
-                };
-
-                Some(RootBlockResponse {
-                    root_blocks: result,
-                })
+                }
             }),
         ],
         provider_storage: farmer_provider_storage,

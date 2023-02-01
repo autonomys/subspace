@@ -108,18 +108,14 @@ where
                     .map(|segment_index| root_block_cache.get_root_block(*segment_index))
                     .collect::<Result<Vec<Option<RootBlock>>, _>>();
 
-                let result = match internal_result {
-                    Ok(root_blocks) => root_blocks,
+                match internal_result {
+                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 
-                        Vec::new()
+                        None
                     }
-                };
-
-                Some(RootBlockResponse {
-                    root_blocks: result,
-                })
+                }
             }),
         ],
         provider_storage,

@@ -15,8 +15,8 @@ pub struct RootBlockRequest {
 }
 
 impl GenericRequest for RootBlockRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/root-blocks-by-seg-index/0.1.0";
-    const LOG_TARGET: &'static str = "root-block-by-segment-index-request-response-handler";
+    const PROTOCOL_NAME: &'static str = "/subspace/segment-headers-by-indexes/0.1.0";
+    const LOG_TARGET: &'static str = "segment-headers-by-indexes-request-response-handler";
     type Response = RootBlockResponse;
 }
 
