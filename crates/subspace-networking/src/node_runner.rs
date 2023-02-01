@@ -103,6 +103,8 @@ where
     max_established_outgoing_connections: u32,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
+    /// Mapping from specific peer to number of established connections
+    established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -158,6 +160,7 @@ where
             max_established_incoming_connections,
             max_established_outgoing_connections,
             metrics,
+            established_connections: HashMap::new(),
         }
     }
 
@@ -327,8 +330,8 @@ where
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
-                num_established,
                 endpoint,
+                num_established,
                 ..
             } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -341,6 +344,13 @@ where
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
                 debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
+                // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
+                self.established_connections
+                    .entry((peer_id, endpoint.clone()))
+                    .and_modify(|entry| {
+                        *entry += 1;
+                    })
+                    .or_insert(1);
                 if shared.connected_peers_count.fetch_add(1, Ordering::SeqCst)
                     >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
@@ -400,6 +410,7 @@ where
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
+                endpoint,
                 num_established,
                 ..
             } => {
@@ -411,6 +422,23 @@ where
                 };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
+                // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
+                {
+                    match self.established_connections.entry((peer_id, endpoint)) {
+                        Entry::Vacant(_) => {
+                            // Nothing to do here, we are not aware of the connection being closed
+                            return;
+                        }
+                        Entry::Occupied(mut entry) => {
+                            let value = entry.get_mut();
+                            if *value == 1 {
+                                entry.remove_entry();
+                            } else {
+                                *value -= 1;
+                            }
+                        }
+                    };
+                }
                 if shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst)
                     > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
