@@ -83,7 +83,14 @@ pub(crate) async fn farm_multi_disk(
                     .dsn_bootstrap_nodes
             };
         }
-        configure_dsn(base_path, keypair, dsn, &readers_and_pieces).await?
+        configure_dsn(
+            base_path,
+            keypair,
+            dsn,
+            &readers_and_pieces,
+            node_client.clone(),
+        )
+        .await?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
