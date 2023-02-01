@@ -141,7 +141,7 @@ impl SemState {
         if let Some(dec) = self.usage.checked_sub(1) {
             self.usage = dec;
         } else {
-            panic!("SemState::free_one(): invalid free, state = {self:?}");
+            warn!(state = ?self, "SemState::free_one(): invalid free");
         }
 
         // Notify if we did a full -> available transition.
@@ -163,7 +163,7 @@ impl SemState {
         if let Some(dec) = self.capacity.checked_sub(delta) {
             self.capacity = dec;
         } else {
-            panic!("SemState::shrink(): invalid shrink, state = {self:?}");
+            warn!(state = ?self, "SemState::shrink(): invalid shrink");
         }
     }
 
