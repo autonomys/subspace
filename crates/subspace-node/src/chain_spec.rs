@@ -32,7 +32,7 @@ use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const GEMINI_3C_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3c.json");
-const X_NET_2_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-2.json");
+const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -161,19 +161,19 @@ pub fn gemini_3c_compiled(
     ))
 }
 
-pub fn x_net_2_config(
+pub fn devnet_config(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(X_NET_2_CHAIN_SPEC)
+    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC)
 }
 
-pub fn x_net_2_config_compiled(
+pub fn devnet_config_compiled(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace X-Net 2",
+        "Subspace Dev network",
         // ID
-        "subspace_x_net_2a",
-        ChainType::Custom("Subspace X-Net 2".to_string()),
+        "subspace_devnet",
+        ChainType::Custom("Testnet".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
@@ -226,7 +226,7 @@ pub fn x_net_2_config_compiled(
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
-                    enable_transfer: false,
+                    enable_transfer: true,
                 },
             )
         },
@@ -238,13 +238,13 @@ pub fn x_net_2_config_compiled(
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-x-net-2a"),
+        Some("subspace-devnet"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::x_net_2_config(),
+            execution_chain_spec: system_domain::chain_spec::devnet_config(),
         },
     ))
 }

@@ -147,6 +147,47 @@ pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
+pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
+    ExecutionChainSpec::from_genesis(
+        // Name
+        "Subspace Devnet Core Payments Domain",
+        // ID
+        "subspace_devnet_core_payments_domain",
+        ChainType::Custom("Testnet".to_string()),
+        move || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Invalid Sudo account");
+            testnet_genesis(
+                vec![
+                    // Genesis executor
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                    // Sudo account
+                    sudo_account.clone(),
+                ],
+                Some(sudo_account.clone()),
+                vec![(
+                    sudo_account,
+                    RelayerId::from_ss58check("5D7kgfacBsP6pkMB628221HG98mz2euaytthdoeZPGceQusS")
+                        .expect("Wrong relayer account address"),
+                )],
+            )
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        None,
+        // Protocol ID
+        Some("subspace-devnet-core-payments-domain"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        None,
+    )
+}
+
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,
