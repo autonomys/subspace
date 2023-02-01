@@ -17,7 +17,8 @@ pub struct FarmerProviderRecordProcessor<PC> {
     node: Node,
     piece_cache: Arc<tokio::sync::Mutex<PC>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-    semaphore: Arc<Semaphore>,
+    announcements_semaphore: Arc<Semaphore>,
+    re_announcements_semaphore: Arc<Semaphore>,
 }
 
 impl<PC> FarmerProviderRecordProcessor<PC>
@@ -29,13 +30,17 @@ where
         piece_cache: Arc<tokio::sync::Mutex<PC>>,
         weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
         max_concurrent_announcements: NonZeroUsize,
+        max_concurrent_re_announcements: NonZeroUsize,
     ) -> Self {
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_announcements.get()));
+        let announcements_semaphore = Arc::new(Semaphore::new(max_concurrent_announcements.get()));
+        let re_announcements_semaphore =
+            Arc::new(Semaphore::new(max_concurrent_re_announcements.get()));
         Self {
             node,
             piece_cache,
             weak_readers_and_pieces,
-            semaphore,
+            announcements_semaphore,
+            re_announcements_semaphore,
         }
     }
 
@@ -83,12 +88,13 @@ where
             return;
         }
 
-        let Ok(permit) = self.semaphore.clone().acquire_owned().await else {
+        let Ok(permit) = Arc::clone(&self.announcements_semaphore).acquire_owned().await else {
             return;
         };
 
         let node = self.node.clone();
         let piece_cache = Arc::clone(&self.piece_cache);
+        let re_announcements_semaphore = Arc::clone(&self.re_announcements_semaphore);
 
         tokio::spawn(async move {
             {
@@ -118,15 +124,30 @@ where
 
                     piece_cache.add_piece(provider_record.key.clone(), piece);
                 }
-                if let Err(error) =
-                    announce_single_piece_index_hash_with_backoff(piece_index_hash, &node).await
-                {
-                    debug!(
-                        ?error,
-                        ?piece_index_hash,
-                        "Announcing cached piece index hash failed"
-                    );
-                }
+
+                // Re-announcement is the slowest part of the process, we're moving it into a
+                // separate background task with its own limit. Not re-announcing is not as bad as
+                // not storing data in the first place.
+                tokio::spawn(async move {
+                    if let Ok(_permit) = re_announcements_semaphore.try_acquire() {
+                        if let Err(error) =
+                            announce_single_piece_index_hash_with_backoff(piece_index_hash, &node)
+                                .await
+                        {
+                            debug!(
+                                ?error,
+                                ?piece_index_hash,
+                                "Re-announcing cached piece index hash failed"
+                            );
+                        };
+                    } else {
+                        debug!(
+                            ?piece_index_hash,
+                            "Re-announcing cached piece index hash skipped due to reaching \
+                            re-announcements limit"
+                        );
+                    }
+                });
             }
 
             drop(permit);
