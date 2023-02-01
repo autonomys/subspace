@@ -345,12 +345,18 @@ where
                     >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The peer count exceeded the threshold, bump up the quota.
-                    shared
+                    if let Err(error) = shared
                         .kademlia_tasks_semaphore
-                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
-                    shared
+                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to expand Kademlia concurrent tasks");
+                    }
+                    if let Err(error) = shared
                         .regular_tasks_semaphore
-                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
+                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to expand regular concurrent tasks");
+                    }
                 }
 
                 let (in_connections_number, out_connections_number) = {
@@ -415,12 +421,18 @@ where
                     > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The previous peer count was over the threshold, reclaim the quota.
-                    shared
+                    if let Err(error) = shared
                         .kademlia_tasks_semaphore
-                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
-                    shared
+                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to shrink Kademlia concurrent tasks");
+                    }
+                    if let Err(error) = shared
                         .regular_tasks_semaphore
-                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
+                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to shrink regular concurrent tasks");
+                    }
                 }
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
